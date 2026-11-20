@@ -23,7 +23,7 @@
 | --- | --- | --- |
 | `vm/lima.sh` | Mac（bash 3.2） | Lima の VM を作る・起動する・止める・消す・確認する |
 | `vm/wsl.ps1` | Windows（PowerShell 5.1 以上） | WSL の専用のディストリを、同じように扱う |
-| `vm/guest/provision.sh` | VM の中（root） | 道具、Docker、デーモンの自動の起動を入れる |
+| `vm/guest/provision.sh` | VM の中（root） | 道具、Docker、デーモンの自動の起動を入れる。Lima では名前解決に公開 DNS を足す |
 | `vm/guest/start-daemon` | VM の中（使う人） | デーモンを、セットアップと同じ環境で前面で起動する |
 | `vm/guest/record-server` | VM の中（使う人） | 動いているデーモンの接続先を、次の起動のために記録する |
 | `vm/guest/verify.sh` | VM の中（使う人） | 閉じ込め、Docker、自動の起動を確認する |
@@ -128,18 +128,21 @@ Lima では、Lima の既定どおり、使う人に sudo を残す。共有の�
 
 ネットワークは閉じ込めない。中からインターネットに出られることは、Multica と GitHub と AI のサービスに必要なため。中からホストで待ち受けるサービスにも届くので、手順書に書いて、使う人がホストで開くサービスに気を付けられるようにする。
 
+Lima の VM の名前の問い合わせは、Lima の DNS に加えて公開 DNS にも出る（[名前解決](#名前解決)）。
+
 ## 中の準備
 
-`provision.sh` は、VM の中で root として動き、道具と Docker とデーモンの自動の起動を入れる。何度流しても同じ結果になるように書く。
+`provision.sh` は、VM の中で root として動き、道具と Docker とデーモンの自動の起動を入れる。Lima では、名前解決に公開 DNS も足す。何度流しても同じ結果になるように書く。
 
 中での呼び出しは `bash provision.sh lima|wsl USER` である。確認は使う人として `bash verify.sh lima|wsl` を流す。テストでは `SQUAD_VM_ROOT` で、設定の書き込み先と `/proc` などの読み取り先の根を一時の置き場へ変える。
 
-1. `manual.md` の Ubuntu 24.04 の道具（`bash zsh git jq gh zip unzip python3 tzdata libdigest-sha-perl coreutils findutils procps`）を入れる。`gh` は、GitHub の公式の apt のリポジトリ（`cli.github.com/packages`）から入れる
-2. WSL では、使う人を `useradd` で作る。sudo の群には入れない
-3. Docker を rootless で入れる（[Docker](#docker)）
-4. 使う人の linger を入れる（`loginctl enable-linger USER`）
-5. デーモンの自動の起動の unit と、接続先を記録する timer を置き、有効にする（[デーモンの自動の起動](#デーモンの自動の起動)）
-6. WSL では、`/etc/wsl.conf` を書く
+1. Lima では、名前解決に公開 DNS を足す（[名前解決](#名前解決)）。WSL では何もしない
+2. `manual.md` の Ubuntu 24.04 の道具（`bash zsh git jq gh zip unzip python3 tzdata libdigest-sha-perl coreutils findutils procps`）を入れる。`gh` は、GitHub の公式の apt のリポジトリ（`cli.github.com/packages`）から入れる
+3. WSL では、使う人を `useradd` で作る。sudo の群には入れない
+4. Docker を rootless で入れる（[Docker](#docker)）
+5. 使う人の linger を入れる（`loginctl enable-linger USER`）
+6. デーモンの自動の起動の unit と、接続先を記録する timer を置き、有効にする（[デーモンの自動の起動](#デーモンの自動の起動)）
+7. WSL では、`/etc/wsl.conf` を書く
 
 `gh` は、Ubuntu の標準のバージョンでは証明を検証できない。そのため、GitHub の公式の apt のリポジトリの鍵と `sources` を置き、そこから入れる（`docs/install.md` の[必要な `gh` のバージョン](install.md#必要な-gh-のバージョン)）。
 
@@ -274,6 +277,66 @@ WSL は、ディストリにつながる `wsl.exe` がなくなると、少し�
 
 Lima の VM も、Mac を起動し直したあとは `lima.sh start` で起動する。Mac のログイン時に自動で起動する設定（`limactl start-at-login`）は、同じ理由で入れない。
 
+## 名前解決
+
+Lima の VM では、作った時点で、systemd-resolved に公開 DNS（`1.1.1.1` と `8.8.8.8`）を足す。Lima の DNS（`192.168.5.2`）は経路に残す。WSL の VM の名前解決は変えない。
+
+### 足す理由
+
+Lima の DNS が、IPv6 の問い合わせ（AAAA）に 1 回 4 秒ほどかかることがある。`getent` などは IPv4 と IPv6 の両方を引くので、名前を引くたびに待ちが入る。`multica` のコマンドは、1 回 8 秒ほどになった。
+
+公開 DNS を足した VM では、Lima の DNS が遅いままでも、`getent hosts github.com` が 0.06 秒、`multica agent list` が 0.27 秒で返った。遅さは出たり消えたりし、原因は Mac か Lima の側にある。VM の中からは直せないので、問い合わせの先を足して避ける。
+
+### 置く設定
+
+`provision.sh lima` は、最初に `/etc/systemd/resolved.conf.d/multica-squad-dns.conf` を次の内容で置き、`systemctl restart systemd-resolved` を流す。ディレクトリは `0755`、ファイルは `0644` にする。
+
+```ini
+[Resolve]
+DNS=1.1.1.1 8.8.8.8
+```
+
+- 置くのは、道具を入れるより前にする。`provision.sh` 自身の `apt-get` と `curl` も名前を引くので、遅さを先に避けるため
+- 何度流しても、同じ内容で置き直して起動し直す。内容は固定で、二度流しても結果は変わらない
+- 起動し直しが失敗したら、`provision.sh` は 0 以外で終わる。`create` は、ほかの準備の失敗と同じく VM を消して止まる
+- ファイルの名前に `multica-squad-` を付ける。原本が置いたものと分かり、外すときに使う人の設定と取り違えないため
+- `provision.sh wsl` は、このファイルを置かず、systemd-resolved も起動し直さない
+
+### Lima の DNS を残す仕組み
+
+全体の設定の `DNS=` は、systemd-resolved の通信路ごとの DNS を置き換えない。[resolved.conf](https://www.freedesktop.org/software/systemd/man/latest/resolved.conf.html) の `DNS=` は、通信路ごとの DNS と並べて問い合わせると書いている。Lima の DNS は、VM の通信路（`eth0`）の DNS として DHCP で入るので、そのまま残る。
+
+[systemd-resolved](https://www.freedesktop.org/software/systemd/man/latest/systemd-resolved.service.html) は、経路の名前の指定がない問い合わせを、既定の経路の通信路の DNS と全体の DNS の両方へ出す。最初に成功した答えを返し、すべて失敗したときだけ最後の失敗を返す。
+
+このため、公開 DNS が先に答える名前は速く返る。ホストの DNS でだけ引ける名前は、公開 DNS が「ない」と答えても、Lima の DNS の成功した答えが返る。その名前では、Lima の DNS が答えるまで待つ。
+
+### 使う人に示すこと
+
+名前の問い合わせが、Lima の DNS と並んで Cloudflare と Google にも出る。社内の名前を引いたときも、その名前が公開 DNS に届く。`manual.md` の「閉じ込めて動かす」に、このことと外し方を書く。
+
+外すときは、VM の中でファイルを消し、`systemctl restart systemd-resolved` を流す。`resolvectl status` から公開 DNS が消え、Lima の DNS だけに戻る。`provision.sh` を流し直すと、また足される。
+
+公開 DNS を足していない Lima の VM は、VM の中で同じファイルを置き、systemd-resolved を起動し直せば、新しく作った VM と同じ状態になる。作り直しも、専用のサブコマンドも要らない。`manual.md` の手順は、使う人の sudo で流す次の形にする。
+
+```bash
+sudo install -d -m 0755 /etc/systemd/resolved.conf.d
+printf '[Resolve]\nDNS=1.1.1.1 8.8.8.8\n' | sudo tee /etc/systemd/resolved.conf.d/multica-squad-dns.conf >/dev/null
+sudo systemctl restart systemd-resolved
+resolvectl status
+```
+
+外す手順は次の形にする。
+
+```bash
+sudo rm -f /etc/systemd/resolved.conf.d/multica-squad-dns.conf
+sudo systemctl restart systemd-resolved
+resolvectl status
+```
+
+### 確認しないこと
+
+`verify` は、この設定を確認しない。`verify` が確認するのは閉じ込めと自動の起動で、名前解決の先は閉じ込めに関わらない。外した VM や、足す前に作った VM で、`verify` が通らなくならないようにするため。
+
 ## 止める・消す
 
 止める・消す前に、中のデーモンの実行中のタスクを確認する。動いている作業を、知らないうちに止めないため。
@@ -327,12 +390,14 @@ Lima のディスクは、使った分だけホストのディスクを使う。
 | テスト | 確認すること |
 | --- | --- |
 | `tests/vm-lima-test.sh` | スタブの `limactl` に渡す上書きと、バージョンの不足と同じ名前での停止。起動前の設定の確認で消して止まること、止める・消す前のタスク数の扱い、確認の求め |
-| `tests/vm-guest-test.sh` | 中の準備と、デーモンの起動・接続先の記録・確認 |
+| `tests/vm-guest-test.sh` | 中の準備（Lima だけの名前解決の設定を含む）と、デーモンの起動・接続先の記録・確認 |
 | `tests/vm-wsl-test.sh` | スタブの `wsl.exe` を置いた `pwsh` で、`wsl.ps1` の各操作が渡す引数と、バージョン・名前・タスク数での停止 |
 
 `tests/vm-guest-test.sh` では、次を確認する。
 
 - `provision.sh` が書く `wsl.conf` と unit、sudo の群に入れないこと、二度流しても同じこと
+- `provision.sh lima` が、[名前解決](#名前解決)の設定の内容のファイルを置き、最初の `apt-get update` より前に systemd-resolved を起動し直すこと。起動し直しが失敗したら 0 以外で終わり、デーモンの unit を有効にしないこと
+- `provision.sh wsl` が、名前解決の設定のファイルを置かず、systemd-resolved を起動し直さないこと
 - `start-daemon` の 5 つの手順と、接続先を環境変数・記録・CLI の設定の順に読むこと
 - CLI の既定が記録と違うときと、CLI の設定がないときに、記録した接続先で起動すること
 - `record-server` が、デーモンが動いていないときと、`daemon_has_agent_env` の変数を持たないときに記録を変えないこと
@@ -352,7 +417,7 @@ Lima のディスクは、使った分だけホストのディスクを使う。
 
 ## 検討した案
 
-デーモンは、セットアップと同じ環境を使い、`User=` を付けた system の unit で起動する。接続先は動いているデーモンから読んで記録する。
+デーモンは、セットアップと同じ環境を使い、`User=` を付けた system の unit で起動する。接続先は動いているデーモンから読んで記録する。名前解決は、Lima だけで、systemd-resolved の全体の設定に公開 DNS を足し、Lima の DNS を残す。
 
 | 案 | 選ばなかった理由 |
 | --- | --- |
@@ -368,3 +433,10 @@ Lima のディスクは、使った分だけホストのディスクを使う。
 | systemd の path の unit で、Multica の設定のファイルの変化を見て記録する | Multica が中に置くファイルの名前と形に頼る。動いているデーモンの接続先は、どのファイルにも残らない |
 | Lima のポートの転送をすべて切る | Codex と Multica のログインがホストのブラウザから戻れなくなる。中からホストのファイルは読めないままなので、閉じ込めには効かない |
 | WSL でも使う人に sudo を残す | 中の root が `mount -t drvfs` でドライブをつなぎ直せる |
+| Lima の DNS が IPv6 の問い合わせに遅くなる原因を直す | 原因は Mac か Lima の側にあり、VM の中から調べられない。遅さが出たり消えたりするので、直しても確認しにくい |
+| IPv6 の問い合わせだけを止める | 公開 DNS が IPv6 の問い合わせにもすぐ答えるので、重ねる理由がない。IPv6 だけの名前も引けなくなる |
+| Lima の DNS を外し、公開 DNS だけにする | ホストの DNS でだけ引ける名前（社内の名前など）が引けなくなる |
+| VM を作るときの Lima の設定（`dns` など）で入れる | 効くかを確認していない。既存の VM を直すには、止めて設定を変える手順になる |
+| `create` の引数で DNS を選べるようにする | 引数と文書とテストが増える。使いたくない人は、手順書の外し方で外せる |
+| `verify` で公開 DNS があることを確認する | 外した VM と、足す前に作った VM で `verify` が通らなくなる。名前解決の先は閉じ込めに関わらない |
+| WSL の VM にも同じ設定を入れる | WSL では遅さを確認していない。WSL は名前解決の設定を自分で作るので、同じ形で効くかも確認していない |
