@@ -515,14 +515,14 @@ echo 'PASS vm guest: Lima は公開 DNS の設定を置き、最初の apt-get u
 reset_guest
 provision wsl vm-user
 [[ ! -e $guest_root/etc/systemd/resolved.conf.d && ! -e $dns_conf ]]
-! calls_of | grep -q 'systemd-resolved'
+if calls_of | grep -q 'systemd-resolved'; then exit 1; fi
 echo 'PASS vm guest: WSL は公開 DNS の設定を置かず、systemd-resolved も起動し直さない'
 
 reset_guest
 guest_state '{"user_exists":true,"fail":"systemctl restart systemd-resolved"}'
 if provision lima vm-user; then exit 1; fi
 [[ -s $test_dir/err ]]
-! calls_of | grep -q '^apt-get'
+if calls_of | grep -q '^apt-get'; then exit 1; fi
 [[ ! -e $guest_root/etc/systemd/system/multica-squad-daemon.service ]]
 echo 'PASS vm guest: systemd-resolved の起動し直しが失敗したら、Lima の準備を 0 以外で止め、デーモンの unit を有効にしない'
 
