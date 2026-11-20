@@ -70,7 +70,7 @@ e6e43298a2c4ee78cad856bb2f549d586978ea0f8f3c6339dc590f87fc31fb52  ./docs/agent-p
 8f528132703a8bdc7d6758547d25f7e7441e65878463412313f9f7adffbea231  ./docs/decide-record-read.md
 dbd67dd7af91229c1a2ef29087a0fe24f4a571bcccbab9e30eda3556b64f8ee5  ./docs/dependency-audit.md
 1a8eb6d52870b1f2e1142b18185e817985f24537e2933a42927f2838766c7831  ./docs/doc-style.md
-ec5703333f6d57c35ce8dbc8c45160b74adddfcc8219d0143ebb0c4cd0b26c4d  ./docs/host-start-daemon.md
+bb76874f47d1b0e9e64795efca4b32b48a15791cad6e77fd3625b1f23d377a17  ./docs/host-start-daemon.md
 66991ca5434527550733af5ac4997e6865060f564500352d5eabd8dfeb5a2c08  ./docs/install.md
 369c5b96674d47f949a255bb28643e07bb2a623a6b1c24628805724591a94b50  ./docs/leader-eval-picks.md
 da2f3de2122d6040e34b77ca426ddf93b03fd22a9ec0b7c53cdde2790d308a67  ./docs/leader-principles.md
