@@ -836,6 +836,8 @@ WSL では、Windows のドライブと実行ファイルも使えない。中�
 
 ネットワークは閉じ込めない。中のエージェントは、インターネットに出られ、ホストで待ち受けるサービスにも届く。ホストで開いているサービスに気を付ける。
 
+Lima の VM は、名前の問い合わせが、Lima の DNS に加えて公開 DNS にも出る。[名前解決（Lima）](#名前解決lima)に、何が起きるかと外し方を書く。
+
 中のセットアップは、VM の中で「原本を取る」の 1 行のコマンドを流して入れる。ホストでは、VM を作るスクリプトを使うためだけに、原本を手動の手順で展開する。
 
 ### VM を作る
@@ -986,6 +988,47 @@ powershell -ExecutionPolicy Bypass -File vm\wsl.ps1 delete
 ```
 
 消したあと、ホストには、Lima（または WSL）と、取り込んだイメージの控えだけが残る。Lima のイメージの控えは、`limactl prune` で消せる。WSL の VM の置き場所は、`%LOCALAPPDATA%\multica-squad\<名前>` で、消すときに一緒に消える。
+
+### 名前解決（Lima）
+
+Lima の VM は、作るときに、名前解決へ公開 DNS を足す。Cloudflare の `1.1.1.1` と Google の `8.8.8.8` である。Lima の DNS は、VM の通信路 `eth0` の DNS としてそのまま残る。WSL の VM は変えない。
+
+Lima の DNS は、IPv6 の問い合わせに数秒かかることがあり、名前を引くたびに待ちが入る。公開 DNS を足すと、公開 DNS が先に答える名前は速く返る。
+
+足すと、次のことが起きる。困るときは、下の手順で外せば、足す前に戻る。
+
+- 名前の問い合わせが、Lima の DNS と並んで Cloudflare と Google にも出る。社内の名前を引いたときも、その名前が公開 DNS に届く
+- 公開 DNS とホストの DNS で答えが違う名前（VPN の分割 DNS で社内の番地を返す名前など）は、公開 DNS の答えになることがある。どちらが先に答えるかは問い合わせごとに変わるので、引くたびに答えが変わることもある
+- 外への DNS を塞ぐネットワークでは、ない名前の失敗が返るまで時間がかかる。そのネットワークでは外す
+
+現在の設定は、VM の中で次を流して確認する。`Global` に `1.1.1.1` と `8.8.8.8` があり、`eth0` に Lima の DNS があれば、足されている。
+
+```bash
+resolvectl status
+```
+
+#### 足す前に作った VM を直す
+
+公開 DNS を足す前に作った Lima の VM には、公開 DNS がない。VM の中で次を流すと、新しく作った VM と同じ状態になる。作り直しは要らない。
+
+```bash
+sudo install -d -m 0755 /etc/systemd/resolved.conf.d
+printf '[Resolve]\nDNS=1.1.1.1 8.8.8.8\n' | sudo tee /etc/systemd/resolved.conf.d/multica-squad-dns.conf >/dev/null
+sudo systemctl restart systemd-resolved
+resolvectl status
+```
+
+#### 公開 DNS を外す
+
+VM の中で次を流す。`resolvectl status` の `Global` から公開 DNS が消え、`eth0` の Lima の DNS だけに戻る。
+
+```bash
+sudo rm -f /etc/systemd/resolved.conf.d/multica-squad-dns.conf
+sudo systemctl restart systemd-resolved
+resolvectl status
+```
+
+外したあとも、`bash vm/lima.sh create` で新しく作る VM には、また足される。`verify` は、この設定を確認しない。外した VM でも通る。
 
 ### WSL で root の作業をする
 
