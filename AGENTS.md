@@ -14,6 +14,7 @@ SquadKit は、Multica のスクワッドをプロジェクトごとに導入・
 
 | ファイル・ディレクトリ | 役割 |
 | --- | --- |
+| `install.sh` | clone せずに導入・更新する入口。Release の配布物を検証して展開し、セットアップを流す |
 | `setup.sh`、`lib/` | 質問、回答、ホスト準備、Multica への登録と導入の確認 |
 | `common/` | 役・スクワッド・オートパイロット・共通スキルの原本、関所、見張り、シェルと Codex の設定 |
 | `skeleton/` | 導入先で記入するリポジトリの指示、作業別のルール、プロジェクトの説明、検証スキルのひな形 |
@@ -40,7 +41,7 @@ hooks が自動で動くと仮定せず、完了の条件を自分で確認し�
 
 | 作業 | 対象 | ルール |
 | --- | --- | --- |
-| セットアップ・配布する原本・VM・CI を変える | `setup.sh`、`lib/**`、`scripts/**`、`common/**`、`vm/**`、`.github/workflows/**` | [コード](.agents/rules/code.md) |
+| セットアップ・配布する原本・VM・CI を変える | `install.sh`、`setup.sh`、`lib/**`、`scripts/**`、`common/**`、`vm/**`、`.github/workflows/**` | [コード](.agents/rules/code.md) |
 | テストとその補助を変える | `tests/**` | [テスト](.agents/rules/tests.md) |
 | 文書・指示・ひな形を変える | `**/*.md`、`common/agents/FORMAT`、`skeleton/**` | [ドキュメント](.agents/rules/docs.md) |
 | 導入先で読む原本の手順を変える | `common/agents/*.md`、`common/skills/squad-handoff/**/*.md`、`common/squad.md`、`common/autopilots.md` | [手順](.agents/rules/procedures.md) |
