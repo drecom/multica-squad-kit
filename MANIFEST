@@ -250,7 +250,7 @@ ecd6f37c326cf97ab4c60f934a3168f56fd6923862d4a1de6831dbe7e96d3e23  ./tests/fixtur
 46d6174b81d6921fdc3d6b3c4735e38c08084b7aa51e2a009bb44c7660387872  ./tests/gh-test.sh
 609bb41e76148f7ffc39cfd809e45cf208e72f7815300c4673b71ac916472e49  ./tests/guard-backend.sh
 acf2250e9b0a3bce031e484b9d1a5060cbfe531d146d7b941329f49c3dd39ba8  ./tests/guard-check-test.sh
-5c4484c054a090f7fc7ac1565038d0f31ef24f4ca28fd3d13a2b9b865b2140bb  ./tests/host-daemon-test.sh
+2e2795a9825e1dd456fd70588e49e650aac7c4e9fd3091863f32380fac5e8b10  ./tests/host-daemon-test.sh
 a6b928023ed6bb5ee5173dedd8850e5eefdfca3a387bc32e9441b400343ca1c4  ./tests/host-test.sh
 c8532b22f7a86ec6590a5cde3f64a6295148663e9f9893255209fca16fdea5b0  ./tests/install-command-test.sh
 539275b12edb26069fca5bedf9bb83abf3a73a7f68dc3c3ed5456c2ce19228f8  ./tests/install-test.sh
