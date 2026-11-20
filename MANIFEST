@@ -16,7 +16,7 @@ b996876f1a8ebaad1d05198541be7af0bd5145e0a074f3102e8e37da8ddb2c59  ./CHANGELOG.md
 fa40c9d3125276380248082d82c7703d3772cc27d78dd7a156396e22b1c57f24  ./CONTRIBUTING.md
 62677a5c2069f5162fd2f292f39a59469d57e6047bfc283add064512f8fdaed8  ./EXTENSIONS.md
 d55d892065630dee11d1bbe81d83bd43a0ae6f8010d48be9673dc54b0189c40d  ./README.md
-1ecaf60e4c51b43de0cc56c210cccb265ff39a6598722aa3ee68329208130cd5  ./STYLE.md
+dcea33253a2601bc3a6557ebb572f1f1e995591636ea70aed7bd88ec670e57a2  ./STYLE.md
 145aabe1106cd123b7123194b94bcf8bff4442caf1c5336c3e2c9c671f4895ca  ./VERSION
 a8589891c83dd2f462ec04992aec83bc8d93e4cb3038f9a7483d890f0274ff06  ./common/agents/FORMAT
 ecd720685c958c917a4f59cdad3e24839c83342bcf60a895e627352cf91e4e31  ./common/agents/ci-monitor.md
@@ -58,7 +58,7 @@ fac2e72f734a7821ea3121010292836c9cf5478e94f934f9ab211752517cc2c9  ./common/monit
 8b98e036b062d9075e79ed17716daa9a8e05eab2ebec4a97143fbeca973d69b1  ./common/setup-issues.json
 ab9cb0b32064de85d62d8e5f89791645ac6a89fb2f91236e01de30f09841c23c  ./common/shell/.zshenv
 ab9cb0b32064de85d62d8e5f89791645ac6a89fb2f91236e01de30f09841c23c  ./common/shell/env.sh
-fd8f346af0b6f1f6503e972595e27e1bcaa4b7a826c4e8fcbe9628078f0c6289  ./common/skills/squad-handoff/SKILL.md
+79356cf9a37cdaffd1f53dab3a79bf64858a6806228e686ddbcf47f6bd31b582  ./common/skills/squad-handoff/SKILL.md
 34f17665bd8a68b1d9cc0b4d400a1a771b7b32ea7c95fc4d3cc03953b78ab76e  ./common/skills/squad-handoff/references/leader-dispatch.md
 543df58d4b51f7148e82eda6af7926c357305d1068597fcf3965a3e3a3715328  ./common/skills/squad-handoff/references/leader-flow.md
 1701c702404b51251692f9af27fbcea277a73b22ac8051b62ba7b96eb37a61b8  ./common/skills/squad-handoff/references/leader-pr-checks.md
