@@ -246,7 +246,7 @@ c04d7621b21d3ad8dca222219ef9de610463c0b4c0725ab6a53f0dba59ae1d84  ./tests/fixtur
 86ce2f75edc7fb9a6b96f0fdcfe12c1b8849ba4dd4c3d6d2d9dcdc415a66f026  ./tests/fixtures/metrics/trace-snapshot.json
 ecd6f37c326cf97ab4c60f934a3168f56fd6923862d4a1de6831dbe7e96d3e23  ./tests/fixtures/metrics/traces.json
 941bedae10cb90cd9865ff3cb98b4c9d5ff26c027104c990fc6b75136ad96224  ./tests/gh-fixture.py
-56e470411fbebcfe1f8ce2e28ff79c0694ad59cac0e58f8bacf4cf77ea501be9  ./tests/gh-test.sh
+46d6174b81d6921fdc3d6b3c4735e38c08084b7aa51e2a009bb44c7660387872  ./tests/gh-test.sh
 609bb41e76148f7ffc39cfd809e45cf208e72f7815300c4673b71ac916472e49  ./tests/guard-backend.sh
 acf2250e9b0a3bce031e484b9d1a5060cbfe531d146d7b941329f49c3dd39ba8  ./tests/guard-check-test.sh
 3a3a586902186916149c6f3b8a64091843a165e14c2d3841cf641674f6fca1b0  ./tests/host-daemon-test.sh

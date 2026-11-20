@@ -221,7 +221,7 @@ rm "$test_dir/no-attach"
 echo 'PASS attach: 古い gh のヘルプでは拒否し、本物に書き込まない'
 
 # gh 2.104.0 以降の help の形（--name[=true|false]）でも、bool として読み、値を取るフラグの判定は変えない。
-# どちらの形でも、素の bool・値を取るフラグ・= 形式・短いフラグの連結が同じ結果になることを確かめる。
+# どちらの形でも、素の bool・値を取るフラグ・= 形式・短いフラグの連結が同じ結果になることを確認する。
 for form in plain brackets; do
 	if [[ $form == brackets ]]; then touch "$test_dir/bool-brackets"; else rm -f "$test_dir/bool-brackets"; fi
 	allow api --include --silent --paginate repos/example/template/issues/367/comments
