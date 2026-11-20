@@ -10,14 +10,21 @@ setup_required() {
 
 # 原本を読み込まず、ホストに保存された答えだけで起動の対象を決める。
 read_host_configuration() {
-	local file workspace answer latest='' newest_servers='[]' answers='[]'
+	local file workspace value answer latest='' newest_servers='[]' answers='[]'
 	[[ -f $agent_home/template/version && -f $agent_home/bin/gh && -x $agent_home/bin/gh ]] || setup_required
 	for file in "$answers_dir/"*/*.json; do
 		[[ -f $file ]] || continue
+		# 拡張の記録は答えではない。開かずに飛ばし、警告も出さない。
+		[[ $file == *.extensions.json ]] && continue
 		workspace=${file%/*}
 		workspace=${workspace##*/}
-		if ! answer=$(jq -cse --arg workspace "$workspace" --arg file "$file" '
-			if length==1 then .[0] else error("答えは 1 つのオブジェクトです") end |
+		# 読む手順: 開けて、1 つの JSON の値として解釈できるかだけを見る。
+		if ! value=$(jq -cs 'if length==1 then .[0] else error("答えは 1 つの JSON の値です") end' "$file" 2>/dev/null); then
+			notice "答えのファイルを読めないので、使いません: $file"
+			continue
+		fi
+		# 形を確認する手順: 答えの形に合うかを見る。
+		if ! answer=$(jq -ce --arg workspace "$workspace" --arg file "$file" '
 			if type=="object" and .schema==1 and
 				(.server_url|type=="string" and test("^https://[^/?#\\s@]+(:[0-9]+)?(/[^?#\\s]*)?$")) and
 				(.workspace_id|type=="string" and length>0 and .==$workspace) and
@@ -26,8 +33,8 @@ read_host_configuration() {
 			then {file:$file, server_url:.server_url, workspace_id:.workspace_id,
 				runtimes:(if has("runtimes") then .runtimes else ["claude","codex"] end)}
 			else error("答えの形が不正です") end
-		' "$file" 2>/dev/null); then
-			notice "答えのファイルを読めないので、使いません: $file"
+		' <<<"$value" 2>/dev/null); then
+			notice "答えのファイルの形が合わないので、使いません。不要なら消し、使うなら消してからセットアップを流し直してください: $file"
 			continue
 		fi
 		answers=$(jq -c --argjson answer "$answer" '.+[$answer]' <<<"$answers")
