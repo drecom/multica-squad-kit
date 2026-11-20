@@ -1,0 +1,2349 @@
+{
+  "agents": [
+    {
+      "id": "agent-impl",
+      "name": "demo-claude-implementer-x"
+    },
+    {
+      "id": "agent-orch",
+      "name": "demo-orchestrator-x"
+    },
+    {
+      "id": "agent-code",
+      "name": "demo-code-reviewer-x"
+    },
+    {
+      "id": "agent-sec",
+      "name": "demo-security-reviewer-x"
+    },
+    {
+      "id": "agent-fix",
+      "name": "demo-claude-fixer-x"
+    },
+    {
+      "id": "agent-pc",
+      "name": "demo-claude-principal-x"
+    },
+    {
+      "id": "agent-px",
+      "name": "demo-codex-principal-x"
+    },
+    {
+      "id": "agent-des",
+      "name": "demo-designer-x"
+    },
+    {
+      "id": "agent-qa",
+      "name": "demo-qa-x"
+    },
+    {
+      "id": "agent-stray",
+      "name": "stray-agent"
+    }
+  ],
+  "cli_version": "synthetic-1",
+  "collected_at": "2026-01-01T11:06:40Z",
+  "comments": [
+    {
+      "author_id": "agent-orch",
+      "author_type": "agent",
+      "created_at": "2026-01-01T00:34:50Z",
+      "id": "comment-001",
+      "issue_id": "issue-a",
+      "marks": [
+        {
+          "kind": "request_commit",
+          "value": "aaaaaaaaaaaa"
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-orch",
+      "author_type": "agent",
+      "created_at": "2026-01-01T00:53:10Z",
+      "id": "comment-002",
+      "issue_id": "issue-a",
+      "marks": [
+        {
+          "kind": "request_commit",
+          "value": "bbbbbbbbbbbb"
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "member-1",
+      "author_type": "member",
+      "created_at": "2026-01-01T00:38:10Z",
+      "id": "comment-003",
+      "issue_id": "issue-a",
+      "marks": [
+        {
+          "kind": "request_commit",
+          "value": "cccccccccccc"
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-orch",
+      "author_type": "agent",
+      "created_at": "2026-01-01T00:46:40Z",
+      "id": "comment-004",
+      "issue_id": "issue-a",
+      "marks": [
+        {
+          "kind": "fix_request",
+          "value": 1
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-code",
+      "author_type": "agent",
+      "created_at": "2026-01-01T00:46:50Z",
+      "id": "comment-005",
+      "issue_id": "issue-a",
+      "marks": [
+        {
+          "kind": "review_kind",
+          "value": "final"
+        },
+        {
+          "kind": "ci_wait",
+          "value": null
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "member-1",
+      "author_type": "member",
+      "created_at": "2026-01-01T00:47:00Z",
+      "id": "comment-006",
+      "issue_id": "issue-a",
+      "marks": [
+        {
+          "kind": "fix_request",
+          "value": 2
+        },
+        {
+          "kind": "usage_wait",
+          "value": null
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-orch",
+      "author_type": "agent",
+      "created_at": "2026-01-01T02:54:50Z",
+      "id": "comment-007",
+      "issue_id": "issue-b",
+      "marks": [
+        {
+          "kind": "review_kind",
+          "value": "design"
+        },
+        {
+          "kind": "request_commit",
+          "value": "d1d1d1d1d1d1"
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-orch",
+      "author_type": "agent",
+      "created_at": "2026-01-01T02:56:30Z",
+      "id": "comment-008",
+      "issue_id": "issue-b",
+      "marks": [
+        {
+          "kind": "review_kind",
+          "value": "final"
+        },
+        {
+          "kind": "request_commit",
+          "value": "e1e1e1e1e1e1"
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "member-1",
+      "author_type": "member",
+      "created_at": "2026-01-01T02:59:50Z",
+      "id": "comment-009",
+      "issue_id": "issue-b",
+      "marks": [
+        {
+          "kind": "review_kind",
+          "value": "final"
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-orch",
+      "author_type": "agent",
+      "created_at": "2026-01-01T03:06:30Z",
+      "id": "comment-010",
+      "issue_id": "issue-b",
+      "marks": [
+        {
+          "kind": "review_kind",
+          "value": "final"
+        },
+        {
+          "kind": "request_commit",
+          "value": "e2e2e2e2e2e2"
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-orch",
+      "author_type": "agent",
+      "created_at": "2026-01-01T13:58:10Z",
+      "id": "comment-011",
+      "issue_id": "issue-h",
+      "marks": [
+        {
+          "kind": "usage_wait",
+          "value": null
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-orch",
+      "author_type": "agent",
+      "created_at": "2026-01-01T16:49:50Z",
+      "id": "comment-012",
+      "issue_id": "issue-i",
+      "marks": [
+        {
+          "kind": "usage_wait",
+          "value": null
+        },
+        {
+          "kind": "ci_wait",
+          "value": null
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-orch",
+      "author_type": "agent",
+      "created_at": "2026-01-01T16:55:50Z",
+      "id": "comment-013",
+      "issue_id": "issue-i",
+      "marks": [
+        {
+          "kind": "ci_wait",
+          "value": null
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "member-1",
+      "author_type": "member",
+      "created_at": "2026-01-01T17:01:40Z",
+      "id": "comment-014",
+      "issue_id": "issue-i",
+      "marks": [
+        {
+          "kind": "usage_wait",
+          "value": null
+        },
+        {
+          "kind": "ci_wait",
+          "value": null
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-code",
+      "author_type": "agent",
+      "created_at": "2026-01-01T17:01:50Z",
+      "id": "comment-015",
+      "issue_id": "issue-i",
+      "marks": [
+        {
+          "kind": "ci_wait",
+          "value": null
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-orch",
+      "author_type": "agent",
+      "created_at": "2026-01-01T19:29:50Z",
+      "id": "comment-016",
+      "issue_id": "issue-j",
+      "marks": [
+        {
+          "kind": "limit_notice",
+          "value": null
+        }
+      ],
+      "member_mentions": [],
+      "type": "system"
+    },
+    {
+      "author_id": "member-1",
+      "author_type": "member",
+      "created_at": "2026-01-01T19:36:20Z",
+      "id": "comment-017",
+      "issue_id": "issue-j",
+      "marks": [
+        {
+          "kind": "limit_notice",
+          "value": null
+        }
+      ],
+      "member_mentions": [],
+      "type": "system"
+    },
+    {
+      "author_id": "agent-orch",
+      "author_type": "agent",
+      "created_at": "2026-01-01T19:43:10Z",
+      "id": "comment-018",
+      "issue_id": "issue-j",
+      "marks": [],
+      "member_mentions": [
+        "member-1"
+      ],
+      "type": "comment"
+    },
+    {
+      "author_id": "member-1",
+      "author_type": "member",
+      "created_at": "2026-01-01T19:49:50Z",
+      "id": "comment-019",
+      "issue_id": "issue-j",
+      "marks": [],
+      "member_mentions": [
+        "member-2"
+      ],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-orch",
+      "author_type": "agent",
+      "created_at": "2026-01-01T19:56:30Z",
+      "id": "comment-020",
+      "issue_id": "issue-j",
+      "marks": [
+        {
+          "kind": "ci_wait",
+          "value": null
+        }
+      ],
+      "member_mentions": [
+        "member-1"
+      ],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-orch",
+      "author_type": "agent",
+      "created_at": "2026-01-02T06:38:10Z",
+      "id": "comment-021",
+      "issue_id": "issue-n",
+      "marks": [
+        {
+          "kind": "review_kind",
+          "value": "design"
+        },
+        {
+          "kind": "request_commit",
+          "value": "d0d0d0d0d0d0"
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-pc",
+      "author_type": "agent",
+      "created_at": "2026-01-02T06:39:50Z",
+      "id": "comment-022",
+      "issue_id": "issue-n",
+      "marks": [
+        {
+          "kind": "result_commit",
+          "value": "dd00dd00dd00"
+        },
+        {
+          "kind": "result_mark",
+          "value": "fail"
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-code",
+      "author_type": "agent",
+      "created_at": "2026-01-02T06:43:10Z",
+      "id": "comment-023",
+      "issue_id": "issue-n",
+      "marks": [
+        {
+          "kind": "result_commit",
+          "value": "c1c1c1c1c1c1"
+        },
+        {
+          "kind": "result_mark",
+          "value": "fail"
+        },
+        {
+          "kind": "finding_counts",
+          "value": {
+            "recommended": 1,
+            "required": 2
+          }
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-sec",
+      "author_type": "agent",
+      "created_at": "2026-01-02T06:44:50Z",
+      "id": "comment-024",
+      "issue_id": "issue-n",
+      "marks": [
+        {
+          "kind": "result_commit",
+          "value": "5e5e5e5e5e5e"
+        },
+        {
+          "kind": "finding_counts",
+          "value": {
+            "high": 1,
+            "low": 3,
+            "medium": 0
+          }
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-orch",
+      "author_type": "agent",
+      "created_at": "2026-01-02T06:46:40Z",
+      "id": "comment-025",
+      "issue_id": "issue-n",
+      "marks": [
+        {
+          "kind": "fix_request",
+          "value": 1
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-orch",
+      "author_type": "agent",
+      "created_at": "2026-01-02T06:49:50Z",
+      "id": "comment-026",
+      "issue_id": "issue-n",
+      "marks": [
+        {
+          "kind": "request_commit",
+          "value": "b2b2b2b2b2b2"
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-code",
+      "author_type": "agent",
+      "created_at": "2026-01-02T06:51:30Z",
+      "id": "comment-027",
+      "issue_id": "issue-n",
+      "marks": [
+        {
+          "kind": "result_commit",
+          "value": "c2c2c2c2c2c2"
+        },
+        {
+          "kind": "result_mark",
+          "value": "warn"
+        },
+        {
+          "kind": "finding_counts",
+          "value": {
+            "recommended": 2
+          }
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-orch",
+      "author_type": "agent",
+      "created_at": "2026-01-02T06:51:50Z",
+      "id": "comment-028",
+      "issue_id": "issue-n",
+      "marks": [
+        {
+          "kind": "fix_request",
+          "value": 2
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-qa",
+      "author_type": "agent",
+      "created_at": "2026-01-02T06:53:10Z",
+      "id": "comment-029",
+      "issue_id": "issue-n",
+      "marks": [
+        {
+          "kind": "result_commit",
+          "value": "a1a1a1a1a1a1"
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-orch",
+      "author_type": "agent",
+      "created_at": "2026-01-02T06:53:15Z",
+      "id": "comment-030",
+      "issue_id": "issue-n",
+      "marks": [
+        {
+          "kind": "request_commit",
+          "value": "c3c3c3c3c3c3"
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-code",
+      "author_type": "agent",
+      "created_at": "2026-01-02T06:54:10Z",
+      "id": "comment-031",
+      "issue_id": "issue-n",
+      "marks": [
+        {
+          "kind": "result_commit",
+          "value": "c3c3c3c3c3c3"
+        },
+        {
+          "kind": "result_mark",
+          "value": "pass"
+        },
+        {
+          "kind": "finding_counts",
+          "value": {
+            "required": 0
+          }
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-orch",
+      "author_type": "agent",
+      "created_at": "2026-01-02T06:55:00Z",
+      "id": "comment-032",
+      "issue_id": "issue-n",
+      "marks": [
+        {
+          "kind": "fix_request",
+          "value": 3
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-orch",
+      "author_type": "agent",
+      "created_at": "2026-01-02T06:56:40Z",
+      "id": "comment-033",
+      "issue_id": "issue-n",
+      "marks": [
+        {
+          "kind": "fix_request",
+          "value": 4
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-code",
+      "author_type": "agent",
+      "created_at": "2026-01-02T09:19:50Z",
+      "id": "comment-034",
+      "issue_id": "issue-o",
+      "marks": [
+        {
+          "kind": "result_commit",
+          "value": "0f0f0f0f0f0f"
+        },
+        {
+          "kind": "result_mark",
+          "value": "fail"
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-code",
+      "author_type": "agent",
+      "created_at": "2026-01-02T09:25:00Z",
+      "id": "comment-035",
+      "issue_id": "issue-o",
+      "marks": [
+        {
+          "kind": "result_commit",
+          "value": "0a0a0a0a0a0a"
+        },
+        {
+          "kind": "result_mark",
+          "value": "pass"
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-code",
+      "author_type": "agent",
+      "created_at": "2026-01-02T09:28:10Z",
+      "id": "comment-036",
+      "issue_id": "issue-o",
+      "marks": [
+        {
+          "kind": "result_commit",
+          "value": "0b0b0b0b0b0b"
+        },
+        {
+          "kind": "result_mark",
+          "value": "fail"
+        },
+        {
+          "kind": "finding_counts",
+          "value": {
+            "required": 1
+          }
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "member-1",
+      "author_type": "member",
+      "created_at": "2026-01-02T09:28:15Z",
+      "id": "comment-037",
+      "issue_id": "issue-o",
+      "marks": [
+        {
+          "kind": "result_commit",
+          "value": "0c0c0c0c0c0c"
+        },
+        {
+          "kind": "result_mark",
+          "value": "pass"
+        },
+        {
+          "kind": "finding_counts",
+          "value": {
+            "required": 5
+          }
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-orch",
+      "author_type": "agent",
+      "created_at": "2026-01-02T09:28:16Z",
+      "id": "comment-038",
+      "issue_id": "issue-o",
+      "marks": [
+        {
+          "kind": "result_commit",
+          "value": "0d0d0d0d0d0d"
+        },
+        {
+          "kind": "result_mark",
+          "value": "pass"
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-stray",
+      "author_type": "agent",
+      "created_at": "2026-01-02T09:28:17Z",
+      "id": "comment-039",
+      "issue_id": "issue-o",
+      "marks": [
+        {
+          "kind": "finding_counts",
+          "value": {
+            "low": 9
+          }
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-orch",
+      "author_type": "agent",
+      "created_at": "2026-01-02T09:30:00Z",
+      "id": "comment-040",
+      "issue_id": "issue-o",
+      "marks": [
+        {
+          "kind": "fix_request",
+          "value": 1
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "member-1",
+      "author_type": "member",
+      "created_at": "2026-01-02T09:30:50Z",
+      "id": "comment-041",
+      "issue_id": "issue-o",
+      "marks": [
+        {
+          "kind": "fix_request",
+          "value": 2
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-code",
+      "author_type": "agent",
+      "created_at": "2026-01-02T09:38:20Z",
+      "id": "comment-042",
+      "issue_id": "issue-o",
+      "marks": [
+        {
+          "kind": "result_commit",
+          "value": "0e0e0e0e0e0e"
+        },
+        {
+          "kind": "result_mark",
+          "value": "fail"
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-orch",
+      "author_type": "agent",
+      "created_at": "2026-01-02T09:39:10Z",
+      "id": "comment-043",
+      "issue_id": "issue-o",
+      "marks": [
+        {
+          "kind": "fix_request",
+          "value": 3
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-orch",
+      "author_type": "agent",
+      "created_at": "2026-01-02T12:14:50Z",
+      "id": "comment-044",
+      "issue_id": "issue-p",
+      "marks": [
+        {
+          "kind": "request_commit",
+          "value": "a1a1a1a1a1a1"
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-sec",
+      "author_type": "agent",
+      "created_at": "2026-01-02T12:18:10Z",
+      "id": "comment-045",
+      "issue_id": "issue-p",
+      "marks": [
+        {
+          "kind": "request_commit",
+          "value": "a1a1a1a1a1a1"
+        },
+        {
+          "kind": "previous_round",
+          "value": null
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-sec",
+      "author_type": "agent",
+      "created_at": "2026-01-02T12:21:30Z",
+      "id": "comment-046",
+      "issue_id": "issue-p",
+      "marks": [
+        {
+          "kind": "review_kind",
+          "value": "final"
+        },
+        {
+          "kind": "request_commit",
+          "value": "f1f1f1f1f1f1"
+        },
+        {
+          "kind": "previous_round",
+          "value": null
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-qa",
+      "author_type": "agent",
+      "created_at": "2026-01-02T12:24:50Z",
+      "id": "comment-047",
+      "issue_id": "issue-p",
+      "marks": [
+        {
+          "kind": "review_kind",
+          "value": "final"
+        },
+        {
+          "kind": "request_commit",
+          "value": "f1f1f1f1f1f1"
+        },
+        {
+          "kind": "previous_round",
+          "value": null
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-pc",
+      "author_type": "agent",
+      "created_at": "2026-01-02T12:28:10Z",
+      "id": "comment-048",
+      "issue_id": "issue-p",
+      "marks": [
+        {
+          "kind": "review_kind",
+          "value": "final"
+        },
+        {
+          "kind": "request_commit",
+          "value": "f2f2f2f2f2f2"
+        },
+        {
+          "kind": "previous_round",
+          "value": null
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-sec",
+      "author_type": "agent",
+      "created_at": "2026-01-02T12:49:50Z",
+      "id": "comment-049",
+      "issue_id": "issue-q",
+      "marks": [
+        {
+          "kind": "result_commit",
+          "value": "d9d9d9d9d9d9"
+        },
+        {
+          "kind": "result_mark",
+          "value": "fail"
+        },
+        {
+          "kind": "finding_counts",
+          "value": {
+            "high": 1,
+            "low": 1
+          }
+        },
+        {
+          "kind": "result_round",
+          "value": null
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-sec",
+      "author_type": "agent",
+      "created_at": "2026-01-02T12:49:55Z",
+      "id": "comment-050",
+      "issue_id": "issue-q",
+      "marks": [
+        {
+          "kind": "fix_request",
+          "value": 1
+        },
+        {
+          "kind": "previous_round",
+          "value": null
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-sec",
+      "author_type": "agent",
+      "created_at": "2026-01-02T13:23:10Z",
+      "id": "comment-051",
+      "issue_id": "issue-r",
+      "marks": [
+        {
+          "kind": "usage_wait",
+          "value": null
+        },
+        {
+          "kind": "previous_round",
+          "value": null
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-pc",
+      "author_type": "agent",
+      "created_at": "2026-01-02T13:29:50Z",
+      "id": "comment-052",
+      "issue_id": "issue-r",
+      "marks": [
+        {
+          "kind": "ci_wait",
+          "value": null
+        },
+        {
+          "kind": "previous_round",
+          "value": null
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-qa",
+      "author_type": "agent",
+      "created_at": "2026-01-02T13:36:30Z",
+      "id": "comment-053",
+      "issue_id": "issue-r",
+      "marks": [
+        {
+          "kind": "ci_wait",
+          "value": null
+        },
+        {
+          "kind": "previous_round",
+          "value": null
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "member-1",
+      "author_type": "member",
+      "created_at": "2026-01-02T14:08:10Z",
+      "id": "comment-054",
+      "issue_id": "issue-s",
+      "marks": [
+        {
+          "kind": "review_kind",
+          "value": "final"
+        },
+        {
+          "kind": "request_commit",
+          "value": "a5a5a5a5a5a5"
+        },
+        {
+          "kind": "fix_request",
+          "value": 1
+        },
+        {
+          "kind": "previous_round",
+          "value": null
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "member-1",
+      "author_type": "member",
+      "created_at": "2026-01-02T14:09:50Z",
+      "id": "comment-055",
+      "issue_id": "issue-s",
+      "marks": [
+        {
+          "kind": "usage_wait",
+          "value": null
+        },
+        {
+          "kind": "ci_wait",
+          "value": null
+        },
+        {
+          "kind": "previous_round",
+          "value": null
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-impl",
+      "author_type": "agent",
+      "created_at": "2026-01-02T14:13:10Z",
+      "id": "comment-056",
+      "issue_id": "issue-s",
+      "marks": [
+        {
+          "kind": "review_kind",
+          "value": "final"
+        },
+        {
+          "kind": "fix_request",
+          "value": 1
+        },
+        {
+          "kind": "usage_wait",
+          "value": null
+        },
+        {
+          "kind": "previous_round",
+          "value": null
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-fix",
+      "author_type": "agent",
+      "created_at": "2026-01-02T14:16:30Z",
+      "id": "comment-057",
+      "issue_id": "issue-s",
+      "marks": [
+        {
+          "kind": "review_kind",
+          "value": "final"
+        },
+        {
+          "kind": "ci_wait",
+          "value": null
+        },
+        {
+          "kind": "previous_round",
+          "value": null
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-des",
+      "author_type": "agent",
+      "created_at": "2026-01-02T14:20:50Z",
+      "id": "comment-058",
+      "issue_id": "issue-s",
+      "marks": [
+        {
+          "kind": "fix_request",
+          "value": 1
+        },
+        {
+          "kind": "previous_round",
+          "value": null
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-sec",
+      "author_type": "agent",
+      "created_at": "2026-01-02T14:23:10Z",
+      "id": "comment-059",
+      "issue_id": "issue-s",
+      "marks": [
+        {
+          "kind": "review_kind",
+          "value": "final"
+        },
+        {
+          "kind": "request_commit",
+          "value": "a6a6a6a6a6a6"
+        },
+        {
+          "kind": "fix_request",
+          "value": 1
+        },
+        {
+          "kind": "ci_wait",
+          "value": null
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    },
+    {
+      "author_id": "agent-sec",
+      "author_type": "agent",
+      "created_at": "2026-01-02T14:26:30Z",
+      "id": "comment-060",
+      "issue_id": "issue-s",
+      "marks": [
+        {
+          "kind": "review_kind",
+          "value": "final"
+        },
+        {
+          "kind": "request_commit",
+          "value": "a7a7a7a7a7a7"
+        },
+        {
+          "kind": "fix_request",
+          "value": 1
+        },
+        {
+          "kind": "usage_wait",
+          "value": null
+        },
+        {
+          "kind": "result_round",
+          "value": null
+        },
+        {
+          "kind": "previous_round",
+          "value": null
+        }
+      ],
+      "member_mentions": [],
+      "type": "comment"
+    }
+  ],
+  "issues": [
+    {
+      "branch_type": "feat",
+      "created_at": "2026-01-01T00:00:00Z",
+      "id": "issue-a",
+      "identifier": "DEMO-A",
+      "important": false,
+      "status": "done"
+    },
+    {
+      "branch_type": "feat",
+      "created_at": "2026-01-01T02:46:40Z",
+      "id": "issue-b",
+      "identifier": "DEMO-B",
+      "important": false,
+      "status": "done"
+    },
+    {
+      "branch_type": "feat",
+      "created_at": "2026-01-01T05:33:20Z",
+      "id": "issue-c",
+      "identifier": "DEMO-C",
+      "important": true,
+      "status": "done"
+    },
+    {
+      "branch_type": "docs",
+      "created_at": "2026-01-01T08:20:00Z",
+      "id": "issue-d",
+      "identifier": "DEMO-D",
+      "important": false,
+      "status": "done"
+    },
+    {
+      "branch_type": "feat",
+      "created_at": "2026-01-01T08:36:40Z",
+      "id": "issue-e",
+      "identifier": "DEMO-E",
+      "important": false,
+      "status": "in_progress"
+    },
+    {
+      "branch_type": "feat",
+      "created_at": "2026-01-01T08:53:20Z",
+      "id": "issue-f",
+      "identifier": "DEMO-F",
+      "important": false,
+      "status": "done"
+    },
+    {
+      "branch_type": "feat",
+      "created_at": "2026-01-01T09:10:00Z",
+      "id": "issue-g",
+      "identifier": "DEMO-G",
+      "important": false,
+      "status": "done"
+    },
+    {
+      "branch_type": "feat",
+      "created_at": "2026-01-01T13:53:20Z",
+      "id": "issue-h",
+      "identifier": "DEMO-H",
+      "important": false,
+      "status": "done"
+    },
+    {
+      "branch_type": "feat",
+      "created_at": "2026-01-01T16:40:00Z",
+      "id": "issue-i",
+      "identifier": "DEMO-I",
+      "important": false,
+      "status": "done"
+    },
+    {
+      "branch_type": "feat",
+      "created_at": "2026-01-01T19:26:40Z",
+      "id": "issue-j",
+      "identifier": "DEMO-J",
+      "important": false,
+      "status": "done"
+    },
+    {
+      "branch_type": "docs",
+      "created_at": "2025-12-31T23:59:59Z",
+      "id": "issue-k",
+      "identifier": "DEMO-K",
+      "important": false,
+      "status": "done"
+    },
+    {
+      "branch_type": "feat",
+      "created_at": "2026-01-01T00:00:00Z",
+      "id": "issue-l",
+      "identifier": "DEMO-L",
+      "important": true,
+      "status": "done"
+    },
+    {
+      "branch_type": "feat",
+      "created_at": "2026-01-01T00:00:01Z",
+      "id": "issue-m",
+      "identifier": "DEMO-M",
+      "important": false,
+      "status": "done"
+    },
+    {
+      "branch_type": "feat",
+      "created_at": "2026-01-02T06:33:20Z",
+      "id": "issue-n",
+      "identifier": "DEMO-N",
+      "important": false,
+      "status": "done"
+    },
+    {
+      "branch_type": "feat",
+      "created_at": "2026-01-02T09:20:00Z",
+      "id": "issue-o",
+      "identifier": "DEMO-O",
+      "important": false,
+      "status": "done"
+    },
+    {
+      "branch_type": "feat",
+      "created_at": "2026-01-02T12:06:40Z",
+      "id": "issue-p",
+      "identifier": "DEMO-P",
+      "important": false,
+      "status": "done"
+    },
+    {
+      "branch_type": "feat",
+      "created_at": "2026-01-02T12:40:00Z",
+      "id": "issue-q",
+      "identifier": "DEMO-Q",
+      "important": false,
+      "status": "done"
+    },
+    {
+      "branch_type": "feat",
+      "created_at": "2026-01-02T13:13:20Z",
+      "id": "issue-r",
+      "identifier": "DEMO-R",
+      "important": false,
+      "status": "done"
+    },
+    {
+      "branch_type": "feat",
+      "created_at": "2026-01-02T14:03:20Z",
+      "id": "issue-s",
+      "identifier": "DEMO-S",
+      "important": false,
+      "status": "done"
+    }
+  ],
+  "marks_version": 2,
+  "project_id": "synthetic-project",
+  "runs": [
+    {
+      "agent_id": "agent-orch",
+      "completed_at": "2026-01-01T00:11:40Z",
+      "created_at": "2026-01-01T00:08:20Z",
+      "id": "run-001",
+      "issue_id": "issue-a",
+      "limit_stop": false,
+      "started_at": "2026-01-01T00:08:20Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-impl",
+      "completed_at": "2026-01-01T00:33:20.500Z",
+      "created_at": "2026-01-01T00:10:00Z",
+      "id": "run-002",
+      "issue_id": "issue-a",
+      "limit_stop": false,
+      "started_at": "2026-01-01T00:10:00.900Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-orch",
+      "completed_at": "2026-01-01T00:35:00Z",
+      "created_at": "2026-01-01T00:33:20Z",
+      "id": "run-003",
+      "issue_id": "issue-a",
+      "limit_stop": false,
+      "started_at": "2026-01-01T00:33:20Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-code",
+      "completed_at": "2026-01-01T00:36:40Z",
+      "created_at": "2026-01-01T00:35:00Z",
+      "id": "run-004",
+      "issue_id": "issue-a",
+      "limit_stop": false,
+      "started_at": "2026-01-01T00:35:00Z",
+      "status": "failed",
+      "trigger_comment_id": "comment-001",
+      "usage": []
+    },
+    {
+      "agent_id": "agent-code",
+      "completed_at": "2026-01-01T00:43:20Z",
+      "created_at": "2026-01-01T00:36:40Z",
+      "id": "run-005",
+      "issue_id": "issue-a",
+      "limit_stop": false,
+      "started_at": "2026-01-01T00:36:40Z",
+      "status": "completed",
+      "trigger_comment_id": "comment-001",
+      "usage": []
+    },
+    {
+      "agent_id": "agent-sec",
+      "completed_at": "2026-01-01T00:41:40Z",
+      "created_at": "2026-01-01T00:38:20Z",
+      "id": "run-006",
+      "issue_id": "issue-a",
+      "limit_stop": false,
+      "started_at": "2026-01-01T00:38:20Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-sec",
+      "completed_at": "2026-01-01T00:46:40Z",
+      "created_at": "2026-01-01T00:41:40Z",
+      "id": "run-007",
+      "issue_id": "issue-a",
+      "limit_stop": false,
+      "started_at": "2026-01-01T00:41:40Z",
+      "status": "completed",
+      "trigger_comment_id": "comment-003",
+      "usage": []
+    },
+    {
+      "agent_id": "agent-fix",
+      "completed_at": "2026-01-01T00:50:00Z",
+      "created_at": "2026-01-01T00:46:40Z",
+      "id": "run-008",
+      "issue_id": "issue-a",
+      "limit_stop": false,
+      "started_at": "2026-01-01T00:46:40Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-code",
+      "completed_at": "2026-01-01T00:56:40Z",
+      "created_at": "2026-01-01T00:53:20Z",
+      "id": "run-009",
+      "issue_id": "issue-a",
+      "limit_stop": false,
+      "started_at": "2026-01-01T00:53:20Z",
+      "status": "completed",
+      "trigger_comment_id": "comment-002",
+      "usage": []
+    },
+    {
+      "agent_id": "agent-orch",
+      "completed_at": "2026-01-01T01:00:00Z",
+      "created_at": "2026-01-01T00:55:00Z",
+      "id": "run-010",
+      "issue_id": "issue-a",
+      "limit_stop": false,
+      "started_at": "2026-01-01T00:55:00Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-impl",
+      "completed_at": "2026-01-01T02:55:00Z",
+      "created_at": "2026-01-01T02:48:20Z",
+      "id": "run-011",
+      "issue_id": "issue-b",
+      "limit_stop": false,
+      "started_at": "2026-01-01T02:48:20Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-pc",
+      "completed_at": "2026-01-01T02:56:40Z",
+      "created_at": "2026-01-01T02:55:00Z",
+      "id": "run-012",
+      "issue_id": "issue-b",
+      "limit_stop": false,
+      "started_at": "2026-01-01T02:55:00Z",
+      "status": "completed",
+      "trigger_comment_id": "comment-007",
+      "usage": []
+    },
+    {
+      "agent_id": "agent-pc",
+      "completed_at": "2026-01-01T03:00:00Z",
+      "created_at": "2026-01-01T02:56:40Z",
+      "id": "run-013",
+      "issue_id": "issue-b",
+      "limit_stop": false,
+      "started_at": "2026-01-01T02:56:40Z",
+      "status": "completed",
+      "trigger_comment_id": "comment-008",
+      "usage": []
+    },
+    {
+      "agent_id": "agent-pc",
+      "completed_at": "2026-01-01T03:01:40Z",
+      "created_at": "2026-01-01T03:00:00Z",
+      "id": "run-014",
+      "issue_id": "issue-b",
+      "limit_stop": false,
+      "started_at": "2026-01-01T03:00:00Z",
+      "status": "completed",
+      "trigger_comment_id": "comment-009",
+      "usage": []
+    },
+    {
+      "agent_id": "agent-pc",
+      "completed_at": "2026-01-01T03:03:20Z",
+      "created_at": "2026-01-01T03:01:40Z",
+      "id": "run-015",
+      "issue_id": "issue-b",
+      "limit_stop": false,
+      "started_at": "2026-01-01T03:01:40Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-des",
+      "completed_at": "2026-01-01T03:05:00Z",
+      "created_at": "2026-01-01T03:03:20Z",
+      "id": "run-016",
+      "issue_id": "issue-b",
+      "limit_stop": false,
+      "started_at": "2026-01-01T03:03:20Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-qa",
+      "completed_at": "2026-01-01T03:06:40Z",
+      "created_at": "2026-01-01T03:05:00Z",
+      "id": "run-017",
+      "issue_id": "issue-b",
+      "limit_stop": false,
+      "started_at": "2026-01-01T03:05:00Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-px",
+      "completed_at": "2026-01-01T03:08:20Z",
+      "created_at": "2026-01-01T03:06:40Z",
+      "id": "run-018",
+      "issue_id": "issue-b",
+      "limit_stop": false,
+      "started_at": "2026-01-01T03:06:40Z",
+      "status": "completed",
+      "trigger_comment_id": "comment-010",
+      "usage": []
+    },
+    {
+      "agent_id": "agent-stray",
+      "completed_at": "2026-01-01T03:09:10Z",
+      "created_at": "2026-01-01T03:08:20Z",
+      "id": "run-019",
+      "issue_id": "issue-b",
+      "limit_stop": false,
+      "started_at": "2026-01-01T03:08:20Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-impl",
+      "completed_at": "2026-01-01T05:41:40Z",
+      "created_at": "2026-01-01T05:33:20Z",
+      "id": "run-020",
+      "issue_id": "issue-c",
+      "limit_stop": false,
+      "started_at": "2026-01-01T05:33:20Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-code",
+      "completed_at": null,
+      "created_at": "2026-01-01T05:41:40Z",
+      "id": "run-021",
+      "issue_id": "issue-c",
+      "limit_stop": false,
+      "started_at": "2026-01-01T05:41:40Z",
+      "status": "running",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-sec",
+      "completed_at": null,
+      "created_at": "2026-01-01T05:35:00Z",
+      "id": "run-022",
+      "issue_id": "issue-c",
+      "limit_stop": false,
+      "started_at": null,
+      "status": "queued",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-orch",
+      "completed_at": "2026-01-01T08:21:40Z",
+      "created_at": "2026-01-01T08:20:00Z",
+      "id": "run-023",
+      "issue_id": "issue-d",
+      "limit_stop": false,
+      "started_at": "2026-01-01T08:20:00Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-impl",
+      "completed_at": "2026-01-01T08:38:20Z",
+      "created_at": "2026-01-01T08:36:40Z",
+      "id": "run-024",
+      "issue_id": "issue-e",
+      "limit_stop": false,
+      "started_at": "2026-01-01T08:36:40Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-impl",
+      "completed_at": "2026-01-01T08:55:00Z",
+      "created_at": "2026-01-01T08:53:20Z",
+      "id": "run-025",
+      "issue_id": "issue-f",
+      "limit_stop": false,
+      "started_at": "2026-01-01T08:53:20Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-impl",
+      "completed_at": "2026-01-01T09:13:20Z",
+      "created_at": "2026-01-01T09:11:40Z",
+      "id": "run-026",
+      "issue_id": "issue-g",
+      "limit_stop": false,
+      "started_at": "2026-01-01T09:11:40Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-impl",
+      "completed_at": "2026-01-01T13:58:20Z",
+      "created_at": "2026-01-01T13:53:20Z",
+      "id": "run-027",
+      "issue_id": "issue-h",
+      "limit_stop": false,
+      "started_at": "2026-01-01T13:53:20Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-code",
+      "completed_at": "2026-01-01T14:08:20Z",
+      "created_at": "2026-01-01T14:01:40Z",
+      "id": "run-028",
+      "issue_id": "issue-h",
+      "limit_stop": false,
+      "started_at": "2026-01-01T14:05:00Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-impl",
+      "completed_at": "2026-01-01T16:43:20Z",
+      "created_at": "2026-01-01T16:40:00Z",
+      "id": "run-029",
+      "issue_id": "issue-i",
+      "limit_stop": true,
+      "started_at": "2026-01-01T16:40:00Z",
+      "status": "failed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-impl",
+      "completed_at": "2026-01-01T16:50:00Z",
+      "created_at": "2026-01-01T16:46:40Z",
+      "id": "run-030",
+      "issue_id": "issue-i",
+      "limit_stop": false,
+      "started_at": "2026-01-01T16:46:40Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-impl",
+      "completed_at": "2026-01-01T16:56:40Z",
+      "created_at": "2026-01-01T16:53:20Z",
+      "id": "run-031",
+      "issue_id": "issue-i",
+      "limit_stop": false,
+      "started_at": "2026-01-01T16:53:20Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-impl",
+      "completed_at": "2026-01-01T17:03:20Z",
+      "created_at": "2026-01-01T17:00:00Z",
+      "id": "run-032",
+      "issue_id": "issue-i",
+      "limit_stop": false,
+      "started_at": "2026-01-01T17:00:00Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-impl",
+      "completed_at": "2026-01-01T17:10:00Z",
+      "created_at": "2026-01-01T17:06:40Z",
+      "id": "run-033",
+      "issue_id": "issue-i",
+      "limit_stop": true,
+      "started_at": "2026-01-01T17:06:40Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-impl",
+      "completed_at": "2026-01-01T19:30:00Z",
+      "created_at": "2026-01-01T19:26:40Z",
+      "id": "run-034",
+      "issue_id": "issue-j",
+      "limit_stop": false,
+      "started_at": "2026-01-01T19:26:40Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-impl",
+      "completed_at": "2026-01-01T19:36:40Z",
+      "created_at": "2026-01-01T19:33:20Z",
+      "id": "run-035",
+      "issue_id": "issue-j",
+      "limit_stop": false,
+      "started_at": "2026-01-01T19:33:20Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-impl",
+      "completed_at": "2026-01-01T19:43:20Z",
+      "created_at": "2026-01-01T19:40:00Z",
+      "id": "run-036",
+      "issue_id": "issue-j",
+      "limit_stop": false,
+      "started_at": "2026-01-01T19:40:00Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-impl",
+      "completed_at": "2026-01-01T19:50:00Z",
+      "created_at": "2026-01-01T19:46:40Z",
+      "id": "run-037",
+      "issue_id": "issue-j",
+      "limit_stop": false,
+      "started_at": "2026-01-01T19:46:40Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-impl",
+      "completed_at": "2026-01-01T19:56:40Z",
+      "created_at": "2026-01-01T19:53:20Z",
+      "id": "run-038",
+      "issue_id": "issue-j",
+      "limit_stop": false,
+      "started_at": "2026-01-01T19:53:20Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-impl",
+      "completed_at": "2026-01-01T22:43:20Z",
+      "created_at": "2026-01-01T22:13:20Z",
+      "id": "run-039",
+      "issue_id": "issue-k",
+      "limit_stop": false,
+      "started_at": "2026-01-01T22:13:20Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-impl",
+      "completed_at": "2026-01-02T01:30:01Z",
+      "created_at": "2026-01-02T01:00:00Z",
+      "id": "run-040",
+      "issue_id": "issue-l",
+      "limit_stop": false,
+      "started_at": "2026-01-02T01:00:00Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-impl",
+      "completed_at": "2026-01-02T04:01:41.100Z",
+      "created_at": "2026-01-02T03:46:40Z",
+      "id": "run-041",
+      "issue_id": "issue-m",
+      "limit_stop": false,
+      "started_at": "2026-01-02T03:46:40.900Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-impl",
+      "completed_at": "2026-01-02T04:18:21.100Z",
+      "created_at": "2026-01-02T04:03:20Z",
+      "id": "run-042",
+      "issue_id": "issue-m",
+      "limit_stop": false,
+      "started_at": "2026-01-02T04:03:20.900Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-impl",
+      "completed_at": "2026-01-02T06:40:00Z",
+      "created_at": "2026-01-02T06:33:20Z",
+      "id": "run-043",
+      "issue_id": "issue-n",
+      "limit_stop": false,
+      "started_at": "2026-01-02T06:33:20Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-pc",
+      "completed_at": "2026-01-02T06:40:00Z",
+      "created_at": "2026-01-02T06:38:20Z",
+      "id": "run-044",
+      "issue_id": "issue-n",
+      "limit_stop": false,
+      "started_at": "2026-01-02T06:38:20Z",
+      "status": "completed",
+      "trigger_comment_id": "comment-021",
+      "usage": []
+    },
+    {
+      "agent_id": "agent-code",
+      "completed_at": "2026-01-02T06:43:20Z",
+      "created_at": "2026-01-02T06:40:00Z",
+      "id": "run-045",
+      "issue_id": "issue-n",
+      "limit_stop": false,
+      "started_at": "2026-01-02T06:40:00Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-sec",
+      "completed_at": "2026-01-02T06:45:00Z",
+      "created_at": "2026-01-02T06:40:50Z",
+      "id": "run-046",
+      "issue_id": "issue-n",
+      "limit_stop": false,
+      "started_at": "2026-01-02T06:40:50Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-fix",
+      "completed_at": "2026-01-02T06:50:00Z",
+      "created_at": "2026-01-02T06:46:40Z",
+      "id": "run-047",
+      "issue_id": "issue-n",
+      "limit_stop": false,
+      "started_at": "2026-01-02T06:46:40Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-code",
+      "completed_at": "2026-01-02T06:51:40Z",
+      "created_at": "2026-01-02T06:50:00Z",
+      "id": "run-048",
+      "issue_id": "issue-n",
+      "limit_stop": false,
+      "started_at": "2026-01-02T06:50:00Z",
+      "status": "completed",
+      "trigger_comment_id": "comment-026",
+      "usage": []
+    },
+    {
+      "agent_id": "agent-qa",
+      "completed_at": "2026-01-02T06:53:20Z",
+      "created_at": "2026-01-02T06:51:50Z",
+      "id": "run-049",
+      "issue_id": "issue-n",
+      "limit_stop": false,
+      "started_at": "2026-01-02T06:51:50Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-code",
+      "completed_at": "2026-01-02T06:54:20Z",
+      "created_at": "2026-01-02T06:53:20Z",
+      "id": "run-050",
+      "issue_id": "issue-n",
+      "limit_stop": false,
+      "started_at": "2026-01-02T06:53:20Z",
+      "status": "completed",
+      "trigger_comment_id": "comment-030",
+      "usage": []
+    },
+    {
+      "agent_id": "agent-impl",
+      "completed_at": "2026-01-02T09:26:40Z",
+      "created_at": "2026-01-02T09:20:00Z",
+      "id": "run-051",
+      "issue_id": "issue-o",
+      "limit_stop": false,
+      "started_at": "2026-01-02T09:20:00Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-code",
+      "completed_at": "2026-01-02T09:28:20Z",
+      "created_at": "2026-01-02T09:26:40Z",
+      "id": "run-052",
+      "issue_id": "issue-o",
+      "limit_stop": false,
+      "started_at": "2026-01-02T09:26:40Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-impl",
+      "completed_at": "2026-01-02T12:13:20Z",
+      "created_at": "2026-01-02T12:06:40Z",
+      "id": "run-053",
+      "issue_id": "issue-p",
+      "limit_stop": false,
+      "started_at": "2026-01-02T12:06:40Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-sec",
+      "completed_at": "2026-01-02T12:16:40Z",
+      "created_at": "2026-01-02T12:15:00Z",
+      "id": "run-054",
+      "issue_id": "issue-p",
+      "limit_stop": false,
+      "started_at": "2026-01-02T12:15:00Z",
+      "status": "completed",
+      "trigger_comment_id": "comment-044",
+      "usage": []
+    },
+    {
+      "agent_id": "agent-sec",
+      "completed_at": "2026-01-02T12:20:00Z",
+      "created_at": "2026-01-02T12:18:20Z",
+      "id": "run-055",
+      "issue_id": "issue-p",
+      "limit_stop": false,
+      "started_at": "2026-01-02T12:18:20Z",
+      "status": "completed",
+      "trigger_comment_id": "comment-045",
+      "usage": []
+    },
+    {
+      "agent_id": "agent-pc",
+      "completed_at": "2026-01-02T12:23:20Z",
+      "created_at": "2026-01-02T12:21:40Z",
+      "id": "run-056",
+      "issue_id": "issue-p",
+      "limit_stop": false,
+      "started_at": "2026-01-02T12:21:40Z",
+      "status": "completed",
+      "trigger_comment_id": "comment-046",
+      "usage": []
+    },
+    {
+      "agent_id": "agent-px",
+      "completed_at": "2026-01-02T12:26:40Z",
+      "created_at": "2026-01-02T12:25:00Z",
+      "id": "run-057",
+      "issue_id": "issue-p",
+      "limit_stop": false,
+      "started_at": "2026-01-02T12:25:00Z",
+      "status": "completed",
+      "trigger_comment_id": "comment-047",
+      "usage": []
+    },
+    {
+      "agent_id": "agent-pc",
+      "completed_at": "2026-01-02T12:30:00Z",
+      "created_at": "2026-01-02T12:28:20Z",
+      "id": "run-058",
+      "issue_id": "issue-p",
+      "limit_stop": false,
+      "started_at": "2026-01-02T12:28:20Z",
+      "status": "completed",
+      "trigger_comment_id": "comment-048",
+      "usage": []
+    },
+    {
+      "agent_id": "agent-impl",
+      "completed_at": "2026-01-02T12:46:40Z",
+      "created_at": "2026-01-02T12:40:00Z",
+      "id": "run-059",
+      "issue_id": "issue-q",
+      "limit_stop": false,
+      "started_at": "2026-01-02T12:40:00Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-sec",
+      "completed_at": "2026-01-02T12:50:00Z",
+      "created_at": "2026-01-02T12:46:40Z",
+      "id": "run-060",
+      "issue_id": "issue-q",
+      "limit_stop": false,
+      "started_at": "2026-01-02T12:46:40Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-fix",
+      "completed_at": "2026-01-02T12:53:20Z",
+      "created_at": "2026-01-02T12:50:00Z",
+      "id": "run-061",
+      "issue_id": "issue-q",
+      "limit_stop": false,
+      "started_at": "2026-01-02T12:50:00Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-impl",
+      "completed_at": "2026-01-02T13:16:40Z",
+      "created_at": "2026-01-02T13:13:20Z",
+      "id": "run-062",
+      "issue_id": "issue-r",
+      "limit_stop": false,
+      "started_at": "2026-01-02T13:13:20Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-sec",
+      "completed_at": "2026-01-02T13:23:20Z",
+      "created_at": "2026-01-02T13:20:00Z",
+      "id": "run-063",
+      "issue_id": "issue-r",
+      "limit_stop": false,
+      "started_at": "2026-01-02T13:20:00Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-pc",
+      "completed_at": "2026-01-02T13:30:00Z",
+      "created_at": "2026-01-02T13:26:40Z",
+      "id": "run-064",
+      "issue_id": "issue-r",
+      "limit_stop": false,
+      "started_at": "2026-01-02T13:26:40Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-qa",
+      "completed_at": "2026-01-02T13:36:40Z",
+      "created_at": "2026-01-02T13:33:20Z",
+      "id": "run-065",
+      "issue_id": "issue-r",
+      "limit_stop": false,
+      "started_at": "2026-01-02T13:33:20Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-impl",
+      "completed_at": "2026-01-02T13:43:20Z",
+      "created_at": "2026-01-02T13:40:00Z",
+      "id": "run-066",
+      "issue_id": "issue-r",
+      "limit_stop": false,
+      "started_at": "2026-01-02T13:40:00Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-impl",
+      "completed_at": "2026-01-02T14:06:40Z",
+      "created_at": "2026-01-02T14:03:20Z",
+      "id": "run-067",
+      "issue_id": "issue-s",
+      "limit_stop": false,
+      "started_at": "2026-01-02T14:03:20Z",
+      "status": "completed",
+      "trigger_comment_id": null,
+      "usage": []
+    },
+    {
+      "agent_id": "agent-pc",
+      "completed_at": "2026-01-02T14:10:00Z",
+      "created_at": "2026-01-02T14:08:20Z",
+      "id": "run-068",
+      "issue_id": "issue-s",
+      "limit_stop": false,
+      "started_at": "2026-01-02T14:08:20Z",
+      "status": "completed",
+      "trigger_comment_id": "comment-054",
+      "usage": []
+    },
+    {
+      "agent_id": "agent-pc",
+      "completed_at": "2026-01-02T14:15:00Z",
+      "created_at": "2026-01-02T14:13:20Z",
+      "id": "run-069",
+      "issue_id": "issue-s",
+      "limit_stop": false,
+      "started_at": "2026-01-02T14:13:20Z",
+      "status": "completed",
+      "trigger_comment_id": "comment-056",
+      "usage": []
+    },
+    {
+      "agent_id": "agent-pc",
+      "completed_at": "2026-01-02T14:18:20Z",
+      "created_at": "2026-01-02T14:16:40Z",
+      "id": "run-070",
+      "issue_id": "issue-s",
+      "limit_stop": false,
+      "started_at": "2026-01-02T14:16:40Z",
+      "status": "completed",
+      "trigger_comment_id": "comment-057",
+      "usage": []
+    },
+    {
+      "agent_id": "agent-pc",
+      "completed_at": "2026-01-02T14:25:00Z",
+      "created_at": "2026-01-02T14:23:20Z",
+      "id": "run-071",
+      "issue_id": "issue-s",
+      "limit_stop": false,
+      "started_at": "2026-01-02T14:23:20Z",
+      "status": "completed",
+      "trigger_comment_id": "comment-059",
+      "usage": []
+    },
+    {
+      "agent_id": "agent-pc",
+      "completed_at": "2026-01-02T14:28:20Z",
+      "created_at": "2026-01-02T14:26:40Z",
+      "id": "run-072",
+      "issue_id": "issue-s",
+      "limit_stop": false,
+      "started_at": "2026-01-02T14:26:40Z",
+      "status": "completed",
+      "trigger_comment_id": "comment-060",
+      "usage": []
+    }
+  ],
+  "schema_version": 1,
+  "transitions": [
+    {
+      "created_at": "2026-01-01T01:06:40Z",
+      "from_status": "in_progress",
+      "issue_id": "issue-a",
+      "to_status": "done"
+    },
+    {
+      "created_at": "2026-01-01T03:10:00Z",
+      "from_status": "in_progress",
+      "issue_id": "issue-b",
+      "to_status": "done"
+    },
+    {
+      "created_at": "2026-01-01T05:40:00Z",
+      "from_status": "in_progress",
+      "issue_id": "issue-c",
+      "to_status": "in_review"
+    },
+    {
+      "created_at": "2026-01-01T05:43:20Z",
+      "from_status": "in_review",
+      "issue_id": "issue-c",
+      "to_status": "done"
+    },
+    {
+      "created_at": "2026-01-01T05:45:00Z",
+      "from_status": "done",
+      "issue_id": "issue-c",
+      "to_status": "in_progress"
+    },
+    {
+      "created_at": "2026-01-01T05:46:40Z",
+      "from_status": "in_review",
+      "issue_id": "issue-c",
+      "to_status": "done"
+    },
+    {
+      "created_at": "2026-01-01T08:23:20Z",
+      "from_status": "in_progress",
+      "issue_id": "issue-d",
+      "to_status": "done"
+    },
+    {
+      "created_at": "2026-01-01T09:11:40Z",
+      "from_status": "in_progress",
+      "issue_id": "issue-g",
+      "to_status": "done"
+    },
+    {
+      "created_at": "2026-01-01T13:58:20Z",
+      "from_status": "in_progress",
+      "issue_id": "issue-h",
+      "to_status": "in_review"
+    },
+    {
+      "created_at": "2026-01-01T14:05:00Z",
+      "from_status": "in_review",
+      "issue_id": "issue-h",
+      "to_status": "in_progress"
+    },
+    {
+      "created_at": "2026-01-01T14:13:20Z",
+      "from_status": "in_progress",
+      "issue_id": "issue-h",
+      "to_status": "done"
+    },
+    {
+      "created_at": "2026-01-01T17:13:20Z",
+      "from_status": "in_progress",
+      "issue_id": "issue-i",
+      "to_status": "done"
+    },
+    {
+      "created_at": "2026-01-01T20:00:00Z",
+      "from_status": "in_progress",
+      "issue_id": "issue-j",
+      "to_status": "done"
+    },
+    {
+      "created_at": "2026-01-01T22:45:00Z",
+      "from_status": "in_progress",
+      "issue_id": "issue-k",
+      "to_status": "done"
+    },
+    {
+      "created_at": "2026-01-02T01:33:20Z",
+      "from_status": "in_progress",
+      "issue_id": "issue-l",
+      "to_status": "done"
+    },
+    {
+      "created_at": "2026-01-02T04:20:00Z",
+      "from_status": "in_progress",
+      "issue_id": "issue-m",
+      "to_status": "done"
+    },
+    {
+      "created_at": "2026-01-02T06:58:20Z",
+      "from_status": "in_progress",
+      "issue_id": "issue-n",
+      "to_status": "done"
+    },
+    {
+      "created_at": "2026-01-02T09:36:40Z",
+      "from_status": "in_progress",
+      "issue_id": "issue-o",
+      "to_status": "done"
+    },
+    {
+      "created_at": "2026-01-02T12:31:40Z",
+      "from_status": "in_progress",
+      "issue_id": "issue-p",
+      "to_status": "done"
+    },
+    {
+      "created_at": "2026-01-02T12:56:40Z",
+      "from_status": "in_progress",
+      "issue_id": "issue-q",
+      "to_status": "done"
+    },
+    {
+      "created_at": "2026-01-02T13:46:40Z",
+      "from_status": "in_progress",
+      "issue_id": "issue-r",
+      "to_status": "done"
+    },
+    {
+      "created_at": "2026-01-02T14:31:40Z",
+      "from_status": "in_progress",
+      "issue_id": "issue-s",
+      "to_status": "done"
+    }
+  ]
+}

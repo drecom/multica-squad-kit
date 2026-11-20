@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+set -euo pipefail
+source "$(dirname "$0")/setup-fixture.sh"
+cp "$root/tests/terminal-stub.sh" "$test_dir/package/lib/terminal.sh"
+cp "$root/tests/clock-stub.sh" "$test_dir/package/lib/clock.sh"
+manifest
+esc=$'\033'
+source "$root/tests/terminal-stub-fixture.sh"
+pty_err() { env -u NO_COLOR "$@" bash "$root/tests/draw-terminal.sh" err "$test_dir/pty-out" "$test_dir/pty-err" --ui "$draw_root/lib/ui.sh" --stdin "$test_dir/pty-input" -- /bin/bash "$test_dir/package/setup.sh" || [[ $? == 1 ]]; }
+printf '\n' >"$test_dir/pty-input"
+
+# ui_error と ui_warning は、マークを色の有無によらず付け、端末のときだけ行全体を種類の色にする。
+probe='source "${DRAW_UI:-$1/lib/ui.sh}"; ui_init; ui_error 止まる理由; ui_warning 確認してください'
+env -i PATH="$PATH" HOME="$test_dir" TERM=xterm-256color bash "$root/tests/draw-terminal.sh" err "$test_dir/out" "$test_dir/err" --ui "$draw_root/lib/ui.sh" -- bash -c "$probe" _ "$root"
+grep -qF "$esc[1;38;5;196mエラー: 止まる理由$esc[0m" "$test_dir/err"
+grep -qF "$esc[1;38;5;166m警告: 確認してください$esc[0m" "$test_dir/err"
+env -i PATH="$PATH" HOME="$test_dir" TERM=xterm-256color NO_COLOR=1 bash "$root/tests/draw-terminal.sh" err "$test_dir/out" "$test_dir/err" --ui "$draw_root/lib/ui.sh" -- bash -c "$probe" _ "$root"
+! grep -qF "$esc" "$test_dir/err"
+tr -d '\r' <"$test_dir/err" | grep -qxF 'エラー: 止まる理由'
+tr -d '\r' <"$test_dir/err" | grep -qxF '警告: 確認してください'
+bash -c "$probe" _ "$root" >"$test_dir/out" 2>"$test_dir/err"
+[[ ! -s $test_dir/out ]]
+[[ $(cat "$test_dir/err") == $'エラー: 止まる理由\n警告: 確認してください' ]]
+echo 'PASS marks: エラー: と警告: のマークは色の有無によらず付き、色は端末の標準エラー出力だけで行全体に付く'
+
+# MANIFEST の確認より前の die は、端末でも色を付けず、マークだけを付ける。
+env -u NO_COLOR TERM=xterm-256color bash "$root/tests/draw-terminal.sh" err "$test_dir/out" "$test_dir/err" --ui "$draw_root/lib/ui.sh" -- /bin/bash "$test_dir/package/setup.sh" x || true
+! grep -qF "$esc" "$test_dir/err"
+tr -d '\r' <"$test_dir/err" | grep -qxF 'エラー: 使い方: bash setup.sh [--extension <拡張のディレクトリ>] [--no-checkout]（ほかの値は質問に答えて入力する）'
+mv "$test_dir/package/MANIFEST" "$test_dir/MANIFEST.saved"
+env -u NO_COLOR TERM=xterm-256color bash "$root/tests/draw-terminal.sh" err "$test_dir/out" "$test_dir/err" --ui "$draw_root/lib/ui.sh" -- /bin/bash "$test_dir/package/setup.sh" </dev/null || true
+! grep -qF "$esc" "$test_dir/err"
+tr -d '\r' <"$test_dir/err" | grep -qE '^エラー: 原本のファイルが不足しているか改変されています。MANIFEST がありません。'
+# 不足・改変で止まる文は、clone でも配布物でも当てはまる「取り直して」にする。
+tr -d '\r' <"$test_dir/err" | grep -qxF 'エラー: 原本のファイルが不足しているか改変されています。MANIFEST がありません。 原本を取り直して、流してください。'
+! grep -qF 'clone' "$test_dir/err"
+mv "$test_dir/MANIFEST.saved" "$test_dir/package/MANIFEST"
+echo 'PASS marks: MANIFEST の確認より前の die は、端末でも制御文字を出さずマークだけを付ける'
+
+# MANIFEST の確認のあとの die は、マークと色を付ける。続く案内の行は色を付けない。
+TEST_LOGIN=no pty_err TERM=xterm-256color
+grep -qF "$esc[1;38;5;196mエラー: Multica の接続とログインを確認してください。$esc[0m" "$test_dir/pty-err"
+grep -qF "$esc[1;38;5;196mエラー: ログイン後に流し直してください。ここではログインや設定の変更を行いません。$esc[0m" "$test_dir/pty-err"
+tr -d '\r' <"$test_dir/pty-err" | grep -qxF 'multica --server-url https://example.test login'
+TEST_LOGIN=no pty_err TERM=dumb
+! grep -qF "$esc" "$test_dir/pty-err"
+tr -d '\r' <"$test_dir/pty-err" | grep -qxF 'エラー: ログイン後に流し直してください。ここではログインや設定の変更を行いません。'
+no_state
+echo 'PASS marks: MANIFEST の確認のあとの die はマークと色を付け、色を付けない画面でもマークで分かる'
+
+# コマンド置換で受け取る失敗の理由は、色の制御文字もマークの「エラー:」も含まない。
+cat >"$test_dir/reason-driver" <<'DRIVER'
+set -euo pipefail
+root=$1
+source "${DRAW_UI:-$root/lib/ui.sh}"
+source "$root/lib/project.sh"
+die() { ui_error "$*"; exit 1; }
+ensure_setup_issue() { ui_warning '途中の警告'; die '起票に失敗しました。権限を確認してください。'; }
+ui_color_err=yes
+project_work=$2
+setup_issue_rows='[]'
+setup_issue_failures='[]'
+queue_project_issue repository-rules '["example/one"]' actor example/one
+jq -r '.[0].reason' <<<"$setup_issue_failures"
+DRIVER
+mkdir "$test_dir/reason-work"
+/bin/bash "$test_dir/reason-driver" "$root" "$test_dir/reason-work" >"$test_dir/out" 2>"$test_dir/err"
+[[ $(cat "$test_dir/out") == '起票に失敗しました。権限を確認してください。' ]]
+! grep -qF "$esc" "$test_dir/out" "$test_dir/reason-work/issue-error"
+echo 'PASS marks: 起票の失敗の理由は色なしで受け取り、「エラー:」を外してタスクと完了の表示に渡す'
+
+# 注意の文は、種類が警告のときだけ行ごとに ! のマークと色を付ける。説明の種類ではマークも色も付けない。どちらも字下げ 2。
+cat >"$test_dir/notice-driver" <<'DRIVER'
+set -euo pipefail
+root=$1
+source "${DRAW_UI:-$root/lib/ui.sh}"
+source "$root/lib/questions.sh"
+ui_init
+question_begin 題 説明 例
+question_notice=$'一行目\n二行目'
+question_notice_show
+question_notice_kind=warning
+question_notice_show
+DRIVER
+env -i PATH="$PATH" HOME="$test_dir" TERM=xterm-256color bash "$root/tests/draw-terminal.sh" err "$test_dir/out" "$test_dir/err" --ui "$draw_root/lib/ui.sh" -- /bin/bash "$test_dir/notice-driver" "$root"
+tr -d '\r' <"$test_dir/err" >"$test_dir/notice"
+[[ $(sed -n 1,2p "$test_dir/notice") == $'  一行目\n  二行目' ]]
+[[ $(sed -n 3p "$test_dir/notice") == "  $esc[1;38;5;166m!$esc[0m 一行目" ]]
+[[ $(sed -n 4p "$test_dir/notice") == "  $esc[1;38;5;166m!$esc[0m 二行目" ]]
+echo 'PASS marks: 質問に添える注意は、警告のときだけ行ごとに ! のマークと色を付ける'

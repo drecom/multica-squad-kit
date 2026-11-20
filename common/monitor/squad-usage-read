@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+# multica-squad-kit-managed
+# 振り分けに使う使用率を、その場で読んで JSON にする（macOS・Linux 用）。
+# タスクや見張りの状態ファイルには触れない。両方を読めたら 0、片方でも読めなければ 1。
+set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/squad-usage-lib"
+
+epoch_rfc3339() {
+	usage_epoch_format "$1" '%Y-%m-%dT%H:%M:%S%z' | sed -E 's/([+-][0-9]{2})([0-9]{2})$/\1:\2/'
+}
+
+# 年のない表示を、その時間帯の今の年（日付もなければ今日）で読む。
+# 今を引数にし、日付と年の繰り上がりを固定した時刻で検証できるようにする。
+claude_reset_epoch() {
+	LC_ALL=C python3 - "$1" "$2" <<'PY'
+import re
+import sys
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
+try:
+    match = re.fullmatch(r"(.+) \(([^()]+)\)", sys.argv[1])
+    text, zone = match.groups()
+    now = int(sys.argv[2])
+    current = datetime.fromtimestamp(now, ZoneInfo(zone))
+    day = re.fullmatch(r"([A-Z][a-z]{2} [0-9]{1,2}) at (.+)", text)
+    date_text, time_text = day.groups() if day else (current.strftime("%b %d"), text)
+    if not re.fullmatch(r"[0-9]{1,2}(:[0-9]{2})?[ap]m", time_text):
+        raise ValueError("invalid time")
+    time_format = "%I:%M%p" if ":" in time_text else "%I%p"
+    reset = datetime.strptime(f"{current.year} {date_text} {time_text}", f"%Y %b %d {time_format}")
+    reset = reset.replace(tzinfo=current.tzinfo)
+    if day:
+        if reset.timestamp() < now - 86400:
+            reset = reset.replace(year=current.year + 1)
+    elif reset.timestamp() < now:
+        reset += timedelta(days=1)
+    print(int(reset.timestamp()))
+except (AttributeError, ValueError, KeyError, OverflowError):
+    sys.exit(1)
+PY
+}
+
+read_claude_dispatch() {
+	local now=$1 rows name percent reset epoch window
+	local week='{"used_percent":0,"resets_at":null}' session='{"used_percent":0,"resets_at":null}'
+	command -v claude >/dev/null 2>&1 || { echo 'claude が見つからない' >&2; return 1; }
+	rows=$(read_claude_usage) || return 1
+	while IFS=$'\t' read -r name percent reset; do
+		case "$name" in
+		'Current week (all models)'|'Current session') ;;
+		*) continue ;;
+		esac
+		if ! epoch=$(claude_reset_epoch "$reset" "$now"); then
+			echo "リセットの時刻を読めなかった: $reset" >&2
+			return 1
+		fi
+		window=$(jq -cn --arg percent "$percent" --arg resets "$(epoch_rfc3339 "$epoch")" \
+			'{used_percent: ($percent | tonumber), resets_at: $resets}') || return 1
+		case "$name" in
+		'Current week (all models)') week=$window ;;
+		'Current session') session=$window ;;
+		esac
+	done <<<"$rows"
+	jq -cn --argjson week "$week" --argjson session "$session" '{week: $week, session: $session}'
+}
+
+read_codex_dispatch() {
+	local res week resets
+	command -v codex >/dev/null 2>&1 || { echo 'codex が見つからない' >&2; return 1; }
+	res=$(read_codex_usage) || return 1
+	week=$(jq -c '[.rateLimitsByLimitId.codex | .primary, .secondary
+		| select(. != null and .windowDurationMins == 10080)][0] // empty' <<<"$res") || return 1
+	if [[ -z "$week" ]]; then
+		echo 'codex app-server の応答に週の枠がない' >&2
+		return 1
+	fi
+	if ! jq -e '(.usedPercent | type) == "number" and (.resetsAt | type) == "number"' <<<"$week" >/dev/null \
+		|| ! jq -e '(.ordinaryUsageAllowed | type) == "boolean"' <<<"$res" >/dev/null; then
+		echo 'codex app-server の使用率・リセット時刻・利用可否を読めなかった' >&2
+		return 1
+	fi
+	resets=$(epoch_rfc3339 "$(jq -r '.resetsAt' <<<"$week")") || return 1
+	# 応答は枠の数で大きくなるので、引数ではなく標準入力で渡す。
+	jq -c --argjson week "$week" --arg resets "$resets" \
+		'{week: {used_percent: ($week.usedPercent | floor), resets_at: $resets}, allowed: .ordinaryUsageAllowed}' <<<"$res"
+}
+
+# CLI の診断には秘密情報が入り得るため、JSON には固定の理由だけを返す。
+# 共通関数の診断は変えず、見張りの出力を保つ。
+dispatch_error_reason() {
+	case "$1" in
+	'claude が見つからない') echo 'claude が見つからない' ;;
+	'claude -p /usage が失敗した:'*) echo 'claude の使用率の問い合わせに失敗した' ;;
+	'claude -p /usage がエラーを返した:'*) echo 'claude がエラー応答を返した' ;;
+	'/usage の表示から使用率を読めなかった:'*) echo 'claude の表示から使用率を読めなかった' ;;
+	'リセットの時刻を読めなかった:'*) echo 'claude のリセットの時刻を読めなかった' ;;
+	'codex が見つからない') echo 'codex が見つからない' ;;
+	'codex app-server から使用量の応答がなかった') echo 'codex から使用量の応答がなかった' ;;
+	'codex app-server がエラーを返した:'*) echo 'codex がエラー応答を返した' ;;
+	'codex app-server の応答に週の枠がない') echo 'codex の応答に週の枠がない' ;;
+	'codex app-server の使用率・リセット時刻・利用可否を読めなかった')
+		echo 'codex の使用率・リセット時刻・利用可否を読めなかった' ;;
+	'CLI の出力に欄がありません: codex-rate-limits '*|'CLI の出力の欄が null です: codex-rate-limits '*)
+		# CLI の値や要素名は出さず、宣言した欄名だけを代わりの決まりの理由に残す。
+		local field fields=
+		for field in ordinaryUsageAllowed rateLimitsByLimitId rateLimits.rateLimitReachedType \
+			primary secondary primary.windowDurationMins primary.usedPercent primary.resetsAt \
+			secondary.windowDurationMins secondary.usedPercent secondary.resetsAt; do
+			if [[ $1 == *"${field}（"* ]]; then fields+="${fields:+、}$field"; fi
+		done
+		echo "codex の使用量の欄を読めなかった（${fields:-不明}）" ;;
+	*) echo '使用率の読み取りに失敗した' ;;
+	esac
+}
+
+usage_read_main() {
+	if ! command -v jq >/dev/null 2>&1; then
+		echo 'jq が見つからない' >&2
+		return 1
+	fi
+	local now read_at claude codex err_file status=0
+	now=$(date '+%s')
+	read_at=$(epoch_rfc3339 "$now")
+	err_file=$(usage_tmpfile)
+	if ! claude=$(read_claude_dispatch "$now" 2>"$err_file"); then
+		claude=$(jq -cn --arg error "$(dispatch_error_reason "$(cat "$err_file")")" '{error: $error}')
+		status=1
+	fi
+	if ! codex=$(read_codex_dispatch 2>"$err_file"); then
+		codex=$(jq -cn --arg error "$(dispatch_error_reason "$(cat "$err_file")")" '{error: $error}')
+		status=1
+	fi
+	rm -f "$err_file"
+	jq -n --arg read_at "$read_at" --argjson claude "$claude" --argjson codex "$codex" \
+		'{read_at: $read_at, claude: $claude, codex: $codex}'
+	return "$status"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+	usage_read_main
+fi

@@ -1,0 +1,88 @@
+{
+  "commands": [
+    {
+      "match": "squad-preflight",
+      "stdout": "squad-preflight: 関所の gh と、すべての見張りが使えます。"
+    },
+    {
+      "match": "multica issue get issue-shop-1",
+      "stdout": "{\n  \"id\": \"issue-shop-1\",\n  \"identifier\": \"SHOP-1\",\n  \"title\": \"カートに商品数を出す\",\n  \"status\": \"in_progress\",\n  \"assignee_type\": \"squad\",\n  \"assignee_id\": \"squad-shop\",\n  \"project_id\": \"project-shop\",\n  \"labels\": [],\n  \"metadata\": {\n    \"repository\": \"example/shop\",\n    \"branch\": \"feat/cart-badge\",\n    \"pr_url\": \"https://github.com/example/shop/pull/7\"\n  },\n  \"description\": \"カートのアイコンに、入っている商品の数を出す。\"\n}"
+    },
+    {
+      "match": "multica issue comment list issue-shop-1",
+      "stdout": "[\n  {\n    \"id\": \"comment-1\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-claude-implementer\",\n    \"parent_id\": null,\n    \"content\": \"[@SQUAD-SHOP](mention://squad/squad-shop) 実装を push しました。PR: https://github.com/example/shop/pull/7\\n\\n確認したこと:\\n- 単体テストが通った\\n\\n残っていること:\\n- レビュー\",\n    \"created_at\": \"2026-01-10T09:10:00Z\"\n  },\n  {\n    \"id\": \"round-1\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-orchestrator\",\n    \"parent_id\": null,\n    \"content\": \"[@shop-code-reviewer-member1](mention://agent/agent-code-reviewer) レビューをお願いします。\\n確認するコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567\\n返事を待つ役: [@shop-code-reviewer-member1](mention://agent/agent-code-reviewer)\\n観点: コードレビュー（実装の中心がロジック）\\n対象の PR: https://github.com/example/shop/pull/7\",\n    \"created_at\": \"2026-01-10T09:15:00Z\"\n  },\n  {\n    \"id\": \"comment-2\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-code-reviewer\",\n    \"parent_id\": null,\n    \"content\": \"返事の回: round-1\\n確認したコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567\\n❌ code-reviewer: 必須 1 件\\n- `src/api/orders.ts` の注文取得に、利用者の確認がありません。\\n設計への指摘: なし\\n詳細は PR のコメントにあります。\",\n    \"created_at\": \"2026-01-10T09:20:00Z\"\n  },\n  {\n    \"id\": \"decide-1\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-code-reviewer\",\n    \"parent_id\": null,\n    \"content\": \"/note\\n返事の待ち: 次の依頼を決めます\",\n    \"created_at\": \"2026-01-10T09:22:00Z\"\n  },\n  {\n    \"id\": \"comment-3\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-code-reviewer\",\n    \"parent_id\": null,\n    \"content\": \"[@shop-claude-fixer-member1](mention://agent/agent-claude-fixer) PR の ❌ の指摘を直してください。\\n前の回: round-1\\n修正の依頼: 1 回目\\n振り分け: Claude。Claude 週 42%（使ってよい量 60%）・5 時間 23%、Codex 週 6%（使ってよい量 10%）\\n直す指摘: shop-code-reviewer-member1（結果は、この回の返事のコメントと PR のコメントにある）\\n対象の PR: https://github.com/example/shop/pull/7\",\n    \"created_at\": \"2026-01-10T09:30:00Z\"\n  },\n  {\n    \"id\": \"comment-4\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-claude-fixer\",\n    \"parent_id\": null,\n    \"content\": \"[@SQUAD-SHOP](mention://squad/squad-shop) ❌ の指摘を直して push しました（head: 7d1e0b3）。\\n\\n利用者の確認を足しました。手元で単体テストが通りました。\",\n    \"created_at\": \"2026-01-10T09:40:00Z\"\n  },\n  {\n    \"id\": \"round-2\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-orchestrator\",\n    \"parent_id\": null,\n    \"content\": \"[@shop-code-reviewer-member1](mention://agent/agent-code-reviewer) レビューをお願いします。\\n確認するコミット: 7d1e0b34a5c6d7e8f9012345a6b7c8d9e0f1a2b3\\n返事を待つ役: [@shop-code-reviewer-member1](mention://agent/agent-code-reviewer)\\n観点: コードレビュー（実装の中心がロジック）\\n対象の PR: https://github.com/example/shop/pull/7\",\n    \"created_at\": \"2026-01-10T09:45:00Z\"\n  },\n  {\n    \"id\": \"comment-5\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-code-reviewer\",\n    \"parent_id\": null,\n    \"content\": \"返事の回: round-2\\n確認したコミット: 7d1e0b34a5c6d7e8f9012345a6b7c8d9e0f1a2b3\\n❌ code-reviewer: 必須 1 件\\n- `src/api/orders.ts` の注文取得に、件数の上限がありません。\\n設計への指摘: なし\\n詳細は PR のコメントにあります。\",\n    \"created_at\": \"2026-01-10T09:50:00Z\"\n  },\n  {\n    \"id\": \"decide-2\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-code-reviewer\",\n    \"parent_id\": null,\n    \"content\": \"/note\\n返事の待ち: 次の依頼を決めます\",\n    \"created_at\": \"2026-01-10T09:52:00Z\"\n  },\n  {\n    \"id\": \"comment-6\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-orchestrator\",\n    \"parent_id\": null,\n    \"content\": \"[@shop-claude-fixer-member1](mention://agent/agent-claude-fixer) レビューの ❌ の修正を頼みます。`src/api/orders.ts` の注文取得に、件数の上限がありません。\\n\\n前の回: round-2\\n修正の依頼: 2 回目\\n同じ部品: src/api/orders.ts 2 回目\\n頼む範囲: 種類単位（src/api/orders.ts）\\n\\n注文取得が受ける入力の種類と規則を表にし、種類ごとの扱いを決めてください。表の行ごとにテストを置き、テストは表を入力とする形にして、表の場所を結果に書いてください。指摘された 2 件の入力（利用者の確認、件数の上限）も、表の行に含めてください。\",\n    \"created_at\": \"2026-01-10T10:00:00Z\"\n  },\n  {\n    \"id\": \"comment-7\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-claude-fixer\",\n    \"parent_id\": null,\n    \"content\": \"[@SQUAD-SHOP](mention://squad/squad-shop) ❌ の指摘を直して push しました（head: b2c3d4e）。\\n\\n件数の上限を足しました。手元で単体テストが通りました。\",\n    \"created_at\": \"2026-01-10T10:10:00Z\"\n  },\n  {\n    \"id\": \"round-3\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-orchestrator\",\n    \"parent_id\": null,\n    \"content\": \"[@shop-code-reviewer-member1](mention://agent/agent-code-reviewer) レビューをお願いします。\\n確認するコミット: b2c3d4e5f60718293a4b5c6d7e8f9012a3b4c5d6\\n返事を待つ役: [@shop-code-reviewer-member1](mention://agent/agent-code-reviewer)\\n観点: コードレビュー（実装の中心がロジック）\\n対象の PR: https://github.com/example/shop/pull/7\",\n    \"created_at\": \"2026-01-10T10:15:00Z\"\n  },\n  {\n    \"id\": \"comment-8\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-code-reviewer\",\n    \"parent_id\": null,\n    \"content\": \"返事の回: round-3\\n確認したコミット: b2c3d4e5f60718293a4b5c6d7e8f9012a3b4c5d6\\n❌ code-reviewer: 必須 1 件\\n- `src/api/orders.ts` の注文取得の並び順が決まっていません。\\n設計への指摘: なし\\n詳細は PR のコメントにあります。\",\n    \"created_at\": \"2026-01-10T10:20:00Z\"\n  },\n  {\n    \"id\": \"decide-3\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-code-reviewer\",\n    \"parent_id\": null,\n    \"content\": \"/note\\n返事の待ち: 次の依頼を決めます\",\n    \"created_at\": \"2026-01-10T10:22:00Z\"\n  },\n  {\n    \"id\": \"comment-9\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-orchestrator\",\n    \"parent_id\": null,\n    \"content\": \"[@shop-claude-principal-member1](mention://agent/agent-claude-principal) 診断を頼みます。\\n\\n見直しの種類: 診断\\n診断の依頼: 1 回目。失敗: 同じ部品 src/api/orders.ts\\n返事を待つ役: [@shop-claude-principal-member1](mention://agent/agent-claude-principal)\\n確認するコミット: b2c3d4e5f60718293a4b5c6d7e8f9012a3b4c5d6\\n振り分け: Claude。Claude 週 20%、Codex 週 30%\\n\\n1 回目の ❌: `src/api/orders.ts` の注文取得に、利用者の確認がありません。直し方は、利用者の確認を足した。\\n2 回目の ❌: `src/api/orders.ts` の注文取得に、件数の上限がありません。直し方は、件数の上限を足した。\\n3 回目の ❌: `src/api/orders.ts` の注文取得の並び順が決まっていません。\",\n    \"created_at\": \"2026-01-10T10:30:00Z\"\n  },\n  {\n    \"id\": \"comment-10\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-claude-principal\",\n    \"parent_id\": null,\n    \"content\": \"返事の回: comment-9\\n[@SQUAD-SHOP](mention://squad/squad-shop) 診断: `src/api/orders.ts` の注文取得が、利用者の確認・件数の上限・並び順を、呼び出しごとに別々に扱っていて、1 つ足すたびに次の抜けが出る。\\n直す役: 修正の役\\n直し方: 注文取得の入口を 1 つの関数にまとめ、利用者の確認・件数の上限・並び順をそこで決める。\\n確認したコミット: b2c3d4e5f60718293a4b5c6d7e8f9012a3b4c5d6\",\n    \"created_at\": \"2026-01-10T10:40:00Z\"\n  },\n  {\n    \"id\": \"decide-comment-9\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-claude-principal\",\n    \"parent_id\": null,\n    \"content\": \"/note\\n返事の待ち: 次の依頼を決めます\",\n    \"created_at\": \"2026-01-10T10:42:00Z\"\n  }\n]"
+    },
+    {
+      "match": "multica issue pull-requests issue-shop-1",
+      "stdout": "{\n  \"pull_requests\": [\n    {\n      \"url\": \"https://github.com/example/shop/pull/7\",\n      \"state\": \"open\",\n      \"draft\": true\n    }\n  ]\n}"
+    },
+    {
+      "match": "multica issue pull-requests --help",
+      "stdout": "Usage: multica issue pull-requests <issue-id> [--output json]\n\nList the pull requests linked to an issue. Read-only."
+    },
+    {
+      "match": "multica issue --help",
+      "stdout": "Usage: multica issue <command>\n\nCommands:\n  get, list, search, create, comment, status, assign, update, pull-requests, runs, run-messages, cancel-task, rerun, label, metadata\n\n`multica issue pull-requests <id>` lists the pull requests linked to an issue. There is no command that links a pull request."
+    },
+    {
+      "match": "multica issue label list issue-shop-1",
+      "stdout": "[]"
+    },
+    {
+      "match": "multica label list",
+      "stdout": "[\n  {\n    \"id\": \"label-important\",\n    \"name\": \"重要\"\n  },\n  {\n    \"id\": \"label-dev\",\n    \"name\": \"開発\"\n  },\n  {\n    \"id\": \"label-ops\",\n    \"name\": \"運用\"\n  },\n  {\n    \"id\": \"label-instruction\",\n    \"name\": \"指示の改善\"\n  },\n  {\n    \"id\": \"label-qa\",\n    \"name\": \"検証\"\n  }\n]"
+    },
+    {
+      "match": "multica issue children issue-shop-1",
+      "stdout": "[]"
+    },
+    {
+      "match": "multica repo list",
+      "stdout": "[\n  {\n    \"url\": \"https://github.com/example/shop\"\n  }\n]"
+    },
+    {
+      "match": "squad-pr-watch conflicts-check issue-shop-1",
+      "stdout": "コンフリクト: MERGEABLE head: b2c3d4e5f60718293a4b5c6d7e8f9012a3b4c5d6"
+    },
+    {
+      "match": "squad-pr-watch link-check issue-shop-1",
+      "stdout": "紐付け: 紐付いている pr: https://github.com/example/shop/pull/7"
+    },
+    {
+      "match": "squad-pr-watch ci-now issue-shop-1",
+      "stdout": "/note\nCI b2c3d4e: 失敗なし"
+    },
+    {
+      "match": "squad-pr-watch ci-held issue-shop-1"
+    },
+    {
+      "match": "gh pr view",
+      "stdout": "{\n  \"number\": 7,\n  \"title\": \"feat: カートに商品数を出す\",\n  \"state\": \"OPEN\",\n  \"isDraft\": true,\n  \"baseRefName\": \"main\",\n  \"headRefName\": \"feat/cart-badge\",\n  \"headRefOid\": \"b2c3d4e5f60718293a4b5c6d7e8f9012a3b4c5d6\",\n  \"mergeable\": \"MERGEABLE\",\n  \"files\": [\n    {\n      \"path\": \"src/cart/Badge.tsx\"\n    },\n    {\n      \"path\": \"src/cart/Badge.test.tsx\"\n    }\n  ],\n  \"body\": \"カートのアイコンに、入っている商品の数を出す。100 以上は `99+` と表示する。\"\n}"
+    },
+    {
+      "match": "squad-review-wait status issue-shop-1",
+      "stdout": "返事の待ち: 登録なし"
+    },
+    {
+      "match": "squad-review-wait proceed issue-shop-1",
+      "stdout": "返事の待ち: 次に進む"
+    },
+    {
+      "match": "squad-review-wait watch issue-shop-1",
+      "stdout": "返事の待ちの見張りを入れました。"
+    },
+    {
+      "match": "multica issue runs issue-shop-1",
+      "stdout": "[]"
+    },
+    {
+      "match": "squad-usage-wait pick issue-shop-1 fix",
+      "stdout": "役: claude-fixer\n振り分け: Claude。Claude 週 42%（使ってよい量 60%）・5 時間 23%、Codex 週 6%（使ってよい量 10%）"
+    },
+    {
+      "match": "squad-review-next decide issue-shop-1",
+      "stdout": "次の依頼を決められません: 診断の回はリーダーが扱う",
+      "exit": 3
+    }
+  ]
+}

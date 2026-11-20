@@ -1,0 +1,4138 @@
+{
+  "cutoff": "2026-01-01T00:00:00Z",
+  "excluded": {
+    "no_implementer_run": 1,
+    "not_done": 1,
+    "unmeasurable": 2
+  },
+  "input": {
+    "snapshot_sha256": "17f498aa15b37bd33e26bcb77d87337b1fee29d68071732cd76bd93d42c47c51"
+  },
+  "schema_version": 1,
+  "skipped_marks": {
+    "ci_wait": 6,
+    "finding_counts": 2,
+    "fix_request": 7,
+    "request_commit": 4,
+    "result_commit": 2,
+    "result_mark": 2,
+    "review_kind": 7,
+    "usage_wait": 5
+  },
+  "tasks": [
+    {
+      "allocation_seconds": {
+        "code_review_first": 0,
+        "code_review_later": 0,
+        "design_requirements": 0,
+        "design_review": 0,
+        "e2e": 0,
+        "final_review_first": 0,
+        "final_review_later": 0,
+        "fix": 0,
+        "implementation": 1800,
+        "orchestrator": 0,
+        "other_review_first": 0,
+        "other_review_later": 0,
+        "unknown": 0,
+        "wait_ci": 0,
+        "wait_human": 0,
+        "wait_other": 100,
+        "wait_startup": 0,
+        "wait_usage_limit": 0
+      },
+      "created_seconds": 1767225599,
+      "elapsed_seconds": 1900,
+      "execution_seconds": {
+        "code_review_first": 0,
+        "code_review_later": 0,
+        "design_requirements": 0,
+        "design_review": 0,
+        "e2e": 0,
+        "final_review_first": 0,
+        "final_review_later": 0,
+        "fix": 0,
+        "implementation": 1800,
+        "orchestrator": 0,
+        "other_review_first": 0,
+        "other_review_later": 0,
+        "unknown": 0
+      },
+      "findings": {
+        "fix_requests": {
+          "non_review": 0,
+          "review": 0,
+          "total": 0
+        },
+        "other_review_roles": {
+          "performance-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "security-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "ux-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          }
+        },
+        "processes": {
+          "code_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "design_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "e2e": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "final_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "other_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "unknown": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          }
+        }
+      },
+      "id": "issue-k",
+      "identifier": "DEMO-K",
+      "implementation_run_seconds": 1800,
+      "kinds": {
+        "docs_only": true,
+        "important": false,
+        "small_implementation": true
+      },
+      "seconds_before_implementation": 80001,
+      "skipped_marks": {
+        "ci_wait": 0,
+        "finding_counts": 0,
+        "fix_request": 0,
+        "request_commit": 0,
+        "result_commit": 0,
+        "result_mark": 0,
+        "review_kind": 0,
+        "usage_wait": 0
+      },
+      "unknown_roles": {},
+      "window_end": 1767307500,
+      "window_start": 1767305600
+    },
+    {
+      "allocation_seconds": {
+        "code_review_first": 500,
+        "code_review_later": 200,
+        "design_requirements": 0,
+        "design_review": 0,
+        "e2e": 0,
+        "final_review_first": 0,
+        "final_review_later": 0,
+        "fix": 200,
+        "implementation": 1400,
+        "orchestrator": 300,
+        "other_review_first": 0,
+        "other_review_later": 200,
+        "unknown": 0,
+        "wait_ci": 0,
+        "wait_human": 0,
+        "wait_other": 600,
+        "wait_startup": 0,
+        "wait_usage_limit": 0
+      },
+      "created_seconds": 1767225600,
+      "elapsed_seconds": 3400,
+      "execution_seconds": {
+        "code_review_first": 500,
+        "code_review_later": 200,
+        "design_requirements": 0,
+        "design_review": 0,
+        "e2e": 0,
+        "final_review_first": 0,
+        "final_review_later": 0,
+        "fix": 200,
+        "implementation": 1400,
+        "orchestrator": 500,
+        "other_review_first": 200,
+        "other_review_later": 300,
+        "unknown": 0
+      },
+      "findings": {
+        "fix_requests": {
+          "non_review": 1,
+          "review": 0,
+          "total": 1
+        },
+        "other_review_roles": {
+          "performance-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "security-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": true,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "ux-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          }
+        },
+        "processes": {
+          "code_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": true,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": true,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": true,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "design_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "e2e": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "final_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "other_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": true,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": true,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": true,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "unknown": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          }
+        }
+      },
+      "id": "issue-a",
+      "identifier": "DEMO-A",
+      "implementation_run_seconds": 1399,
+      "kinds": {
+        "docs_only": false,
+        "important": false,
+        "small_implementation": true
+      },
+      "seconds_before_implementation": 600,
+      "skipped_marks": {
+        "ci_wait": 1,
+        "finding_counts": 0,
+        "fix_request": 1,
+        "request_commit": 1,
+        "result_commit": 0,
+        "result_mark": 0,
+        "review_kind": 1,
+        "usage_wait": 1
+      },
+      "unknown_roles": {},
+      "window_end": 1767229600,
+      "window_start": 1767226200
+    },
+    {
+      "allocation_seconds": {
+        "code_review_first": 0,
+        "code_review_later": 0,
+        "design_requirements": 0,
+        "design_review": 0,
+        "e2e": 0,
+        "final_review_first": 0,
+        "final_review_later": 0,
+        "fix": 0,
+        "implementation": 1801,
+        "orchestrator": 0,
+        "other_review_first": 0,
+        "other_review_later": 0,
+        "unknown": 0,
+        "wait_ci": 0,
+        "wait_human": 0,
+        "wait_other": 199,
+        "wait_startup": 0,
+        "wait_usage_limit": 0
+      },
+      "created_seconds": 1767225600,
+      "elapsed_seconds": 2000,
+      "execution_seconds": {
+        "code_review_first": 0,
+        "code_review_later": 0,
+        "design_requirements": 0,
+        "design_review": 0,
+        "e2e": 0,
+        "final_review_first": 0,
+        "final_review_later": 0,
+        "fix": 0,
+        "implementation": 1801,
+        "orchestrator": 0,
+        "other_review_first": 0,
+        "other_review_later": 0,
+        "unknown": 0
+      },
+      "findings": {
+        "fix_requests": {
+          "non_review": 0,
+          "review": 0,
+          "total": 0
+        },
+        "other_review_roles": {
+          "performance-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "security-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "ux-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          }
+        },
+        "processes": {
+          "code_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "design_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "e2e": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "final_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "other_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "unknown": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          }
+        }
+      },
+      "id": "issue-l",
+      "identifier": "DEMO-L",
+      "implementation_run_seconds": 1801,
+      "kinds": {
+        "docs_only": false,
+        "important": true,
+        "small_implementation": false
+      },
+      "seconds_before_implementation": 90000,
+      "skipped_marks": {
+        "ci_wait": 0,
+        "finding_counts": 0,
+        "fix_request": 0,
+        "request_commit": 0,
+        "result_commit": 0,
+        "result_mark": 0,
+        "review_kind": 0,
+        "usage_wait": 0
+      },
+      "unknown_roles": {},
+      "window_end": 1767317600,
+      "window_start": 1767315600
+    },
+    {
+      "allocation_seconds": {
+        "code_review_first": 0,
+        "code_review_later": 0,
+        "design_requirements": 0,
+        "design_review": 0,
+        "e2e": 0,
+        "final_review_first": 0,
+        "final_review_later": 0,
+        "fix": 0,
+        "implementation": 1802,
+        "orchestrator": 0,
+        "other_review_first": 0,
+        "other_review_later": 0,
+        "unknown": 0,
+        "wait_ci": 0,
+        "wait_human": 0,
+        "wait_other": 198,
+        "wait_startup": 0,
+        "wait_usage_limit": 0
+      },
+      "created_seconds": 1767225601,
+      "elapsed_seconds": 2000,
+      "execution_seconds": {
+        "code_review_first": 0,
+        "code_review_later": 0,
+        "design_requirements": 0,
+        "design_review": 0,
+        "e2e": 0,
+        "final_review_first": 0,
+        "final_review_later": 0,
+        "fix": 0,
+        "implementation": 1802,
+        "orchestrator": 0,
+        "other_review_first": 0,
+        "other_review_later": 0,
+        "unknown": 0
+      },
+      "findings": {
+        "fix_requests": {
+          "non_review": 0,
+          "review": 0,
+          "total": 0
+        },
+        "other_review_roles": {
+          "performance-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "security-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "ux-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          }
+        },
+        "processes": {
+          "code_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "design_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "e2e": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "final_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "other_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "unknown": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          }
+        }
+      },
+      "id": "issue-m",
+      "identifier": "DEMO-M",
+      "implementation_run_seconds": 1800,
+      "kinds": {
+        "docs_only": false,
+        "important": false,
+        "small_implementation": true
+      },
+      "seconds_before_implementation": 99999,
+      "skipped_marks": {
+        "ci_wait": 0,
+        "finding_counts": 0,
+        "fix_request": 0,
+        "request_commit": 0,
+        "result_commit": 0,
+        "result_mark": 0,
+        "review_kind": 0,
+        "usage_wait": 0
+      },
+      "unknown_roles": {},
+      "window_end": 1767327600,
+      "window_start": 1767325600
+    },
+    {
+      "allocation_seconds": {
+        "code_review_first": 0,
+        "code_review_later": 0,
+        "design_requirements": 100,
+        "design_review": 100,
+        "e2e": 100,
+        "final_review_first": 200,
+        "final_review_later": 100,
+        "fix": 0,
+        "implementation": 400,
+        "orchestrator": 0,
+        "other_review_first": 0,
+        "other_review_later": 0,
+        "unknown": 250,
+        "wait_ci": 0,
+        "wait_human": 0,
+        "wait_other": 50,
+        "wait_startup": 0,
+        "wait_usage_limit": 0
+      },
+      "created_seconds": 1767235600,
+      "elapsed_seconds": 1300,
+      "execution_seconds": {
+        "code_review_first": 0,
+        "code_review_later": 0,
+        "design_requirements": 100,
+        "design_review": 100,
+        "e2e": 100,
+        "final_review_first": 200,
+        "final_review_later": 100,
+        "fix": 0,
+        "implementation": 400,
+        "orchestrator": 0,
+        "other_review_first": 0,
+        "other_review_later": 0,
+        "unknown": 250
+      },
+      "findings": {
+        "fix_requests": {
+          "non_review": 0,
+          "review": 0,
+          "total": 0
+        },
+        "other_review_roles": {
+          "performance-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "security-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "ux-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          }
+        },
+        "processes": {
+          "code_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "design_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": true,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "e2e": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": true,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "final_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": true,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": true,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": true,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "other_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "unknown": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": true,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          }
+        }
+      },
+      "id": "issue-b",
+      "identifier": "DEMO-B",
+      "implementation_run_seconds": 400,
+      "kinds": {
+        "docs_only": false,
+        "important": false,
+        "small_implementation": true
+      },
+      "seconds_before_implementation": 100,
+      "skipped_marks": {
+        "ci_wait": 0,
+        "finding_counts": 0,
+        "fix_request": 0,
+        "request_commit": 0,
+        "result_commit": 0,
+        "result_mark": 0,
+        "review_kind": 1,
+        "usage_wait": 0
+      },
+      "unknown_roles": {
+        "claude-principal": {
+          "runs": 2,
+          "seconds": 200
+        },
+        "その他": {
+          "runs": 1,
+          "seconds": 50
+        }
+      },
+      "window_end": 1767237000,
+      "window_start": 1767235700
+    },
+    {
+      "allocation_seconds": {
+        "code_review_first": 300,
+        "code_review_later": 0,
+        "design_requirements": 0,
+        "design_review": 0,
+        "e2e": 0,
+        "final_review_first": 0,
+        "final_review_later": 0,
+        "fix": 0,
+        "implementation": 500,
+        "orchestrator": 0,
+        "other_review_first": 0,
+        "other_review_later": 0,
+        "unknown": 0,
+        "wait_ci": 0,
+        "wait_human": 0,
+        "wait_other": 0,
+        "wait_startup": 0,
+        "wait_usage_limit": 0
+      },
+      "created_seconds": 1767245600,
+      "elapsed_seconds": 800,
+      "execution_seconds": {
+        "code_review_first": 300,
+        "code_review_later": 0,
+        "design_requirements": 0,
+        "design_review": 0,
+        "e2e": 0,
+        "final_review_first": 0,
+        "final_review_later": 0,
+        "fix": 0,
+        "implementation": 500,
+        "orchestrator": 0,
+        "other_review_first": 0,
+        "other_review_later": 0,
+        "unknown": 0
+      },
+      "findings": {
+        "fix_requests": {
+          "non_review": 0,
+          "review": 0,
+          "total": 0
+        },
+        "other_review_roles": {
+          "performance-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "security-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "ux-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          }
+        },
+        "processes": {
+          "code_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": true,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": true,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "design_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "e2e": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "final_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "other_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "unknown": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          }
+        }
+      },
+      "id": "issue-c",
+      "identifier": "DEMO-C",
+      "implementation_run_seconds": 500,
+      "kinds": {
+        "docs_only": false,
+        "important": true,
+        "small_implementation": true
+      },
+      "seconds_before_implementation": 0,
+      "skipped_marks": {
+        "ci_wait": 0,
+        "finding_counts": 0,
+        "fix_request": 0,
+        "request_commit": 0,
+        "result_commit": 0,
+        "result_mark": 0,
+        "review_kind": 0,
+        "usage_wait": 0
+      },
+      "unknown_roles": {},
+      "window_end": 1767246400,
+      "window_start": 1767245600
+    },
+    {
+      "allocation_seconds": {
+        "code_review_first": 200,
+        "code_review_later": 0,
+        "design_requirements": 0,
+        "design_review": 0,
+        "e2e": 0,
+        "final_review_first": 0,
+        "final_review_later": 0,
+        "fix": 0,
+        "implementation": 300,
+        "orchestrator": 0,
+        "other_review_first": 0,
+        "other_review_later": 0,
+        "unknown": 0,
+        "wait_ci": 0,
+        "wait_human": 200,
+        "wait_other": 300,
+        "wait_startup": 200,
+        "wait_usage_limit": 0
+      },
+      "created_seconds": 1767275600,
+      "elapsed_seconds": 1200,
+      "execution_seconds": {
+        "code_review_first": 200,
+        "code_review_later": 0,
+        "design_requirements": 0,
+        "design_review": 0,
+        "e2e": 0,
+        "final_review_first": 0,
+        "final_review_later": 0,
+        "fix": 0,
+        "implementation": 300,
+        "orchestrator": 0,
+        "other_review_first": 0,
+        "other_review_later": 0,
+        "unknown": 0
+      },
+      "findings": {
+        "fix_requests": {
+          "non_review": 0,
+          "review": 0,
+          "total": 0
+        },
+        "other_review_roles": {
+          "performance-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "security-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "ux-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          }
+        },
+        "processes": {
+          "code_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": true,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": true,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "design_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "e2e": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "final_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "other_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "unknown": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          }
+        }
+      },
+      "id": "issue-h",
+      "identifier": "DEMO-H",
+      "implementation_run_seconds": 300,
+      "kinds": {
+        "docs_only": false,
+        "important": false,
+        "small_implementation": true
+      },
+      "seconds_before_implementation": 0,
+      "skipped_marks": {
+        "ci_wait": 0,
+        "finding_counts": 0,
+        "fix_request": 0,
+        "request_commit": 0,
+        "result_commit": 0,
+        "result_mark": 0,
+        "review_kind": 0,
+        "usage_wait": 0
+      },
+      "unknown_roles": {},
+      "window_end": 1767276800,
+      "window_start": 1767275600
+    },
+    {
+      "allocation_seconds": {
+        "code_review_first": 0,
+        "code_review_later": 0,
+        "design_requirements": 0,
+        "design_review": 0,
+        "e2e": 0,
+        "final_review_first": 0,
+        "final_review_later": 0,
+        "fix": 0,
+        "implementation": 1000,
+        "orchestrator": 0,
+        "other_review_first": 0,
+        "other_review_later": 0,
+        "unknown": 0,
+        "wait_ci": 200,
+        "wait_human": 0,
+        "wait_other": 400,
+        "wait_startup": 0,
+        "wait_usage_limit": 400
+      },
+      "created_seconds": 1767285600,
+      "elapsed_seconds": 2000,
+      "execution_seconds": {
+        "code_review_first": 0,
+        "code_review_later": 0,
+        "design_requirements": 0,
+        "design_review": 0,
+        "e2e": 0,
+        "final_review_first": 0,
+        "final_review_later": 0,
+        "fix": 0,
+        "implementation": 1000,
+        "orchestrator": 0,
+        "other_review_first": 0,
+        "other_review_later": 0,
+        "unknown": 0
+      },
+      "findings": {
+        "fix_requests": {
+          "non_review": 0,
+          "review": 0,
+          "total": 0
+        },
+        "other_review_roles": {
+          "performance-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "security-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "ux-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          }
+        },
+        "processes": {
+          "code_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "design_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "e2e": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "final_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "other_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "unknown": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          }
+        }
+      },
+      "id": "issue-i",
+      "identifier": "DEMO-I",
+      "implementation_run_seconds": 1000,
+      "kinds": {
+        "docs_only": false,
+        "important": false,
+        "small_implementation": true
+      },
+      "seconds_before_implementation": 0,
+      "skipped_marks": {
+        "ci_wait": 2,
+        "finding_counts": 0,
+        "fix_request": 0,
+        "request_commit": 0,
+        "result_commit": 0,
+        "result_mark": 0,
+        "review_kind": 0,
+        "usage_wait": 1
+      },
+      "unknown_roles": {},
+      "window_end": 1767287600,
+      "window_start": 1767285600
+    },
+    {
+      "allocation_seconds": {
+        "code_review_first": 0,
+        "code_review_later": 0,
+        "design_requirements": 0,
+        "design_review": 0,
+        "e2e": 0,
+        "final_review_first": 0,
+        "final_review_later": 0,
+        "fix": 0,
+        "implementation": 1000,
+        "orchestrator": 0,
+        "other_review_first": 0,
+        "other_review_later": 0,
+        "unknown": 0,
+        "wait_ci": 200,
+        "wait_human": 200,
+        "wait_other": 400,
+        "wait_startup": 0,
+        "wait_usage_limit": 200
+      },
+      "created_seconds": 1767295600,
+      "elapsed_seconds": 2000,
+      "execution_seconds": {
+        "code_review_first": 0,
+        "code_review_later": 0,
+        "design_requirements": 0,
+        "design_review": 0,
+        "e2e": 0,
+        "final_review_first": 0,
+        "final_review_later": 0,
+        "fix": 0,
+        "implementation": 1000,
+        "orchestrator": 0,
+        "other_review_first": 0,
+        "other_review_later": 0,
+        "unknown": 0
+      },
+      "findings": {
+        "fix_requests": {
+          "non_review": 0,
+          "review": 0,
+          "total": 0
+        },
+        "other_review_roles": {
+          "performance-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "security-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "ux-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          }
+        },
+        "processes": {
+          "code_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "design_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "e2e": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "final_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "other_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "unknown": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          }
+        }
+      },
+      "id": "issue-j",
+      "identifier": "DEMO-J",
+      "implementation_run_seconds": 1000,
+      "kinds": {
+        "docs_only": false,
+        "important": false,
+        "small_implementation": true
+      },
+      "seconds_before_implementation": 0,
+      "skipped_marks": {
+        "ci_wait": 0,
+        "finding_counts": 0,
+        "fix_request": 0,
+        "request_commit": 0,
+        "result_commit": 0,
+        "result_mark": 0,
+        "review_kind": 0,
+        "usage_wait": 0
+      },
+      "unknown_roles": {},
+      "window_end": 1767297600,
+      "window_start": 1767295600
+    },
+    {
+      "allocation_seconds": {
+        "code_review_first": 200,
+        "code_review_later": 160,
+        "design_requirements": 0,
+        "design_review": 0,
+        "e2e": 90,
+        "final_review_first": 0,
+        "final_review_later": 0,
+        "fix": 200,
+        "implementation": 400,
+        "orchestrator": 0,
+        "other_review_first": 100,
+        "other_review_later": 0,
+        "unknown": 0,
+        "wait_ci": 0,
+        "wait_human": 0,
+        "wait_other": 350,
+        "wait_startup": 0,
+        "wait_usage_limit": 0
+      },
+      "created_seconds": 1767335600,
+      "elapsed_seconds": 1500,
+      "execution_seconds": {
+        "code_review_first": 200,
+        "code_review_later": 160,
+        "design_requirements": 0,
+        "design_review": 100,
+        "e2e": 90,
+        "final_review_first": 0,
+        "final_review_later": 0,
+        "fix": 200,
+        "implementation": 400,
+        "orchestrator": 0,
+        "other_review_first": 250,
+        "other_review_later": 0,
+        "unknown": 0
+      },
+      "findings": {
+        "fix_requests": {
+          "non_review": 1,
+          "review": 3,
+          "total": 4
+        },
+        "other_review_roles": {
+          "performance-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "security-reviewer": {
+            "blocking": 1,
+            "counts_unread": 0,
+            "led_to_fix": 1,
+            "non_blocking": 3,
+            "only_fix_requests": 0,
+            "overlapping": 1,
+            "passed": true,
+            "results": 1,
+            "unreadable": 0,
+            "with_findings": 1,
+            "without_findings": 0
+          },
+          "ux-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          }
+        },
+        "processes": {
+          "code_review": {
+            "blocking": 2,
+            "counts_unread": 0,
+            "led_to_fix": 2,
+            "non_blocking": 3,
+            "only_fix_requests": 1,
+            "overlapping": 1,
+            "passed": true,
+            "results": 3,
+            "rounds": {
+              "first": {
+                "blocking": 2,
+                "counts_unread": 0,
+                "led_to_fix": 1,
+                "non_blocking": 1,
+                "only_fix_requests": 0,
+                "overlapping": 1,
+                "passed": true,
+                "results": 1,
+                "unreadable": 0,
+                "with_findings": 1,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 1,
+                "non_blocking": 2,
+                "only_fix_requests": 1,
+                "overlapping": 0,
+                "passed": true,
+                "results": 2,
+                "unreadable": 0,
+                "with_findings": 1,
+                "without_findings": 1
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 2,
+            "without_findings": 1
+          },
+          "design_review": {
+            "blocking": 0,
+            "counts_unread": 1,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": true,
+            "results": 1,
+            "unreadable": 0,
+            "with_findings": 1,
+            "without_findings": 0
+          },
+          "e2e": {
+            "blocking": 0,
+            "counts_unread": 1,
+            "led_to_fix": 1,
+            "non_blocking": 0,
+            "only_fix_requests": 1,
+            "overlapping": 0,
+            "passed": true,
+            "results": 1,
+            "unreadable": 1,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "final_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "other_review": {
+            "blocking": 1,
+            "counts_unread": 0,
+            "led_to_fix": 1,
+            "non_blocking": 3,
+            "only_fix_requests": 0,
+            "overlapping": 1,
+            "passed": true,
+            "results": 1,
+            "rounds": {
+              "first": {
+                "blocking": 1,
+                "counts_unread": 0,
+                "led_to_fix": 1,
+                "non_blocking": 3,
+                "only_fix_requests": 0,
+                "overlapping": 1,
+                "passed": true,
+                "results": 1,
+                "unreadable": 0,
+                "with_findings": 1,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 1,
+            "without_findings": 0
+          },
+          "unknown": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          }
+        }
+      },
+      "id": "issue-n",
+      "identifier": "DEMO-N",
+      "implementation_run_seconds": 400,
+      "kinds": {
+        "docs_only": false,
+        "important": false,
+        "small_implementation": true
+      },
+      "seconds_before_implementation": 0,
+      "skipped_marks": {
+        "ci_wait": 0,
+        "finding_counts": 0,
+        "fix_request": 0,
+        "request_commit": 0,
+        "result_commit": 0,
+        "result_mark": 0,
+        "review_kind": 0,
+        "usage_wait": 0
+      },
+      "unknown_roles": {},
+      "window_end": 1767337100,
+      "window_start": 1767335600
+    },
+    {
+      "allocation_seconds": {
+        "code_review_first": 100,
+        "code_review_later": 0,
+        "design_requirements": 0,
+        "design_review": 0,
+        "e2e": 0,
+        "final_review_first": 0,
+        "final_review_later": 0,
+        "fix": 0,
+        "implementation": 400,
+        "orchestrator": 0,
+        "other_review_first": 0,
+        "other_review_later": 0,
+        "unknown": 0,
+        "wait_ci": 0,
+        "wait_human": 0,
+        "wait_other": 500,
+        "wait_startup": 0,
+        "wait_usage_limit": 0
+      },
+      "created_seconds": 1767345600,
+      "elapsed_seconds": 1000,
+      "execution_seconds": {
+        "code_review_first": 100,
+        "code_review_later": 0,
+        "design_requirements": 0,
+        "design_review": 0,
+        "e2e": 0,
+        "final_review_first": 0,
+        "final_review_later": 0,
+        "fix": 0,
+        "implementation": 400,
+        "orchestrator": 0,
+        "other_review_first": 0,
+        "other_review_later": 0,
+        "unknown": 0
+      },
+      "findings": {
+        "fix_requests": {
+          "non_review": 0,
+          "review": 1,
+          "total": 1
+        },
+        "other_review_roles": {
+          "performance-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "security-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "ux-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          }
+        },
+        "processes": {
+          "code_review": {
+            "blocking": 1,
+            "counts_unread": 0,
+            "led_to_fix": 1,
+            "non_blocking": 0,
+            "only_fix_requests": 1,
+            "overlapping": 0,
+            "passed": true,
+            "results": 1,
+            "rounds": {
+              "first": {
+                "blocking": 1,
+                "counts_unread": 0,
+                "led_to_fix": 1,
+                "non_blocking": 0,
+                "only_fix_requests": 1,
+                "overlapping": 0,
+                "passed": true,
+                "results": 1,
+                "unreadable": 0,
+                "with_findings": 1,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 1,
+            "without_findings": 0
+          },
+          "design_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "e2e": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "final_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "other_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "unknown": {
+            "blocking": 0,
+            "counts_unread": 1,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 1,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 1
+          }
+        }
+      },
+      "id": "issue-o",
+      "identifier": "DEMO-O",
+      "implementation_run_seconds": 400,
+      "kinds": {
+        "docs_only": false,
+        "important": false,
+        "small_implementation": true
+      },
+      "seconds_before_implementation": 0,
+      "skipped_marks": {
+        "ci_wait": 0,
+        "finding_counts": 2,
+        "fix_request": 1,
+        "request_commit": 0,
+        "result_commit": 2,
+        "result_mark": 2,
+        "review_kind": 0,
+        "usage_wait": 0
+      },
+      "unknown_roles": {},
+      "window_end": 1767346600,
+      "window_start": 1767345600
+    },
+    {
+      "allocation_seconds": {
+        "code_review_first": 0,
+        "code_review_later": 0,
+        "design_requirements": 0,
+        "design_review": 0,
+        "e2e": 0,
+        "final_review_first": 200,
+        "final_review_later": 100,
+        "fix": 0,
+        "implementation": 400,
+        "orchestrator": 0,
+        "other_review_first": 200,
+        "other_review_later": 0,
+        "unknown": 0,
+        "wait_ci": 0,
+        "wait_human": 0,
+        "wait_other": 600,
+        "wait_startup": 0,
+        "wait_usage_limit": 0
+      },
+      "created_seconds": 1767355600,
+      "elapsed_seconds": 1500,
+      "execution_seconds": {
+        "code_review_first": 0,
+        "code_review_later": 0,
+        "design_requirements": 0,
+        "design_review": 0,
+        "e2e": 0,
+        "final_review_first": 200,
+        "final_review_later": 100,
+        "fix": 0,
+        "implementation": 400,
+        "orchestrator": 0,
+        "other_review_first": 200,
+        "other_review_later": 0,
+        "unknown": 0
+      },
+      "findings": {
+        "fix_requests": {
+          "non_review": 0,
+          "review": 0,
+          "total": 0
+        },
+        "other_review_roles": {
+          "performance-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "security-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": true,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "ux-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          }
+        },
+        "processes": {
+          "code_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "design_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "e2e": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "final_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": true,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": true,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": true,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "other_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": true,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": true,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "unknown": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          }
+        }
+      },
+      "id": "issue-p",
+      "identifier": "DEMO-P",
+      "implementation_run_seconds": 400,
+      "kinds": {
+        "docs_only": false,
+        "important": false,
+        "small_implementation": true
+      },
+      "seconds_before_implementation": 0,
+      "skipped_marks": {
+        "ci_wait": 0,
+        "finding_counts": 0,
+        "fix_request": 0,
+        "request_commit": 0,
+        "result_commit": 0,
+        "result_mark": 0,
+        "review_kind": 0,
+        "usage_wait": 0
+      },
+      "unknown_roles": {},
+      "window_end": 1767357100,
+      "window_start": 1767355600
+    },
+    {
+      "allocation_seconds": {
+        "code_review_first": 0,
+        "code_review_later": 0,
+        "design_requirements": 0,
+        "design_review": 0,
+        "e2e": 0,
+        "final_review_first": 0,
+        "final_review_later": 0,
+        "fix": 200,
+        "implementation": 400,
+        "orchestrator": 0,
+        "other_review_first": 200,
+        "other_review_later": 0,
+        "unknown": 0,
+        "wait_ci": 0,
+        "wait_human": 0,
+        "wait_other": 200,
+        "wait_startup": 0,
+        "wait_usage_limit": 0
+      },
+      "created_seconds": 1767357600,
+      "elapsed_seconds": 1000,
+      "execution_seconds": {
+        "code_review_first": 0,
+        "code_review_later": 0,
+        "design_requirements": 0,
+        "design_review": 0,
+        "e2e": 0,
+        "final_review_first": 0,
+        "final_review_later": 0,
+        "fix": 200,
+        "implementation": 400,
+        "orchestrator": 0,
+        "other_review_first": 200,
+        "other_review_later": 0,
+        "unknown": 0
+      },
+      "findings": {
+        "fix_requests": {
+          "non_review": 0,
+          "review": 1,
+          "total": 1
+        },
+        "other_review_roles": {
+          "performance-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "security-reviewer": {
+            "blocking": 1,
+            "counts_unread": 0,
+            "led_to_fix": 1,
+            "non_blocking": 1,
+            "only_fix_requests": 1,
+            "overlapping": 0,
+            "passed": true,
+            "results": 1,
+            "unreadable": 0,
+            "with_findings": 1,
+            "without_findings": 0
+          },
+          "ux-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          }
+        },
+        "processes": {
+          "code_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "design_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "e2e": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "final_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "other_review": {
+            "blocking": 1,
+            "counts_unread": 0,
+            "led_to_fix": 1,
+            "non_blocking": 1,
+            "only_fix_requests": 1,
+            "overlapping": 0,
+            "passed": true,
+            "results": 1,
+            "rounds": {
+              "first": {
+                "blocking": 1,
+                "counts_unread": 0,
+                "led_to_fix": 1,
+                "non_blocking": 1,
+                "only_fix_requests": 1,
+                "overlapping": 0,
+                "passed": true,
+                "results": 1,
+                "unreadable": 0,
+                "with_findings": 1,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 1,
+            "without_findings": 0
+          },
+          "unknown": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          }
+        }
+      },
+      "id": "issue-q",
+      "identifier": "DEMO-Q",
+      "implementation_run_seconds": 400,
+      "kinds": {
+        "docs_only": false,
+        "important": false,
+        "small_implementation": true
+      },
+      "seconds_before_implementation": 0,
+      "skipped_marks": {
+        "ci_wait": 0,
+        "finding_counts": 0,
+        "fix_request": 0,
+        "request_commit": 0,
+        "result_commit": 0,
+        "result_mark": 0,
+        "review_kind": 0,
+        "usage_wait": 0
+      },
+      "unknown_roles": {},
+      "window_end": 1767358600,
+      "window_start": 1767357600
+    },
+    {
+      "allocation_seconds": {
+        "code_review_first": 0,
+        "code_review_later": 0,
+        "design_requirements": 0,
+        "design_review": 0,
+        "e2e": 200,
+        "final_review_first": 0,
+        "final_review_later": 0,
+        "fix": 0,
+        "implementation": 400,
+        "orchestrator": 0,
+        "other_review_first": 200,
+        "other_review_later": 0,
+        "unknown": 200,
+        "wait_ci": 400,
+        "wait_human": 0,
+        "wait_other": 400,
+        "wait_startup": 0,
+        "wait_usage_limit": 200
+      },
+      "created_seconds": 1767359600,
+      "elapsed_seconds": 2000,
+      "execution_seconds": {
+        "code_review_first": 0,
+        "code_review_later": 0,
+        "design_requirements": 0,
+        "design_review": 0,
+        "e2e": 200,
+        "final_review_first": 0,
+        "final_review_later": 0,
+        "fix": 0,
+        "implementation": 400,
+        "orchestrator": 0,
+        "other_review_first": 200,
+        "other_review_later": 0,
+        "unknown": 200
+      },
+      "findings": {
+        "fix_requests": {
+          "non_review": 0,
+          "review": 0,
+          "total": 0
+        },
+        "other_review_roles": {
+          "performance-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "security-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": true,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "ux-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          }
+        },
+        "processes": {
+          "code_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "design_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "e2e": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": true,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "final_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "other_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": true,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": true,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "unknown": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": true,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          }
+        }
+      },
+      "id": "issue-r",
+      "identifier": "DEMO-R",
+      "implementation_run_seconds": 400,
+      "kinds": {
+        "docs_only": false,
+        "important": false,
+        "small_implementation": true
+      },
+      "seconds_before_implementation": 0,
+      "skipped_marks": {
+        "ci_wait": 0,
+        "finding_counts": 0,
+        "fix_request": 0,
+        "request_commit": 0,
+        "result_commit": 0,
+        "result_mark": 0,
+        "review_kind": 0,
+        "usage_wait": 0
+      },
+      "unknown_roles": {
+        "claude-principal": {
+          "runs": 1,
+          "seconds": 200
+        }
+      },
+      "window_end": 1767361600,
+      "window_start": 1767359600
+    },
+    {
+      "allocation_seconds": {
+        "code_review_first": 0,
+        "code_review_later": 0,
+        "design_requirements": 0,
+        "design_review": 0,
+        "e2e": 0,
+        "final_review_first": 0,
+        "final_review_later": 0,
+        "fix": 0,
+        "implementation": 200,
+        "orchestrator": 0,
+        "other_review_first": 0,
+        "other_review_later": 0,
+        "unknown": 500,
+        "wait_ci": 0,
+        "wait_human": 0,
+        "wait_other": 1000,
+        "wait_startup": 0,
+        "wait_usage_limit": 0
+      },
+      "created_seconds": 1767362600,
+      "elapsed_seconds": 1700,
+      "execution_seconds": {
+        "code_review_first": 0,
+        "code_review_later": 0,
+        "design_requirements": 0,
+        "design_review": 0,
+        "e2e": 0,
+        "final_review_first": 0,
+        "final_review_later": 0,
+        "fix": 0,
+        "implementation": 200,
+        "orchestrator": 0,
+        "other_review_first": 0,
+        "other_review_later": 0,
+        "unknown": 500
+      },
+      "findings": {
+        "fix_requests": {
+          "non_review": 0,
+          "review": 0,
+          "total": 0
+        },
+        "other_review_roles": {
+          "performance-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "security-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "ux-reviewer": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          }
+        },
+        "processes": {
+          "code_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "design_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "e2e": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "final_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "other_review": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": false,
+            "results": 0,
+            "rounds": {
+              "first": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              },
+              "later": {
+                "blocking": 0,
+                "counts_unread": 0,
+                "led_to_fix": 0,
+                "non_blocking": 0,
+                "only_fix_requests": 0,
+                "overlapping": 0,
+                "passed": false,
+                "results": 0,
+                "unreadable": 0,
+                "with_findings": 0,
+                "without_findings": 0
+              }
+            },
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          },
+          "unknown": {
+            "blocking": 0,
+            "counts_unread": 0,
+            "led_to_fix": 0,
+            "non_blocking": 0,
+            "only_fix_requests": 0,
+            "overlapping": 0,
+            "passed": true,
+            "results": 0,
+            "unreadable": 0,
+            "with_findings": 0,
+            "without_findings": 0
+          }
+        }
+      },
+      "id": "issue-s",
+      "identifier": "DEMO-S",
+      "implementation_run_seconds": 200,
+      "kinds": {
+        "docs_only": false,
+        "important": false,
+        "small_implementation": true
+      },
+      "seconds_before_implementation": 0,
+      "skipped_marks": {
+        "ci_wait": 3,
+        "finding_counts": 0,
+        "fix_request": 5,
+        "request_commit": 3,
+        "result_commit": 0,
+        "result_mark": 0,
+        "review_kind": 5,
+        "usage_wait": 3
+      },
+      "unknown_roles": {
+        "claude-principal": {
+          "runs": 5,
+          "seconds": 500
+        }
+      },
+      "window_end": 1767364300,
+      "window_start": 1767362600
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+[
+  {
+    "has_more": false,
+    "issues": [
+      {
+        "assignee_id": "fixture-id-000005",
+        "assignee_type": "squad",
+        "created_at": "2026-11-16T13:19:56Z",
+        "creator_id": "fixture-id-000004",
+        "creator_type": "member",
+        "description": "fixture",
+        "due_date": null,
+        "duplicate_of": null,
+        "id": "fixture-id-000001",
+        "identifier": "DEMO-90",
+        "labels": [
+          {
+            "color": "#dc2626",
+            "created_at": "2026-11-12T03:19:15Z",
+            "description": "fixture",
+            "id": "fixture-id-000003",
+            "name": "重要",
+            "resource_type": "issue",
+            "updated_at": "2026-11-16T06:39:43Z",
+            "usage_count": 0,
+            "workspace_id": "fixture-id-000007"
+          }
+        ],
+        "last_activity_at": "2026-11-16T15:32:37.18875Z",
+        "metadata": {
+          "branch": "agent/squadkit-designer-member1/6249500ed40b",
+          "ci_watch_thread": "fixture-id-000002",
+          "pr_url": "https://github.com/example/repo/pull/94",
+          "repository": "drecom/multica-squad-kit"
+        },
+        "number": 90,
+        "parent_issue_id": null,
+        "position": -10,
+        "priority": "none",
+        "project_id": "fixture-id-000006",
+        "properties": {},
+        "revision": 41,
+        "stage": null,
+        "start_date": null,
+        "status": "in_progress",
+        "status_category": "in_progress",
+        "status_name": "",
+        "title": "fixture",
+        "updated_at": "2026-11-16T15:32:37Z",
+        "workspace_id": "fixture-id-000007"
+      }
+    ],
+    "limit": 100,
+    "offset": 0,
+    "total": 1
+  },
+  {
+    "has_more": false,
+    "issues": [],
+    "limit": 100,
+    "offset": 0,
+    "total": 0
+  }
+]

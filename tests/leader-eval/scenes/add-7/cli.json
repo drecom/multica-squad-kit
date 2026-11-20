@@ -1,0 +1,192 @@
+{
+  "commands": [
+    {
+      "match": "squad-preflight",
+      "stdout": "squad-preflight: 関所の gh と、すべての見張りが使えます。"
+    },
+    {
+      "match": "multica issue --help",
+      "stdout": "Usage: multica issue <command>\n\nCommands:\n  get, list, search, create, comment, status, assign, update, pull-requests, runs, run-messages, cancel-task, rerun, label, metadata\n\n`multica issue pull-requests <id>` lists the pull requests linked to an issue. There is no command that links a pull request."
+    },
+    {
+      "match": "multica issue label list issue-shop-1",
+      "stdout": "[]"
+    },
+    {
+      "match": "multica label list",
+      "stdout": "[\n  {\n    \"id\": \"label-important\",\n    \"name\": \"重要\"\n  },\n  {\n    \"id\": \"label-dev\",\n    \"name\": \"開発\"\n  },\n  {\n    \"id\": \"label-ops\",\n    \"name\": \"運用\"\n  },\n  {\n    \"id\": \"label-instruction\",\n    \"name\": \"指示の改善\"\n  },\n  {\n    \"id\": \"label-qa\",\n    \"name\": \"検証\"\n  }\n]"
+    },
+    {
+      "match": "multica issue children issue-shop-1",
+      "stdout": [
+        {
+          "id": "issue-admin-1",
+          "identifier": "ADMIN-1",
+          "status": "backlog",
+          "assignee_id": null,
+          "assignee_type": null,
+          "stage": 1,
+          "metadata": {
+            "repository": "example/admin"
+          }
+        },
+        {
+          "id": "issue-shop-2",
+          "identifier": "SHOP-2",
+          "status": "backlog",
+          "assignee_id": null,
+          "assignee_type": null,
+          "stage": 2,
+          "metadata": {
+            "repository": "example/shop"
+          }
+        }
+      ]
+    },
+    {
+      "match": "multica repo list",
+      "stdout": [
+        {
+          "url": "https://github.com/example/shop"
+        },
+        {
+          "url": "https://github.com/example/admin"
+        }
+      ]
+    },
+    {
+      "match": "squad-review-wait watch issue-shop-1",
+      "stdout": "返事の待ちの見張りを入れました。"
+    },
+    {
+      "match": "squad-review-wait proceed issue-shop-1",
+      "stdout": "返事の待ち: 次に進む"
+    },
+    {
+      "match": "multica agent get agent-designer",
+      "stdout": {
+        "id": "agent-designer",
+        "name": "shop-designer-member1",
+        "model": "gpt-6.1-sol"
+      }
+    },
+    {
+      "match": "multica issue get issue-shop-1",
+      "stdout": {
+        "id": "issue-shop-1",
+        "identifier": "SHOP-1",
+        "title": "商品数の表示上限を管理する",
+        "status": "in_progress",
+        "assignee_type": "squad",
+        "assignee_id": "squad-shop",
+        "project_id": "project-shop",
+        "labels": [],
+        "metadata": {},
+        "description": "## 背景\nカートの商品数の表示上限を運用で変更したい。\n\n## 要件\n買い物画面は管理 API から表示上限を取得し、カートの表示に使う。管理画面は表示上限を保存し、管理 API で提供する。\n\n## リポジトリ間の I/F\nGET /cart/badge-limit は JSON の limit に 1 以上の整数を返す。買い物画面は取得できないとき上限 99 を使う。\n\n## やらないこと\nカートの中身の編集は変えない。\n\n## 受け入れ条件\n管理画面で上限を 50 にすると買い物画面は 51 個を 50+ と表示する。管理 API が失敗すると 100 個を 99+ と表示する。"
+      }
+    },
+    {
+      "match": "multica issue comment list issue-shop-1",
+      "stdout": [
+        {
+          "id": "comment-2",
+          "author_type": "member",
+          "author_id": "member1",
+          "content": "要件と受け入れ条件を本文に書きました。複数の作業先に分けて進めてください。",
+          "created_at": "2026-01-10T09:00:00Z"
+        },
+        {
+          "id": "comment-request",
+          "author_type": "agent",
+          "author_id": "agent-orchestrator",
+          "content": "見直しの種類: 要件の見直し\n確認するコミット: タスクの本文 3a2a10619e4dfa8e3d95ecd152cb35938ad3d1d8e24e09577450e4c203a46d24\n返事を待つ役: [@Principal](mention://agent/agent-codex-principal)"
+        },
+        {
+          "id": "comment-result",
+          "author_type": "agent",
+          "author_id": "agent-codex-principal",
+          "content": "確認したコミット: なし（checkout できない: example/admin）\n❌ shop-codex-principal-member1: 要件を見直していない\n設計への指摘: なし"
+        }
+      ]
+    },
+    {
+      "match": "multica issue pull-requests issue-shop-1",
+      "stdout": {
+        "pull_requests": []
+      }
+    },
+    {
+      "match": "multica issue runs issue-shop-1",
+      "stdout": []
+    },
+    {
+      "match": "squad-usage-wait pick issue-shop-1 principal",
+      "stdout": "役: codex-principal\n振り分け: Codex。Claude 週 20%、Codex 週 30%"
+    },
+    {
+      "match": "squad-review-wait status issue-shop-1",
+      "stdout": "返事の待ち: 返事がそろいました"
+    },
+    {
+      "match": "squad-review-next decide issue-shop-1",
+      "stdout": "次の依頼を決められません: 要件の見直しの回はリーダーが扱う",
+      "exit": 3
+    },
+    {
+      "match": "multica issue search",
+      "stdout": []
+    },
+    {
+      "match": "multica issue create --help",
+      "stdout": "Usage: multica issue create --title TITLE [--description-file FILE] [--parent ID] [--project ID] [--status STATUS] [--stage N] [--output json]"
+    },
+    {
+      "match": "multica issue get issue-admin-1",
+      "stdout": {
+        "id": "issue-admin-1",
+        "identifier": "ADMIN-1",
+        "status": "backlog",
+        "assignee_id": null,
+        "assignee_type": null,
+        "stage": 1,
+        "metadata": {
+          "repository": "example/admin"
+        }
+      }
+    },
+    {
+      "match": "multica issue get issue-shop-2",
+      "stdout": {
+        "id": "issue-shop-2",
+        "identifier": "SHOP-2",
+        "status": "backlog",
+        "assignee_id": null,
+        "assignee_type": null,
+        "stage": 2,
+        "metadata": {
+          "repository": "example/shop"
+        }
+      }
+    }
+  ],
+  "expected_records": [
+    {
+      "command": "multica issue comment add issue-shop-1 --parent comment-2 --content-file tmp/reply.md",
+      "kind": "write",
+      "exit": 0,
+      "bodies": [
+        "[@member1](mention://member/member1) checkout できない: example/admin。作業先を確認してください。"
+      ]
+    },
+    {
+      "command": "multica issue status issue-shop-1 in_review",
+      "kind": "write",
+      "exit": 0
+    }
+  ],
+  "planner": false,
+  "repositories": [
+    "example/shop",
+    "example/admin"
+  ]
+}

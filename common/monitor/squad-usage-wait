@@ -1,0 +1,953 @@
+#!/usr/bin/env bash
+# multica-squad-kit-managed
+# 使用率が上限に近いときの、工程の役の選び方と待ち方を決める（macOS・Linux 用）。
+# モデルを下げたり工程を飛ばしたりせず、空いている系統の役へ回すか、空きが戻る時刻まで待つ。
+#
+#   squad-usage-wait pick <タスク> <工程> [小さい|大きい|Claude|Codex] [--round <回のコメント>]
+#     工程は planner・designer・implement・fix・principal のどれか。
+#     3 つ目の引数は、implement では見積もり（小さい|大きい）、principal では実装の系統（Claude|Codex）で、
+#     squad-dispatch-pick へそのまま渡す。--round は decide から呼んだときの回のコメントで、起こしの指示に書く。
+#
+#   squad-usage-wait answer <タスク> <工程> <待つ|進める> <答えのコメントの ID>
+#     リーダーの実行（MULTICA_AGENT_ID がスクワッドのリーダー）だけが流す。人間の答えを、答えのコメントへの返信の記録
+#     （`使用率の答え:` の行）と、探すためのマーク（タスクの metadata の usage_answer_squad）に残す。
+#     期限は、その工程の再開の時刻（pick と同じ決め方）。使用率を読めないときは、何も書かずに終了 1 にする。
+#     標準出力は 1 行で、記録の行か `使用率の答え: 記録なし。<理由>`。終了 0 は、記録した、または記録は要らない。
+#
+# pick の終了コード
+#   0: 役を選んだ。対象の起こしをすべて消してから、`役:` と `振り分け:` の行を出す。人間の「進める」の答え（記録）が効いているときは、上限に近いままでも
+#      上限に達していない系統の役を選び、`振り分け:` の行に `人間の答えで進める（期限 <期限>、答えのタスク <識別子>）` を足す
+#   3: 待つ。同じ工程と回の起こしを 1 件に保ち（使えるものがなければ置き、置いたあとにほかを消す）、`使用率の待ち:` の行を出す。
+#      再開の時刻がすでに過ぎている（使用率がまだ上限に近い）ときは、60 分後に再確認する。
+#      人間の「待つ」の答え（記録）が効いているときは、24 時間の判定をせず、起こしを再開の時刻と記録の期限の早い方に置く。
+#      起こしがすでにあって記録の期限より遅いときは、期限の時刻に置き直す（起こしが複数あれば、早い方を使う）。
+#      「進める」が効いていても、頼める系統がない（どの系統も上限に達している）ときは、「待つ」と同じに待ち、
+#      行の末尾を `人間の答えで進めるが、頼める系統がないので待つ（期限 <期限>、答えのタスク <識別子>）` にする
+#   4: 待ち始めから通算 24 時間を超える。起こしは置かず、対象の起こしをすべて消し、`使用率の待ち: <工程> は <再開の時刻> まで待つと通算 24 時間を超える。…` の行を出す
+#   1: 使い方や読み取りの誤り。起こしの一覧を読めないときと、起こしを消せないときも 1 にする（行は出さない）。待つか人間を呼ぶかのとき、答えの記録を読めなくても 1 にする（どちらにも倒さない）
+#
+# 答えの記録は、使用率が上限に近く、待つか人間を呼ぶかのときだけ読む。使うのは、スクワッドの記録のうち、取り消されていないもので
+# 答えた時刻が最も新しい 1 件。期限が記録のコメントの時刻から 8 日を超える行は、記録と読まない。
+# 取り消し（`使用率の答えの取り消し:` の行。リーダーが書き、同じタスクの記録のコメントの ID を持つもの）は、期限の前でも記録を使わなくする。
+# その期限を過ぎていれば、期限より前の待ちの行と人間を呼ぶ行は、待ち始めの引き継ぎに使わない（数え直す）。
+# 「進める」は、両系統の構成では squad-dispatch-pick が終了 2 のあとに記録を読み、効いていれば --allow-near を足して呼び直す。
+# 片系統の構成と、要件を決める役・設計の役は、その系統が上限に達していなければ選ぶ。
+#
+# 両系統の構成かは、スクワッドの名簿にその工程の Claude と Codex の役が両方あるかで決める。
+# 使用率の読み取りは 90 秒で打ち切るので、呼ぶ側のコマンドの時間切れは 120 秒以上にする。
+set -euo pipefail
+
+WAIT_MARK='使用率の待ちの起こしで起きました。'
+FAIL_SAFE_SECONDS=3600
+LIMIT_SECONDS=86400
+
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/squad-cli-lib"
+
+usage() {
+	echo '使い方: squad-usage-wait pick <タスク> <工程> [小さい|大きい|Claude|Codex] [--round <回のコメント>]' >&2
+	echo '工程: planner、designer、implement、fix、principal' >&2
+	echo '使い方: squad-usage-wait answer <タスク> <工程> <待つ|進める> <答えのコメントの ID>' >&2
+	exit 1
+}
+
+reader_pid=
+work_dir=
+pick_comments=
+# 答えの記録のうち使う 1 件（{task, identifier, comment, created, answer, answered, expiry, carried}）。なければ空。
+# load_answer_record が、1 回の pick の中で 1 回だけ読んで入れる。
+record_loaded=
+record_latest=
+
+stop_reader() {
+	kill -"$1" -- "-$reader_pid" 2>/dev/null || kill -"$1" -- "$reader_pid" 2>/dev/null || true
+}
+
+cleanup() {
+	if [[ -n $reader_pid ]]; then
+		stop_reader TERM
+		stop_reader KILL
+		wait "$reader_pid" 2>/dev/null || true
+	fi
+	[[ -z $work_dir ]] || rm -rf -- "$work_dir"
+}
+
+# 使用率を JSON で usage に、読めなかった理由を usage_reason に入れる。読めなくても 0 を返す。
+# squad-dispatch-pick と同じく、読み取りを独立したプロセスグループで始め、時間切れでその子まで止める。
+read_usage() {
+	local ticks status=0
+	usage='{}'
+	usage_reason=
+	python3 -c 'import os, sys; os.setpgrp(); os.execvp(sys.argv[1], sys.argv[1:])' \
+		bash "$script_dir/squad-usage-read" >"$work_dir/usage.json" 2>/dev/null &
+	reader_pid=$!
+	for ((ticks = 0; ticks < 900; ticks++)); do
+		kill -0 "$reader_pid" 2>/dev/null || break
+		sleep 0.1
+	done
+	if kill -0 "$reader_pid" 2>/dev/null; then
+		usage_reason='使用率の読み取りが 90 秒で終わらなかった'
+		stop_reader TERM
+		stop_reader KILL
+	fi
+	wait "$reader_pid" 2>/dev/null || status=$?
+	kill -KILL -- "-$reader_pid" 2>/dev/null || true
+	reader_pid=
+	if [[ -n $usage_reason ]]; then
+		return 0
+	elif ! jq -se 'length == 1 and (.[0] | type) == "object"' "$work_dir/usage.json" >/dev/null 2>&1; then
+		usage_reason='使用率の出力を JSON として読めなかった'
+	else
+		usage=$(cat "$work_dir/usage.json")
+	fi
+	return 0
+}
+
+# 系統ごとに {ok, near, reached, resume, text, summary, error} を出す。resume は上限に近い枠が戻る時刻（秒）。
+# reached は上限に達したか（squad-dispatch-pick と同じ。枠の使用率が 100% 以上、または Codex が利用不可）。
+# 上限に近いかは squad-dispatch-pick と同じ。Claude は週か 5 時間が 80% 以上、Codex は週が 80% 以上か利用不可。
+# 複数の枠が近ければ遅い方のリセット、Codex が利用不可で週が 80% 未満なら 60 分後と週のリセットの早い方にする。
+evaluate_usage() {
+	jq -cn --argjson usage "$usage" --argjson now "$now" --arg reason "$usage_reason" --argjson fallback "$FAIL_SAFE_SECONDS" '
+		def timestamp:
+			(try (capture("^(?<date>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})(?<zone>Z|[+-][0-9]{2}:[0-9]{2})$")
+				| (.date + "Z" | fromdateiso8601) as $utc
+				| if .zone == "Z" then $utc else
+					((.zone[1:3] | tonumber) * 3600 + (.zone[4:6] | tonumber) * 60) as $offset
+					| $utc - ($offset * (if .zone[0:1] == "-" then -1 else 1 end))
+				end) catch null) // null;
+		def percent: type == "number" and . >= 0;
+		def pct: (round | tostring) + "%";
+		def claude:
+			. as $c
+			| if ($c.error | type) == "string" then {ok: false, error: ("Claude: " + $c.error)}
+			elif ($c.week.used_percent | percent) and (($c.week.resets_at | timestamp) != null) and ($c.session.used_percent | percent) then
+				([if $c.week.used_percent >= 80 then {label: ("週 " + ($c.week.used_percent | pct)), reset: ($c.week.resets_at | timestamp)} else empty end,
+					if $c.session.used_percent >= 80 then {label: ("5 時間 " + ($c.session.used_percent | pct)), reset: (($c.session.resets_at | timestamp) // ($now + $fallback))} else empty end]) as $near
+				| {ok: true, near: ($near | length > 0),
+					reached: ($c.week.used_percent >= 100 or $c.session.used_percent >= 100),
+					resume: (if ($near | length) > 0 then ($near | map(.reset) | max) else null end),
+					text: ("Claude " + ($near | map(.label) | join("・"))),
+					summary: ("Claude 週 " + ($c.week.used_percent | pct) + "・5 時間 " + ($c.session.used_percent | pct))}
+			else {ok: false, error: "Claude: 使用率・リセット時刻を読めなかった"} end;
+		def codex:
+			. as $x
+			| if ($x.error | type) == "string" then {ok: false, error: ("Codex: " + $x.error)}
+			elif ($x.week.used_percent | percent) and (($x.week.resets_at | timestamp) != null) and ($x.allowed | type) == "boolean" then
+				($x.week.resets_at | timestamp) as $reset
+				| ($x.week.used_percent >= 80) as $week
+				| ($x.allowed == false) as $off
+				| {ok: true, near: ($week or $off),
+					reached: ($x.week.used_percent >= 100 or $off),
+					resume: (if $week then $reset elif $off then ([$now + $fallback, $reset] | min) else null end),
+					text: (if $week then "Codex 週 " + ($x.week.used_percent | pct) + (if $off then "・利用不可" else "" end)
+						else "Codex は利用不可（週 " + ($x.week.used_percent | pct) + "）" end),
+					summary: ("Codex 週 " + ($x.week.used_percent | pct))}
+			else {ok: false, error: "Codex: 使用率・リセット時刻・利用可否を読めなかった"} end;
+		($usage.read_at | timestamp) as $read
+		| (if $reason != "" then $reason
+			elif $read == null then "使用率を読んだ時刻を読めなかった"
+			elif $now - $read > 1800 then "使用率が 30 分より古い" else "" end) as $global
+		| if $global != "" then {claude: {ok: false, error: $global}, codex: {ok: false, error: $global}}
+		else {claude: ($usage.claude | claude), codex: ($usage.codex | codex)} end'
+}
+
+# 最初に待ち始めた時刻（秒）を、タスクのコメントから読んで出す。続きがなければ何も出さない。
+# 同じ工程の `使用率の待ち:` の行が続くあいだ引き継ぎ、次の 2 つのどちらかで数え直す。
+#   1. 工程の再開: その工程の `振り分け:` の行（末尾が `工程: <工程>`）のあるコメント
+#   2. 人間の明示の延長: その工程の 24 時間を超えたコメントより後の、リーダーが書いた
+#      `使用率の待ちの延長: <工程>。決めた人: <名前>` の行
+#   3. 答えの期限のあと: 使う記録の期限が過ぎていれば、その期限より前に書かれたコメントは数えない（cutoff 以後だけを読む）
+# 質問などほかのコメントでは続きを切らない。行は、エージェントが書いたものだけを数える。
+wait_start() {
+	local comments=$1 process=$2 leader=$3 cutoff=${4:-0}
+	jq -r --arg process "$process" --arg leader "$leader" --argjson cutoff "$cutoff" '
+		def ts: sub("\\.[0-9]+"; "") | sub("[+-]00:00$"; "Z") | fromdateiso8601;
+		def lines: (.content // "") | split("\n");
+		reduce (map(. + {ts: (.created_at | ts)}) | map(select(.ts >= $cutoff)) | sort_by([.ts, .id])[]) as $c ({start: null, exceeded: false};
+			if $c.author_type != "agent" then .
+			else
+				($c | lines) as $lines
+				| (if ($lines | any(startswith("振り分け: ") and endswith("。工程: " + $process))) then .start = null | .exceeded = false else . end)
+				| (if .exceeded and $c.author_id == $leader
+					and ($lines | any(startswith("使用率の待ちの延長: " + $process + "。決めた人: ")))
+					then .start = null | .exceeded = false else . end)
+				| (if ($lines | any(startswith("使用率の待ち: " + $process + " の待ちが通算 24 時間を超える")
+						or (startswith("使用率の待ち: " + $process + " は ") and contains("通算 24 時間を超える")))) then .exceeded = true else . end)
+				| ([$lines[] | select(startswith("使用率の待ち: " + $process + " を "))
+					| capture("待ち始め: (?<t>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z)。") | .t] | last) as $t
+				| (if $t != null then .start = $t else . end)
+			end)
+		| .start | if . == null then empty else fromdateiso8601 end' <<<"$comments"
+}
+
+rfc3339() {
+	jq -rn --argjson epoch "$1" '$epoch | todateiso8601'
+}
+
+# 使う記録のタスクの識別子（なければタスクの ID）。
+record_task_ref() {
+	local ref
+	ref=$(jq -r '.identifier | if . == "" then null else . end // empty' <<<"$record_latest")
+	[[ -n $ref ]] || ref=$(jq -r '.task' <<<"$record_latest")
+	printf '%s\n' "$ref"
+}
+
+# 効いている「進める」の記録があれば、振り分けの行に添える 1 文を出して 0 を返す。なければ何も出さずに 1 を返す。
+# 記録は load_answer_record で読んだあとに使う。
+proceed_note() {
+	local expiry
+	[[ -n $record_latest ]] || return 1
+	[[ $(jq -r '.answer' <<<"$record_latest") == 進める ]] || return 1
+	expiry=$(jq -r '.expiry' <<<"$record_latest")
+	((expiry > now)) || return 1
+	printf '人間の答えで進める（期限 %s、答えのタスク %s）\n' "$(rfc3339 "$expiry")" "$(record_task_ref)"
+}
+
+# 起こしの一覧（JSON の配列）から、使用率の待ちの対象の起こしを、一覧の順に {id, time, epoch} の配列で出す。
+# 対象は、enabled が真、agent_id がリーダー、instruction の 1 行目が待ちのマーク、`工程: <工程>` の行があり、
+# 回の行が合うもの（round が空なら `回:` で始まる行がなく、あれば `回: <round>` の行がある）。
+# time は `再開の時刻:` の行の値、epoch はそれを読んだ秒（読めなければ null）。使う起こしと消す起こしを、この照合で決める。
+wake_targets() {
+	local rules=$1 process=$2 leader=$3 round=$4
+	jq -c --arg mark "$WAIT_MARK" --arg process "$process" --arg leader "$leader" --arg round "$round" '
+		def lines: (.instruction // "") | split("\n");
+		[.[] | select(.enabled == true and .agent_id == $leader
+				and (lines | .[0]) == $mark
+				and (lines | any(. == "工程: " + $process))
+				and (if $round == "" then (lines | any(startswith("回:")) | not) else (lines | any(. == "回: " + $round)) end))
+			| (lines | map(select(startswith("再開の時刻: "))) | first // "") as $line
+			| ($line | sub("^再開の時刻: "; "")) as $time
+			| {id, time: $time, epoch: (if $line == "" then null else ($time | try fromdateiso8601 catch null) end)}]' <<<"$rules"
+}
+
+# ID の JSON 配列の起こしを消す。消せなかったときは、起こしの一覧を 1 回読み直し、その起こしがなくなっているか enabled が偽なら
+# 消えたものとして続ける（同時に流れた別の pick が先に消したときや、消す直前に発火したときのため）。そうでなければ 1 を返す。
+delete_wakeups() {
+	local issue=$1 ids=$2 id rules gone list
+	list=$(jq -r '.[]' <<<"$ids") || return 1
+	while IFS= read -r id; do
+		[[ -n $id ]] || continue
+		if multica issue wakeup delete "$issue" "$id" --output json >/dev/null; then continue; fi
+		rules=$(squad_cli_read issue-wakeups "$issue") || { echo "起こしを消せず、一覧も読み直せなかった: $id" >&2; return 1; }
+		gone=$(jq -r --arg id "$id" '[.[] | select(.id == $id and .enabled == true)] | length == 0' <<<"$rules") || return 1
+		[[ $gone == true ]] || { echo "起こしを消せなかった: $id" >&2; return 1; }
+	done <<<"$list"
+}
+
+# 終了 0 と 4 で行を出す前に、対象の起こしをすべて消す。起こしの一覧は 1 回だけ読む。読めないときと消せないときは 1 を返す。
+clear_wakeups() {
+	local issue=$1 process=$2 leader=$3 round=$4 rules targets ids
+	rules=$(squad_cli_read issue-wakeups "$issue") || return 1
+	targets=$(wake_targets "$rules" "$process" "$leader" "$round") || return 1
+	ids=$(jq -c '[.[].id]' <<<"$targets") || return 1
+	delete_wakeups "$issue" "$ids"
+}
+
+# 待つ。resume は再開の時刻（秒）、text は上限に近い枠と使用率の説明。
+# 待つか人間を呼ぶかのときだけ呼ばれるので、ここで答えの記録を読む。
+#   効いている記録がある: 24 時間の判定をせず、起こしを再開の時刻と記録の期限の早い方に置き、行の末尾に 1 文を足す。
+#     「待つ」ならそのとおり。「進める」でここへ来るのは、頼める系統がなく「待つ」と同じに待つとき。
+#   期限を過ぎた記録（答えは何でも）: 期限より前のコメントを待ち始めの引き継ぎに使わない。
+# 0 以外の終了コードを呼び出し元の終了コードにする。
+wait_or_exceed() {
+	local issue=$1 process=$2 leader=$3 round=$4 resume=$5 text=$6
+	local comments start rules targets candidate use_id instruction response resume_text start_text
+	local cutoff=0 answered_wait='' expiry others_ids
+	load_answer_record "$leader" || return 1
+	if [[ -n $record_latest ]]; then
+		expiry=$(jq -r '.expiry' <<<"$record_latest")
+		if ((expiry > now)); then
+			answered_wait=1
+		else
+			cutoff=$expiry
+		fi
+	fi
+	# decide から呼ばれたときは、pick が読んだコメントを使う（同じ呼び出しの中で読み直さない）。
+	comments=${pick_comments:-}
+	[[ -n $comments ]] || comments=$(squad_cli_read issue-comments "$issue") || return 1
+	start=$(wait_start "$comments" "$process" "$leader" "$cutoff") || return 1
+	if [[ -z $start ]] || ((start > now)); then start=$now; fi
+	start_text=$(rfc3339 "$start")
+	# 再開の時刻が現在以前（リセットを過ぎたのに、使用率がまだ上限に近い）なら、過去の時刻に起こしを置かず、将来の再確認の時刻にする。
+	if ((resume <= now)); then resume=$((now + FAIL_SAFE_SECONDS)); fi
+	if [[ -n $answered_wait ]] && ((expiry < resume)); then resume=$expiry; fi
+	resume_text=$(rfc3339 "$resume")
+	# 24 時間の判定は、待ち始めから再開の時刻まで。再確認の時刻に補正したあとなので、現在までの経過も含む。
+	# 記録が効いているときは、人間が待つか進めると決めたので、判定しない。
+	if [[ -z $answered_wait ]] && ((resume - start > LIMIT_SECONDS)); then
+		# 終了 4 は、対象の起こしをすべて消してから行を出す（残ると、起きたリーダーが人間をもう一度呼ぶため）。
+		clear_wakeups "$issue" "$process" "$leader" "$round" || return 1
+		printf '使用率の待ち: %s は %s まで待つと通算 24 時間を超える。待ち始め: %s。%s\n' "$process" "$resume_text" "$start_text" "$text"
+		return 4
+	fi
+	# 起こしの一覧は 1 回だけ読み、使う起こしと消す起こしを、この 1 回の一覧から決める（置いたあとに読み直さない）。
+	rules=$(squad_cli_read issue-wakeups "$issue") || return 1
+	targets=$(wake_targets "$rules" "$process" "$leader" "$round") || return 1
+	# 候補は、再開の時刻を読める対象の起こしのうち最も早いもの（同じ時刻なら一覧で先のもの）。読めない起こしは候補にしない。
+	candidate=$(jq -c '[.[] | select(.epoch != null)] | sort_by(.epoch) | first // empty' <<<"$targets") || return 1
+	# 記録が効いているとき、候補が置く時刻より遅ければ、新しく置く（遅い起こしでは期限に起きられないため）。
+	if [[ -n $candidate && -n $answered_wait ]] && (($(jq -r '.epoch' <<<"$candidate") > resume)); then candidate=; fi
+	if [[ -n $candidate ]]; then
+		# 使える起こしがすでにある。置き直さず、置いてある時刻を使う。
+		use_id=$(jq -r '.id' <<<"$candidate")
+		resume_text=$(jq -r '.time' <<<"$candidate")
+	else
+		instruction="$work_dir/instruction.txt"
+		{
+			printf '%s\n' "$WAIT_MARK"
+			printf '工程: %s\n' "$process"
+			[[ -z $round ]] || printf '回: %s\n' "$round"
+			printf '再開の時刻: %s\n' "$resume_text"
+			printf '止めた工程をもう一度頼んでください。工程の依頼の前に squad-usage-wait pick を流し、空きが戻っていればその工程から続け、まだ上限に近ければもう一度待ってください。\n'
+			if [[ -n $round ]]; then
+				printf 'decide から待った回なので、squad-review-next decide %s %s を流し直してください。\n' "$issue" "$round"
+			fi
+		} >"$instruction"
+		response=$(squad_cli_read issue-wakeup-create "$issue" "$instruction" --kind at --at "$resume_text" --agent-id "$leader") || return 1
+		jq -e '.id | type == "string"' <<<"$response" >/dev/null || { echo '起こしの ID を読めなかった' >&2; return 1; }
+		use_id=$(jq -r '.id' <<<"$response")
+	fi
+	# 置いたあとに、使わない対象の起こしを消す（先に消すと、置けなかったときに 0 件になる）。消せなければ、行を出さずに 1 にする。
+	others_ids=$(jq -c --arg keep "$use_id" '[.[] | select(.id != $keep) | .id]' <<<"$targets") || return 1
+	delete_wakeups "$issue" "$others_ids" || return 1
+	if [[ -n $answered_wait ]]; then
+		# 「進める」でここへ来るのは、頼める系統がないとき。「待つ」と読み分けられるよう、末尾の 1 文だけを替える。
+		if [[ $(jq -r '.answer' <<<"$record_latest") == 進める ]]; then
+			printf '使用率の待ち: %s を %s まで待つ。待ち始め: %s。%s。人間の答えで進めるが、頼める系統がないので待つ（期限 %s、答えのタスク %s）\n' \
+				"$process" "$resume_text" "$start_text" "$text" "$(rfc3339 "$expiry")" "$(record_task_ref)"
+		else
+			printf '使用率の待ち: %s を %s まで待つ。待ち始め: %s。%s。人間の答えで待つ（期限 %s、答えのタスク %s）\n' \
+				"$process" "$resume_text" "$start_text" "$text" "$(rfc3339 "$expiry")" "$(record_task_ref)"
+		fi
+	else
+		printf '使用率の待ち: %s を %s まで待つ。待ち始め: %s。%s\n' "$process" "$resume_text" "$start_text" "$text"
+	fi
+	return 3
+}
+
+# 役と振り分けの行を出す。行の末尾の工程のマークは、あとで工程の再開を読むために使う。
+print_choice() {
+	local process=$1 role=$2 line=$3
+	printf '役: %s\n振り分け: %s。工程: %s\n' "$role" "$line" "$process"
+}
+
+# 終了 0 で役を選ぶとき、行を出す前に、対象の起こしをすべて消す（再開した工程の起こしを残さないため）。消せなければ 1 を返す。
+emit_choice() {
+	local issue=$1 process=$2 leader=$3 round=$4 role=$5 line=$6
+	clear_wakeups "$issue" "$process" "$leader" "$round" || return 1
+	print_choice "$process" "$role" "$line"
+}
+
+pick() {
+	local issue=$1 process=$2 extra=${3:-} round=${4:-}
+	local suffix='' comments squad roster leader roles claude_role codex_role model lineage role dispatch_args=() out status=0
+	local evaluated side_ok side_near side_reached resume text other reason line squad_id note squad_id_for_roster
+	trap cleanup EXIT
+	trap 'exit 1' HUP INT TERM
+	command -v python3 >/dev/null 2>&1 || { echo 'python3 が見つからない' >&2; return 1; }
+	script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+	mkdir -p "$PWD/tmp"
+	work_dir=$(mktemp -d "$PWD/tmp/usage-wait.XXXXXX")
+	if [[ -n $round ]]; then
+		# decide から呼ばれたときは、回から決めたスクワッドの名簿を使う。decide と同じ名簿にするため。
+		comments=$(squad_cli_read issue-comments "$issue") || return 1
+		pick_comments=$comments
+		squad=$(squad_cli_squad_for_round "$comments" "$round") || return 1
+		squad_id_for_roster=$(jq -r .id <<<"$squad") || return 1
+		roster=$(squad_cli_read_roster "$issue" "$squad_id_for_roster") || return 1
+	else
+		roster=$(squad_cli_read_roster_for_caller "$issue") || return 1
+	fi
+	leader=$(jq -r '.leader' <<<"$roster")
+	squad_id=$(jq -r '.squad // empty' <<<"$roster")
+	roles=$(jq -c '.roles' <<<"$roster")
+	now=$(date '+%s')
+	case $process in
+	implement) suffix=implementer ;;
+	fix) suffix=fixer ;;
+	principal) suffix=principal ;;
+	esac
+	if [[ -n $suffix ]]; then
+		claude_role=claude-$suffix
+		codex_role=codex-$suffix
+		has_claude=$(jq --arg r "$claude_role" 'has($r)' <<<"$roles")
+		has_codex=$(jq --arg r "$codex_role" 'has($r)' <<<"$roles")
+		if [[ $has_claude == true && $has_codex == true ]]; then
+			case $process in
+			implement) dispatch_args=(implement ${extra:+"$extra"}) ;;
+			fix) dispatch_args=(fix) ;;
+			principal) dispatch_args=(principal ${extra:+"$extra"}) ;;
+			esac
+			out=$("$script_dir/squad-dispatch-pick" "${dispatch_args[@]}") || status=$?
+			case $status in
+			0)
+				role=$(sed -n 's/^役: //p' <<<"$out" | head -n 1)
+				line=$(sed -n 's/^振り分け: //p' <<<"$out" | head -n 1)
+				[[ -n $role && -n $line ]] || { echo 'squad-dispatch-pick の出力を読めなかった' >&2; return 1; }
+				emit_choice "$issue" "$process" "$leader" "$round" "$role" "$line" || return 1
+				return 0 ;;
+			2)
+				# 両方の系統が上限に近い。まず、人間の「進める」の答えが効いているかを読む。効いていれば、
+				# 上限に達していない系統があるかを、--allow-near を足して dispatch-pick に決めさせる。
+				load_answer_record "$leader" || return 1
+				if note=$(proceed_note); then
+					status=0
+					out=$("$script_dir/squad-dispatch-pick" "${dispatch_args[@]}" --allow-near) || status=$?
+					case $status in
+					0)
+						role=$(sed -n 's/^役: //p' <<<"$out" | head -n 1)
+						line=$(sed -n 's/^振り分け: //p' <<<"$out" | head -n 1)
+						[[ -n $role && -n $line ]] || { echo 'squad-dispatch-pick の出力を読めなかった' >&2; return 1; }
+						emit_choice "$issue" "$process" "$leader" "$round" "$role" "${line}。${note}" || return 1
+						return 0 ;;
+					2) ;; # どの系統も上限に達している。「待つ」と同じに待つ。
+					*)
+						echo "squad-dispatch-pick が失敗した（終了 ${status}）" >&2
+						return 1 ;;
+					esac
+				fi
+				# リセット時刻は dispatch-pick が出さないので、使用率を読み直す。
+				read_usage
+				evaluated=$(evaluate_usage) || return 1
+				if [[ $(jq -r '.claude.ok and .codex.ok' <<<"$evaluated") == true \
+					&& $(jq -r '.claude.near and .codex.near' <<<"$evaluated") == true ]]; then
+					resume=$(jq -r '[.claude.resume, .codex.resume] | min' <<<"$evaluated")
+					text=$(jq -r '"上限に近い枠: " + .claude.text + "、" + .codex.text' <<<"$evaluated")
+				else
+					resume=$((now + FAIL_SAFE_SECONDS))
+					text='両系統が上限に近いと読んだが、読み直した使用率が揃わなかったため、60 分後に読み直す'
+				fi
+				status=0
+				wait_or_exceed "$issue" "$process" "$leader" "$round" "$resume" "$text" || status=$?
+				return "$status" ;;
+			*)
+				echo "squad-dispatch-pick が失敗した（終了 ${status}）" >&2
+				return 1 ;;
+			esac
+		fi
+		if [[ $has_claude == true ]]; then
+			role=$claude_role
+			lineage=Claude
+		elif [[ $has_codex == true ]]; then
+			role=$codex_role
+			lineage=Codex
+		else
+			echo "名簿に工程の役がない: $process" >&2
+			return 1
+		fi
+	else
+		role=$process
+		if ! model=$(jq -er --arg r "$role" '.[$r].model' <<<"$roles"); then
+			echo "名簿に工程の役がない: $process" >&2
+			return 1
+		fi
+		if [[ $model == claude-* ]]; then lineage=Claude; else lineage=Codex; fi
+	fi
+	# 片系統の構成。その系統の使用率だけを見る。
+	read_usage
+	evaluated=$(evaluate_usage) || return 1
+	key=$(printf '%s' "$lineage" | tr 'A-Z' 'a-z')
+	side_ok=$(jq -r --arg k "$key" '.[$k].ok' <<<"$evaluated")
+	side_near=$(jq -r --arg k "$key" '.[$k].near // false' <<<"$evaluated")
+	if [[ $side_ok != true ]]; then
+		reason=$(jq -r --arg k "$key" '.[$k].error' <<<"$evaluated")
+		emit_choice "$issue" "$process" "$leader" "$round" "$role" "${lineage}（使用率を読めないため、片系統の構成のその系統に固定した。${reason}）" || return 1
+		return 0
+	fi
+	if [[ $side_near == true ]]; then
+		resume=$(jq -r --arg k "$key" '.[$k].resume' <<<"$evaluated")
+		text=$(jq -r --arg k "$key" '"上限に近い枠: " + .[$k].text' <<<"$evaluated")
+		# 人間の「進める」の答えが効いていて、その系統が上限に達していなければ、上限に近いまま選ぶ。
+		load_answer_record "$leader" || return 1
+		side_reached=$(jq -r --arg k "$key" '.[$k].reached' <<<"$evaluated")
+		if [[ $side_reached != true ]] && note=$(proceed_note); then
+			emit_choice "$issue" "$process" "$leader" "$round" "$role" "${lineage}（片系統の構成）。$(jq -r --arg k "$key" '.[$k].summary' <<<"$evaluated")。${note}" || return 1
+			return 0
+		fi
+		status=0
+		wait_or_exceed "$issue" "$process" "$leader" "$round" "$resume" "$text" || status=$?
+		return "$status"
+	fi
+	emit_choice "$issue" "$process" "$leader" "$round" "$role" "${lineage}（片系統の構成）。$(jq -r --arg k "$key" '.[$k].summary' <<<"$evaluated")"
+}
+
+# 時刻（RFC3339。小数秒と UTC 以外の時差も読む）を秒にする jq の定義。読めなければ null。
+ANSWER_JQ_TS='
+	def ts:
+		if type != "string" then null else
+			(sub("\\.[0-9]+"; "")
+			| try (capture("^(?<date>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})(?<zone>Z|[+-][0-9]{2}:[0-9]{2})$")
+				| (.date + "Z" | fromdateiso8601) as $utc
+				| if .zone == "Z" then $utc else
+					((.zone[1:3] | tonumber) * 3600 + (.zone[4:6] | tonumber) * 60) as $offset
+					| $utc - ($offset * (if .zone[0:1] == "-" then -1 else 1 end))
+				end) catch null) // null
+		end;
+'
+
+# タスクの一覧（約束 $1。$2 以降は offset の前に渡す引数）を、作成の順に、ページを 1 件ずつ重ねて最後まで読み、
+# {id, identifier, last_activity_at} の配列で出す。マークのある一覧と絞り込みのない一覧が、この 1 つの関数を使う。
+#   - 2 ページ目からは、先頭の ID が前のページの末尾の ID と同じことを確認し、先頭の 1 件を捨てる
+#   - has_more が真なら、offset を「返った件数 - 1」だけ進める。返った件数が 2 件未満ならそろわないものとして扱う
+#   - 読み終えたら、ID に重複がないことと、読んだ件数が最後の応答の total と同じことを確認する
+# 確認に合わなければ、読んだ分を捨てて最初から読み直す（読み直しは 2 回まで。3 回そろわなければ、理由を出して 1 を返す）。
+# コマンドの失敗と欄の形の誤りは、読み直さずに 1 を返す。ページと配列は、引数にも環境変数にも載せず、ファイルと標準入力で渡す。
+# work_dir は呼び出し元のものを使う。
+answer_list_tasks() {
+	local name=$1 offset attempt page count first last prev_last total reason items="$work_dir/list-items.jsonl"
+	shift
+	for ((attempt = 0; attempt < 3; attempt++)); do
+		: >"$items"
+		offset=0
+		prev_last=
+		reason=
+		while :; do
+			page=$(squad_cli_read "$name" "$@" "$offset") || return 1
+			count=$(jq -er '.issues | length' <<<"$page") || return 1
+			total=$(jq -er '.total' <<<"$page") || return 1
+			first=$(jq -r '.issues[0].id // empty' <<<"$page") || return 1
+			last=$(jq -r '.issues[-1].id // empty' <<<"$page") || return 1
+			if [[ -n $prev_last ]]; then
+				if [[ $first != "$prev_last" ]]; then
+					reason="ページの境目の ID が合わない（offset ${offset}）"
+					break
+				fi
+				jq -c '.issues[1:][] | {id, identifier, last_activity_at: (.last_activity_at // null)}' <<<"$page" >>"$items" || return 1
+			else
+				jq -c '.issues[] | {id, identifier, last_activity_at: (.last_activity_at // null)}' <<<"$page" >>"$items" || return 1
+			fi
+			[[ $(jq -r '.has_more' <<<"$page") == true ]] || break
+			if ((count < 2)); then
+				reason="続きがあるのに、返った件数が 2 件未満だった（offset ${offset}）"
+				break
+			fi
+			prev_last=$last
+			offset=$((offset + count - 1))
+		done
+		if [[ -z $reason ]]; then
+			if [[ $(jq -s 'length == (map(.id) | unique | length)' "$items") != true ]]; then
+				reason='読んだタスクの ID に重複がある'
+			elif [[ $(jq -s 'length' "$items") != "$total" ]]; then
+				reason="読んだ件数が total（${total}）と合わない"
+			fi
+		fi
+		if [[ -z $reason ]]; then
+			jq -cs '.' "$items"
+			return 0
+		fi
+	done
+	echo "タスクの一覧を 3 回読んでも、そろわなかった: ${reason}" >&2
+	return 1
+}
+
+# 使用率の答えのマークのあるタスクを、{id, identifier} の配列で出す。マークは探すためだけに使い、信頼の根拠にしない。
+answer_marked_tasks() {
+	local squad=$1 all
+	all=$(answer_list_tasks issue-list "usage_answer_squad=$squad") || return 1
+	jq -c '[.[] | {id, identifier}] | unique_by(.id)' <<<"$all"
+}
+
+# 絞り込みのない一覧を、続きがなくなるまで読み、今から 8 日前より後に動きのあったタスクを {id, identifier} の配列で出す。
+# last_activity_at が空や読めない値のタスクも、範囲の内として読む。担当、プロジェクト、metadata では絞らない（ほかの役が値を変えられるため）。
+# now は呼び出し元のものを使う。第 1 引数に時刻（秒）を渡すと、8 日前の代わりにその時刻より後に動いたタスクだけを読む。
+answer_active_tasks() {
+	local since=${1:-$((now - 691200))} all
+	all=$(answer_list_tasks issue-list-all) || return 1
+	jq -c --argjson since "$since" "$ANSWER_JQ_TS"'
+		[.[] | select((.last_activity_at | ts) as $t | $t == null or $t > $since) | {id, identifier}] | unique_by(.id)' <<<"$all"
+}
+# 記録の配列のうち、取り消されておらず、期限が今より後のものを、古い記録と同じタスクの同じ返信先への返信で取り消す。
+# 1 件でも書けなければ、残りも書かずに 1 を返す（流し直せば、残りから書ける）。now と work_dir は呼び出し元のものを使う。
+# 第 3 引数が tidy のときは、新しい記録の前ではなく、終える前の整えでの取り消しなので、失敗の文を変える。
+answer_cancel_records() {
+	local records=$1 new_task=$2 mode=${3:-} target task parent comment line targets
+	targets=$(jq -c --argjson now "$now" '.[] | select((.cancelled | not) and .expiry > $now)' <<<"$records") || return 1
+	while IFS= read -r target; do
+		[[ -n $target ]] || continue
+		task=$(jq -r '.task' <<<"$target")
+		parent=$(jq -r '.parent' <<<"$target")
+		comment=$(jq -r '.comment' <<<"$target")
+		printf '使用率の答えの取り消し: %s。新しい答えのタスク: %s\n' "$comment" "$new_task" >"$work_dir/cancel.txt"
+		squad_cli_read issue-comment-add "$task" "$parent" "$work_dir/cancel.txt" >/dev/null || {
+			if [[ $mode == tidy ]]; then
+				echo "重なった記録の取り消しを書けなかった: ${comment}（タスク ${task}）。同じ答えをもう一度返事すれば、続きから書く" >&2
+			else
+				echo "古い記録の取り消しを書けないため、新しい記録を書いていない: ${comment}（タスク ${task}）。同じ答えをもう一度返事すれば、続きから書く" >&2
+			fi
+			return 1
+		}
+	done <<<"$targets"
+}
+
+# {id, identifier} の配列のタスクのコメントから、使用率の答えの記録を読んで配列で出す。取り消された記録には cancelled を真にする。
+# 記録と読むのは、作者がエージェントでリーダーの ID、1 行目が形に端から端まで合い、行のスクワッドの ID がそのスクワッドのもので、
+# 行の期限が記録のコメントの時刻から 8 日以内のものだけ。
+# 取り消しと読むのは、作者がエージェントでリーダーの ID、1 行目が取り消しの形に端から端まで合い、行の ID が同じタスクの記録のコメントの ID のものだけ。
+# 取り消す記録は、返信の親でなく行の ID で決める。
+answer_records() {
+	local tasks=$1 squad=$2 leader=$3 records='[]' id identifier comments found rows
+	rows=$(jq -r '.[] | [.id, .identifier] | @tsv' <<<"$tasks") || return 1
+	while IFS=$'\t' read -r id identifier; do
+		[[ -n $id ]] || continue
+		comments=$(squad_cli_read issue-comments "$id") || return 1
+		found=$(jq -c --arg task "$id" --arg identifier "$identifier" --arg leader "$leader" --arg squad "$squad" "$ANSWER_JQ_TS"'
+			[.[] | select(.author_type == "agent" and .author_id == $leader)] as $mine
+			| [$mine[] | . as $c
+				| ((.content // "") | split("\n") | .[0]) as $line
+				| ($line | capture("^使用率の答え: (?<answer>待つ|進める)。答えた時刻: (?<answered>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z)。期限: (?<expiry>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z)。スクワッド: (?<squad>[^。\\s]+)。(?<rest>.+)$")) as $m
+				| select($m.squad == $squad)
+				| {task: $task, identifier: $identifier, comment: $c.id, parent: ($c.parent_id // $c.id), created: ($c.created_at | ts),
+					answer: $m.answer, answered: ($m.answered | ts), expiry: ($m.expiry | ts),
+					carried: ($m.rest | endswith("前の答えの期限を引き継いだ"))}
+				| select(.created != null and .answered != null and .expiry != null)
+				| select(.expiry - .created <= 691200)] as $records
+			| [$mine[]
+				| ((.content // "") | split("\n") | .[0])
+				| capture("^使用率の答えの取り消し: (?<id>[^。\\s]+)。新しい答えのタスク: (?<task>[^。\\s]+)$")
+				| .id] as $cancelled
+			| [$records[] | . + {cancelled: (.comment as $c | $cancelled | index($c) != null)}]' <<<"$comments") || return 1
+		records=$(printf '%s\n%s\n' "$records" "$found" | jq -cs '.[0] + .[1]') || return 1
+	done <<<"$rows"
+	printf '%s\n' "$records"
+}
+
+# 記録の配列から、使う 1 件（取り消されていないもののうち、答えた時刻が最も新しいもの。同じなら記録のコメントが新しいもの）を出す。
+# なければ何も出さない。取り消された記録は、期限の前でも、ない記録と同じに扱う。
+answer_latest() {
+	jq -c '[.[] | select(.cancelled | not)] | sort_by([.answered, .created, .comment]) | last // empty' <<<"$1"
+}
+
+# 使う記録を record_latest に入れる。pick の中で 1 回だけ読む。squad_id と now は呼び出し元のものを使う。
+# 一覧やコメントを読めなければ、理由を標準エラーに出して 1 を返す（人間を呼ぶ側にも進める側にも倒さない）。
+load_answer_record() {
+	local leader=$1 marked records
+	[[ -z $record_loaded ]] || return 0
+	if [[ -z ${squad_id:-} ]]; then
+		echo '名簿にスクワッドの ID がないため、使用率の答えの記録を読めない' >&2
+		return 1
+	fi
+	if ! marked=$(answer_marked_tasks "$squad_id"); then
+		echo '使用率の答えのマークのあるタスクを読めないため、待つか人間を呼ぶかを決められない' >&2
+		return 1
+	fi
+	if ! records=$(answer_records "$marked" "$squad_id" "$leader"); then
+		echo '使用率の答えの記録を読めないため、待つか人間を呼ぶかを決められない' >&2
+		return 1
+	fi
+	record_latest=$(answer_latest "$records") || return 1
+	record_loaded=1
+}
+
+# その工程の pick が今どうなるかを、state（free・near・unreadable）、resume（秒）、text、reason に入れる。
+#   free: 待たずに役を選べる。near: 待つか人間を呼ぶ。resume は pick と同じ再開の時刻。
+#   unreadable: 使用率を読めず、pick が代わりの決まりで選ぶ状態。
+# 両系統の構成かは pick と同じく名簿で決める。両系統の構成では、どちらかの系統を読めなければ読めない状態にする
+# （pick の代わりの決まりは、片方の系統を読めないときも使われるため）。
+answer_state() {
+	local roster=$1 process=$2 suffix='' roles evaluated has_claude has_codex role model lineage key
+	roles=$(jq -c '.roles' <<<"$roster")
+	case $process in
+	implement) suffix=implementer ;;
+	fix) suffix=fixer ;;
+	principal) suffix=principal ;;
+	esac
+	state= resume= text= reason=
+	read_usage
+	evaluated=$(evaluate_usage) || return 1
+	if [[ -n $suffix ]]; then
+		has_claude=$(jq --arg r "claude-$suffix" 'has($r)' <<<"$roles")
+		has_codex=$(jq --arg r "codex-$suffix" 'has($r)' <<<"$roles")
+		if [[ $has_claude == true && $has_codex == true ]]; then
+			if [[ $(jq -r '.claude.ok and .codex.ok' <<<"$evaluated") != true ]]; then
+				state=unreadable
+				reason=$(jq -r '[.claude.error, .codex.error] | map(select(. != null)) | join("、")' <<<"$evaluated")
+			elif [[ $(jq -r '.claude.near and .codex.near' <<<"$evaluated") == true ]]; then
+				state=near
+				resume=$(jq -r '[.claude.resume, .codex.resume] | min' <<<"$evaluated")
+				text=$(jq -r '"上限に近い枠: " + .claude.text + "、" + .codex.text' <<<"$evaluated")
+			else
+				state=free
+				text=$(jq -r '.claude.summary + "、" + .codex.summary' <<<"$evaluated")
+			fi
+			return 0
+		fi
+		if [[ $has_claude == true ]]; then
+			lineage=Claude
+		elif [[ $has_codex == true ]]; then
+			lineage=Codex
+		else
+			echo "名簿に工程の役がない: $process" >&2
+			return 1
+		fi
+	else
+		if ! model=$(jq -er --arg r "$process" '.[$r].model' <<<"$roles"); then
+			echo "名簿に工程の役がない: $process" >&2
+			return 1
+		fi
+		if [[ $model == claude-* ]]; then lineage=Claude; else lineage=Codex; fi
+	fi
+	key=$(printf '%s' "$lineage" | tr 'A-Z' 'a-z')
+	if [[ $(jq -r --arg k "$key" '.[$k].ok' <<<"$evaluated") != true ]]; then
+		state=unreadable
+		reason=$(jq -r --arg k "$key" '.[$k].error' <<<"$evaluated")
+	elif [[ $(jq -r --arg k "$key" '.[$k].near // false' <<<"$evaluated") == true ]]; then
+		state=near
+		resume=$(jq -r --arg k "$key" '.[$k].resume' <<<"$evaluated")
+		text=$(jq -r --arg k "$key" '"上限に近い枠: " + .[$k].text' <<<"$evaluated")
+	else
+		state=free
+		text=$(jq -r --arg k "$key" '.[$k].summary' <<<"$evaluated")
+	fi
+}
+
+# answer が終える前に、マークと記録を整える。記録の配列 records は、読んだあとに自分が書いたものも含めた最新の状態にして渡す。
+# 1. 取り消されておらず期限が今より後の記録が 2 件以上あれば、答えた時刻が最も新しいもの以外を取り消す（マークによらない）。書けなければ 1 を返す。
+# 2. 使う記録のタスクにマークがなければ、置き直し、一覧に出ることを確認する。使う記録の期限を過ぎていても置き直す。置けなければ 1 を返す。
+#    使う記録は、渡された記録と、マークのあるタスクの記録（動きが 8 日より前のタスクも読む）を合わせて決める。
+# 3. マークのあるタスクのうち、記録があって、使う記録のタスクでなく、取り消されておらず期限が今より後の記録がないタスクのマークを外す。
+#    外したあとにそのタスクを読み直し、そういう記録があればマークを置き直す。外せないことは警告にとどめる。
+#    記録のないタスクのマークは外さない（同時に流れた別の answer が、マークを置いて記録を書く前のことがあるため）。
+#    使う記録のタスクのマークは、期限を過ぎても外さない（pick が期限を、マークから見つけたその記録から読むため）。
+# now は呼び出し元のものを使う。
+answer_tidy() {
+	local squad=$1 leader=$2 records=$3 live keep others used utask marked id one found stale extra keep_identifier ids stale_ids
+	live=$(jq -c --argjson now "$now" '[.[] | select((.cancelled | not) and .expiry > $now)]' <<<"$records") || return 1
+	if (($(jq 'length' <<<"$live") >= 2)); then
+		keep=$(answer_latest "$live") || return 1
+		others=$(jq -c --argjson k "$keep" '[.[] | select(.comment != $k.comment)]' <<<"$live") || return 1
+		keep_identifier=$(jq -r '.identifier' <<<"$keep") || return 1
+		answer_cancel_records "$others" "$keep_identifier" tidy || return 1
+		records=$(printf '%s\n%s\n' "$records" "$others" | jq -cs '.[1] as $o | [.[0][] | . as $r | .cancelled = (.cancelled or any($o[]; .comment == $r.comment))]') || return 1
+	fi
+	marked=$(answer_marked_tasks "$squad") || { echo '使用率の答えのマークのあるタスクの一覧を読めないため、マークを整えられなかった' >&2; return 1; }
+	# マークのあるタスクのうち、渡された記録にないものの記録を読んで足す。読めないタスクは飛ばす（マークを外さない）。
+	ids=$(printf '%s\n%s\n' "$records" "$marked" | jq -rs '.[0] as $r | .[1][] | select(.id as $i | $r | any(.[]; .task == $i) | not) | .id') || return 1
+	while IFS= read -r id; do
+		[[ -n $id ]] || continue
+		one=$(jq -c --arg id "$id" '[.[] | select(.id == $id)]' <<<"$marked") || continue
+		extra=$(answer_records "$one" "$squad" "$leader") || continue
+		records=$(printf '%s\n%s\n' "$records" "$extra" | jq -cs '.[0] + .[1]') || return 1
+	done <<<"$ids"
+	used=$(answer_latest "$records") || return 1
+	utask=
+	if [[ -n $used ]]; then
+		utask=$(jq -r '.task' <<<"$used")
+		if [[ $(jq -r --arg t "$utask" 'any(.[]; .id == $t)' <<<"$marked") != true ]]; then
+			if ! multica issue metadata set "$utask" --key usage_answer_squad --value "$squad" --type string --output json >/dev/null; then
+				echo "使う記録のタスクにマーク（usage_answer_squad）を置き直せなかった: $utask" >&2
+				return 1
+			fi
+			marked=$(answer_marked_tasks "$squad") || { echo '使用率の答えのマークのあるタスクの一覧を読めないため、マークを確認できなかった' >&2; return 1; }
+			if [[ $(jq -r --arg t "$utask" 'any(.[]; .id == $t)' <<<"$marked") != true ]]; then
+				echo "マークを置き直したが、マークのあるタスクの一覧に出ない: $utask" >&2
+				return 1
+			fi
+		fi
+	fi
+	stale_ids=$(jq -r '.[].id' <<<"$marked") || return 1
+	while IFS= read -r id; do
+		[[ -n $id ]] || continue
+		[[ $id != "$utask" ]] || continue
+		found=$(jq -c --arg id "$id" '[.[] | select(.task == $id)]' <<<"$records") || continue
+		stale=$(jq -r --argjson now "$now" 'length > 0 and all(.[]; .cancelled or .expiry <= $now)' <<<"$found") || continue
+		[[ $stale == true ]] || continue
+		if ! multica issue metadata delete "$id" --key usage_answer_squad --output json >/dev/null 2>&1; then
+			echo "古いマークを外せなかった: $id" >&2
+			continue
+		fi
+		# 外したあとの読み直しが失敗したら、記録があるものとしてマークを置き直す。置き直せなければ失敗にする。
+		if one=$(jq -c --arg id "$id" '[.[] | select(.id == $id)]' <<<"$marked") && found=$(answer_records "$one" "$squad" "$leader"); then
+			if [[ $(jq -r --argjson now "$now" 'any(.[]; (.cancelled | not) and .expiry > $now)' <<<"$found") == true ]]; then
+				if ! multica issue metadata set "$id" --key usage_answer_squad --value "$squad" --type string --output json >/dev/null 2>&1; then
+					echo "マークを外したあとに有効な記録が見つかったが、置き直せなかった: $id" >&2
+					return 1
+				fi
+			fi
+		elif multica issue metadata set "$id" --key usage_answer_squad --value "$squad" --type string --output json >/dev/null 2>&1; then
+			echo "マークを外したあとにタスクを読み直せなかったため、記録があるものとしてマークを置き直した: $id" >&2
+		else
+			echo "マークを外したあとにタスクを読み直せず、マークも置き直せなかった: $id" >&2
+			return 1
+		fi
+	done <<<"$stale_ids"
+	return 0
+}
+
+answer_none() {
+	printf '使用率の答え: 記録なし。%s\n' "$1"
+}
+
+# リーダーの実行が、人間の答え（待つ・進める）を記録に残す。記録の行と、探すためのマーク（タスクの metadata）を書く。
+answer() {
+	local issue=$1 process=$2 verdict=$3 answer_id=$4
+	local caller=${MULTICA_AGENT_ID:-} squad squad_id roster comments answer_comment answered active records latest task_now read_start recent fresh to_cancel new_record
+	local effective_answer='' effective_expiry='' expiry carried='' line response
+	trap cleanup EXIT
+	trap 'exit 1' HUP INT TERM
+	command -v python3 >/dev/null 2>&1 || { echo 'python3 が見つからない' >&2; return 1; }
+	script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+	mkdir -p "$PWD/tmp"
+	work_dir=$(mktemp -d "$PWD/tmp/usage-wait.XXXXXX")
+	# 1. 呼び出した実行が、スクワッドのリーダーであること。
+	if [[ -z $caller ]]; then
+		echo 'MULTICA_AGENT_ID がなく、リーダーの実行かを確認できないため、答えを記録していない' >&2
+		return 1
+	fi
+	squad=$(squad_cli_squad_for_leader "$caller") || { echo '呼び出した実行がスクワッドのリーダーではないため、答えを記録していない' >&2; return 1; }
+	squad_id=$(jq -r .id <<<"$squad")
+	# 2. 答えのコメントが、そのタスクのコメントで、作者がメンバーであること。
+	comments=$(squad_cli_read issue-comments "$issue") || return 1
+	answer_comment=$(jq -c --arg id "$answer_id" '[.[] | select(.id == $id)] | first // empty' <<<"$comments") || return 1
+	if [[ -z $answer_comment ]]; then
+		echo "答えのコメントがこのタスクにないため、答えを記録していない: $answer_id" >&2
+		return 1
+	fi
+	if [[ $(jq -r '.author_type' <<<"$answer_comment") != member ]]; then
+		echo '答えのコメントの作者がメンバーではないため、答えを記録していない' >&2
+		return 1
+	fi
+	answered=$(jq -r "$ANSWER_JQ_TS"' .created_at | ts // empty' <<<"$answer_comment") || return 1
+	[[ -n $answered ]] || { echo '答えのコメントの時刻を読めないため、答えを記録していない' >&2; return 1; }
+	now=$(date '+%s')
+	roster=$(squad_cli_read_roster "$issue" "$squad_id") || return 1
+	# 3. スクワッドの記録と取り消しを、マークに頼らずに読む。答えのコメントの時刻以後の答えた時刻を持つ記録があれば、書かない。
+	# 読むのは、絞り込みのない一覧の、今から 8 日前より後に動きのあったタスク。取り消す相手を、マークを消して隠せないようにするため。
+	read_start=$(date '+%s')
+	active=$(answer_active_tasks) || return 1
+	records=$(answer_records "$active" "$squad_id" "$caller") || return 1
+	if [[ $(jq -r --argjson a "$answered" 'any(.[]; .answered >= $a)' <<<"$records") == true ]]; then
+		answer_tidy "$squad_id" "$caller" "$records" || return 1
+		answer_none "答えのコメントの時刻以後の答えた時刻を持つ記録がある"
+		return 0
+	fi
+	latest=$(answer_latest "$records") || return 1
+	if [[ -n $latest ]] && (($(jq -r '.expiry' <<<"$latest") > now)); then
+		effective_answer=$(jq -r '.answer' <<<"$latest")
+		effective_expiry=$(jq -r '.expiry' <<<"$latest")
+	fi
+	# 4. 期限を決める。記録を書かずに終えるときも、終える前にマークと記録を整える（7）。使用率を読めなければ、何も書かずに終了 1 にする。
+	answer_state "$roster" "$process" || return 1
+	case $state in
+	unreadable)
+		echo "使用率を読めないため、答えを記録していない（${reason}）。同じ答えをもう一度返事すれば、記録し直す" >&2
+		return 1 ;;
+	near)
+		if [[ $effective_answer == "$verdict" ]]; then
+			answer_tidy "$squad_id" "$caller" "$records" || return 1
+			answer_none "同じ答えが期限 $(rfc3339 "$effective_expiry") まで効いている"
+			return 0
+		fi
+		# 再開の時刻が現在以前（リセットを過ぎたのに、使用率がまだ上限に近い）なら、pick と同じく将来の再確認の時刻にする。
+		if ((resume <= now)); then resume=$((now + FAIL_SAFE_SECONDS)); fi
+		expiry=$resume ;;
+	free)
+		# 空きが戻っている。効いている記録があり答えが違えば、その期限を引き継ぐ。なければ記録しない。
+		if [[ -z $effective_answer ]]; then
+			answer_tidy "$squad_id" "$caller" "$records" || return 1
+			answer_none '空きが戻っているので、記録は要らない'
+			return 0
+		fi
+		if [[ $effective_answer == "$verdict" ]]; then
+			answer_tidy "$squad_id" "$caller" "$records" || return 1
+			answer_none "同じ答えが期限 $(rfc3339 "$effective_expiry") まで効いている"
+			return 0
+		fi
+		expiry=$effective_expiry
+		carried=1 ;;
+	*)
+		echo "使用率の状態を決められなかった: $state" >&2
+		return 1 ;;
+	esac
+	line=$(printf '使用率の答え: %s。答えた時刻: %s。期限: %s。スクワッド: %s。%s' "$verdict" "$(rfc3339 "$answered")" "$(rfc3339 "$expiry")" "$squad_id" "$text")
+	[[ -z $carried ]] || line="${line}。前の答えの期限を引き継いだ"
+	# 5. 先に、取り消されておらず期限が今より後の記録を、すべて取り消す。1 件でも書けなければ、新しい記録を書かずに終了 1 にする。
+	# 取り消しは、古い記録と同じタスクの同じ返信先に書く。流し直せば、残りの取り消しと新しい記録を書ける。
+	task_now=$(squad_cli_read issue-get "$issue" | jq -r '.identifier') || return 1
+	[[ -n $task_now ]] || { echo 'このタスクの識別子を読めないため、答えを記録していない' >&2; return 1; }
+	to_cancel=$(jq -c --argjson now "$now" '[.[] | select((.cancelled | not) and .expiry > $now)]' <<<"$records") || return 1
+	answer_cancel_records "$records" "$task_now" || return 1
+	# 6. マークを置き、答えのコメントへの返信で記録を書く。マークを先に置くので、記録の書き込みが失敗しても、同じ引数で流し直せる。
+	if ! multica issue metadata set "$issue" --key usage_answer_squad --value "$squad_id" --type string --output json >/dev/null; then
+		echo 'マーク（usage_answer_squad）を書けないため、答えを記録していない' >&2
+		return 1
+	fi
+	printf '%s\n' "$line" >"$work_dir/record.txt"
+	response=$(squad_cli_read issue-comment-add "$issue" "$answer_id" "$work_dir/record.txt") || return 1
+	jq -e '.id | type == "string"' <<<"$response" >/dev/null || { echo '記録のコメントの ID を読めなかった' >&2; return 1; }
+	# 7. 終える前に、マークと記録を整える。書いたあとの状態で整えるため、絞り込みのない一覧を読み直し、
+	# 読み始めの 10 分前より後に動いたタスクのコメントを読み直す。読み直しが書いた直後に反映されないことに備えて、
+	# 自分が書いた取り消しと新しい記録は、読み直した結果にも入れる。
+	recent=$(answer_active_tasks "$((read_start - 600))") || return 1
+	fresh=$(answer_records "$recent" "$squad_id" "$caller") || return 1
+	new_record=$(jq -c --arg task "$issue" --arg identifier "$task_now" --arg parent "$answer_id" --argjson answered "$answered" --argjson expiry "$expiry" \
+		--argjson now "$now" --arg verdict "$verdict" --argjson carried "$([[ -n $carried ]] && echo true || echo false)" \
+		'{task: $task, identifier: $identifier, comment: .id, parent: $parent, created: $now, answer: $verdict, answered: $answered, expiry: $expiry, carried: $carried, cancelled: false}' <<<"$response") || return 1
+	records=$(printf '%s\n%s\n%s\n%s\n' "$records" "$recent" "$fresh" "$to_cancel" | jq -cs --argjson new "$new_record" '
+			.[0] as $records | .[1] as $recent | .[2] as $fresh | .[3] as $cancelled
+			| ([$recent[].id]) as $ids
+			| ([$records[] | select(.task as $t | $ids | index($t) | not)] + $fresh)
+			| map(. as $r | .cancelled = (.cancelled or any($cancelled[]; .comment == $r.comment)))
+			| if any(.[]; .comment == $new.comment) then . else . + [$new] end') || return 1
+	answer_tidy "$squad_id" "$caller" "$records" || return 1
+	printf '%s\n' "$line"
+}
+
+answer_main() {
+	local issue=${1:-} process=${2:-} verdict=${3:-} answer_id=${4:-}
+	(($# == 4)) || usage
+	[[ -n $issue && -n $answer_id ]] || usage
+	case $process in
+	planner | designer | implement | fix | principal) ;;
+	*) usage ;;
+	esac
+	case $verdict in
+	待つ | 進める) ;;
+	*) usage ;;
+	esac
+	for cmd in jq python3 multica; do
+		command -v "$cmd" >/dev/null 2>&1 || { echo "${cmd} が見つからない。" >&2; return 1; }
+	done
+	answer "$issue" "$process" "$verdict" "$answer_id"
+}
+
+main() {
+	local issue process extra='' round='' args=()
+	case ${1:-} in
+	pick) shift ;;
+	answer)
+		shift
+		answer_main "$@"
+		return ;;
+	*) usage ;;
+	esac
+	while (($# > 0)); do
+		case $1 in
+		--round)
+			(($# >= 2)) || usage
+			round=$2
+			shift 2 ;;
+		--*) usage ;;
+		*)
+			args+=("$1")
+			shift ;;
+		esac
+	done
+	((${#args[@]} >= 2 && ${#args[@]} <= 3)) || usage
+	issue=${args[0]}
+	process=${args[1]}
+	extra=${args[2]:-}
+	case $process in
+	implement) [[ -z $extra || $extra == 小さい || $extra == 大きい ]] || usage ;;
+	principal) [[ -z $extra || $extra == Claude || $extra == Codex ]] || usage ;;
+	fix | planner | designer) [[ -z $extra ]] || usage ;;
+	*) usage ;;
+	esac
+	for cmd in jq python3 multica; do
+		command -v "$cmd" >/dev/null 2>&1 || { echo "${cmd} が見つからない。" >&2; return 1; }
+	done
+	pick "$issue" "$process" "$extra" "$round"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+	main "$@"
+fi

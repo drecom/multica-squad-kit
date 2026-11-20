@@ -1,0 +1,567 @@
+#!/usr/bin/env bash
+# ZIP のルートから bash tests/squad-dispatch-pick-test.sh で実行する。
+# 通常の読み取りは本体を使い、CLI だけを差し替える。故障の再現だけ読み取りを差し替える。
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd)
+cd "$root"
+mkdir -p tmp
+test_dir=$(mktemp -d "$PWD/tmp/dispatch-pick-test.XXXXXX")
+trap 'rm -rf -- "$test_dir"' EXIT
+export USAGE_FIXTURE_ROOT=$root
+mkdir -p "$test_dir/monitor" "$test_dir/bin"
+cp "$root/common/monitor/squad-dispatch-pick" "$test_dir/monitor/"
+script=$test_dir/monitor/squad-dispatch-pick
+export DISPATCH_TEST_DIR=$test_dir
+for cmd in python3 bash dirname mkdir mktemp jq cat rm sed grep seq head ps tr; do
+	ln -s "$(command -v "$cmd")" "$test_dir/bin/$cmd"
+done
+cat >"$test_dir/bin/date" <<'MOCK'
+#!/bin/bash
+if [[ "$*" == '+%s' ]]; then echo 1793059200; else exec /bin/date "$@"; fi
+MOCK
+cat >"$test_dir/bin/sleep" <<'MOCK'
+#!/bin/bash
+[[ "$*" == 1 ]] || exit 99
+# usage-lib が応答を待つときは、Codex stub が書き終えるまで同期する。
+IFS= read -r ready <&9
+[[ "$ready" == ready ]]
+MOCK
+cat >"$test_dir/synchronize.sh" <<'DRIVER'
+#!/bin/bash
+# 対象の起動時だけ sleep を差し替える。子の CLI・読み取りには適用しない。
+# 本体は source せず直接実行し、コマンドとしての入口も検査する。
+if [[ ${DISPATCH_TEST_INITIALIZE:-} == yes ]]; then
+export DISPATCH_TEST_INITIALIZE=no
+set -euo pipefail
+exec 9<>"$DISPATCH_TEST_DIR/usage-ready"
+slow_ticks=0
+sleep() {
+[[ "$*" == 1 ]] || return 99
+if [[ -e "$DISPATCH_TEST_DIR/hang" ]]; then
+	# 意図的な時間切れだけを仮想的に進める。子の準備は FIFO で同期する。
+	if [[ ! -e "$DISPATCH_TEST_DIR/timeout-ready" ]]; then
+		IFS= read -r ready <"$DISPATCH_TEST_DIR/timeout-fifo"
+		[[ "$ready" == ready ]] || exit 98
+		: >"$DISPATCH_TEST_DIR/timeout-ready"
+	fi
+	printf 'tick\n' >>"$DISPATCH_TEST_DIR/timeout-ticks"
+elif [[ -e "$DISPATCH_TEST_DIR/slow" ]]; then
+	if ((slow_ticks == 0)); then
+		IFS= read -r ready <"$DISPATCH_TEST_DIR/slow-ready"
+		[[ "$ready" == ready ]] || return 98
+	fi
+	slow_ticks=$((slow_ticks+1))
+	printf 'tick\n' >>"$DISPATCH_TEST_DIR/slow-ticks"
+	if ((slow_ticks == 5)); then
+		printf 'resume\n' >"$DISPATCH_TEST_DIR/slow-release"
+		wait "$reader_pid" 2>/dev/null || true
+	fi
+else
+	# 本体が始めた読み取りの完了まで待つ。時間を待つ必要はない。
+	wait "$reader_pid" 2>/dev/null || true
+fi
+}
+fi
+DRIVER
+# 使用率の読み取りと共通関数は本体を使う。
+cp "$root/common/monitor/squad-usage-read" "$root/common/monitor/squad-usage-lib" "$root/common/monitor/squad-cli-lib" "$test_dir/monitor/"
+cat >"$test_dir/bin/cli-reset" <<'MOCK'
+#!/bin/bash
+set -euo pipefail
+# 表示だけの Claude CLI を模倣するため、fixture の時差付きの時刻を表示にする。
+reset=$(jq -r '.claude.week.resets_at' "$DISPATCH_TEST_DIR/usage.json" | sed -E 's/Z$/+0000/; s/([+-][0-9]{2}):([0-9]{2})$/\1\2/')
+LC_ALL=C python3 - "$reset" <<'PYTIME'
+import sys
+from datetime import datetime, timezone
+reset = datetime.fromisoformat(sys.argv[1]).astimezone(timezone.utc)
+print(reset.strftime('%b %d at %I:%M%p (UTC)').replace('AM ', 'am ').replace('PM ', 'pm '))
+PYTIME
+MOCK
+cat >"$test_dir/bin/claude" <<'MOCK'
+#!/bin/bash
+set -euo pipefail
+[[ "$*" == '-p /usage --output-format json' ]]
+stub_args=("$@")
+stub() { recorded=1; python3 "$USAGE_FIXTURE_ROOT/tests/cli-stub.py" usage "$DISPATCH_TEST_DIR" claude - "$@" -- ${stub_args[@]+"${stub_args[@]}"}; }
+recorded=
+trap '[[ -n $recorded ]] || stub record' EXIT
+echo read >>"$DISPATCH_TEST_DIR/calls"
+reset=$("$DISPATCH_TEST_DIR/bin/cli-reset")
+jq -c --arg reset "$reset" '{is_error:false,result:
+	("Current session: " + (.claude.session.used_percent | tostring) + "% used · resets Oct 27 at 1am (UTC)\n"
+	+ "Current week (all models): " + (.claude.week.used_percent | tostring) + "% used · resets " + $reset)}' "$DISPATCH_TEST_DIR/usage.json" >"$DISPATCH_TEST_DIR/claude.json"
+stub emit claude-usage "$DISPATCH_TEST_DIR/claude.json"
+MOCK
+cat >"$test_dir/bin/codex" <<'MOCK'
+#!/bin/bash
+set -euo pipefail
+if [[ "$*" == --version ]]; then
+	jq -r '.versions.codex' "$USAGE_FIXTURE_ROOT/tests/fixtures/cli/USAGE-CAPTURE.json"
+	exit 0
+fi
+[[ "$*" == app-server ]]
+stub_args=("$@")
+stub() { recorded=1; python3 "$USAGE_FIXTURE_ROOT/tests/cli-stub.py" usage "${USAGE_TEST_DIR:-$DISPATCH_TEST_DIR}" codex - "$@" -- ${stub_args[@]+"${stub_args[@]}"}; }
+recorded=
+trap '[[ -n $recorded ]] || stub record' EXIT
+for _ in 1 2 3; do IFS= read -r request; done
+jq -c '
+	def timestamp:
+		capture("^(?<date>[0-9T:-]+)(?<zone>Z|[+-][0-9]{2}:[0-9]{2})$")
+		| (.date + "Z" | fromdateiso8601) as $utc
+		| if .zone == "Z" then $utc else
+			((.zone[1:3] | tonumber)*3600 + (.zone[4:6] | tonumber)*60) as $offset
+			| $utc - ($offset * (if .zone[0:1] == "-" then -1 else 1 end)) end;
+	{id:2,result:{ordinaryUsageAllowed:.codex.allowed,rateLimitsByLimitId:{codex:{primary:{
+		windowDurationMins:10080,usedPercent:.codex.week.used_percent,resetsAt:(.codex.week.resets_at | timestamp)}}}}}' "$DISPATCH_TEST_DIR/usage.json" >"$DISPATCH_TEST_DIR/codex.jsonl"
+stub emit codex-rate-limits "$DISPATCH_TEST_DIR/codex.jsonl"
+printf 'ready\n' >&9
+cat >/dev/null
+MOCK
+chmod +x "$test_dir/bin/cli-reset" "$test_dir/bin/claude" "$test_dir/bin/codex"
+chmod +x "$test_dir/bin/date" "$test_dir/bin/sleep"
+
+fixtures() {
+	echo 0 >"$test_dir/status"
+	cat >"$test_dir/usage.json" <<'JSON'
+{
+  "read_at": "2026-10-27T00:00:00Z",
+  "claude": {
+    "week": {"used_percent": 20, "resets_at": "2026-10-30T12:00:00Z"},
+    "session": {"used_percent": 10, "resets_at": null}
+  },
+  "codex": {"week": {"used_percent": 50, "resets_at": "2026-10-30T12:00:00Z"}, "allowed": true}
+}
+JSON
+}
+change() {
+	jq "$1" "$test_dir/usage.json" >"$test_dir/changed"
+	mv "$test_dir/changed" "$test_dir/usage.json"
+}
+run_pick() {
+	local expected_status=$1 expected_role=$2 status=0
+	shift 2
+	# 別の作業ディレクトリから呼び、PATH も閉じる。
+	rm -f "$test_dir/usage-ready"
+	mkfifo "$test_dir/usage-ready"
+	(cd "$test_dir"; PATH="$test_dir/bin" BASH_ENV="$test_dir/synchronize.sh" DISPATCH_TEST_INITIALIZE=yes /bin/bash "$script" "$@") \
+		>"$test_dir/out" 2>"$test_dir/err" || status=$?
+	if [[ "$status" != "$expected_status" ]] \
+		|| [[ $(head -n 1 "$test_dir/out") != "役: $expected_role" ]] \
+		|| [[ $(wc -l <"$test_dir/out" | tr -d ' ') != 2 ]] \
+		|| [[ -s "$test_dir/err" ]]; then
+		echo "FAIL: $* status=$status (expected $expected_status), role=$expected_role" >&2
+		cat "$test_dir/out" "$test_dir/err" >&2
+		exit 1
+	fi
+	grep -q '^振り分け: ' "$test_dir/out"
+	if compgen -G "$test_dir/tmp/dispatch-pick.*" >/dev/null; then
+		echo 'FAIL: 一時ファイルが残った' >&2; exit 1
+	fi
+}
+assert_line() {
+	grep -Fq -- "$1" "$test_dir/out" || { cat "$test_dir/out" >&2; exit 1; }
+}
+
+for kind in implement fix; do
+	for size in 大きい 小さい; do
+		args=("$kind")
+		[[ "$kind" == fix ]] || args+=("$size")
+		role=implementer
+		[[ "$kind" != fix ]] || role=fixer
+		fixtures
+		run_pick 0 "claude-$role" "${args[@]}"
+		assert_line '振り分け: Claude。Claude 週 20%（使ってよい量 40%）・5 時間 10%、Codex 週 50%（使ってよい量 40%）'
+		change '.claude.week.used_percent = 50 | .codex.week.used_percent = 20'
+		run_pick 0 "codex-$role" "${args[@]}"
+	done
+done
+[[ $(wc -l <"$test_dir/calls" | tr -d ' ') == 8 ]]
+echo 'PASS 余裕: 実装の見積もりと修正によらず選び、依頼ごとに読み直す'
+
+for exclusion in session claude_week codex_week allowed both session_and_codex; do
+	fixtures
+	case "$exclusion" in
+	session) change '.claude.session.used_percent = 80'; chosen=codex ;;
+	claude_week) change '.claude.week.used_percent = 80'; chosen=codex ;;
+	codex_week) change '.codex.week.used_percent = 80 | .claude.week.used_percent = 79'; chosen=claude ;;
+	allowed) change '.codex.allowed = false | .claude.week.used_percent = 79'; chosen=claude ;;
+	both) change '.claude.week.used_percent = 80 | .codex.week.used_percent = 80'; chosen=なし ;;
+	session_and_codex) change '.claude.session.used_percent = 80 | .codex.allowed = false'; chosen=なし ;;
+	esac
+	if [[ "$chosen" == なし ]]; then
+		run_pick 2 なし fix
+		assert_line '振り分け: なし（Claude は'
+		assert_line 'Codex は'
+	else
+		run_pick 0 "$chosen-implementer" implement 小さい
+	fi
+	case "$exclusion" in
+	session) assert_line 'Claude は 5 時間の枠が 80% 以上' ;;
+	claude_week) assert_line 'Claude は週の使用率が 80% 以上' ;;
+	codex_week) assert_line 'Codex は週の使用率が 80% 以上' ;;
+	allowed) assert_line 'Codex は利用不可' ;;
+	esac
+done
+echo 'PASS 読み取り本体: CLI だけを差し替え、本体の usage-read と usage-lib から振り分ける'
+
+# CLI が表示しない小数の比較と、出力破損・異常終了・時間切れは、読み取りを差し替えて試験する。
+cat >"$test_dir/monitor/squad-usage-read" <<'MOCK'
+#!/bin/bash
+set -euo pipefail
+echo read >>"$DISPATCH_TEST_DIR/calls"
+[[ "$#" == 0 ]]
+if [[ -e "$DISPATCH_TEST_DIR/hang" ]]; then
+	# 子も壁時計では終わらず、読み取りのプロセスグループと一緒に止まる。
+	cat "$DISPATCH_TEST_DIR/timeout-hold" >/dev/null &
+	printf '%s\n' "$$" "$!" >"$DISPATCH_TEST_DIR/pids"
+	# 読み取りが自分のグループの先頭で、子も同じグループにいることを、時間切れの前に控える。
+	printf '%s\n' "$(ps -o pgid= -p "$$" | tr -d ' ')" "$(ps -o pgid= -p "$!" | tr -d ' ')" >"$DISPATCH_TEST_DIR/pgids"
+	printf 'ready\n' >"$DISPATCH_TEST_DIR/timeout-fifo"
+	wait
+fi
+if [[ -e "$DISPATCH_TEST_DIR/slow" ]]; then
+	printf 'ready\n' >"$DISPATCH_TEST_DIR/slow-ready"
+	IFS= read -r resume <"$DISPATCH_TEST_DIR/slow-release"
+	[[ "$resume" == resume ]]
+fi
+echo mock-private-diagnostic >&2
+cat "$DISPATCH_TEST_DIR/usage.json"
+exit "$(cat "$DISPATCH_TEST_DIR/status")"
+MOCK
+fixtures
+mkfifo "$test_dir/slow-ready" "$test_dir/slow-release"
+touch "$test_dir/slow"
+run_pick 0 claude-implementer implement 大きい
+assert_line '振り分け: Claude。Claude 週 20%'
+[[ $(wc -l <"$test_dir/slow-ticks" | tr -d ' ') == 5 ]]
+rm "$test_dir/slow" "$test_dir/slow-ready" "$test_dir/slow-release" "$test_dir/slow-ticks"
+echo 'PASS 遅い読み取り: 仮想の 5 秒後の応答を時間切れにせず待つ'
+
+fixtures
+change '.claude.week.used_percent = 79.99 | .claude.session.used_percent = 79.99 | .codex.week.used_percent = 80'
+run_pick 0 claude-implementer implement
+echo 'PASS 除外: 週・5 時間・利用不可、80% の境界、両方に回せないときの終了コード 2'
+
+fixtures
+change '.codex.week.used_percent = 20'
+run_pick 0 claude-implementer implement 小さい
+change '.claude.week.used_percent = 20.4 | .codex.week.used_percent = 20.2'
+run_pick 0 codex-implementer implement 大きい
+assert_line 'Claude 週 20%（使ってよい量 40%）'
+change '.claude.week.used_percent = 20.2 | .codex.week.used_percent = 20.4'
+run_pick 0 claude-implementer implement 小さい
+fixtures
+change '.codex.week.used_percent = 20 | .claude.week.resets_at = "2026-10-31T09:00:00+09:00" | .codex.week.resets_at = "2026-10-29T17:00:00-07:00"'
+run_pick 0 codex-implementer implement 大きい
+assert_line 'Claude 週 20%（使ってよい量 34%）'
+assert_line 'Codex 週 20%（使ってよい量 46%）'
+echo 'PASS 計算: 同点は Claude、小数のまま比較して表示を丸め、各側のリセット時刻と時差を使う'
+
+for reset in '2026-11-04T00:00:00Z' '2026-11-02T23:59:59Z' '2026-10-26T00:00:00Z'; do
+	fixtures
+	change ".claude.week.resets_at = \"$reset\" | .codex.week.resets_at = \"$reset\""
+	run_pick 0 claude-implementer implement
+	if [[ "$reset" == 2026-10-26* ]]; then budget=80; else budget=10; fi
+	assert_line "使ってよい量 $budget%"
+done
+echo 'PASS 週の割合: 0〜1 に収め、使ってよい量は最小 10%'
+
+for failure in exit claude_error codex_error both_error invalid_json multiple_json stale bad_time bad_shape; do
+	fixtures
+	case "$failure" in
+	exit) echo 1 >"$test_dir/status"; reason='使用率の読み取りに失敗した' ;;
+	claude_error) change '.claude = {error: "claude が見つからない"}'; reason='Claude: claude が見つからない' ;;
+	codex_error) change '.codex = {error: "codex が見つからない"}'; reason='Codex: codex が見つからない' ;;
+	both_error) change '.claude = {error: "claude が見つからない"} | .codex = {error: "codex が見つからない"}'
+		echo 1 >"$test_dir/status"; reason='Codex: codex が見つからない' ;;
+	invalid_json) echo mock-private-diagnostic >"$test_dir/usage.json"; reason='使用率の出力を JSON として読めなかった' ;;
+	multiple_json) echo '{}' >>"$test_dir/usage.json"; reason='使用率の出力を JSON として読めなかった' ;;
+	stale) change '.read_at = "2026-10-26T23:29:59Z" | .claude.week.used_percent = 99 | .codex.week.used_percent = 99'
+		reason='使用率が 30 分より古い' ;;
+	bad_time) change '.read_at = "読めない"'; reason='使用率を読んだ時刻を読めなかった' ;;
+	bad_shape) change '.claude.week = "不正"'; reason='Claude: 使用率・リセット時刻・利用可否を読めなかった' ;;
+	esac
+	# 旧い小さい値（U+5C0F U+3055 U+306A）は `小さい` と扱わず、大きいに入る。
+	old_small=$'\xe5\xb0\x8f\xe3\x81\x95\xe3\x81\xaa'
+	for size in 小さい 大きい 未知 "$old_small" ''; do
+		chosen=claude
+		[[ "$size" != 小さい ]] || chosen=codex
+		run_pick 0 "$chosen-implementer" implement "$size"
+		assert_line '使用率を読めないため、見積もり「'
+		assert_line "$reason"
+	done
+	run_pick 0 codex-fixer fix
+	assert_line '使用率を読めないため、修正の代わりの決まりで決めた'
+	assert_line "$reason"
+	if grep -q 'mock-private-diagnostic' "$test_dir/out" "$test_dir/err"; then exit 1; fi
+done
+echo 'PASS 読めない: 終了 1・片側/両側 error・不正 JSON・古い時刻・不正な形、代わりの決まりと理由'
+
+# 読む欄が 1 つ欠けても、ほかの欄で補わず、その側を読めないとして代わりの決まりに回す。
+# 欄が読めずに null になった側を、使用率 0% や利用可として振り分けると、使えない側へ回してしまう。
+for field in claude.week.used_percent claude.week.resets_at claude.session.used_percent codex.week.used_percent codex.week.resets_at codex.allowed read_at; do
+	fixtures
+	change "del(.${field})"
+	case "$field" in
+	claude.*) reason='Claude: 使用率・リセット時刻・利用可否を読めなかった' ;;
+	codex.*) reason='Codex: 使用率・リセット時刻・利用可否を読めなかった' ;;
+	read_at) reason='使用率を読んだ時刻を読めなかった' ;;
+	esac
+	run_pick 0 claude-implementer implement 大きい
+	assert_line '使用率を読めないため、見積もり「'
+	assert_line "$reason"
+	run_pick 0 codex-fixer fix
+	assert_line '使用率を読めないため、修正の代わりの決まりで決めた'
+	assert_line "$reason"
+done
+echo 'PASS 読めない: 読む欄が 1 つ欠けたら、その側（read_at は全体）を読めないとして代わりの決まりに回す'
+
+fixtures
+change '.read_at = "2026-10-26T23:30:00Z"'
+run_pick 0 claude-implementer implement 小さい
+if grep -q '読めない' "$test_dir/out"; then exit 1; fi
+fixtures
+change '.claude = {error: "claude が見つからない"} | .codex.allowed = false'
+echo 1 >"$test_dir/status"
+run_pick 0 claude-fixer fix
+assert_line 'Claude: claude が見つからない'
+assert_line 'Codex は利用不可'
+fixtures
+change '.codex = {error: "codex が見つからない"} | .claude.session.used_percent = 90'
+echo 1 >"$test_dir/status"
+run_pick 0 codex-implementer implement 大きい
+assert_line 'Codex: codex が見つからない'
+assert_line 'Claude は 5 時間の枠が 80% 以上'
+echo 'PASS 部分的な読み取り: 30 分ちょうどは有効、読めた側が使用上限なら代わりの決まりより優先して除く'
+
+fixtures
+mkfifo "$test_dir/timeout-fifo"
+mkfifo "$test_dir/timeout-hold"
+touch "$test_dir/hang"
+run_pick 0 codex-implementer implement 小さい
+assert_line '使用率の読み取りが 90 秒で終わらなかった'
+reader_pid_recorded=$(sed -n 1p "$test_dir/pids")
+[[ $(sed -n 1p "$test_dir/pgids") == "$reader_pid_recorded" && $(sed -n 2p "$test_dir/pgids") == "$reader_pid_recorded" ]] \
+	|| { echo 'FAIL: 読み取りとその子が、読み取り自身のプロセスグループにいない' >&2; exit 1; }
+[[ $(wc -l <"$test_dir/timeout-ticks" | tr -d ' ') == 90 ]]
+while IFS= read -r pid; do
+	state=$(ps -o stat= -p "$pid" || true)
+	if [[ -n "$state" && "$state" != *Z* ]]; then
+		echo "FAIL: 時間切れの子が動いている: $pid $state" >&2; exit 1
+	fi
+done <"$test_dir/pids"
+rm "$test_dir/hang" "$test_dir/timeout-fifo" "$test_dir/timeout-hold" "$test_dir/timeout-ready" "$test_dir/timeout-ticks"
+echo 'PASS 時間切れ: 子の準備後に仮想の 90 回を進め、読み取りとその子を残さない'
+
+# 最上位の役は、実装・修正と同じ除外の閾値を使い、見積もりを取らない。
+fixtures
+run_pick 0 claude-principal principal
+assert_line '振り分け: Claude。Claude 週 20%（使ってよい量 40%）・5 時間 10%、Codex 週 50%（使ってよい量 40%）'
+change '.claude.week.used_percent = 50 | .codex.week.used_percent = 20'
+run_pick 0 codex-principal principal
+for exclusion in session claude_week codex_week allowed both session_and_codex; do
+	fixtures
+	case "$exclusion" in
+	session) change '.claude.session.used_percent = 80'; chosen=codex ;;
+	claude_week) change '.claude.week.used_percent = 80'; chosen=codex ;;
+	codex_week) change '.codex.week.used_percent = 80 | .claude.week.used_percent = 79'; chosen=claude ;;
+	allowed) change '.codex.allowed = false | .claude.week.used_percent = 79'; chosen=claude ;;
+	both) change '.claude.week.used_percent = 80 | .codex.week.used_percent = 80'; chosen=なし ;;
+	session_and_codex) change '.claude.session.used_percent = 80 | .codex.allowed = false'; chosen=なし ;;
+	esac
+	if [[ "$chosen" == なし ]]; then
+		run_pick 2 なし principal
+		assert_line '振り分け: なし（Claude は'
+		assert_line 'Codex は'
+	else
+		run_pick 0 "$chosen-principal" principal
+	fi
+done
+# 読めないときは、読めた側が除外でなければその側、どちらも読めなければ Codex を選ぶ。
+for failure in exit claude_error codex_error both_error invalid_json stale bad_time bad_shape; do
+	fixtures
+	case "$failure" in
+	exit) echo 1 >"$test_dir/status"; reason='使用率の読み取りに失敗した'; chosen=codex ;;
+	claude_error) change '.claude = {error: "claude が見つからない"}'; reason='Claude: claude が見つからない'; chosen=codex ;;
+	codex_error) change '.codex = {error: "codex が見つからない"}'; reason='Codex: codex が見つからない'; chosen=claude ;;
+	both_error) change '.claude = {error: "claude が見つからない"} | .codex = {error: "codex が見つからない"}'
+		reason='Claude: claude が見つからない'; chosen=codex ;;
+	invalid_json) echo mock-private-diagnostic >"$test_dir/usage.json"; reason='使用率の出力を JSON として読めなかった'; chosen=codex ;;
+	stale) change '.read_at = "2026-10-26T23:29:59Z" | .claude.week.used_percent = 0 | .codex.week.used_percent = 99'
+		reason='使用率が 30 分より古い'; chosen=codex ;;
+	bad_time) change '.read_at = "読めない"'; reason='使用率を読んだ時刻を読めなかった'; chosen=codex ;;
+	bad_shape) change '.codex.week = "不正"'; reason='Codex: 使用率・リセット時刻・利用可否を読めなかった'; chosen=claude ;;
+	esac
+	run_pick 0 "$chosen-principal" principal
+	assert_line '使用率を読めないため、最上位の役の代わりの決まりで決めた。'
+	assert_line "$reason"
+	for implemented in Claude Codex; do
+		if [[ "$implemented" == Claude ]]; then preferred=codex; else preferred=claude; fi
+		run_pick 0 "$preferred-principal" principal "$implemented"
+		assert_line '使用率を読めないため、最上位の役の代わりの決まりで決めた。'
+		assert_line "$reason"
+	done
+	if grep -q 'mock-private-diagnostic' "$test_dir/out" "$test_dir/err"; then exit 1; fi
+done
+# 読めた側が使用上限なら、読めない側を選ぶ（実装・修正と同じ）。
+fixtures
+change '.claude = {error: "claude が見つからない"} | .codex.allowed = false'
+run_pick 0 claude-principal principal
+assert_line 'Codex は利用不可'
+fixtures
+change '.codex = {error: "codex が見つからない"} | .claude.session.used_percent = 90'
+run_pick 0 codex-principal principal
+assert_line 'Claude は 5 時間の枠が 80% 以上'
+echo 'PASS 最上位の役: 空いている方を選び、閾値以上は除き、両方なら終了コード 2、読めないときは読めた側かなければ Codex'
+
+for implemented in Claude Codex; do
+	fixtures
+	if [[ "$implemented" == Claude ]]; then
+		preferred=codex
+		preferred_name=Codex
+	else
+		preferred=claude
+		preferred_name=Claude
+		change '.claude.week.used_percent = 50 | .codex.week.used_percent = 20'
+	fi
+	run_pick 0 "$preferred-principal" principal "$implemented"
+	assert_line "振り分け: ${preferred_name}。"
+done
+echo 'PASS 最終レビュー: 使ってよい量の余りが少なくても、実装と違う系統を優先する'
+
+for exclusion in session claude_week codex_week allowed both session_and_codex; do
+	fixtures
+	case "$exclusion" in
+	session) change '.claude.session.used_percent = 80'; chosen=codex; reason='Claude は 5 時間の枠が 80% 以上' ;;
+	claude_week) change '.claude.week.used_percent = 80'; chosen=codex; reason='Claude は週の使用率が 80% 以上' ;;
+	codex_week) change '.codex.week.used_percent = 80'; chosen=claude; reason='Codex は週の使用率が 80% 以上' ;;
+	allowed) change '.codex.allowed = false'; chosen=claude; reason='Codex は利用不可' ;;
+	both) change '.claude.week.used_percent = 80 | .codex.week.used_percent = 80'; chosen=なし ;;
+	session_and_codex) change '.claude.session.used_percent = 80 | .codex.allowed = false'; chosen=なし ;;
+	esac
+	for implemented in Claude Codex; do
+		if [[ "$chosen" == なし ]]; then
+			run_pick 2 なし principal "$implemented"
+			assert_line 'Claude は'
+			assert_line 'Codex は'
+		else
+			run_pick 0 "$chosen-principal" principal "$implemented"
+			assert_line "$reason"
+			if [[ "$implemented" == Claude && "$chosen" == claude ]] \
+				|| [[ "$implemented" == Codex && "$chosen" == codex ]]; then
+				assert_line "$reason のため、実装と同じ系統へ回した"
+			elif grep -q '実装と同じ系統へ回した' "$test_dir/out"; then
+				echo 'FAIL: 違う系統を選んだのに同じ系統へ回した理由がある' >&2; exit 1
+			fi
+		fi
+	done
+done
+echo 'PASS 最終レビュー: 優先する系統だけが上限なら理由を添えて同じ系統へ回し、両方が上限なら終了コード 2'
+
+# --allow-near: 片方が空いているとき、引数の有無で出力を変えない。
+# 両方が上限に近いときだけ、上限に達していない系統（100% 未満で利用可）から選ぶ。
+reason_near='両方の系統が上限に近いので、人間の答えで選んだ'
+# 出力を指定のファイルに書く。引数はそのまま渡し、終了コードを返す。
+pick_to() {
+	local out=$1 status=0
+	shift
+	rm -f "$test_dir/usage-ready"
+	mkfifo "$test_dir/usage-ready"
+	(cd "$test_dir"; PATH="$test_dir/bin" BASH_ENV="$test_dir/synchronize.sh" DISPATCH_TEST_INITIALIZE=yes /bin/bash "$script" "$@") \
+		>"$out" 2>"$test_dir/err" || status=$?
+	return "$status"
+}
+for free in claude_only codex_only both_free; do
+	fixtures
+	case "$free" in
+	claude_only) change '.codex.week.used_percent = 80'; role=claude ;;
+	codex_only) change '.claude.week.used_percent = 80'; role=codex ;;
+	both_free) role=claude ;;
+	esac
+	for kind_args in 'implement 大きい' 'implement 小さい' fix principal 'principal Claude' 'principal Codex'; do
+		# 引数は空白で分ける。
+		set -- $kind_args
+		kind=$1
+		# 最終レビューは、両方が空いているときだけ、実装と違う系統を優先する。
+		want=$role
+		if [[ "$free" == both_free ]]; then
+			case "$kind_args" in
+			'principal Claude') want=codex ;;
+			'principal Codex') want=claude ;;
+			esac
+		fi
+		case "$kind" in fix) suffix=fixer ;; principal) suffix=principal ;; *) suffix=implementer ;; esac
+		pick_to "$test_dir/out-plain" "$@" || { echo "FAIL: 引数なしの終了コード: $kind_args" >&2; exit 1; }
+		pick_to "$test_dir/out" "$@" --allow-near || { echo "FAIL: --allow-near の終了コード: $kind_args" >&2; exit 1; }
+		cmp -s "$test_dir/out-plain" "$test_dir/out" || { echo "FAIL: 片方が空いているのに引数で出力が変わった: $kind_args $free" >&2; cat "$test_dir/out-plain" "$test_dir/out" >&2; exit 1; }
+		[[ -s "$test_dir/out" && ! -s "$test_dir/err" ]]
+		if grep -Fq "$reason_near" "$test_dir/out"; then echo "FAIL: 片方が空いているのに答えの理由がある: $kind_args $free" >&2; exit 1; fi
+		[[ $(head -n 1 "$test_dir/out") == "役: $want-$suffix" ]] || { echo "FAIL: 選んだ役: $kind_args $free" >&2; cat "$test_dir/out" >&2; exit 1; }
+	done
+done
+# 両方が上限に近いとき、達していない系統を選ぶ。両方が残れば今の順（使ってよい量との差が大きい方、同じなら Claude）。
+for near in both_near_codex_more_margin both_near_claude_more_margin both_near_tie claude_week_reached claude_session_reached codex_week_reached codex_unavailable; do
+	fixtures
+	case "$near" in
+	both_near_codex_more_margin) change '.claude.week.used_percent = 85 | .codex.week.used_percent = 80'; want=codex ;;
+	both_near_claude_more_margin) change '.claude.week.used_percent = 80 | .codex.week.used_percent = 85'; want=claude ;;
+	both_near_tie) change '.claude.week.used_percent = 85 | .codex.week.used_percent = 85'; want=claude ;;
+	claude_week_reached) change '.claude.week.used_percent = 100 | .codex.week.used_percent = 85'; want=codex ;;
+	claude_session_reached) change '.claude.session.used_percent = 100 | .codex.week.used_percent = 85'; want=codex ;;
+	codex_week_reached) change '.claude.week.used_percent = 85 | .codex.week.used_percent = 100'; want=claude ;;
+	codex_unavailable) change '.claude.week.used_percent = 85 | .codex.allowed = false'; want=claude ;;
+	esac
+	# 引数がなければ、今のとおり両方を除いて終了 2 になる。
+	run_pick 2 なし implement 大きい
+	run_pick 0 "$want-implementer" implement 大きい --allow-near
+	assert_line "$reason_near"
+	assert_line "振り分け: $(if [[ $want == claude ]]; then echo Claude; else echo Codex; fi)（"
+	run_pick 0 "$want-fixer" fix --allow-near
+	assert_line "$reason_near"
+	run_pick 0 "$want-principal" principal --allow-near
+	assert_line "$reason_near"
+done
+# 最終レビューは、両方が残れば実装と違う系統を優先し、片方だけが達しているなら残る系統にする。
+fixtures
+change '.claude.week.used_percent = 85 | .codex.week.used_percent = 85'
+run_pick 0 codex-principal principal Claude --allow-near
+run_pick 0 claude-principal principal Codex --allow-near
+change '.codex.week.used_percent = 100'
+run_pick 0 claude-principal principal Claude --allow-near
+change '.claude.week.used_percent = 100 | .codex.week.used_percent = 85'
+run_pick 0 codex-principal principal Codex --allow-near
+# 両方が達しているときは、引数があっても終了 2 で、選ばない。
+for reached in both_week claude_session_codex_unavailable; do
+	fixtures
+	case "$reached" in
+	both_week) change '.claude.week.used_percent = 100 | .codex.week.used_percent = 100' ;;
+	claude_session_codex_unavailable) change '.claude.session.used_percent = 100 | .codex.allowed = false | .claude.week.used_percent = 85' ;;
+	esac
+	for kind_args in 'implement 大きい' 'implement 小さい' fix principal 'principal Claude'; do
+		set -- $kind_args
+		run_pick 2 なし "$@" --allow-near
+		assert_line '振り分け: なし（Claude は'
+		assert_line 'Codex は'
+		if grep -Fq "$reason_near" "$test_dir/out"; then echo 'FAIL: 選んでいないのに答えの理由がある' >&2; exit 1; fi
+	done
+done
+echo 'PASS --allow-near: 片方が空いていれば出力が同じ、両方が上限に近いときだけ達していない系統を選び、両方が達していれば終了コード 2'
+
+for args in '' 'other' '--allow-near' '--allow-near implement' 'fix 小さい --allow-near' 'implement 小さい extra --allow-near' 'principal 小さい --allow-near' 'fix 小さい' 'implement 小さい extra' 'principal 小さい' 'principal 大きい' 'principal extra' 'principal Claude extra' 'principal Codex Claude'; do
+	status=0
+	# ここだけは意図的に引数を空白で分ける。
+	PATH="$test_dir/bin" /bin/bash "$script" $args >"$test_dir/out" 2>"$test_dir/err" || status=$?
+	[[ "$status" == 1 && ! -s "$test_dir/out" && -s "$test_dir/err" ]]
+done
+for implemented in '' claude codex; do
+	status=0
+	PATH="$test_dir/bin" /bin/bash "$script" principal "$implemented" >"$test_dir/out" 2>"$test_dir/err" || status=$?
+	[[ "$status" == 1 && ! -s "$test_dir/out" && -s "$test_dir/err" ]]
+done
+mv "$test_dir/bin/jq" "$test_dir/bin/jq.off"
+status=0
+PATH="$test_dir/bin" /bin/bash "$script" fix >"$test_dir/out" 2>"$test_dir/err" || status=$?
+[[ "$status" == 1 && ! -s "$test_dir/out" ]]
+grep -qx 'jq が見つからない' "$test_dir/err"
+echo 'PASS 使い方: 不正な引数と jq 欠落は標準エラーと終了コード 1'

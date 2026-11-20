@@ -1,0 +1,134 @@
+{
+  "comparison": null,
+  "input": {
+    "cli_version": "synthetic-1",
+    "collected_at": "2026-01-01T01:00:00Z",
+    "compare": null,
+    "cutoff": "2026-01-01T00:10:00Z",
+    "from": "2026-01-01T00:05:00Z",
+    "human": [
+      "human-one",
+      "human-two"
+    ],
+    "member_key": "m-n",
+    "project_id": "synthetic-project",
+    "project_key": "foo-bar",
+    "snapshot_sha256": "c04d7621b21d3ad8dca222219ef9de610463c0b4c0725ab6a53f0dba59ae1d84",
+    "truncate": "2026-01-01T00:10:00Z"
+  },
+  "issues": [
+    {
+      "fixer_runs": 1,
+      "human_calls": 1,
+      "human_comments": 1,
+      "id": "synthetic-b",
+      "identifier": "EXAMPLE-B",
+      "in_review_transitions": 1,
+      "roles": {
+        "claude-fixer": {
+          "agent_names": [],
+          "confirmed_runs": 1,
+          "run_count": 1,
+          "tokens": {
+            "cache_read_tokens": 1,
+            "cache_write_tokens": 1,
+            "input_tokens": 1,
+            "output_tokens": 1,
+            "total_tokens": 4
+          },
+          "unconfirmed_runs": 0
+        },
+        "planner": {
+          "agent_names": [],
+          "confirmed_runs": 1,
+          "run_count": 1,
+          "tokens": {
+            "cache_read_tokens": 4,
+            "cache_write_tokens": 3,
+            "input_tokens": 2,
+            "output_tokens": 5,
+            "total_tokens": 14
+          },
+          "unconfirmed_runs": 0
+        }
+      },
+      "run_count": 2,
+      "run_minutes": "0.1",
+      "run_seconds": 3
+    }
+  ],
+  "per_issue": {
+    "fixer_runs": "1.0",
+    "human_calls": "1.0",
+    "human_comments": "1.0",
+    "in_review_transitions": "1.0",
+    "roles": {
+      "claude-fixer": {
+        "confirmed_runs": "1.0",
+        "run_count": "1.0",
+        "tokens": {
+          "cache_read_tokens": "1.0",
+          "cache_write_tokens": "1.0",
+          "input_tokens": "1.0",
+          "output_tokens": "1.0",
+          "total_tokens": "4.0"
+        },
+        "unconfirmed_runs": "0.0"
+      },
+      "planner": {
+        "confirmed_runs": "1.0",
+        "run_count": "1.0",
+        "tokens": {
+          "cache_read_tokens": "4.0",
+          "cache_write_tokens": "3.0",
+          "input_tokens": "2.0",
+          "output_tokens": "5.0",
+          "total_tokens": "14.0"
+        },
+        "unconfirmed_runs": "0.0"
+      }
+    },
+    "run_count": "2.0",
+    "run_minutes": "0.1",
+    "run_seconds": "3.0"
+  },
+  "schema_version": 1,
+  "totals": {
+    "fixer_runs": 1,
+    "human_calls": 1,
+    "human_comments": 1,
+    "in_review_transitions": 1,
+    "issue_count": 1,
+    "roles": {
+      "claude-fixer": {
+        "agent_names": [],
+        "confirmed_runs": 1,
+        "run_count": 1,
+        "tokens": {
+          "cache_read_tokens": 1,
+          "cache_write_tokens": 1,
+          "input_tokens": 1,
+          "output_tokens": 1,
+          "total_tokens": 4
+        },
+        "unconfirmed_runs": 0
+      },
+      "planner": {
+        "agent_names": [],
+        "confirmed_runs": 1,
+        "run_count": 1,
+        "tokens": {
+          "cache_read_tokens": 4,
+          "cache_write_tokens": 3,
+          "input_tokens": 2,
+          "output_tokens": 5,
+          "total_tokens": 14
+        },
+        "unconfirmed_runs": 0
+      }
+    },
+    "run_count": 2,
+    "run_minutes": "0.1",
+    "run_seconds": 3
+  }
+}

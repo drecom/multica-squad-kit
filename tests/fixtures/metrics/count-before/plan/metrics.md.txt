@@ -1,0 +1,74 @@
+# 作業の指標
+
+## 入力
+
+| 入力 | 値 |
+| --- | --- |
+| cutoff | "2026-01-01T00:10:00Z" |
+| truncate | "2026-01-01T00:10:00Z" |
+| from | null |
+| human | ["human-one", "human-two"] |
+| project_key | "foo-bar" |
+| member_key | "m-n" |
+| project_id | "synthetic-project" |
+| snapshot_sha256 | "c04d7621b21d3ad8dca222219ef9de610463c0b4c0725ab6a53f0dba59ae1d84" |
+| collected_at | "2026-01-01T01:00:00Z" |
+| cli_version | "synthetic-1" |
+| compare | {"metrics": {"fixer_runs": 4, "human_calls": 3, "human_comments": 5, "in_review_transitions": 2, "issue_count": 2, "run_count": 6, "run_seconds": 240}, "roles": {"claude-fixer": {"total_tokens": 100}, "codex-fixer": {"total_tokens": null}, "designer": {"total_tokens": 10}, "planner": {"total_tokens": 20}}} |
+
+## タスクごと・合計・1 タスクあたり
+
+対象のタスク: 2 件
+
+| タスク | 人間のコメント | 人間の呼び出し | 実行秒 | 実行分 | 実行回数 | 差し戻し | in_review |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| EXAMPLE-A | 2 | 1 | 241 | 4.0 | 5 | 2 | 1 |
+| EXAMPLE-B | 1 | 1 | 3 | 0.1 | 2 | 1 | 1 |
+| 合計 | 3 | 2 | 244 | 4.1 | 7 | 3 | 2 |
+| 1 タスクあたり | 1.5 | 1.0 | 122.0 | 2.0 | 3.5 | 1.5 | 1.0 |
+
+## 役ごとのトークン数
+
+トークンは確認できた実行の合計。未確認の実行は加算せず、別の件数に示す。
+
+| タスク | 役 | その他のエージェント | 実行 | 確認済み | 未確認 | 入力 | キャッシュ作成 | キャッシュ読み出し | 出力 | 合計 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| EXAMPLE-A | claude-fixer |  | 1 | 1 | 0 | 11 | 22 | 33 | 44 | 110 |
+| EXAMPLE-A | codex-fixer |  | 1 | 0 | 1 | 未確認 | 未確認 | 未確認 | 未確認 | 未確認 |
+| EXAMPLE-A | codex-implementer |  | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
+| EXAMPLE-A | その他 | foo-bar-plannerish-m-n, outside\|worker | 2 | 1 | 1 | 5 | 6 | 7 | 8 | 26 |
+| EXAMPLE-B | claude-fixer |  | 1 | 1 | 0 | 1 | 1 | 1 | 1 | 4 |
+| EXAMPLE-B | planner |  | 1 | 1 | 0 | 2 | 3 | 4 | 5 | 14 |
+| 合計 | claude-fixer |  | 2 | 2 | 0 | 12 | 23 | 34 | 45 | 114 |
+| 合計 | codex-fixer |  | 1 | 0 | 1 | 未確認 | 未確認 | 未確認 | 未確認 | 未確認 |
+| 合計 | codex-implementer |  | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 合計 | planner |  | 1 | 1 | 0 | 2 | 3 | 4 | 5 | 14 |
+| 合計 | その他 | foo-bar-plannerish-m-n, outside\|worker | 2 | 1 | 1 | 5 | 6 | 7 | 8 | 26 |
+| 1 タスクあたり | claude-fixer |  | 1.0 | 1.0 | 0.0 | 6.0 | 11.5 | 17.0 | 22.5 | 57.0 |
+| 1 タスクあたり | codex-fixer |  | 0.5 | 0.0 | 0.5 | 未確認 | 未確認 | 未確認 | 未確認 | 未確認 |
+| 1 タスクあたり | codex-implementer |  | 0.5 | 0.5 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
+| 1 タスクあたり | planner |  | 0.5 | 0.5 | 0.0 | 1.0 | 1.5 | 2.0 | 2.5 | 7.0 |
+| 1 タスクあたり | その他 |  | 1.0 | 0.5 | 0.5 | 2.5 | 3.0 | 3.5 | 4.0 | 13.0 |
+
+## 計画の表との差
+
+差は今回の値から計画の値を引いた値。差の理由は、数えた人が結果のコメントに記す。
+
+| 指標 | 計画 | 今回 | 差 |
+| --- | --- | --- | --- |
+| fixer_runs | 4 | 3 | -1 |
+| human_calls | 3 | 2 | -1 |
+| human_comments | 5 | 3 | -2 |
+| in_review_transitions | 2 | 2 | 0 |
+| issue_count | 2 | 2 | 0 |
+| run_count | 6 | 7 | 1 |
+| run_seconds | 240 | 244 | 4 |
+
+| 役 | 計画のトークン合計 | 今回の確認済み合計 | 差 | 未確認の実行 |
+| --- | --- | --- | --- | --- |
+| claude-fixer | 100 | 114 | 14 | 0 |
+| codex-fixer | 未確認 | 未確認 | 未確認 | 1 |
+| designer | 10 | 未確認 | 未確認 | 0 |
+| planner | 20 | 14 | -6 | 0 |
+| codex-implementer | 未確認 | 0 | 未確認 | 0 |
+| その他 | 未確認 | 26 | 未確認 | 1 |
