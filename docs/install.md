@@ -294,7 +294,7 @@ GitHub の Watch で Release の通知を受ける案内は、README に載る�
 | ファイル | 変える箇所 | 変えたあと |
 | --- | --- | --- |
 | `AGENTS.md` | 構成の表 | `setup.sh`、`lib/` の行の前に、`install.sh` の行を足す。役割の欄は「clone せずに導入・更新する入口。Release の配布物を検証して展開し、セットアップを流す」にする |
-| `AGENTS.md` | 作業別のルールの表の、コードの行の対象の欄 | 先頭に `install.sh` を足し、`install.sh`、`setup.sh`、`lib/**`、… の順にする。作業の欄は変えない |
+| `AGENTS.md` | 作業別のルールの表の、コードの行の対象の欄 | `setup.sh` の前に `install.sh` を足す。作業の欄は変えない |
 | `.agents/rules/code.md` | front matter の `paths` | `"setup.sh"` の行の前に、`"install.sh"` の行を足す |
 
 構成の表には、`setup.sh`、`lib/` の行に混ぜず、入口だけの行を置く。その行の役割は質問から登録の確認までで、`lib/` を読まずに 1 ファイルで動く入口の役割は読めないためである。入口の行と対象を `setup.sh` の前に置くのは、入口が先に流れ、展開した原本の `setup.sh` を流すためである。
