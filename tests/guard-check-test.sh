@@ -133,6 +133,13 @@ TEST_GUARD_RESPONSE=409 run
 [[ $(grep -c '^許可の確認:' "$test_dir/err") == 3 ]]
 echo 'PASS guard-check: 空リポジトリなどの GitHub の409応答も関所通過として確認し、参照を作らない'
 
+# gh 2.104.0 以降の help の形（--include[=true|false]）でも、関所を通して確認が最後まで進む。
+reset_guards
+TEST_GUARD_BOOL_FORM=brackets run
+[[ $(grep -c '^許可の確認:' "$test_dir/err") == 3 ]]
+[[ $(wc -l <"$TEST_GUARD_CALLS" | tr -d ' ') == 6 ]]
+echo 'PASS guard-check: bool のフラグが --name[=true|false] の形でも、関所を通して許可の確認が最後まで進む'
+
 # PATH を直さない古い起動ファイルでは、絶対パスの関所だけを確認して成功にしない。
 for file in .zshenv env.sh; do
  head -n 2 "$root/common/shell/$file" >"$test_dir/package/common/shell/$file"

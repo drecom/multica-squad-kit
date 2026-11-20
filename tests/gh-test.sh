@@ -56,6 +56,34 @@ FLAGS
       --input file            Request body
       --hostname string       Host
 HELP
+		# gh 2.104.0 以降は bool を --name[=true|false] の形で出し、それ以前は素の名前で出す。
+		if [[ -f $dir/bool-brackets ]]; then
+			cat <<'HELP'
+  -i, --include[=true|false]              Include HTTP response headers
+      --paginate[=true|false]             Make additional HTTP requests
+      --silent[=true|false]               Do not print the response body
+HELP
+		else
+			cat <<'HELP'
+  -i, --include                Include HTTP response headers
+      --paginate               Make additional HTTP requests
+      --silent                 Do not print the response body
+HELP
+		fi
+		;;
+	'pr create')
+		echo 'FLAGS'
+		if [[ -f $dir/bool-brackets ]]; then
+			echo '  -d, --draft[=true|false]     Mark pull request as a draft'
+		else
+			echo '  -d, --draft                  Mark pull request as a draft'
+		fi
+		cat <<'HELP'
+  -t, --title string            Title for the pull request
+
+INHERITED FLAGS
+  -R, --repo [HOST/]OWNER/REPO   Select repository
+HELP
 		;;
 	*) echo "Unexpected help: $*" >&2; exit 1 ;;
 	esac
@@ -68,7 +96,7 @@ case "$1 ${2:-}" in
 	# 模倣している --jq と同じく、bot の作者だけを返す。
 	jq -r '.author | select(.is_bot == true) | .login' "$dir/pr.json"
 	;;
-'pr merge' | 'pr comment' | 'api '*)
+'pr merge' | 'pr comment' | 'pr create' | 'api '*)
 	jq -cn --args '$ARGS.positional' -- "$@" >>"$dir/writes.jsonl"
 	echo 'mock success'
 	;;
@@ -191,6 +219,25 @@ touch "$test_dir/no-attach"
 block 'フラグの型が分からない' pr comment 367 --attach shot.png
 rm "$test_dir/no-attach"
 echo 'PASS attach: 古い gh のヘルプでは拒否し、本物に書き込まない'
+
+# gh 2.104.0 以降の help の形（--name[=true|false]）でも、bool として読み、値を取るフラグの判定は変えない。
+# どちらの形でも、素の bool・値を取るフラグ・= 形式・短いフラグの連結が同じ結果になることを確かめる。
+for form in plain brackets; do
+	if [[ $form == brackets ]]; then touch "$test_dir/bool-brackets"; else rm -f "$test_dir/bool-brackets"; fi
+	allow api --include --silent --paginate repos/example/template/issues/367/comments
+	allow api -i repos/example/template/issues/367/comments
+	allow api --include=false --paginate=true repos/example/template/issues/367/comments
+	allow api --include -X POST repos/example/template/issues -f title=test
+	allow pr create --draft --title test
+	allow pr create -d -t test
+	allow pr create --draft=false --title test
+	block 'other/repo への 書き込み' api --include --hostname github.com repos/other/repo/issues -X POST -f title=test
+	block 'への gh pr create は止めた' pr create --draft --repo other/repo --title test
+	block '値がない' api --include -X
+	block 'フラグの型が分からない' api --unknown repos/example/template/issues
+	echo "PASS bool: help が $form の形でも、bool・値を取るフラグ・許可先の判定が変わらない"
+done
+rm -f "$test_dir/bool-brackets"
 
 # ランタイムが本物の gh を先に置いた PATH を渡しても、通常のシェルから拒否する。
 # 関所を絶対パスで呼ぶテストだけでは、この抜け道を見つけられない。
