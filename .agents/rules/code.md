@@ -1,5 +1,6 @@
 ---
 paths:
+  - "install.sh"
   - "setup.sh"
   - "lib/**"
   - "scripts/**"
