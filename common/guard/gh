@@ -57,8 +57,9 @@ current_repo() {
 # 本物の gh の help からフラグの型を読む。コマンドごとに -b などの意味が違うため、
 # 値の有無を独自の一覧で推測しない。認識できない構文は実行前に止める。
 # help の FLAGS は「--name 型名  説明」、bool は「--name  説明」の形式。
+# gh 2.104.0 以降は bool を「--name[=true|false]  説明」と出す。この形も bool として読む。
 parse_args() {
-	local help line short long spaces rest spec arg name value takes_value
+	local help line short long bool_form spaces rest spec arg name value takes_value
 	local specs='' flags=false positional=false
 	POSITIONAL=()
 	OPTIONS=()
@@ -69,12 +70,13 @@ parse_args() {
 		'') flags=false; continue ;;
 		esac
 		$flags || continue
-		if [[ $line =~ ^[[:space:]]+(-[[:alnum:]],[[:space:]]+)?(--[[:alnum:]-]+)([[:space:]]+)(.*)$ ]]; then
+		if [[ $line =~ ^[[:space:]]+(-[[:alnum:]],[[:space:]]+)?(--[[:alnum:]-]+)(\[=true\|false\])?([[:space:]]+)(.*)$ ]]; then
 			short=${BASH_REMATCH[1]}
 			long=${BASH_REMATCH[2]}
-			spaces=${BASH_REMATCH[3]}
+			bool_form=${BASH_REMATCH[3]}
+			spaces=${BASH_REMATCH[4]}
 			takes_value=false
-			[[ ${#spaces} == 1 ]] && takes_value=true
+			[[ -n $bool_form || ${#spaces} != 1 ]] || takes_value=true
 			specs+="$long:$takes_value "
 			[[ -z $short ]] || specs+="${short:0:2}:$takes_value:$long "
 		fi
