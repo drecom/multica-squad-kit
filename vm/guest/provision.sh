@@ -16,6 +16,15 @@ source_dir=$(cd "$(dirname "$0")" && pwd)
 . "$guest_root/etc/os-release"
 [[ ${ID:-} == ubuntu && ${VERSION_ID:-} == 24.04 ]] || die 'Ubuntu 24.04 で実行してください。'
 
+# Lima では、公開 DNS を名前解決に足す。Lima の DNS は eth0 の DNS として残る。
+# 道具を入れる apt-get と curl も名前を引くので、先に置く。
+if [[ $platform == lima ]]; then
+	install -d -m 0755 "$guest_root/etc/systemd/resolved.conf.d"
+	printf '[Resolve]\nDNS=1.1.1.1 8.8.8.8\n' >"$guest_root/etc/systemd/resolved.conf.d/multica-squad-dns.conf"
+	chmod 0644 "$guest_root/etc/systemd/resolved.conf.d/multica-squad-dns.conf"
+	systemctl restart systemd-resolved
+fi
+
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y bash zsh git jq zip unzip python3 tzdata libdigest-sha-perl coreutils findutils procps ca-certificates curl uidmap dbus-user-session slirp4netns iptables apparmor

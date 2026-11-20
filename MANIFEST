@@ -730,7 +730,7 @@ a75552e9ce73a6a9face4c56e1a318d10150c76383b5c88d4f0de705dc9cde2f  ./tests/tty-se
 e39fda98640690eacde86a830113000ae2748a6057d82a1bc962969c6a25b428  ./tests/ui-steps-test.sh
 eb0a12120d36856588a0f63afb37cdfa1e2b253c19588fe385bafa439e1b2d4d  ./tests/ui-test.sh
 5ed8e11099875df22e4ac7f26be25561489d0939111df11a8d1c4e1d437f6809  ./tests/usage-fixture.py
-7738a15ea8bf152be06907e5e913a26a0d212e27d1a55ab48b43552d149a8c0d  ./tests/vm-guest-test.sh
+847a0b73dc2f9282c4365b27498701e496dd04cc82f5501cfc191fe0a99c6774  ./tests/vm-guest-test.sh
 3c9ce03ea050dbb0c128ce07876ff469748c0f79d5db8dadcc0299b47272cd2d  ./tests/vm-lima-test.sh
 fed6d2880cbdd02752bf5d377de7f0ad1912765a6a92436eedb5d77999c59632  ./tests/vm-wsl-cli.py
 e45a4621e54abb773ee81a439afc0ba097ffcf13bf6d80b5941d98389f34e571  ./tests/vm-wsl-test.ps1
@@ -739,7 +739,7 @@ e45a4621e54abb773ee81a439afc0ba097ffcf13bf6d80b5941d98389f34e571  ./tests/vm-wsl
 ab3bc7237ea426a9f1d56d978004adec93d8cf0f32227692a6cbe8632ee5ed29  ./tests/webhooks-test.sh
 69d612a5245ba8fd917a8aacb7b3502cf5787d1c15ca4121c85a557dcbd6076e  ./tests/workflow-rules-test.sh
 6083bca4bd8d29e62cde3c66ac773afc4691ebcc83146cbd3b3e2734dced4ef8  ./tests/workspace-test.sh
-36dd66ce61a8f83a685002fbef0c921bf3715c247a3a536a4fee78c89a3e53ee  ./vm/guest/provision.sh
+193dfc94eb18a0f28b7ac6e4456c3fefba9da60c7fbc21bd03b57ec30e164076  ./vm/guest/provision.sh
 fc34fa7b41bd83375e5031ce98bfc1ab99b3f356aeeb7612a6cf400e958dce51  ./vm/guest/record-server
 189b4dc2de09439bb1c8950dc7021065c9080278f84dd471fce2dda75dfc68fd  ./vm/guest/start-daemon
 0930735f80c0189171a8c08b5bd6bd100737cacd2647c474ce443ce83e10a6d6  ./vm/guest/verify.sh

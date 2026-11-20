@@ -273,6 +273,7 @@ elif name == 'systemctl':
     assert args in (
         ['disable', '--now', 'docker.service', 'docker.socket'],
         ['start', 'user@1000.service'], ['--user', 'enable', '--now', 'docker.service'],
+        ['restart', 'systemd-resolved'],
         ['daemon-reload'], ['enable', 'multica-squad-daemon.service'], ['enable', '--now', 'multica-squad-record-server.timer'],
     ), args
 elif name == 'runuser':
@@ -483,6 +484,47 @@ for failure in 'apt-get update' 'curl -fsSL https://cli.github.com/packages/gith
  [[ ! -e $guest_root/etc/systemd/system/multica-squad-daemon.service ]]
 done
 echo 'PASS vm guest: 権限の誤りと導入コマンドの失敗を成功扱いせず、デーモンの unit を有効にしない'
+
+# 名前解決: Lima だけが、公開 DNS を足す設定を置いて systemd-resolved を起動し直す。
+dns_conf=$guest_root/etc/systemd/resolved.conf.d/multica-squad-dns.conf
+calls_of() {
+ python3 - "$test_dir/guest-calls.jsonl" <<'PY'
+import json
+import sys
+for line in open(sys.argv[1]):
+    item = json.loads(line)
+    print(' '.join([item['command']] + item['args']))
+PY
+}
+reset_guest
+guest_state '{"user_exists":true}'
+provision lima vm-user
+[[ $(cat "$dns_conf") == $'[Resolve]\nDNS=1.1.1.1 8.8.8.8' ]]
+[[ $(stat -c %a "$dns_conf" 2>/dev/null || stat -f %Lp "$dns_conf") == 644 ]]
+[[ $(stat -c %a "$(dirname "$dns_conf")" 2>/dev/null || stat -f %Lp "$(dirname "$dns_conf")") == 755 ]]
+calls_of >"$test_dir/lima-calls"
+[[ $(grep -cx 'systemctl restart systemd-resolved' "$test_dir/lima-calls") == 1 ]]
+[[ $(grep -nx 'systemctl restart systemd-resolved' "$test_dir/lima-calls" | cut -d: -f1) -lt $(grep -nx 'apt-get update' "$test_dir/lima-calls" | head -n 1 | cut -d: -f1) ]]
+cp "$dns_conf" "$test_dir/first-dns-conf"
+: >"$test_dir/guest-calls.jsonl"
+provision_script=$guest_root/usr/local/lib/multica-squad-vm/provision.sh provision lima vm-user
+cmp "$test_dir/first-dns-conf" "$dns_conf"
+[[ $(calls_of | grep -cx 'systemctl restart systemd-resolved') == 1 ]]
+echo 'PASS vm guest: Lima は公開 DNS の設定を置き、最初の apt-get update より前に systemd-resolved を起動し直し、流し直しても同じになる'
+
+reset_guest
+provision wsl vm-user
+[[ ! -e $guest_root/etc/systemd/resolved.conf.d && ! -e $dns_conf ]]
+! calls_of | grep -q 'systemd-resolved'
+echo 'PASS vm guest: WSL は公開 DNS の設定を置かず、systemd-resolved も起動し直さない'
+
+reset_guest
+guest_state '{"user_exists":true,"fail":"systemctl restart systemd-resolved"}'
+if provision lima vm-user; then exit 1; fi
+[[ -s $test_dir/err ]]
+! calls_of | grep -q '^apt-get'
+[[ ! -e $guest_root/etc/systemd/system/multica-squad-daemon.service ]]
+echo 'PASS vm guest: systemd-resolved の起動し直しが失敗したら、Lima の準備を 0 以外で止め、デーモンの unit を有効にしない'
 
 reset_guest
 guest_state '{"uid":1000}'
