@@ -5,7 +5,14 @@ case "$*" in
 'api --help')
  cat <<'HELP'
 FLAGS
-  -i, --include                Include HTTP response headers
+HELP
+ # gh 2.104.0 以降は bool を --name[=true|false] の形で出す。
+ if [[ ${TEST_GUARD_BOOL_FORM:-plain} == brackets ]]; then
+  echo '  -i, --include[=true|false]   Include HTTP response headers'
+ else
+  echo '  -i, --include                Include HTTP response headers'
+ fi
+ cat <<'HELP'
   -X, --method string          HTTP method
   -f, --raw-field key=value    Add a string parameter
 
