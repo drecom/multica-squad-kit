@@ -332,7 +332,7 @@ echo 'PASS host-daemon: 読めない答えは「読めないので」、形の�
 
 # 拡張の記録は答えとして読まず、警告も出さない。最新の時刻でも、接続先と対象は変わらない。
 reset_host
-printf '%s\n' '{"roles":{},"autopilots":{}}' >"$TEMPLATE_AGENT_HOME/template/answers/workspace-a/project-a-and00.extensions.json"
+printf '%s\n' '{"roles":{},"autopilots":{}}' >"$TEMPLATE_AGENT_HOME/template/answers/workspace-a/project-a-membera.extensions.json"
 snapshot >"$test_dir/before"
 run
 jq -e '.server=="https://example.test" and ([.requirements[]|{workspace_id,runtimes}]==[{workspace_id:"workspace-a",runtimes:["claude"]}])' "$test_dir/resolved.json" >/dev/null
@@ -342,14 +342,14 @@ cmp "$test_dir/before" "$test_dir/after"
 echo 'PASS host-daemon: 正しい答えと並ぶ最新の拡張の記録に警告を出さず、接続先と対象を変えない'
 for content in 'broken json' '{"schema":2}'; do
  reset_host
- printf '%s\n' "$content" >"$TEMPLATE_AGENT_HOME/template/answers/workspace-a/project-a-and00.extensions.json"
+ printf '%s\n' "$content" >"$TEMPLATE_AGENT_HOME/template/answers/workspace-a/project-a-membera.extensions.json"
  run
  [[ ! -s $test_dir/err ]]
 done
 echo 'PASS host-daemon: 拡張の記録は中身を見ず、壊れていても警告を出さない'
 reset_host
 rm -f "$TEMPLATE_AGENT_HOME/template/answers/workspace-a/project-a.json"
-printf '%s\n' '{"roles":{},"autopilots":{}}' >"$TEMPLATE_AGENT_HOME/template/answers/workspace-a/project-a-and00.extensions.json"
+printf '%s\n' '{"roles":{},"autopilots":{}}' >"$TEMPLATE_AGENT_HOME/template/answers/workspace-a/project-a-membera.extensions.json"
 snapshot >"$test_dir/before"
 deny
 grep -q 'セットアップが済んでいません' "$test_dir/err"
