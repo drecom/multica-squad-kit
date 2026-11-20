@@ -1,0 +1,86 @@
+{
+  "commands": [
+    {
+      "match": "squad-preflight",
+      "stdout": "squad-preflight: 関所の gh と、すべての見張りが使えます。"
+    },
+    {
+      "match": "multica issue get issue-shop-1",
+      "stdout": "{\n  \"id\": \"issue-shop-1\",\n  \"identifier\": \"SHOP-1\",\n  \"title\": \"カートに商品数を出す\",\n  \"status\": \"in_progress\",\n  \"assignee_type\": \"squad\",\n  \"assignee_id\": \"squad-shop\",\n  \"project_id\": \"project-shop\",\n  \"labels\": [],\n  \"metadata\": {\n    \"repository\": \"example/shop\",\n    \"branch\": \"feat/cart-badge\",\n    \"pr_url\": \"https://github.com/example/shop/pull/7\"\n  },\n  \"description\": \"カートのアイコンに、入っている商品の数を出す。100 以上は `99+` と表示する。\"\n}"
+    },
+    {
+      "match": "multica issue comment list issue-shop-1",
+      "stdout": "[\n  {\n    \"id\": \"comment-1\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-claude-implementer\",\n    \"parent_id\": null,\n    \"content\": \"[@SQUAD-SHOP](mention://squad/squad-shop) 実装を push しました。PR: https://github.com/example/shop/pull/7\\n\\n確認したこと:\\n- 単体テストが通った\",\n    \"created_at\": \"2026-01-10T09:10:00Z\"\n  },\n  {\n    \"id\": \"comment-2\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-orchestrator\",\n    \"parent_id\": null,\n    \"content\": \"[@shop-claude-fixer-member1](mention://agent/agent-claude-fixer) CI の失敗の修正を頼みます。\\n\\nCI 3f9a2c1: 失敗あり\\n原因: 100 のときの表示が `99+` にならない（`src/cart/Badge.test.tsx` の失敗）。\\n修正の依頼: 1 回目\",\n    \"created_at\": \"2026-01-10T09:20:00Z\"\n  },\n  {\n    \"id\": \"comment-3\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-claude-fixer\",\n    \"parent_id\": null,\n    \"content\": \"[@SQUAD-SHOP](mention://squad/squad-shop) CI の test の失敗を直して push しました（head: 7d1e0b3）。\\n\\n`Badge.tsx` の表示の文字列を `99+` に直しました。手元で単体テストが通りました。\",\n    \"created_at\": \"2026-01-10T09:30:00Z\"\n  },\n  {\n    \"id\": \"comment-4\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-orchestrator\",\n    \"parent_id\": null,\n    \"content\": \"@PRINCIPAL_MENTION@ 同じテストの失敗が続いたので、診断を頼みます。\\n\\n見直しの種類: 診断\\n診断の依頼: 1 回目。失敗: 同じ誤り テスト cart-badge-test\\n返事を待つ役: @PRINCIPAL_MENTION@\\n確認するコミット: 7d1e0b34a5c6d7e8f9012345a6b7c8d9e0f1a2b3\\n振り分け: 最上位の役 @PRINCIPAL_ID@ を選んだ（使用率: 空いている）\\n\\n1 回目の失敗は CI 3f9a2c1 の test で、`Badge › 100 以上は 99+ と表示する` が落ちた。書いた原因は「100 のときの表示が 99+ にならない」で、修正の役に直しを頼んだ。\\n再発は CI 7d1e0b3 の同じテストで、修正の役は表示の文字列を直したと返した。\",\n    \"created_at\": \"2026-01-10T09:40:00Z\"\n  }\n]"
+    },
+    {
+      "match": "multica issue pull-requests issue-shop-1",
+      "stdout": "{\n  \"pull_requests\": [\n    {\n      \"url\": \"https://github.com/example/shop/pull/7\",\n      \"state\": \"open\",\n      \"draft\": true\n    }\n  ]\n}"
+    },
+    {
+      "match": "gh pr view",
+      "stdout": "{\n  \"number\": 7,\n  \"title\": \"feat: カートに商品数を出す\",\n  \"state\": \"OPEN\",\n  \"isDraft\": true,\n  \"baseRefName\": \"main\",\n  \"headRefName\": \"feat/cart-badge\",\n  \"headRefOid\": \"7d1e0b34a5c6d7e8f9012345a6b7c8d9e0f1a2b3\",\n  \"mergeable\": \"MERGEABLE\",\n  \"files\": [\n    {\n      \"path\": \"src/cart/Badge.tsx\"\n    },\n    {\n      \"path\": \"src/cart/Badge.test.tsx\"\n    }\n  ],\n  \"body\": \"カートのアイコンに、入っている商品の数を出す。100 以上は `99+` と表示する。\"\n}"
+    },
+    {
+      "match": "gh pr diff",
+      "stdout": "diff --git a/src/cart/Badge.tsx b/src/cart/Badge.tsx\nindex 3a1b2c3..8d4e5f6 100644\n--- a/src/cart/Badge.tsx\n+++ b/src/cart/Badge.tsx\n@@ -1,6 +1,6 @@\n export function formatBadge(count: number): string {\n-  if (count > 100) return '99'\n+  if (count > 100) return '99+'\n   return String(count)\n }\ndiff --git a/src/cart/Badge.test.tsx b/src/cart/Badge.test.tsx\nindex 5b6c7d8..9e0f1a2 100644\n--- a/src/cart/Badge.test.tsx\n+++ b/src/cart/Badge.test.tsx\n@@ -3,3 +3,7 @@\n test('99 以下はそのまま表示する', () => {\n   expect(formatBadge(99)).toBe('99')\n })\n+\n+test('100 以上は 99+ と表示する', () => {\n+  expect(formatBadge(100)).toBe('99+')\n+})\n"
+    },
+    {
+      "match": "gh pr checks",
+      "stdout": "test\tfail\t41s\thttps://github.com/example/shop/actions/runs/2002/job/9\nlint\tpass\t12s\thttps://github.com/example/shop/actions/runs/2002/job/10"
+    },
+    {
+      "match": "gh run view",
+      "stdout": "test  Run tests  FAIL src/cart/Badge.test.tsx\ntest  Run tests    ● Badge › 100 以上は 99+ と表示する\ntest  Run tests      expect(received).toBe(expected)\ntest  Run tests      Expected: \"99+\"\ntest  Run tests      Received: \"100\"\ntest  Run tests        at Object.<anonymous> (src/cart/Badge.test.tsx:7:31)\ntest  Run tests  Tests: 1 failed, 1 passed, 2 total\n"
+    },
+    {
+      "match": "squad-pr-watch ci-now issue-shop-1",
+      "stdout": "/note\nCI 7d1e0b3: 失敗あり"
+    },
+    {
+      "match": "multica repo checkout https://github.com/example/shop",
+      "stdout": "Checked out https://github.com/example/shop → ./shop (branch: agent/principal/diag-1)"
+    },
+    {
+      "match": "git fetch",
+      "stdout": ""
+    },
+    {
+      "match": "git checkout",
+      "stdout": "HEAD is now at 7d1e0b3 fix: 表示の文字列を 99+ に直す"
+    },
+    {
+      "match": "git switch",
+      "stdout": "HEAD is now at 7d1e0b3 fix: 表示の文字列を 99+ に直す"
+    },
+    {
+      "match": "git rev-parse HEAD",
+      "stdout": "7d1e0b34a5c6d7e8f9012345a6b7c8d9e0f1a2b3"
+    },
+    {
+      "match": "git rev-parse",
+      "stdout": "7d1e0b34a5c6d7e8f9012345a6b7c8d9e0f1a2b3"
+    },
+    {
+      "match": "git status",
+      "stdout": "HEAD detached at 7d1e0b3\nnothing to commit, working tree clean"
+    },
+    {
+      "match": "git log",
+      "stdout": "7d1e0b34a5c6d7e8f9012345a6b7c8d9e0f1a2b3 fix: 表示の文字列を 99+ に直す\n3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567 feat: カートに商品数を出す"
+    },
+    {
+      "match": "git diff",
+      "stdout": "diff --git a/src/cart/Badge.tsx b/src/cart/Badge.tsx\nindex 3a1b2c3..8d4e5f6 100644\n--- a/src/cart/Badge.tsx\n+++ b/src/cart/Badge.tsx\n@@ -1,6 +1,6 @@\n export function formatBadge(count: number): string {\n-  if (count > 100) return '99'\n+  if (count > 100) return '99+'\n   return String(count)\n }\ndiff --git a/src/cart/Badge.test.tsx b/src/cart/Badge.test.tsx\nindex 5b6c7d8..9e0f1a2 100644\n--- a/src/cart/Badge.test.tsx\n+++ b/src/cart/Badge.test.tsx\n@@ -3,3 +3,7 @@\n test('99 以下はそのまま表示する', () => {\n   expect(formatBadge(99)).toBe('99')\n })\n+\n+test('100 以上は 99+ と表示する', () => {\n+  expect(formatBadge(100)).toBe('99+')\n+})\n"
+    },
+    {
+      "match": "git show",
+      "stdout": "diff --git a/src/cart/Badge.tsx b/src/cart/Badge.tsx\nindex 3a1b2c3..8d4e5f6 100644\n--- a/src/cart/Badge.tsx\n+++ b/src/cart/Badge.tsx\n@@ -1,6 +1,6 @@\n export function formatBadge(count: number): string {\n-  if (count > 100) return '99'\n+  if (count > 100) return '99+'\n   return String(count)\n }\ndiff --git a/src/cart/Badge.test.tsx b/src/cart/Badge.test.tsx\nindex 5b6c7d8..9e0f1a2 100644\n--- a/src/cart/Badge.test.tsx\n+++ b/src/cart/Badge.test.tsx\n@@ -3,3 +3,7 @@\n test('99 以下はそのまま表示する', () => {\n   expect(formatBadge(99)).toBe('99')\n })\n+\n+test('100 以上は 99+ と表示する', () => {\n+  expect(formatBadge(100)).toBe('99+')\n+})\n"
+    }
+  ],
+  "git": true,
+  "files": {
+    "shop/AGENTS.md": "# shop の指示\n\nテストは `npm test`。CI の test の失敗は、`gh run view` のログで読む。\n",
+    "shop/src/cart/Badge.tsx": "export function formatBadge(count: number): string {\n  if (count > 100) return '99+'\n  return String(count)\n}\n",
+    "shop/src/cart/Badge.test.tsx": "import { formatBadge } from './Badge'\n\ntest('99 以下はそのまま表示する', () => {\n  expect(formatBadge(99)).toBe('99')\n})\n\ntest('100 以上は 99+ と表示する', () => {\n  expect(formatBadge(100)).toBe('99+')\n})\n"
+  }
+}

@@ -1,0 +1,224 @@
+#!/usr/bin/env bash
+# multica-squad-kit-managed
+# Multica のエージェントが使う Claude と Codex の使用上限を見て、状態が変わったら Multica のタスクで知らせる。
+# Multica は残りの使用量を見ず、使用上限で失敗したタスクも再試行しないため、止まる前と戻ったときに人が気づけるようにする。
+# 使用上限で失敗したことは、Multica が task_failed の通知を受信箱に送るので、ここでは扱わない。
+# Multica のオートパイロットから、各プロジェクト・メンバーの使用上限の見張り役が定期的に実行する。
+# エージェントの実行の中で動かすのは、タスクをエージェントとして作り、担当者の受信箱に通知を届けるため
+# （人のアカウントで作ると、自分の操作は自分に通知されない）。
+# デーモンのホスト（macOS・Linux）で動く。
+set -euo pipefail
+
+# タスクの担当にする人（Multica のメンバーの名前）。担当者の受信箱に通知が届く。
+: "${USAGE_CHECK_ASSIGNEE:?USAGE_CHECK_ASSIGNEE に、タスクの担当にするメンバーの名前を渡す}"
+# 作るタスクを入れるプロジェクト。setup.sh が指示の置き換えで渡す。
+: "${USAGE_CHECK_PROJECT:?USAGE_CHECK_PROJECT に、作るタスクを入れるプロジェクトの ID を渡す}"
+# メンバーの区別はセットアップで選んだ値。同じ人の別のプロジェクトとも記録を分ける。
+: "${USAGE_CHECK_MEMBER:?USAGE_CHECK_MEMBER に、メンバーの区別を渡す}"
+# 保存先の要素として使うので、別のディレクトリを指す値は受け付けない。
+for value in "$USAGE_CHECK_PROJECT" "$USAGE_CHECK_MEMBER"; do
+	case "$value" in
+	. | .. | *[!A-Za-z0-9_.-]*) echo 'プロジェクトとメンバーの区別には英数字・点・ハイフン・下線を使う' >&2; exit 1 ;;
+	esac
+done
+usage_check_state_path() {
+	printf '%s/%s/%s.state\n' "${USAGE_CHECK_STATE_ROOT:-$HOME/.multica-agent/template/usage-check}" "$USAGE_CHECK_PROJECT" "$USAGE_CHECK_MEMBER"
+}
+STATE_FILE=$(usage_check_state_path)
+# 警告を出す使用率（%）。警告から使用上限までが短すぎて手当てが間に合わないなら下げ、タスクが多すぎるなら上げる。
+USAGE_WARN_PERCENT=${USAGE_WARN_PERCENT:-80}
+# 作るタスクに付けるラベル。開発のタスクと分け、開発の進み具合に数えないため（セットアップで作るラベル）。
+LABEL_NAME=運用
+
+# 見るランタイムはセットアップの選択を受け取る。古いバージョンの指示は両方を見る。
+case ${USAGE_CHECK_RUNTIMES-claude codex} in
+'claude codex') usage_check_runtimes=(claude codex) ;;
+claude) usage_check_runtimes=(claude) ;;
+codex) usage_check_runtimes=(codex) ;;
+*) echo 'USAGE_CHECK_RUNTIMES は claude codex、claude、codex のいずれかを指定する' >&2; exit 1 ;;
+esac
+
+for cmd in jq python3 multica "${usage_check_runtimes[@]}"; do
+	if ! command -v "$cmd" >/dev/null 2>&1; then
+		echo "${cmd} が見つからない。デーモンのホストに入れる。" >&2
+		exit 1
+	fi
+done
+
+source "$(dirname "${BASH_SOURCE[0]}")/squad-usage-lib"
+
+# 使用率から状態を決める。
+level_of() {
+	local percent=$1
+	if ((percent >= 100)); then
+		echo limited
+	elif ((percent >= USAGE_WARN_PERCENT)); then
+		echo warn
+	else
+		echo ok
+	fi
+}
+
+# fetch_<ツール> は、枠ごとに「キー<TAB>状態<TAB>枠の名前<TAB>使用率とリセットの時刻」の行を出す。
+# 取得に失敗したら、理由を stderr に出して 1 で終わる。
+
+# Claude: /usage の表示を読む。モデルを呼ばないので、使用量を消費しない。
+# 表示は「Current session: 25% used · resets Oct 19 at 1am (Asia/Tokyo)」のような行。
+fetch_claude() {
+	local rows
+	rows=$(read_claude_usage) || return 1
+	local name percent reset
+	while IFS=$'\t' read -r name percent reset; do
+		printf 'claude:%s\t%s\tClaude の %s\t%s%%（%s にリセット）\n' \
+			"$name" "$(level_of "$percent")" "$name" "$percent" "$reset"
+	done <<<"$rows"
+}
+
+# Codex: 共通の読み取りから、見張りの表示に変える。
+fetch_codex() {
+	local res
+	res=$(read_codex_usage) || return 1
+
+	# 枠の長さはプランで違う（primary が週のこともある）ので、windowDurationMins から名前を付ける。
+	local limit_id window_mins percent resets_at window_name
+	while IFS=$'\t' read -r limit_id window_mins percent resets_at; do
+		case "$window_mins" in
+		300) window_name="5 時間" ;;
+		10080) window_name="週" ;;
+		*) window_name="${window_mins} 分" ;;
+		esac
+		printf 'codex:%s:%s\t%s\tCodex の %s の%sの枠\t%s%%（%s にリセット）\n' \
+			"$limit_id" "$window_mins" "$(level_of "$percent")" "$limit_id" "$window_name" "$percent" \
+			"$(usage_epoch_format "$resets_at" '%m/%d %H:%M')"
+	done < <(jq -r '
+		.rateLimitsByLimitId | to_entries[] | .key as $id
+		| (.value.primary, .value.secondary) | select(. != null)
+		| [$id, .windowDurationMins, (.usedPercent | floor), .resetsAt] | @tsv' <<<"$res")
+
+	# 枠の使用率が 100% 未満でも、クレジット切れなどで止まることがあるので、使えるかどうかも見る。
+	if jq -e '.ordinaryUsageAllowed == false' <<<"$res" >/dev/null; then
+		printf 'codex:allowed\tlimited\tCodex を使えるか\t使えない（%s）\n' \
+			"$(jq -r '.rateLimits.rateLimitReachedType // "理由は不明"' <<<"$res")"
+	else
+		printf 'codex:allowed\tok\tCodex を使えるか\t使える\n'
+	fi
+}
+
+# 状態は「キー → {level, issue}」の JSON。`issue` は、その枠について開いているタスクの ID。
+state='{}'
+[[ -f "$STATE_FILE" ]] && state=$(cat "$STATE_FILE")
+
+# タスクを作るたびに保存する。途中で失敗しても、作ったタスクを忘れて同じものを作り直さないため。
+save_state() {
+	mkdir -p "$(dirname "$STATE_FILE")"
+	printf '%s\n' "$state" >"$STATE_FILE"
+}
+
+# タスクにラベルを付ける。付けられなくてもタスクの状態の保存は続けるよう、失敗は返り値で返す。
+label_failed=false
+add_label() {
+	local id
+	id=$(squad_cli_read label-list | jq -r --arg n "$LABEL_NAME" '[.[] | select(.name == $n)][0].id // empty') || true
+	if [[ -z "$id" ]] || ! multica issue label add "$1" "$id" >/dev/null; then
+		echo "タスク ${1} に、ラベル ${LABEL_NAME} を付けられなかった" >&2
+		return 1
+	fi
+}
+
+# 改行を保ち、コメントはファイルで CLI に渡す。
+usage_comment() {
+	local body code=0
+	body=$(usage_tmpfile) || return 1
+	cat >"$body" || { rm -f -- "$body"; return 1; }
+	multica issue comment add "$1" --content-file "$body" --output table >/dev/null || code=$?
+	rm -f -- "$body" || return 1
+	return "$code"
+}
+
+# 1 つの枠の状態の変化を、タスクに反映する。
+#   ok → warn/limited/error: タスクを作る
+#   warn → limited: 使用上限に達したとコメントする
+#   limited → warn/ok、warn/error → ok: 戻ったとコメントし、ok なら done にする
+apply() {
+	local key=$1 level=$2 title=$3 detail=$4
+	local prev issue
+	prev=$(jq -r --arg k "$key" '.[$k].level // "ok"' <<<"$state")
+	issue=$(jq -r --arg k "$key" '.[$k].issue // empty' <<<"$state")
+	[[ "$level" == "$prev" ]] && return
+
+	if [[ -z "$issue" ]]; then
+		if [[ "$level" != ok ]]; then
+			local summary
+			case "$level" in
+			warn) summary="使用上限が近い。重い作業の割り振りを控えるか、エージェントを別の系統のモデルに寄せる" ;;
+			limited) summary="使用上限に達した。リセットまで、このモデルのエージェントは失敗する" ;;
+			error) summary="使用量を取れなくなり、見張れていない。ログインや表示の形が変わっていないか確認する" ;;
+			esac
+			local description
+			description=$(usage_tmpfile)
+			printf '%s\n\n%s\n\nこのタスクは使用上限の見張り（squad-usage-check）が作った。戻ったら、見張りがコメントして done にする。\n' "$summary" "$detail" >"$description"
+			local response
+			if ! response=$(squad_cli_read issue-create "[使用上限] ${title}" "$description" \
+				--assignee "$USAGE_CHECK_ASSIGNEE" --project "$USAGE_CHECK_PROJECT"); then
+				rm -f -- "$description"
+				return 1
+			fi
+			issue=$(jq -r '.id' <<<"$response")
+			rm -f -- "$description"
+			add_label "$issue" || label_failed=true
+		fi
+	else
+		case "$level:$prev" in
+		limited:*) printf '使用上限に達した。リセットまで、このモデルのエージェントは失敗する。\n\n%s\n' "$detail" |
+			usage_comment "$issue" ;;
+		ok:error) printf '使用量をまた取れるようになった。\n' | usage_comment "$issue" ;;
+		*:limited) printf '戻った。使用上限で失敗したタスクは multica issue rerun で再実行する。\n\n%s\n' "$detail" |
+			usage_comment "$issue" ;;
+		ok:warn) printf 'リセットされた。\n\n%s\n' "$detail" | usage_comment "$issue" ;;
+		esac
+		if [[ "$level" == ok ]]; then
+			multica issue status "$issue" done --no-start >/dev/null
+			issue=""
+		fi
+	fi
+	state=$(jq --arg k "$key" --arg l "$level" --arg i "$issue" '.[$k] = {level: $l, issue: $i}' <<<"$state")
+	save_state
+}
+
+# 1 つのツールの結果を、枠ごとに反映する。
+# 取得に失敗したツールは、枠の状態を前回のままにする（見えないあいだに戻ったことにしないため）。
+check() {
+	local tool=$1 label=$2 rows err_file
+	err_file=$(usage_tmpfile)
+	if ! rows=$("fetch_${tool}" 2>"$err_file"); then
+		apply "${tool}:fetch" error "${label} の使用量を取れない" "$(cat "$err_file")"
+		rm -f "$err_file"
+		return
+	fi
+	rm -f "$err_file"
+	apply "${tool}:fetch" ok "${label} の使用量を取れない" ""
+
+	# 前回あって今回ない枠は、リセットで表示から消えたものとして ok に戻す。
+	local key
+	while IFS= read -r key; do
+		[[ -z "$key" ]] && continue
+		if ! cut -f1 <<<"$rows" | grep -qxF "$key"; then
+			rows+=$'\n'"${key}"$'\tok\t'"${label} の ${key#*:}"$'\t'"表示から消えた（リセットされた）"
+		fi
+	done < <(jq -r --arg p "${tool}:" 'keys[] | select(startswith($p) and . != ($p + "fetch"))' <<<"$state")
+
+	local level title detail
+	while IFS=$'\t' read -r key level title detail; do
+		[[ -z "$key" ]] && continue
+		apply "$key" "$level" "$title" "${title}: ${detail}"
+	done <<<"$rows"
+}
+
+for runtime in "${usage_check_runtimes[@]}"; do
+	case $runtime in claude) check claude Claude ;; codex) check codex Codex ;; esac
+done
+save_state
+# ラベルを付けられなかったことを、実行の結果で人に知らせる。
+if $label_failed; then
+	exit 1
+fi

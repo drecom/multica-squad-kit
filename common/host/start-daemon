@@ -1,0 +1,197 @@
+#!/usr/bin/env bash
+# multica-squad-kit-managed
+set -euo pipefail
+
+die() { printf 'エラー: %s\n' "$*" >&2; exit 1; }
+notice() { printf '注意: %s\n' "$*" >&2; }
+setup_required() {
+	die 'セットアップが済んでいません。manual.md の「原本を取る」の 1 行のコマンドでセットアップを流してください。何も変更していません。'
+}
+
+# 原本を読み込まず、ホストに保存された答えだけで起動の対象を決める。
+read_host_configuration() {
+	local file workspace answer latest='' newest_servers='[]' answers='[]'
+	[[ -f $agent_home/template/version && -f $agent_home/bin/gh && -x $agent_home/bin/gh ]] || setup_required
+	for file in "$answers_dir/"*/*.json; do
+		[[ -f $file ]] || continue
+		workspace=${file%/*}
+		workspace=${workspace##*/}
+		if ! answer=$(jq -cse --arg workspace "$workspace" --arg file "$file" '
+			if length==1 then .[0] else error("答えは 1 つのオブジェクトです") end |
+			if type=="object" and .schema==1 and
+				(.server_url|type=="string" and test("^https://[^/?#\\s@]+(:[0-9]+)?(/[^?#\\s]*)?$")) and
+				(.workspace_id|type=="string" and length>0 and .==$workspace) and
+				((has("runtimes")|not) or
+				 (.runtimes|type=="array" and length>0 and length==(unique|length) and all(.[]; .=="claude" or .=="codex")))
+			then {file:$file, server_url:.server_url, workspace_id:.workspace_id,
+				runtimes:(if has("runtimes") then .runtimes else ["claude","codex"] end)}
+			else error("答えの形が不正です") end
+		' "$file" 2>/dev/null); then
+			notice "答えのファイルを読めないので、使いません: $file"
+			continue
+		fi
+		answers=$(jq -c --argjson answer "$answer" '.+[$answer]' <<<"$answers")
+		if [[ -z $latest || $file -nt $latest ]]; then
+			latest=$file
+			newest_servers=$(jq -c '[.server_url]' <<<"$answer")
+		elif [[ ! $latest -nt $file ]]; then
+			newest_servers=$(jq -c --argjson answer "$answer" '.+[$answer.server_url]|unique' <<<"$newest_servers")
+		fi
+	done
+	[[ -n $latest ]] || setup_required
+	[[ $(jq length <<<"$newest_servers") == 1 ]] || die "最後に流したセットアップの接続先を決められません（$(jq -r 'join("、")' <<<"$newest_servers")）。使う接続先でセットアップを流し直してから、もう一度流してください。何も変更していません。"
+	server_url=$(jq -r '.[0]' <<<"$newest_servers")
+	if [[ ${MULTICA_SERVER_URL+x} && $MULTICA_SERVER_URL != "$server_url" ]]; then
+		die "環境変数 MULTICA_SERVER_URL（${MULTICA_SERVER_URL}）が、セットアップの接続先（${server_url}）と違います。環境変数を外すか、その接続先でセットアップを流し直してください。何も変更していません。"
+	fi
+	while IFS= read -r file; do
+		notice "別の接続先の答えのファイルは使いません: $file"
+	done < <(jq -r --arg server "$server_url" '.[]|select(.server_url!=$server)|.file' <<<"$answers")
+	# ファイル名も残し、オンラインにならないときに求めた答えを案内できるようにする。
+	runtime_requirements=$(jq -c --arg server "$server_url" '
+		map(select(.server_url==$server)) | group_by(.workspace_id) |
+		map({workspace_id:.[0].workspace_id, runtimes:(map(.runtimes[])|unique), answers:.})
+	' <<<"$answers")
+}
+
+warn_autostart() {
+	local status
+	if ! status=$(multica daemon autostart status --output json 2>/dev/null) ||
+		! jq -se 'length==1 and (.[0]|type=="object" and (.enabled|type=="boolean"))' >/dev/null 2>&1 <<<"$status"; then
+		notice 'CLI の自動起動の状態を読めませんでした。multica daemon autostart status で確認してください。'
+	elif [[ $(jq -r '.enabled' <<<"$status") == true ]]; then
+		notice 'CLI の自動起動が有効です。ログインのたびに、関所の PATH と CODEX_HOME のないデーモンが起動します。止めるには multica daemon autostart disable を流してください。この入口は設定を変えません。'
+	fi
+}
+
+# 起動開始後は、呼び出しと待機を同じ経過時間の期限に収める。
+# 終了させるのは、この呼び出しで起こした CLI の PID だけである。
+before_deadline() {
+	local remaining worker watcher timer='' result=0
+	if [[ -z ${daemon_deadline:-} ]]; then "$@"; return; fi
+	remaining=$((daemon_deadline - SECONDS))
+	((remaining > 0)) || return 124
+	"$@" &
+	worker=$!
+	(
+		trap 'if [[ -n $timer ]]; then kill "$timer" 2>/dev/null || :; wait "$timer" 2>/dev/null || :; fi; exit' TERM
+		/bin/sleep "$remaining" &
+		timer=$!
+		wait "$timer"
+		kill -KILL "$worker" 2>/dev/null || :
+	) >/dev/null 2>&1 &
+	watcher=$!
+	wait "$worker" 2>/dev/null || result=$?
+	kill "$watcher" 2>/dev/null || :
+	wait "$watcher" 2>/dev/null || :
+	((SECONDS < daemon_deadline)) || return 124
+	return "$result"
+}
+
+read_daemon_status() {
+	local result=0
+	daemon_status=$(before_deadline multica daemon status --output json) || result=$?
+	[[ $result != 124 ]] || return 124
+	if [[ $result != 0 ]]; then
+		jq -e '.status=="stopped" or .status=="not_running"' >/dev/null <<<"$daemon_status" || die 'デーモンの状態を取得できませんでした。'
+	fi
+	jq -e 'type=="object" and (.status=="running" or .status=="stopped" or .status=="not_running") and (.pid==null or (.pid|type=="number" and .>0 and floor==.))' >/dev/null <<<"$daemon_status" || die 'デーモンの状態の応答が不正です。'
+	daemon_pid=$(jq -r '.pid // empty' <<<"$daemon_status")
+	local observed_server
+	observed_server=$(jq -r '.server_url // empty' <<<"$daemon_status")
+	if [[ $(jq -r '.status' <<<"$daemon_status") == running && -n $observed_server ]]; then
+		[[ $(jq -r '.server_url | rtrimstr("/")' <<<"$daemon_status") == "$server_url" ]] || die "別の接続先（${observed_server}）のデーモンが動いています。止めも起動もしていません。使う接続先を確認し、セットアップを流し直してください。"
+	fi
+	daemon_id=$(jq -r '.daemon_id // empty' <<<"$daemon_status")
+	if [[ -z $daemon_id && -f $daemon_id_file ]]; then
+		daemon_id=$(<"$daemon_id_file") || die 'デーモン ID を読めませんでした。'
+	fi
+}
+
+read_host_runtimes() {
+	local requirement workspace observed online result
+	runtime_state='[]'
+	while IFS= read -r requirement; do
+		workspace=$(jq -r '.workspace_id' <<<"$requirement")
+		result=0
+		observed=$(MULTICA_WORKSPACE_ID="$workspace" before_deadline multica runtime list --output json) || result=$?
+		[[ $result != 124 ]] || return 124
+		[[ $result == 0 ]] || die "ワークスペース（${workspace}）のランタイムを読めません。答えのディレクトリ（${answers_dir}）を確認してください。"
+		jq -e 'type=="array" and all(.[]; (.id|type=="string") and (.owner_id|type=="string") and (.provider|type=="string") and (.status|type=="string"))' >/dev/null <<<"$observed" || die "ワークスペース（${workspace}）のランタイムの応答が不正です。答えのディレクトリ（${answers_dir}）を確認してください。"
+		online='[]'
+		if [[ -n $daemon_id ]]; then
+			online=$(jq -c --arg owner "$host_owner_id" --arg daemon "$daemon_id" '[.[] | select(.owner_id==$owner and .daemon_id==$daemon and .status=="online" and (.provider=="claude" or .provider=="codex")) | .provider] | unique' <<<"$observed")
+		fi
+		runtime_state=$(jq -c --argjson requirement "$requirement" --argjson online "$online" '.+[$requirement+{online:$online}]' <<<"$runtime_state")
+	done < <(jq -c '.[]' <<<"$runtime_requirements")
+	missing_runtimes=$(jq -c '[.[] | . as $workspace | .runtimes[] | . as $runtime |
+		select($workspace.online|index($runtime)==null) |
+		{workspace_id:$workspace.workspace_id, runtime:$runtime,
+		 files:[$workspace.answers[]|select(.runtimes|index($runtime)!=null)|.file]}]' <<<"$runtime_state")
+}
+
+host_runtimes_online() { [[ $(jq length <<<"$missing_runtimes") == 0 ]]; }
+
+daemon_has_agent_env() {
+	local observed
+	[[ -n $daemon_pid ]] || return 1
+	observed=$(before_deadline ps eww -o command= -p "$daemon_pid") || return 1
+	[[ " $observed " == *" CODEX_HOME=$agent_home/codex "* && " $observed " == *" PATH=$agent_home/bin:"* ]]
+}
+
+report_success() {
+	printf '接続先: %s\n' "$server_url"
+	jq -r '.[] | "ランタイム: " + .workspace_id + " の " + (.runtimes|join("、"))' <<<"$runtime_requirements"
+}
+
+start_daemon() {
+	# lib/host.sh の prepare_daemon と同じ環境で起動する。
+	exec env -i HOME="$HOME" USER="${USER:-}" SHELL=/bin/zsh PATH="$agent_home/bin:$PATH" CODEX_HOME="$agent_home/codex" MULTICA_SERVER_URL="$server_url" multica daemon start
+}
+
+prepare_daemon() {
+	local profile active i missing files result
+	profile=$(multica user profile get --output json) || die '実行する人の情報を取得できませんでした。'
+	host_owner_id=$(jq -er '.id | select(type=="string" and length>0)' <<<"$profile") || die '実行する人の ID が不正です。'
+	read_daemon_status
+	read_host_runtimes
+	if [[ -n $daemon_pid ]]; then
+		if host_runtimes_online && daemon_has_agent_env; then report_success; return; fi
+		# 止める直前に、接続先とタスク数を読み直す。
+		read_daemon_status
+		active=$(jq -er '[.active_task_count,.running_task_count,.resource_wait_task_count] | map(select(.!=null)) | select(length>0 and all(.[]; type=="number" and .>=0 and floor==.)) | max' <<<"$daemon_status") || die '環境のそろわないデーモンの、実行中のタスクの数を読めません。デーモンを止めていません。multica daemon status で確認し、タスクがなければもう一度流してください。'
+		[[ $active == 0 ]] || die "環境のそろわないデーモンで、タスクが動いています（${active} 件）。デーモンを止めていません。タスクが終わってから、もう一度流してください。"
+		multica daemon stop || die 'デーモンを停止できませんでした。'
+	elif jq -e 'any(.[]; .online|length>0)' >/dev/null <<<"$runtime_state"; then
+		die 'CLI 以外のデーモン（デスクトップアプリなど）が動いています。何も変更していません。動いている作業がないことを確認してアプリを終了し、もう一度 bash ~/.multica-agent/start-daemon を流してください。再起動の直後なら、前のデーモンの記録が残っていることがあるので、1 分ほど待ってから流してください。'
+	fi
+	daemon_deadline=$((SECONDS + daemon_timeout))
+	result=0
+	before_deadline start_daemon || result=$?
+	[[ $result == 0 || $result == 124 ]] || die 'デーモンを起動できませんでした。'
+	for ((i=0; i<daemon_attempts; i++)); do
+		[[ $result != 124 ]] || break
+		read_daemon_status && read_host_runtimes || break
+		if host_runtimes_online && daemon_has_agent_env && ((SECONDS < daemon_deadline)); then report_success; return; fi
+		before_deadline sleep "$daemon_interval" || break
+	done
+	missing=$(jq -r 'map(.workspace_id+" の "+.runtime)|join("、")' <<<"$missing_runtimes")
+	files=$(jq -r '[.[].files[]]|unique|join("、")' <<<"$missing_runtimes")
+	[[ -n $missing ]] || missing='デーモンの環境'
+	die "ランタイムが 60 秒のうちにオンラインになりません（足りないもの: ${missing}）。multica daemon status と multica daemon logs を確認してください。エージェント用のログインは manual.md の「ホストとエージェント用のログイン」を見てください。使わなくなったプロジェクトなら、答えのファイル（${files}）を答えのディレクトリの外へ移してから、もう一度流してください。"
+}
+
+[[ $# == 0 ]] || die '使い方: bash ~/.multica-agent/start-daemon（引数なしで流してください）'
+for tool in multica jq; do
+	command -v "$tool" >/dev/null 2>&1 || die "$tool がありません。$tool を導入してから、もう一度流してください。"
+done
+agent_home=${TEMPLATE_AGENT_HOME:-$HOME/.multica-agent}
+answers_dir=$agent_home/template/answers
+daemon_id_file=${TEMPLATE_DAEMON_ID_FILE:-$HOME/.multica/daemon.id}
+daemon_attempts=${TEMPLATE_DAEMON_ATTEMPTS:-30}
+daemon_interval=${TEMPLATE_DAEMON_INTERVAL:-2}
+daemon_timeout=${TEMPLATE_DAEMON_TIMEOUT:-60}
+read_host_configuration
+warn_autostart
+export MULTICA_SERVER_URL=$server_url
+prepare_daemon

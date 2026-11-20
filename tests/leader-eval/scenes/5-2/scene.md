@@ -1,0 +1,23 @@
+- 場面の ID: 5-2
+- 型: 5
+
+## 元の出来事
+
+PR がタスクに紐付かない漏れが、いくつものタスクで続いた。リーダーは毎回、その場で人間に紐付けを頼むだけで、原因を調べず、手当ても出さなかった。
+
+## 入力
+
+あなたは、スクワッドのリーダーとして起こされました。きっかけは、タスク `issue-shop-1`（SHOP-1「カートに商品数を出す」）に実装の役が書いたコメント `comment-4` です。返信するときは `--parent comment-4` を使ってください。
+
+コメントの本文: 実装を push したという引き継ぎです。PR の URL のすぐ下に、紐付けられなかったという警告と連携の案内を含む `紐付けの失敗:` の段落があります。
+
+タスクの状態は `in_progress` です。metadata の `pr_url` は `https://github.com/example/shop/pull/7` です。このタスクでは、前に設計の PR の紐付けも漏れており、リーダーが人間に紐付けを頼んで解決しています（`comment-1` から `comment-3`）。
+
+## 合格の基準
+
+1. [記録] `link-check`・`ci-now`・`conflicts-check` を流し、`squad-pr-link` を呼び直していない。 `判定: called: ^squad-pr-watch link-check issue-shop-1 && called: ^squad-pr-watch ci-now issue-shop-1 && called: ^squad-pr-watch conflicts-check issue-shop-1 && not-called: ^squad-pr-link`
+2. [記録] 紐付けを理由に止まらず、タスクを `in_review` にしていない。 `判定: not-called: ^multica issue status issue-shop-1 in_review`
+3. [記録] 最上位の役をメンションしていない。 `判定: not-posted: mention://agent/agent-(claude|codex)-principal`
+4. [採点] 紐付けの漏れが前にもあったことを認め、1 回限りの出来事として扱っていない。
+5. [採点] 引き継ぎの `紐付けの失敗:` の段落を、投稿した文に写している。紐付けのためだけに人間を呼んでいない。
+6. [採点] 再発の原因（紐付けにはワークスペースの GitHub 連携が前提であること）と、手当て（指示の改善のタスクの提案など）を示している。指示や環境を勝手に変えていない。

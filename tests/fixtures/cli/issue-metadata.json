@@ -1,0 +1,17 @@
+[
+  {
+    "branch": "feature/installer",
+    "ci_watch_thread": "fixture-id-000010",
+    "pr_url": "https://github.com/example/repo/pull/29",
+    "repository": "drecom/multica-squad-kit"
+  },
+  {
+    "repository": "drecom/multica-squad-kit",
+    "squad_kit_targets": "[\"drecom/multica-squad-kit\"]",
+    "squad_kit_task": "repository-rules"
+  },
+  {
+    "ci_watch_thread": "fixture-thread",
+    "pr_url": "https://github.com/example/repo/pull/34"
+  }
+]

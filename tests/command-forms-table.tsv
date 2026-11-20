@@ -1,0 +1,25 @@
+# 参照のコマンド形の表。tests/command-forms-check.py が読む。tests/agent-templates-test.sh の契約 e の一部。
+# 契約は、機械（Multica の CLI、jq、shasum）が読むコマンド形だけにする。説明文は固定しない（docs/test-trim.md の「残す 6 種類」）。
+# 列（タブ区切り、7 列）:
+#   種類: 名前＝コマンドの名前（サブコマンド）。表の名前にないものは、綴りの誤りとして落とす。形＝引数やパイプまでの形。参照に 1 つ以上ある。説明文＝バッククォートの外。
+#   場所: 参照のパス（リポジトリの根から）
+#   形: コマンドの先頭から、固定する範囲まで（語の切れ目で合わせる）
+#   置き換え: その写しで形の代わりに書く文字列（説明文の行は「-」）
+#   期待: 変えた写しが 落ちる か 通る か
+#   検査: 見る＝参照にこの形がなければ落とす。見ない＝あってもなくてもよい（打ち消しの文で出る名前など）
+#   理由: 読む側が誰で、何が起きるか
+名前	common/skills/squad-handoff/references/leader-run-status.md	multica issue runs	multica issue runz	落ちる	見る	Multica の CLI が読む。サブコマンドの綴りを誤ると、実行の一覧が取れない
+名前	common/skills/squad-handoff/references/leader-run-status.md	multica issue run-messages	multica issue run-message	落ちる	見る	Multica の CLI が読む。実行のログが取れない
+名前	common/skills/squad-handoff/references/leader-run-status.md	multica issue cancel-task	multica issue cancel-run	落ちる	見る	Multica の CLI が読む。実行を止める操作が、存在しないコマンドになる
+名前	common/skills/squad-handoff/references/leader-run-status.md	multica issue rerun	multica issue renun	落ちる	見ない	打ち消しの文（使わない）で出る名前。あってもなくてもよいが、綴りを誤った新しい名前は落とす
+名前	common/skills/squad-handoff/references/leader-run-status.md	multica issue --help	multica issue --halp	落ちる	見る	Multica の CLI が読む。コマンドの一覧の引き方
+形	common/skills/squad-handoff/references/leader-run-status.md	multica issue cancel-task <実行の ID> --issue <タスク>	multica issue cancel-task <実行の ID> --task <タスク>	落ちる	見る	Multica の CLI が読む。引数の形を変えると、実行を止める操作が失敗する
+説明文	common/skills/squad-handoff/references/leader-run-status.md	-	-	通る	見る	バッククォートの外を言い換えても通る。説明文は固定しない
+名前	common/skills/squad-handoff/references/leader-run-status.md	squad-pr-watch link-check	squad-pr-watch link-chek	落ちる	見る	ホストの squad-pr-watch が読む。サブコマンドの綴りを誤ると、使い方の誤りで終わり、紐付けの判定が出ない
+形	common/skills/squad-handoff/references/leader-run-status.md	squad-pr-watch link-check <タスク>	squad-pr-watch link-check <PR の URL>	落ちる	見る	ホストの squad-pr-watch が読む。引数にタスクでなく PR を渡すと、紐付けの判定が出ない
+名前	common/skills/squad-handoff/references/leader-principal.md	multica issue label add	multica issue label ad	落ちる	見る	Multica の CLI が読む。ラベルが付かない
+名前	common/skills/squad-handoff/references/leader-principal.md	multica issue get	multica issue gett	落ちる	見る	Multica の CLI が読む。タスクの本文が取れない
+名前	common/skills/squad-handoff/references/leader-principal.md	multica issue runs	multica issue runz	落ちる	見る	Multica の CLI が読む。実行の一覧が取れない
+形	common/skills/squad-handoff/references/leader-principal.md	multica issue get <タスク> --output json | jq -j .description | shasum -a 256	multica issue get <タスク> --output json | jq -j .title | shasum -a 256	落ちる	見る	jq と shasum が読む。本文でなく題名の値になり、本文の値の照合が合わなくなる
+形	common/skills/squad-handoff/references/leader-principal.md	multica issue get <タスク> --output json | jq -j .description | shasum -a 256	multica issue get <タスク> --output json | jq .description | shasum -a 256	落ちる	見る	jq が読む。-j を外すと、改行や引用符の入った値になり、値が合わなくなる
+説明文	common/skills/squad-handoff/references/leader-principal.md	-	-	通る	見る	バッククォートの外を言い換えても通る。説明文は固定しない
