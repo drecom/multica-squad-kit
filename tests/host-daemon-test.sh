@@ -170,10 +170,18 @@ reset_host() {
 }
 snapshot() {
  python3 - "${TEMPLATE_AGENT_HOME:-$HOME/.multica-agent}" <<'PY'
-import hashlib, json, sys
+import hashlib, json, os, sys
 from pathlib import Path
 base = Path(sys.argv[1])
-print(json.dumps([(str(p.relative_to(base)), hashlib.sha256(p.read_bytes()).hexdigest()) for p in sorted(base.rglob('*')) if p.is_file()]))
+rows = []
+for p in sorted(base.rglob('*')):
+    if not p.is_file():
+        continue
+    # 権限・大きさ・更新の時刻はすべてのファイルで控える。中身は、読めるファイルだけ控える。
+    st = p.stat()
+    digest = hashlib.sha256(p.read_bytes()).hexdigest() if os.access(p, os.R_OK) else None
+    rows.append((str(p.relative_to(base)), oct(st.st_mode & 0o7777), st.st_size, st.st_mtime_ns, digest))
+print(json.dumps(rows))
 PY
 }
 
@@ -257,7 +265,54 @@ run
 jq -e '[.requirements[]|{workspace_id,runtimes}]==[{workspace_id:"workspace-a",runtimes:["claude","codex"]},{workspace_id:"workspace-b",runtimes:["codex"]},{workspace_id:"workspace-c",runtimes:["claude","codex"]}]' "$test_dir/resolved.json" >/dev/null
 echo 'PASS host-daemon: ランタイムを合わせる対象をワークスペースごとに集め、古い答えは両方にする'
 
-# 形の合わない答えが最新でも、正しい答えの接続先と対象を使う。
+# 使わない答えが最新でも、正しい答えの接続先と対象を使い、原因に合う警告だけをファイル名付きで 1 件出す。
+unreadable_notice='答えのファイルを読めないので、使いません'
+shape_notice='答えのファイルの形が合わないので、使いません。不要なら消し、使うなら消してからセットアップを流し直してください'
+# 警告の種類（unreadable か shape）と、bad.json に書く中身を受け取り、どちらの警告が出るかを確認する。
+bad_case() {
+ local kind=$1 content=$2
+ reset_host
+ printf '%s\n' "$content" >"$TEMPLATE_AGENT_HOME/template/answers/workspace-a/bad.json"
+ snapshot >"$test_dir/before"
+ run
+ jq -e '.server=="https://example.test" and .requirements[0].runtimes==["claude"]' "$test_dir/resolved.json" >/dev/null
+ if [[ $kind == unreadable ]]; then
+  grep -q "^注意: $unreadable_notice: .*/bad.json\$" "$test_dir/err"
+  ! grep -q '形が合わない' "$test_dir/err"
+ else
+  grep -q "^注意: $shape_notice: .*/bad.json\$" "$test_dir/err"
+  ! grep -q '読めない' "$test_dir/err"
+ fi
+ [[ $(grep -c '^注意:' "$test_dir/err") -eq 1 ]]
+ snapshot >"$test_dir/after"
+ cmp "$test_dir/before" "$test_dir/after"
+}
+# 読めない群: 壊れた JSON、値が 2 つ、空のファイル、開けないファイル。
+bad_case unreadable 'broken json'
+bad_case unreadable $'{}\n{}'
+bad_case unreadable ''
+reset_host
+: >"$TEMPLATE_AGENT_HOME/template/answers/workspace-a/bad.json"
+run
+grep -q "^注意: $unreadable_notice: .*/bad.json\$" "$test_dir/err"
+if [[ $(id -u) != 0 ]]; then
+ reset_host
+ cp "$TEMPLATE_AGENT_HOME/template/answers/workspace-a/project-a.json" "$TEMPLATE_AGENT_HOME/template/answers/workspace-a/bad.json"
+ chmod 000 "$TEMPLATE_AGENT_HOME/template/answers/workspace-a/bad.json"
+ snapshot >"$test_dir/before"
+ result=0
+ run || result=$?
+ snapshot >"$test_dir/after"
+ chmod 644 "$TEMPLATE_AGENT_HOME/template/answers/workspace-a/bad.json"
+ [[ $result == 0 ]]
+ cmp "$test_dir/before" "$test_dir/after"
+ jq -e '.server=="https://example.test"' "$test_dir/resolved.json" >/dev/null
+ grep -q "^注意: $unreadable_notice: .*/bad.json\$" "$test_dir/err"
+ ! grep -q '形が合わない' "$test_dir/err"
+else
+ echo 'SKIP host-daemon: root では開けないファイルの場面を確認できない'
+fi
+# 形が合わない群: オブジェクトでない、schema が違う、値が不正。
 for invalid in 'null' '[]' '{"schema":2}' \
  '{"schema":1,"workspace_id":"workspace-a","server_url":"http://example.test"}' \
  '{"schema":1,"workspace_id":"workspace-a","server_url":"https://user@example.test"}' \
@@ -267,20 +322,41 @@ for invalid in 'null' '[]' '{"schema":2}' \
  '{"schema":1,"workspace_id":"workspace-a","server_url":"https://other.test","runtimes":["codex","codex"]}' \
  '{"schema":1,"workspace_id":"workspace-a","server_url":"https://other.test","runtimes":["other"]}' \
  '{"schema":1,"workspace_id":"workspace-a","server_url":"https://other.test","runtimes":null}' \
- 'broken json' $'{}\n{}'; do
- reset_host
- printf '%s\n' "$invalid" >"$TEMPLATE_AGENT_HOME/template/answers/workspace-a/bad.json"
- snapshot >"$test_dir/before"
- run
- jq -e '.server=="https://example.test" and .requirements[0].runtimes==["claude"]' "$test_dir/resolved.json" >/dev/null
- grep -q 'bad.json' "$test_dir/err"
- snapshot >"$test_dir/after"
- cmp "$test_dir/before" "$test_dir/after"
+ ; do
+ bad_case shape "$invalid"
 done
 rm -f "$TEMPLATE_AGENT_HOME/template/answers/workspace-a/project-a.json"
 deny
 grep -q 'セットアップが済んでいません' "$test_dir/err"
-echo 'PASS host-daemon: 読めない答えを名前付きで除き、正しい答えがなければセットアップを案内する'
+echo 'PASS host-daemon: 読めない答えは「読めないので」、形の合わない答えは「形が合わないので」と直し方を、名前付きで出して除き、正しい答えがなければセットアップを案内する'
+
+# 拡張の記録は答えとして読まず、警告も出さない。最新の時刻でも、接続先と対象は変わらない。
+reset_host
+printf '%s\n' '{"roles":{},"autopilots":{}}' >"$TEMPLATE_AGENT_HOME/template/answers/workspace-a/project-a-and00.extensions.json"
+snapshot >"$test_dir/before"
+run
+jq -e '.server=="https://example.test" and ([.requirements[]|{workspace_id,runtimes}]==[{workspace_id:"workspace-a",runtimes:["claude"]}])' "$test_dir/resolved.json" >/dev/null
+[[ ! -s $test_dir/err ]]
+snapshot >"$test_dir/after"
+cmp "$test_dir/before" "$test_dir/after"
+echo 'PASS host-daemon: 正しい答えと並ぶ最新の拡張の記録に警告を出さず、接続先と対象を変えない'
+for content in 'broken json' '{"schema":2}'; do
+ reset_host
+ printf '%s\n' "$content" >"$TEMPLATE_AGENT_HOME/template/answers/workspace-a/project-a-and00.extensions.json"
+ run
+ [[ ! -s $test_dir/err ]]
+done
+echo 'PASS host-daemon: 拡張の記録は中身を見ず、壊れていても警告を出さない'
+reset_host
+rm -f "$TEMPLATE_AGENT_HOME/template/answers/workspace-a/project-a.json"
+printf '%s\n' '{"roles":{},"autopilots":{}}' >"$TEMPLATE_AGENT_HOME/template/answers/workspace-a/project-a-and00.extensions.json"
+snapshot >"$test_dir/before"
+deny
+grep -q 'セットアップが済んでいません' "$test_dir/err"
+! grep -q 'extensions.json' "$test_dir/err"
+snapshot >"$test_dir/after"
+cmp "$test_dir/before" "$test_dir/after"
+echo 'PASS host-daemon: 拡張の記録だけがあるときはセットアップを案内して止まる'
 
 reset_host
 for mode in enabled disabled failed invalid missing string null multiple; do
