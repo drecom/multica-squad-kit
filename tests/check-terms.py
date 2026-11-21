@@ -28,6 +28,7 @@ NO = cp(0x306E)
 TANTOU = cp(0x62C5, 0x5F53)
 ZANRYOU = cp(0x6B8B, 0x91CF)
 TASHIKAME = cp(0x78BA, 0x304B, 0x3081)  # 確認の意味の語。「確か」の後に「め」が続かない語は止めない
+SEKISHO = cp(0x95A2, 0x6240)  # 書き込みを止める仕組みの前の語。ガードにする
 
 # 残すもの。文の区切り、ふだん、一つ下の深さ、数字と空白の後の 1 字と「まで」（入れ子の深さ）
 DAN_ALLOWED = re.compile(
@@ -69,6 +70,7 @@ SIMPLE = [
     ),
     ("AI ?" + NO + ZANRYOU, "AI の使用の上限は「使用上限」と書く"),
     (TASHIKAME, f"「{TASHIKAME}」は確認にする（文に合わなければ検証か照合）"),
+    (SEKISHO, f"「{SEKISHO}」はガードにする（仕組みでなければ、確認・判定・決まり）"),
 ]
 
 
