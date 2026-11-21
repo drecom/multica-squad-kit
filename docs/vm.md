@@ -206,7 +206,7 @@ flowchart TD
   B -- いいえ --> C[環境変数・記録した接続先・CLI の設定の順に、最初にある接続先を読む]
   C --> D{接続先があり、値が正しいか}
   D -- いいえ --> E[次の読み先へ進まず、理由をログに出して 0 以外で終わる]
-  D -- はい --> F[関所とログインの PATH をつなぐ]
+  D -- はい --> F[ガードとログインの PATH をつなぐ]
   F --> G[環境変数をそろえてデーモンを前面で exec する]
 ```
 
@@ -222,7 +222,7 @@ flowchart TD
 
 セットアップがデーモンを止めて起動し直すと、unit の前面のデーモンは終わり、以後はセットアップが起動したデーモンが動く。次に VM を起動したときから、また unit が起動する。
 
-Multica の `multica daemon autostart` は使わない。引数を受けず、`CODEX_HOME` と関所の PATH を渡せないため。
+Multica の `multica daemon autostart` は使わない。引数を受けず、`CODEX_HOME` とガードの PATH を渡せないため。
 
 ### 接続先を残す
 
@@ -448,7 +448,7 @@ Lima のディスクは、使った分だけホストのディスクを使う。
 
 | 案 | 選ばなかった理由 |
 | --- | --- |
-| Multica の `multica daemon autostart` で起動する | 引数を受けず、`CODEX_HOME` と関所の PATH を渡せない |
+| Multica の `multica daemon autostart` で起動する | 引数を受けず、`CODEX_HOME` とガードの PATH を渡せない |
 | 使う人の systemd の unit で起動する | 起動の順が linger とログインに左右される。system の unit に `User=` を付ければ足りる |
 | Docker を root で動かし、docker の群に入れる | 群の人は中の root になれ、WSL ではドライブをつなぎ直せる |
 | `gh` を Ubuntu の標準の apt から入れる | 2.45.0 で、`gh attestation` を持たず、入口の検証が流せない |
