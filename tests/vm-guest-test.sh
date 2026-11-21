@@ -89,7 +89,7 @@ for stopped in stopped not_running; do
   check_started https://example.test
  done
 done
-echo 'PASS vm guest: 停止中はログインの PATH を読み、関所を先頭にした専用環境で前面へ exec する'
+echo 'PASS vm guest: 停止中はログインの PATH を読み、ガードを先頭にした専用環境で前面へ exec する'
 
 printf 'server_url: https://configured.test/\n' >"$test_dir/config"
 MULTICA_SERVER_URL=https://override.test/base/ run

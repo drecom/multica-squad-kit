@@ -213,7 +213,7 @@ for absent in template/version bin/gh template/answers; do
  deny
  grep -q 'セットアップが済んでいません' "$test_dir/err"
 done
-echo 'PASS host-daemon: セットアップが済んでいない記録・関所・答えの各場面で起動しない'
+echo 'PASS host-daemon: セットアップが済んでいない記録・ガード・答えの各場面で起動しない'
 
 for state in running stopped; do
  reset_host
@@ -222,7 +222,7 @@ for state in running stopped; do
  deny
  grep -q 'セットアップが済んでいません' "$test_dir/err"
 done
-echo 'PASS host-daemon: 関所に実行権限がなければ CLI を呼ばず、停止も起動もせずセットアップを案内する'
+echo 'PASS host-daemon: ガードに実行権限がなければ CLI を呼ばず、停止も起動もせずセットアップを案内する'
 
 reset_host
 snapshot >"$test_dir/before"
@@ -407,7 +407,7 @@ jq -e --arg home "$HOME" --arg agent "$TEMPLATE_AGENT_HOME" --arg path "$PATH" '
  .codex==($agent+"/codex") and .server=="https://example.test" and
  .ide=="" and .workspace=="" and .test==""' "$test_dir/started-env.json" >/dev/null
 grep -qx 'ランタイム: workspace-a の claude' "$test_dir/out"
-echo 'PASS host-daemon: 止まっているときに一度起動し、起動の環境に関所・CODEX_HOME・接続先をそろえ、シェルの変数を渡さない'
+echo 'PASS host-daemon: 止まっているときに一度起動し、起動の環境にガード・CODEX_HOME・接続先をそろえ、シェルの変数を渡さない'
 
 : >"$test_dir/calls"
 MULTICA_WORKSPACE_ID=workspace-a MULTICA_SERVER_URL=https://example.test /bin/bash -c '

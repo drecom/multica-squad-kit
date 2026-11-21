@@ -22,7 +22,7 @@ for shell in /bin/zsh /bin/bash; do
 	[[ $("$shell" -c '/usr/bin/printenv SQUAD_KIT_ALLOWED_REPOS') == "$allowed" ]]
 done
 echo 'PASS shell: zsh と bash が起動時に読み、子プロセスにも渡す'
-# bash のスクリプト（関所）も BASH_ENV を読む。
+# bash のスクリプト（ガード）も BASH_ENV を読む。
 if /bin/bash "$root/common/guard/pre-push" origin https://github.com/other/repo.git >"$test_dir/out" 2>"$test_dir/err"; then exit 1; fi
 grep -q 'example/template' "$test_dir/err"
 echo 'PASS shell: pre-push がプロジェクトのファイルを読む'
@@ -53,4 +53,4 @@ for shell in /bin/zsh /bin/bash; do
 		[[ $PATH == "$expected_bin:$CLAUDE_TEST_PATH" ]]
 	' shell-test "$test_dir/snapshot" "$test_dir/bin" "${commands[@]}"
 done
-echo 'PASS Claude shell: zsh と bash がスナップショット後に env.sh を読み、関所と全見張りを名前で解決し、PATH を重ねない'
+echo 'PASS Claude shell: zsh と bash がスナップショット後に env.sh を読み、ガードと全見張りを名前で解決し、PATH を重ねない'

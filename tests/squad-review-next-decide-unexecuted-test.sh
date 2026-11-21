@@ -108,7 +108,7 @@ stops round-1 '検証スキルが未記入で未実行（qa）'
 echo 'PASS review-next-decide: 読めない結果や結果のない役が組にあっても、未実行の結果があれば未実行の理由で止まる'
 
 # 違う値の未実行: の行、字下げの行、引用の行は当たらず、今のとおり読む（✅ の結果なら最終レビューの依頼へ進む）。
-for line in '未実行: 関所に止められた' '未実行: 検証スキルが未記入です' "  $unexec_line" "> $unexec_line" "\`$unexec_line\`"; do
+for line in '未実行: ガードに止められた' '未実行: 検証スキルが未記入です' "  $unexec_line" "> $unexec_line" "\`$unexec_line\`"; do
 	reset
 	base_round
 	result round-1 qa ✅ "$sha" なし
