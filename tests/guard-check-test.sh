@@ -59,7 +59,7 @@ sed 's|^ALLOWED_FILE=.*|ALLOWED_FILE=$TEMPLATE_AGENT_HOME/allowed-repos|' "$test
 deny
 [[ ! -s $TEST_GUARD_CALLS ]]
 grep -q 'SQUAD_KIT_ALLOWED_REPOS' "$test_dir/err"
-echo 'PASS guard-check: 共有の固定許可だけを読む古い関所は、起動ファイルを用意しただけで成功とせず拒否を検出する'
+echo 'PASS guard-check: 共有の固定許可だけを読む古いガードは、起動ファイルを用意しただけで成功とせず拒否を検出する'
 
 # 共有許可に選択全件があっても、空のプロジェクト許可で拒否しなければならない。
 printf 'example/one\nexample/two\nexample/third\nexample/neighbor\n' >"$TEMPLATE_AGENT_HOME/allowed-repos"
@@ -116,6 +116,41 @@ grep -q 'SQUAD_KIT_ALLOWED_REPOS' "$test_dir/err"
 [[ $(wc -l <"$TEST_GUARD_CALLS" | tr -d ' ') == 5 ]]
 echo 'PASS guard-check: マークのない既存 pre-push が後ろの選択を拒否しても、既存ファイルを変えず対処を案内する'
 
+# 前の頭で拒否するマークのないガード。前の頭は、bash 3.2 の printf が展開する 16 進のエスケープで、UTF-8 のバイト列として書く。
+previous_gh_head=$(printf 'gh \xe3\x81\xae\xe9\x96\xa2\xe6\x89\x80:')
+previous_push_head=$(printf 'git push \xe3\x81\xae\xe9\x96\xa2\xe6\x89\x80:')
+reset_guards
+sed "s|gh のガード:|$previous_gh_head|" "$test_dir/shared-gh" >"$TEMPLATE_AGENT_HOME/bin/gh"
+cp "$TEMPLATE_AGENT_HOME/bin/gh" "$test_dir/expected-gh"
+deny
+cmp "$test_dir/expected-gh" "$TEMPLATE_AGENT_HOME/bin/gh"
+grep -q '拒否の文が「gh のガード:」で始まりません。前のバージョンのガードか、マークのないガードです' "$test_dir/err"
+grep -q "^$previous_gh_head" "$test_dir/err"
+grep -q '既存のガードの確認' "$test_dir/err"
+! grep -q '拒否したと確認できません' "$test_dir/err"
+echo 'PASS guard-check: 前の頭で拒否するマークのない gh は、頭が違う文と拒否の文を出し、既存のガードの確認を案内して止まる'
+
+reset_guards
+sed "s|git push のガード:|$previous_push_head|" "$test_dir/shared-push" >"$TEMPLATE_AGENT_HOME/git-hooks/pre-push"
+cp "$TEMPLATE_AGENT_HOME/git-hooks/pre-push" "$test_dir/expected-push"
+deny
+cmp "$test_dir/expected-push" "$TEMPLATE_AGENT_HOME/git-hooks/pre-push"
+grep -q '拒否の文が「git push のガード:」で始まりません。前のバージョンのガードか、マークのないガードです' "$test_dir/err"
+grep -q "^$previous_push_head" "$test_dir/err"
+grep -q '既存のガードの確認' "$test_dir/err"
+! grep -q 'のガードによる拒否を確認できません' "$test_dir/err"
+echo 'PASS guard-check: 前の頭で拒否するマークのない pre-push は、頭が違う文と拒否の文を出し、既存のガードの確認を案内して止まる'
+
+# 標準エラーが空の拒否は頭が違うとは言えないので、今の文のまま止まる。
+reset_guards
+cp "$test_dir/shared-gh" "$TEMPLATE_AGENT_HOME/bin/previous-gh"
+chmod +x "$TEMPLATE_AGENT_HOME/bin/previous-gh"
+printf '#!/bin/bash\nexec %q "$@" 2>/dev/null\n' "$TEMPLATE_AGENT_HOME/bin/previous-gh" >"$TEMPLATE_AGENT_HOME/bin/gh"
+deny
+grep -q '空の許可で選択先を拒否したと確認できません' "$test_dir/err"
+! grep -q '始まりません' "$test_dir/err"
+echo 'PASS guard-check: 標準エラーが空の拒否は頭が違う文にせず、今の文のまま止まる'
+
 reset_guards
 run
 [[ $(grep -c '^許可の確認:' "$test_dir/err") == 3 ]]
@@ -128,19 +163,19 @@ cmp "$test_dir/shared-push" "$TEMPLATE_AGENT_HOME/git-hooks/pre-push"
 [[ $(cat "$TEMPLATE_AGENT_HOME/allowed-repos") == example/neighbor ]]
 printf 'example/one\nexample/two\nexample/third\n' >"$test_dir/expected-allowed"
 cmp "$test_dir/expected-allowed" "$TEMPLATE_AGENT_HOME/allowed-repos.d/project-a"
-echo 'PASS guard-check: マークのない実際の関所を bash・zsh と起動ファイルから通し、全三リポジトリの確認後に許可を反映する'
+echo 'PASS guard-check: マークのない実際のガードを bash・zsh と起動ファイルから通し、全三リポジトリの確認後に許可を反映する'
 TEST_GUARD_RESPONSE=409 run
 [[ $(grep -c '^許可の確認:' "$test_dir/err") == 3 ]]
-echo 'PASS guard-check: 空リポジトリなどの GitHub の409応答も関所通過として確認し、参照を作らない'
+echo 'PASS guard-check: 空リポジトリなどの GitHub の409応答もガード通過として確認し、参照を作らない'
 
-# gh 2.104.0 以降の help の形（--include[=true|false]）でも、関所を通して確認が最後まで進む。
+# gh 2.104.0 以降の help の形（--include[=true|false]）でも、ガードを通して確認が最後まで進む。
 reset_guards
 TEST_GUARD_BOOL_FORM=brackets run
 [[ $(grep -c '^許可の確認:' "$test_dir/err") == 3 ]]
 [[ $(wc -l <"$TEST_GUARD_CALLS" | tr -d ' ') == 6 ]]
-echo 'PASS guard-check: bool のフラグが --name[=true|false] の形でも、関所を通して許可の確認が最後まで進む'
+echo 'PASS guard-check: bool のフラグが --name[=true|false] の形でも、ガードを通して許可の確認が最後まで進む'
 
-# PATH を直さない古い起動ファイルでは、絶対パスの関所だけを確認して成功にしない。
+# PATH を直さない古い起動ファイルでは、絶対パスのガードだけを確認して成功にしない。
 for file in .zshenv env.sh; do
  head -n 2 "$root/common/shell/$file" >"$test_dir/package/common/shell/$file"
 done
@@ -149,6 +184,6 @@ printf 'old shell\n' >"$TEMPLATE_AGENT_HOME/template/shell/project-a/.zshenv"
 printf 'old bash\n' >"$TEMPLATE_AGENT_HOME/template/shell/project-a/env.sh"
 reset_guards
 deny
-grep -q '通常の gh が関所を選びません' "$test_dir/err"
+grep -q '通常の gh がガードを選びません' "$test_dir/err"
 [[ ! -s $TEST_GUARD_CALLS ]]
 echo 'PASS guard-check: 通常の gh が本物を先に選ぶと、通信せず既存の許可と起動ファイルを保って止まる'

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ZIP のルートから bash tests/project-failure-test.sh で実行する。
-# 途中の失敗・最小構成・別の所有者・関所の確認
+# 途中の失敗・最小構成・別の所有者・ガードの確認
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 source "$root/tests/project-test-lib.sh"
@@ -87,13 +87,13 @@ TEST_GUARD_RESPONSE=403 deny
 assert_no_final
 ! jq -es 'any(.[]; .[0:2]==["agent","create"] or .[0:2]==["squad","create"])' "$TEST_DB/calls" >/dev/null
 [[ ! -e $TEMPLATE_AGENT_HOME/allowed-repos.d/project-a ]]
-grep -q '関所の確認に失敗しました' "$test_dir/err"
-echo 'PASS project: 関所を通れなければ許可を書かず、初期化用のエージェントとスクワッドも作らない'
+grep -q 'ガードの確認に失敗しました' "$test_dir/err"
+echo 'PASS project: ガードを通れなければ許可を書かず、初期化用のエージェントとスクワッドも作らない'
 
 reset_db
 TEST_RECHECK=yes TEST_RECHECK_AFTER_GUARD=yes TEST_GUARD_MARKER="$TEST_DB/guard-checked" TEST_RECHECK_RESOURCES='[{"resource_type":"github_repo","resource_ref":{"url":"https://github.com/example/third"}}]' deny
 [[ -f $TEST_DB/guard-checked && ! -e $TEMPLATE_AGENT_HOME/allowed-repos.d/project-a ]]
 ! jq -es 'any(.[]; .[0:2]==["agent","create"])' "$TEST_DB/calls" >/dev/null
 grep -q '別プロジェクトに紐付いたため許可できません: example/third' "$test_dir/err"
-echo 'PASS project: 関所の確認の通信中に他プロジェクトへ移った選択も、許可更新直前の再確認で拒否する'
+echo 'PASS project: ガードの確認の通信中に他プロジェクトへ移った選択も、許可更新直前の再確認で拒否する'
 /bin/bash "$root/tests/project-failure-render-cache-check.sh" "$test_dir" "$root"

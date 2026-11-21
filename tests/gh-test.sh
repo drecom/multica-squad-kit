@@ -240,7 +240,7 @@ done
 rm -f "$test_dir/bool-brackets"
 
 # ランタイムが本物の gh を先に置いた PATH を渡しても、通常のシェルから拒否する。
-# 関所を絶対パスで呼ぶテストだけでは、この抜け道を見つけられない。
+# ガードを絶対パスで呼ぶテストだけでは、この抜け道を見つけられない。
 guard_bin="$test_dir/agent's home/bin"
 shell_dir="$test_dir/project shell"
 mkdir -p "$guard_bin" "$shell_dir"
@@ -268,9 +268,9 @@ for shell in /bin/bash /bin/zsh; do
 		exit 1
 	fi
 	[[ ! -s $test_dir/writes.jsonl && ! -s $test_dir/output ]]
-	grep -q '^gh の関所:.*other/repo.*への 書き込み' "$test_dir/error"
+	grep -q '^gh のガード:.*other/repo.*への 書き込み' "$test_dir/error"
 done
-echo 'PASS PATH: 本物の gh が先でも bash・zsh の起動時に関所が先になり、許可先だけを本物へ渡す'
+echo 'PASS PATH: 本物の gh が先でも bash・zsh の起動時にガードが先になり、許可先だけを本物へ渡す'
 
 # Claude Code は起動ファイルのあとに snapshot の PATH を書き戻し、
 # CLAUDE_ENV_FILE の中身をコマンドの直前へ && でつなぐ。
@@ -289,7 +289,7 @@ for shell in /bin/bash /bin/zsh; do
 	PATH="$runtime_path" ZDOTDIR="$shell_dir" BASH_ENV="$shell_dir/env.sh" \
 		"$shell" -c "$snapshot_command && $claude_env && command -v gh" >"$test_dir/selected-gh"
 	[[ $(cat "$test_dir/selected-gh") == "$guard_bin/gh" ]]
-	echo "PASS Claude PATH ($shell): snapshot のあとに env の中身を流すと関所を選ぶ"
+	echo "PASS Claude PATH ($shell): snapshot のあとに env の中身を流すとガードを選ぶ"
 
 	: >"$SQUAD_KIT_ALLOWED_REPOS"
 	reset_calls
@@ -299,8 +299,8 @@ for shell in /bin/bash /bin/zsh; do
 		exit 1
 	fi
 	[[ ! -s $test_dir/writes.jsonl && ! -s $test_dir/output ]]
-	grep -q '^gh の関所:.*example/template.*への 書き込み' "$test_dir/error"
-	echo "PASS Claude PATH ($shell): 空の許可では関所の文言で拒否し、本物に書き込まない"
+	grep -q '^gh のガード:.*example/template.*への 書き込み' "$test_dir/error"
+	echo "PASS Claude PATH ($shell): 空の許可ではガードの文言で拒否し、本物に書き込まない"
 
 	printf '%s\n' example/template >"$SQUAD_KIT_ALLOWED_REPOS"
 	reset_calls

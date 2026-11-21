@@ -8,7 +8,7 @@ agent_home=$HOME/.multica-agent
 [[ -f $agent_home/bin/gh ]] || exit 0
 
 # start-daemon と同じく、使う人のログインの PATH から CLI を探す。デーモンを起動した PATH と
-# そろえるため、関所を先頭に付ける。
+# そろえるため、ガードを先頭に付ける。
 login_path=$(bash -lc 'printf "%s\n" "$PATH"') || die 'ログインの PATH を読めませんでした。'
 [[ -n $login_path ]] || die 'ログインの PATH が空です。'
 export PATH=$agent_home/bin:$login_path

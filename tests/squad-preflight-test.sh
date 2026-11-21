@@ -99,7 +99,7 @@ run_preflight 0 "$guard_bin:$test_dir/tools"
 [[ $(wc -l <"$test_dir/out") -eq 3 && ! -s $test_dir/err ]]
 grep -q 'すべての見張りが使えます' "$test_dir/out"
 jq -se 'map(select(.[0]!="version")) == [["squad","list","--output","json"],["agent","get","fixture-agent","--output","json"]]' "$test_dir/calls.jsonl" >/dev/null
-echo 'PASS preflight: 正常時は関所を確認してから2種類を読み、gh と見張り本体は実行しない'
+echo 'PASS preflight: 正常時はガードを確認してから2種類を読み、gh と見張り本体は実行しない'
 
 run_preflight 0 "$guard_bin:$test_dir/tools" fixture-issue
 [[ $(wc -l <"$test_dir/out") -eq 7 && ! -s $test_dir/err ]]
@@ -232,4 +232,4 @@ for cmd in gh "${monitors[@]}"; do assert_failure "$cmd" 見つからない; don
 echo 'PASS preflight: 確認する一覧が配布する全見張りと一致する'
 
 run_preflight 127 "$test_dir/tools"
-echo 'PASS preflight: PATH に関所のディレクトリがなければ、名前での呼び出しが 127 で失敗する'
+echo 'PASS preflight: PATH にガードのディレクトリがなければ、名前での呼び出しが 127 で失敗する'
