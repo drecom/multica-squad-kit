@@ -1136,6 +1136,21 @@ for phrase in '## コメントと本文の型' '### 共通の項目名' '### タ
 done
 echo 'PASS templates: 共通スキルに、役の指示が参照するコメントと本文の型の見出しがある'
 
+# 言い回しの決まり: 共通スキルの小節「言い回し」は「本文の書き方」と「コメントと本文の型」の間にあり、6 つの決まりの行を 1 行ずつ持つ。同じ行が STYLE.md にも 1 行ずつある。読む側は、小節を読む全役と、STYLE.md を読む原本の文書を書く人。
+phrasing_style="$root/STYLE.md"
+body_line=$(grep -nxF '## 本文の書き方' "$type_skill" | cut -d: -f1)
+phrasing_line=$(grep -nxF '### 言い回し' "$type_skill" | cut -d: -f1)
+types_line=$(grep -nxF '## コメントと本文の型' "$type_skill" | cut -d: -f1)
+[[ -n $body_line && -n $phrasing_line && -n $types_line ]]
+((body_line < phrasing_line && phrasing_line < types_line))
+phrasing_section=$(awk '/^### 言い回し$/ {inside=1; next} inside && /^#/ {exit} inside {print}' "$type_skill")
+for name in 事実 足さないもの 確かさ 語 文の分け方 読み直し; do
+	rule=$(grep -E -- "^- $name: ." <<<"$phrasing_section")
+	[[ $(grep -c . <<<"$rule") == 1 ]]
+	[[ $(grep -cxF -- "$rule" "$phrasing_style") == 1 ]]
+done
+echo 'PASS templates: 共通スキルの小節「言い回し」は本文の書き方の後にあり、6 つの決まりの行が STYLE.md と同じ文字列で 1 行ずつある'
+
 # 役の指示は、型を写さずに squad-handoff の型を指し、使わない名前を持たない。
 for role in claude-implementer codex-implementer claude-fixer codex-fixer code-reviewer performance-reviewer security-reviewer ux-reviewer claude-principal codex-principal qa planner; do
 	for phrase in 結果へのリンク 推す答え 確認した内容 '確認の行' '1,000 字以内を目安' '3 行以内' '1 件 5 行ほど'; do
