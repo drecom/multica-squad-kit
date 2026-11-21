@@ -26,7 +26,7 @@ printf 'payload\n' >"$work/payload.txt"
 g -C "$work" add -A
 g -C "$work" commit -q -m main
 g clone -q --bare "$work" "$origin"
-# ホストの push の関所は、この一時リポジトリへの push の間だけ外す。
+# ホストの push のガードは、この一時リポジトリへの push の間だけ外す。
 push_tag() (
 	unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
 	g -C "$work" push -q "$origin" "refs/tags/$1"

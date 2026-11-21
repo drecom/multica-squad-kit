@@ -67,7 +67,7 @@ warn_autostart() {
 		! jq -se 'length==1 and (.[0]|type=="object" and (.enabled|type=="boolean"))' >/dev/null 2>&1 <<<"$status"; then
 		notice 'CLI の自動起動の状態を読めませんでした。multica daemon autostart status で確認してください。'
 	elif [[ $(jq -r '.enabled' <<<"$status") == true ]]; then
-		notice 'CLI の自動起動が有効です。ログインのたびに、関所の PATH と CODEX_HOME のないデーモンが起動します。止めるには multica daemon autostart disable を流してください。この入口は設定を変えません。'
+		notice 'CLI の自動起動が有効です。ログインのたびに、ガードの PATH と CODEX_HOME のないデーモンが起動します。止めるには multica daemon autostart disable を流してください。この入口は設定を変えません。'
 	fi
 }
 

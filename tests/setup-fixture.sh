@@ -27,7 +27,7 @@ fi
 STUB
 cat >"$test_dir/bin/gh" <<'STUB'
 #!/usr/bin/env bash
-# 更新の知らせが読む最新のバージョンだけ答える。ほかの呼び出しは、関所の外へ出さない。
+# 更新の知らせが読む最新のバージョンだけ答える。ほかの呼び出しは、ガードの外へ出さない。
 if [[ $* == 'api repos/drecom/multica-squad-kit/releases/latest --jq .tag_name' ]]; then
  printf '%s\n' "$*" >>"${TEST_GH_CALLS:-/dev/null}"
  [[ ${TEST_LATEST_FAIL:-no} != yes ]] || { echo 'gh: network error' >&2; exit 1; }
@@ -82,7 +82,7 @@ export PATH="$test_dir/bin:$PATH" TEST_CALLS="$test_dir/calls"
 export TEMPLATE_STATE_ROOT="$test_dir/state"
 # 導入済みのバージョンの記録を、本物のホストへ書かない。
 export TEMPLATE_AGENT_HOME="$test_dir/host-home" TEST_PACKAGE_VERSION="$test_dir/package/VERSION"
-# 開発者のホストの BASH_ENV が、子の bash の PATH の先頭へ本物の関所を足し、スタブの gh より先に選ばれるのを防ぐ。
+# 開発者のホストの BASH_ENV が、子の bash の PATH の先頭へ本物のガードを足し、スタブの gh より先に選ばれるのを防ぐ。
 unset BASH_ENV MULTICA_SERVER_URL MULTICA_WORKSPACE_ID
 manifest() {
  (cd "$test_dir/package"; while IFS= read -r file; do shasum -a 256 "$file"; done < <(find . -type f ! -name MANIFEST | LC_ALL=C sort)) >"$test_dir/manifest"

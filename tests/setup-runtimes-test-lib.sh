@@ -3,8 +3,8 @@
 # $runtime_part で流す範囲を絞れる（既定は all）。both は setup.sh を 6 回通し、1 ファイルでは macOS の CI の上限（150 秒）を超えるため、
 # main（再実行と配置した見張り）、issues（起票の失敗と復旧）、changes（更新を飛ばした場合）に分け、初回の準備から各ファイルで流す。
 runtime_part=${runtime_part:-all}
-# ホストの BASH_ENV・ZDOTDIR は、子のシェルの PATH の先頭へ本物の関所を足す。関所が入ったホストでは、
-# テストの関所と本物の関所が互いを「次の gh」として呼び合い、setup.sh が止まらなくなるので、ここで外す。
+# ホストの BASH_ENV・ZDOTDIR は、子のシェルの PATH の先頭へ本物のガードを足す。ガードが入ったホストでは、
+# テストのガードと本物のガードが互いを「次の gh」として呼び合い、setup.sh が止まらなくなるので、ここで外す。
 unset BASH_ENV ZDOTDIR SQUAD_KIT_ALLOWED_REPOS
 mkdir -p "$root/tmp"
 test_dir=$(mktemp -d "$root/tmp/setup-runtimes.XXXXXX")

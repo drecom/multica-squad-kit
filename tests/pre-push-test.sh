@@ -30,7 +30,7 @@ allow() {
 }
 deny() {
 	if bash "$guard" origin "${1:-$url}" >"$test_dir/out" 2>"$test_dir/err"; then exit 1; fi
-	grep -q 'git push の関所:' "$test_dir/err"
+	grep -q 'git push のガード:' "$test_dir/err"
 	[[ ! -s $test_dir/out ]]
 }
 update() {
@@ -153,10 +153,10 @@ push_dry_run() {
 status=0
 push_dry_run https://github.com/example/other.git || status=$?
 [[ $status == 1 ]]
-grep -q '^git push の関所: https://github.com/example/other.git への push は止めた' "$test_dir/err"
+grep -q '^git push のガード: https://github.com/example/other.git への push は止めた' "$test_dir/err"
 [[ $(cat "$GUARD_TEST_HOOK_ARGS") == $'https://github.com/example/other.git\nhttps://github.com/example/other.git' ]]
 [[ -z $(git --git-dir="$GUARD_TEST_REMOTE" for-each-ref) ]]
-echo 'PASS push dry-run: 通常の Git が接続後に関所を呼び、許可外の GitHub URL を終了コード 1 で拒否する'
+echo 'PASS push dry-run: 通常の Git が接続後にガードを呼び、許可外の GitHub URL を終了コード 1 で拒否する'
 
 # 同じ接続先でも許可した URL は成功し、dry-run なので参照を作らない。
 push_dry_run "$url"
@@ -164,11 +164,11 @@ grep -q 'guard-probe' "$test_dir/err"
 [[ -z $(git --git-dir="$GUARD_TEST_REMOTE" for-each-ref) ]]
 echo 'PASS push dry-run: 許可先は成功し、空の送信先は空のまま'
 
-# 存在しない接続先では hook 自体が呼ばれない。接続失敗を関所の成功と取り違えない。
+# 存在しない接続先では hook 自体が呼ばれない。接続失敗をガードの成功と取り違えない。
 rm "$GUARD_TEST_HOOK_ARGS"
 status=0
 GUARD_TEST_REMOTE_MISSING=1 push_dry_run https://github.com/example/missing.git || status=$?
 [[ $status != 0 && ! -e $GUARD_TEST_HOOK_ARGS ]]
 grep -q 'fixture: repository not found before pre-push' "$test_dir/err"
-! grep -q '^git push の関所:' "$test_dir/err"
-echo 'PASS push dry-run: 接続失敗では関所が呼ばれず、関所の拒否と区別できる'
+! grep -q '^git push のガード:' "$test_dir/err"
+echo 'PASS push dry-run: 接続失敗ではガードが呼ばれず、ガードの拒否と区別できる'

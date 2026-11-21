@@ -74,7 +74,7 @@ if [[ ${1-} == pr && ${2-} == view ]]; then
 	stub emit gh-dependabot-pr "$dir/pr.json"
 elif [[ ${1-} == api ]]; then
 	case "${2-}" in
-	# ホストの gh の関所が入っている環境では、関所が本物の gh の help でフラグを読む。
+	# ホストの gh のガードが入っている環境では、ガードが本物の gh の help でフラグを読む。
 	--help)
 		printf 'FLAGS\n      --paginate        Make additional HTTP requests to fetch all pages of results\n  -X, --method string   The HTTP method for the request\n' ;;
 	'repos/demo/project/pulls/7/files?per_page=100')

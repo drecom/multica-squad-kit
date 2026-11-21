@@ -2,7 +2,7 @@
   "commands": [
     {
       "match": "squad-preflight",
-      "stdout": "squad-preflight: 関所の gh と、すべての見張りが使えます。"
+      "stdout": "squad-preflight: ガードの gh と、すべての見張りが使えます。"
     },
     {
       "match": "multica issue --help",

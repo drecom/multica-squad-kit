@@ -456,7 +456,7 @@ def build_workdir(instr_dir, run_dir, runtime, files=None):
     return work, bin_dir
 
 
-# Multica の実行は、シェルの起動で本物の gh と squad- の見張りの置き場（関所）を PATH の先頭に足す。
+# Multica の実行は、シェルの起動で本物の gh と squad- の見張りの置き場（ガード）を PATH の先頭に足す。
 # それではスタブより先に本物が呼ばれ、評価の呼び出しが本物の GitHub やタスクへ届くので、
 # 評価の実行ではその仕組みを外し、スタブの置き場だけを先頭に置く
 # 利用者のシェルの設定（`alias rm='rm -i'` など）も読み込まれないよう、ZDOTDIR は空のディレクトリにする
@@ -464,7 +464,7 @@ GATE_ENV = ["BASH_ENV", "CLAUDE_ENV_FILE", "SQUAD_KIT_ALLOWED_REPOS"]
 
 
 def filtered_path(path_value):
-    """関所（squad-preflight か squad-pr-link のある場所）と空の要素を除いた PATH の、絶対パスの並びを返す。
+    """ガード（squad-preflight か squad-pr-link のある場所）と空の要素を除いた PATH の、絶対パスの並びを返す。
 
     相対パスは、解決する側の作業ディレクトリで意味が変わるので、ここで絶対パスにそろえる。
     空の要素は、作業ディレクトリを指して意味が変わるので、絶対パスにせず除く。

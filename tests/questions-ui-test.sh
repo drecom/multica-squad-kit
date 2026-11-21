@@ -64,7 +64,7 @@ esc=$'\033'
 ! grep -qF "$esc" "$test_dir/err"
 cp "$test_dir/err" "$test_dir/err-plain"
 { printf '\n'; printf 'x\n'; cat "$test_dir/input"; } >"$test_dir/pty-input"
-# D: 実物の入力の関所と行の規律を、完全な入力行で対話して確認する。
+# D: 実物の標準入力の端末の確認と行の規律を、完全な入力行で対話して確認する。
 python3 - "$test_dir/setup-script" <<'SCRIPT'
 from pathlib import Path
 import sys

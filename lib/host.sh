@@ -40,7 +40,7 @@ host_cli_library() (
 	return "$result"
 )
 
-# 手順「ホストを準備」の値。関所のパスを、ホームの下なら ~ で縮めて 2 つの空白で並べる。
+# 手順「ホストを準備」の値。ガードのパスを、ホームの下なら ~ で縮めて 2 つの空白で並べる。
 host_gate_summary() {
 	local path tilde='~' summary='' paths
 	[[ -n ${agent_home:-} ]] || return 0
@@ -127,9 +127,9 @@ prepare_host() {
 	host_shared_file "$root/common/guard/gh" "$agent_home/bin/gh" yes
 	host_shared_file "$root/common/guard/pre-push" "$agent_home/git-hooks/pre-push" yes
 	host_shared_file "$root/common/host/start-daemon" "$agent_home/start-daemon" yes
-	# 作る間の一覧が動いているときは、関所のパスを手順の値に出す（host_gate_summary）。
-	ui_phase_active || printf '使用する gh の関所: %s\n使用する git push の関所: %s\n' "$agent_home/bin/gh" "$agent_home/git-hooks/pre-push" >&2
-	[[ -f $agent_home/bin/gh && -x $agent_home/bin/gh && -f $agent_home/git-hooks/pre-push && -x $agent_home/git-hooks/pre-push ]] || die '既存の関所を利用できません。表示したファイルの実行権限・読み取り権限を管理者に確認してもらい、流し直してください。既存のファイルは上書きしません。'
+	# 作る間の一覧が動いているときは、ガードのパスを手順の値に出す（host_gate_summary）。
+	ui_phase_active || printf '使用する gh のガード: %s\n使用する git push のガード: %s\n' "$agent_home/bin/gh" "$agent_home/git-hooks/pre-push" >&2
+	[[ -f $agent_home/bin/gh && -x $agent_home/bin/gh && -f $agent_home/git-hooks/pre-push && -x $agent_home/git-hooks/pre-push ]] || die '既存のガードを利用できません。表示したファイルの実行権限・読み取り権限を管理者に確認してもらい、流し直してください。既存のファイルは上書きしません。'
 	if uses_runtime codex; then
 		host_shared_file "$root/common/codex/config.toml" "$agent_home/codex/config.toml" no
 		ui_phase_active || printf '使用する Codex の設定: %s\n' "$agent_home/codex/config.toml" >&2
@@ -190,9 +190,9 @@ prepare_project_host() {
 			if [[ $'\n'$content$'\n' != *$'\n'"$repo"$'\n'* ]]; then removed+=${removed:+$'\n'}$repo; fi
 		done <<<"$previous"
 	fi
-	# 既存の関所も含め、全選択を確認してから実際の許可を書き替える。
+	# 既存のガードも含め、全選択を確認してから実際の許可を書き替える。
 	# 確認用の起動ファイルは同じひな形から作り、専用の一時許可を指す。
-	host_check_guards "$content" || die '関所の確認に失敗しました。従来の許可とシェル起動ファイルを保って停止します。'
+	host_check_guards "$content" || die 'ガードの確認に失敗しました。従来の許可とシェル起動ファイルを保って停止します。'
 	# プロジェクト登録から呼ぶ場合は、通信中の紐付け変更も最後に確認する。
 	# local のマークは prepare_project が付け、ホスト単体の準備では呼ばない。
 	if [[ ${project_host_recheck:-no} == yes ]]; then
@@ -224,8 +224,8 @@ host_check_guards() (
 	umask 077
 	local content=$1 probe file escaped escaped_bin needle='{{ALLOWED_REPOS_FILE}}' bin_needle='{{AGENT_BIN_DIR}}' repo shell mode allowed shell_content
 	local guard_dir dir candidate real_gh_dir='' probe_path path_dirs
-	[[ -x $agent_home/bin/gh && -x $agent_home/git-hooks/pre-push ]] || die '使う関所に実行権限がありません。表示した gh と pre-push の置き場と権限を管理者に確認してもらってください。'
-	guard_dir=$(cd "$agent_home/bin" && pwd) || die 'gh の関所の置き場を読めませんでした。'
+	[[ -x $agent_home/bin/gh && -x $agent_home/git-hooks/pre-push ]] || die '使うガードに実行権限がありません。表示した gh と pre-push の置き場と権限を管理者に確認してもらってください。'
+	guard_dir=$(cd "$agent_home/bin" && pwd) || die 'gh のガードの置き場を読めませんでした。'
 	IFS=: read -r -a path_dirs <<<"$PATH"
 	for dir in "${path_dirs[@]}"; do
 		[[ -n $dir && -x $dir/gh ]] || continue
@@ -234,10 +234,10 @@ host_check_guards() (
 		real_gh_dir=$candidate
 		break
 	done
-	[[ -n $real_gh_dir ]] || die '本物の gh が関所の外の PATH に見つかりません。gh の導入と PATH を確認してください。'
+	[[ -n $real_gh_dir ]] || die '本物の gh がガードの外の PATH に見つかりません。gh の導入と PATH を確認してください。'
 	probe_path="$real_gh_dir:$PATH"
-	mkdir -p "$root/tmp" || die '関所の確認の作業場所を作れませんでした。'
-	probe=$(mktemp -d "$root/tmp/guard-check.XXXXXX") || die '関所の確認の作業場所を作れませんでした。'
+	mkdir -p "$root/tmp" || die 'ガードの確認の作業場所を作れませんでした。'
+	probe=$(mktemp -d "$root/tmp/guard-check.XXXXXX") || die 'ガードの確認の作業場所を作れませんでした。'
 	trap 'rm -rf -- "$probe"' EXIT
 	printf '%s\n' "$content" >"$probe/allowed" || die '確認用の許可ファイルを書けませんでした。'
 	: >"$probe/empty-allowed" || die '確認用の空の許可ファイルを書けませんでした。'
@@ -255,59 +255,69 @@ host_check_guards() (
 		done
 	done
 	mkdir "$probe/repository" "$probe/empty-template" || die 'push の確認の作業場所を作れませんでした。'
-	GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 git -C "$probe/repository" init -q --template="$probe/empty-template" || die 'push の関所を確認する作業場所を作れませんでした。'
-	cat >"$probe/check.sh" <<'CHECK' || die '関所の確認のコマンドを書けませんでした。'
+	GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 git -C "$probe/repository" init -q --template="$probe/empty-template" || die 'push のガードを確認する作業場所を作れませんでした。'
+	cat >"$probe/check.sh" <<'CHECK' || die 'ガードの確認のコマンドを書けませんでした。'
 set -euo pipefail
 guard=$1; hook=$2; repo=$3; temporary=$4; mode=$5
 if [[ $(command -v gh) != "$guard" ]]; then
- echo 'Claude の実行の順で gh が関所を選びません。ひな形の env.sh の PATH を確認してください。' >&2
+ echo 'Claude の実行の順で gh がガードを選びません。ひな形の env.sh の PATH を確認してください。' >&2
  exit 1
 fi
-# 同じ選択先でも、空の許可なら両関所が拒否しなければならない。
-# GitHub の422などの失敗や、関所自体の実行失敗は「関所で拒否した」と扱わない。
+# 同じ選択先でも、空の許可なら両ガードが拒否しなければならない。
+# GitHub の422などの失敗や、ガード自体の実行失敗は「ガードで拒否した」と扱わない。
+# 拒否の頭は新しい頭だけを受け付ける。標準出力が空で、標準エラーに行があるのに新しい頭で
+# 始まる行がないときだけ、頭が違うガード（前のバージョンか、マークのないもの）として分ける。
 if [[ $mode == deny ]]; then
  blocked=yes
  if response=$(gh api --include --method POST "repos/$repo/git/refs" --raw-field ref=invalid 2>"$temporary/gh-deny-error"); then
   blocked=no
- elif [[ -n $response ]] || ! grep -q '^gh の関所:' "$temporary/gh-deny-error"; then
-  blocked=no
- fi
- if [[ $blocked == no ]]; then
   printf 'gh が空の許可で選択先を拒否したと確認できません: %s\n' "$repo" >&2
+  cat "$temporary/gh-deny-error" >&2
+ elif [[ -n $response ]] || ! grep -q '^gh のガード:' "$temporary/gh-deny-error"; then
+  blocked=no
+  if [[ -z $response && -s "$temporary/gh-deny-error" ]]; then
+   printf 'gh の拒否の文が「gh のガード:」で始まりません。前のバージョンのガードか、マークのないガードです: %s\n' "$repo" >&2
+  else
+   printf 'gh が空の許可で選択先を拒否したと確認できません: %s\n' "$repo" >&2
+  fi
   cat "$temporary/gh-deny-error" >&2
  fi
  if printf 'refs/heads/template-permission-check 1111111111111111111111111111111111111111 refs/heads/template-permission-check 0000000000000000000000000000000000000000\n' | "$hook" origin "https://github.com/$repo.git" >"$temporary/push-deny-output" 2>"$temporary/push-deny-error"; then
   blocked=no
   printf 'pre-push が空の許可でも選択先を通しました: %s\n' "$repo" >&2
- elif ! grep -q '^git push の関所:' "$temporary/push-deny-error"; then
+ elif ! grep -q '^git push のガード:' "$temporary/push-deny-error"; then
   blocked=no
-  printf 'pre-push の関所による拒否を確認できません: %s\n' "$repo" >&2
+  if [[ ! -s "$temporary/push-deny-output" && -s "$temporary/push-deny-error" ]]; then
+   printf 'pre-push の拒否の文が「git push のガード:」で始まりません。前のバージョンのガードか、マークのないガードです: %s\n' "$repo" >&2
+  else
+   printf 'pre-push のガードによる拒否を確認できません: %s\n' "$repo" >&2
+  fi
   cat "$temporary/push-deny-error" >&2
  fi
  if [[ $blocked == no ]]; then
-  echo '表示した gh と pre-push が SQUAD_KIT_ALLOWED_REPOS を読むか、共有ホストの管理者と確認してください。固定の共有許可を増やしたり関所を迂回したりせず、manual.md の「既存の関所の確認」に従って対応してから流し直してください。' >&2
+  echo '表示した gh と pre-push が SQUAD_KIT_ALLOWED_REPOS を読むか、共有ホストの管理者と確認してください。固定の共有許可を増やしたりガードを迂回したりせず、manual.md の「既存のガードの確認」に従って対応してから流し直してください。' >&2
   exit 1
  fi
  exit 0
 fi
 # GitHub が必ず拒否する ref と、必須の sha を欠く要求で、書き込みの
-# 関所を通過して GitHub の入力検証まで届くことを確認する。何も作らない。
+# ガードを通過して GitHub の入力検証まで届くことを確認する。何も作らない。
 # 正しい ref・sha に置き換えてはならない（manual.md の根拠を参照）。
 if response=$(gh api --include --method POST "repos/$repo/git/refs" --raw-field ref=invalid 2>"$temporary/gh-error"); then
- echo 'gh の確認が想定外に成功しました。関所と gh の設定を管理者に確認してもらってください。' >&2
+ echo 'gh の確認が想定外に成功しました。ガードと gh の設定を管理者に確認してもらってください。' >&2
  exit 1
 fi
 code=$(awk '/^HTTP\/[0-9.]+ / {code=$2} END {gsub("\r","",code); print code}' <<<"$response")
 if [[ $code != 422 && $code != 409 ]] || ! awk '/^\{/ {body=1} body {print}' <<<"$response" | jq -e 'type=="object" and (.message|type=="string" and length>0)' >/dev/null; then
  printf 'gh が選択先の入力検証まで届きませんでした: %s（HTTP %s）\n' "$repo" "${code:-応答なし}" >&2
  cat "$temporary/gh-error" >&2
- echo '表示した gh がプロジェクトの SQUAD_KIT_ALLOWED_REPOS を読むか、gh auth status と GitHub の権限・接続先を確認してください。既存の関所を直す場合は、同居するプロジェクトの管理者と調整し、manual.md の「既存の関所の確認」に従って流し直してください。' >&2
+ echo '表示した gh がプロジェクトの SQUAD_KIT_ALLOWED_REPOS を読むか、gh auth status と GitHub の権限・接続先を確認してください。既存のガードを直す場合は、同居するプロジェクトの管理者と調整し、manual.md の「既存のガードの確認」に従って流し直してください。' >&2
  exit 1
 fi
 # リモートへの git push はせず、実際の hook に新規更新行を渡す。
 if ! printf 'refs/heads/template-permission-check 1111111111111111111111111111111111111111 refs/heads/template-permission-check 0000000000000000000000000000000000000000\n' | "$hook" origin "https://github.com/$repo.git"; then
  printf 'pre-push が選択先を拒否しました: %s\n' "$repo" >&2
- echo '表示した pre-push がプロジェクトの SQUAD_KIT_ALLOWED_REPOS を読むか確認してください。同居するプロジェクトの管理者と調整し、manual.md の「既存の関所の確認」に従ってから流し直してください。' >&2
+ echo '表示した pre-push がプロジェクトの SQUAD_KIT_ALLOWED_REPOS を読むか確認してください。同居するプロジェクトの管理者と調整し、manual.md の「既存のガードの確認」に従ってから流し直してください。' >&2
  exit 1
 fi
 CHECK
@@ -318,7 +328,7 @@ CHECK
 		for shell in /bin/zsh /bin/bash; do
 			for mode in allow deny; do
 				if ! (cd "$probe/repository" && PATH="$probe_path" ZDOTDIR="$probe/$mode" BASH_ENV="$probe/$mode/env.sh" "$shell" -c '[[ $(command -v gh) == "$1" ]]' -- "$agent_home/bin/gh"); then
-					die "通常の gh が関所を選びません。シェル起動ファイルの PATH を確認してください: ${repo}（${shell}、${mode}）"
+					die "通常の gh がガードを選びません。シェル起動ファイルの PATH を確認してください: ${repo}（${shell}、${mode}）"
 				fi
 				if ! (cd "$probe/repository" && PATH="$probe_path" ZDOTDIR="$probe/$mode" BASH_ENV="$probe/$mode/env.sh" GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 "$shell" -c 'export PATH="$6" && . "$BASH_ENV" && . "$4/check.sh"' -- "$agent_home/bin/gh" "$agent_home/git-hooks/pre-push" "$repo" "$probe" "$mode" "$probe_path"); then
 					die "選択したリポジトリの許可と分離を確認できませんでした: ${repo}（${shell}、${mode}）"
@@ -326,7 +336,7 @@ CHECK
 			done
 		done
 		# 作る間の一覧が動いているときは、1 件ごとに出さず、手順の値にまとめる。
-		ui_phase_active || printf '許可の確認: %s（gh と pre-push、bash と zsh）: 成功\n' "$repo" >&2 || die '関所の確認の結果を表示できませんでした。'
+		ui_phase_active || printf '許可の確認: %s（gh と pre-push、bash と zsh）: 成功\n' "$repo" >&2 || die 'ガードの確認の結果を表示できませんでした。'
 	done <<<"$1"
 )
 

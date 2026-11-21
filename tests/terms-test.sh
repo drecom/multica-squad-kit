@@ -24,6 +24,7 @@ words = {
     "@SHIN@": chr(0x9032) + chr(0x884c),
     "@ZAN@": chr(0x6b8b) + chr(0x91cf),
     "@KAKU@": chr(0x78ba) + chr(0x304b) + chr(0x3081),
+    "@SEKI@": chr(0x95a2) + chr(0x6240),
     "@ISSUE@": "issue",
 }
 text = sys.argv[1]
@@ -58,6 +59,8 @@ deny '@SHIN@の担当へ頼む。\n' 1 '役の名前の進行は「リーダー�
 deny 'AI の@ZAN@を見る。\n' 1 'AI の使用の上限は「使用上限」と書く'
 deny '1 行目。\n動作を@KAKU@る。\n' 2 '「@KAKU@」は確認にする（文に合わなければ検証か照合）'
 deny '動作を@KAKU@て返す。\n' 1 '「@KAKU@」は確認にする（文に合わなければ検証か照合）'
+deny '1 行目。\n@SEKI@を越えない。\n' 2 '「@SEKI@」はガードにする（仕組みでなければ、確認・判定・決まり）'
+deny '標準入力の@SEKI@を確認する。\n' 1 '「@SEKI@」はガードにする（仕組みでなければ、確認・判定・決まり）'
 deny '1 行目。\nこの@ISSUE@を直す。\n' 2 'Multica の `issue` は「タスク」、GitHub の `issue` は「GitHub の issue」と書く'
 deny 'Fix @ISSUE@ を直す。\n' 1 'Multica の `issue` は「タスク」、GitHub の `issue` は「GitHub の issue」と書く'
 echo 'PASS terms: 置き換える前の語を、場所と理由を添えて止める'
@@ -65,4 +68,5 @@ echo 'PASS terms: 置き換える前の語を、場所と理由を添えて止�
 # 同じ検査を、仮の記号のない文で、設計の対応表の語に当てて確認する。
 allow '進行の記録と利用枠は残す。\n'
 allow '確かに動き、確かな根拠があり、確認と検証と照合で見る。\n'
-echo 'PASS terms: 残すと決めた語（進行の記録・利用枠・確かに・確かな・確認・検証・照合）は止めない'
+allow 'ガードのディレクトリと、端末の確認と、判定と、決まりを使う。\n'
+echo 'PASS terms: 残すと決めた語（進行の記録・利用枠・確かに・確かな・確認・検証・照合・ガード）は止めない'

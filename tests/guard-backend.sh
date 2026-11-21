@@ -1,5 +1,5 @@
 #!/bin/bash
-# 関所の次にある gh の差し替え。本物の GitHub へ送信しない。
+# ガードの次にある gh の差し替え。本物の GitHub へ送信しない。
 set -euo pipefail
 case "$*" in
 'api --help')

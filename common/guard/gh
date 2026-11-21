@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Multica のエージェントの実行で、gh の書き込みを、ワークスペースに紐付いたリポジトリだけに絞る関所。
+# Multica のエージェントの実行で、gh の書き込みを、ワークスペースに紐付いたリポジトリだけに絞るガード。
 # エージェントはホストの人の gh の認証で動き、その人が書けるリポジトリのすべてに GitHub の issue や PR を作れるため。
 # multica-squad-kit-managed
 # setup.sh が ~/.multica-agent/bin/gh に写し、デーモンの PATH の先頭に置く。
@@ -11,7 +11,7 @@ set -euo pipefail
 ALLOWED_FILE=${SQUAD_KIT_ALLOWED_REPOS:-$HOME/.multica-agent/allowed-repos}
 SELF_DIR=$(cd "$(dirname "$0")" && pwd)
 
-# PATH から、この関所の次にある本物の gh を探す。
+# PATH から、このガードの次にある本物の gh を探す。
 real_gh() {
 	local dir
 	local IFS=:
@@ -21,13 +21,13 @@ real_gh() {
 			return
 		fi
 	done
-	echo "gh の関所: 本物の gh が PATH に見つからない" >&2
+	echo "gh のガード: 本物の gh が PATH に見つからない" >&2
 	exit 1
 }
 GH=$(real_gh)
 
 deny() {
-	echo "gh の関所: $1。ワークスペースに紐付いたリポジトリ（$(tr '\n' ' ' <"$ALLOWED_FILE" 2>/dev/null)）にだけ書き込める" >&2
+	echo "gh のガード: $1。ワークスペースに紐付いたリポジトリ（$(tr '\n' ' ' <"$ALLOWED_FILE" 2>/dev/null)）にだけ書き込める" >&2
 	exit 1
 }
 
@@ -241,7 +241,7 @@ api)
 	check_api
 	;;
 auth)
-	# トークンを取り出すと、curl で関所を通らずに書き込めるので止める。認証を変える操作も止める。
+	# トークンを取り出すと、curl でガードを通らずに書き込めるので止める。認証を変える操作も止める。
 	case $sub in
 	status)
 		parse_args "${@:3}"
@@ -292,8 +292,8 @@ repo)
 	esac
 	;;
 *)
-	# gh の alias と拡張は、本物の gh の中で展開されて関所を通らないので、知らないコマンドは止める。
-	deny "gh ${group} は、関所が知らないコマンドなので止めた"
+	# gh の alias と拡張は、本物の gh の中で展開されてガードを通らないので、知らないコマンドは止める。
+	deny "gh ${group} は、ガードが知らないコマンドなので止めた"
 	;;
 esac
 

@@ -337,7 +337,7 @@ printf 'cleanup\n' >"$test_dir/expected"
 cmp "$test_dir/restart-cleanup" "$test_dir/expected"
 echo 'PASS ui-steps: 進み・tick・待ちを順に呼んでも止まらず、サブシェルの片付けは親の状態を壊さず、親だけが作業場所を片付ける'
 
-# prepare_project_host が関所確認のサブシェルへ表示を渡す経路。外の確認だけを置き換える。子は前景で
+# prepare_project_host がガードの確認のサブシェルへ表示を渡す経路。外の確認だけを置き換える。子は前景で
 # 1 回だけ描き、その間の親は止まっているので、描きが重ならない。親が引き取ったあとも、1 つの流れで描く。
 cat >"$test_dir/handoff.sh" <<'SH'
 set -euo pipefail
@@ -386,7 +386,7 @@ for block in blocks:
 # 手順の始まり（親）→ 子の更新 → tick（親）の順序を 1 回確認する。
 assert kinds == ['parent', 'child', 'parent'], kinds
 PY
-echo 'PASS ui-steps: 関所確認の子が前景で 1 回描いても、親の描きと混ざらず、親が同じ流れで続けて描く'
+echo 'PASS ui-steps: ガードの確認の子が前景で 1 回描いても、親の描きと混ざらず、親が同じ流れで続けて描く'
 
 # 確認の前は切らずに出し、答えた問いと空行を、そのあとで書き換える範囲に含める。
 cat >"$test_dir/tail.sh" <<'SH'
