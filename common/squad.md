@@ -82,7 +82,7 @@
 - プロジェクトが人間との合意を必要とする外部インターフェースの変更
 - 要件や設計だけでは方針を決められないとき
 <!-- IF code-reviewer -->
-- {{agent.code-reviewer.name}} と修正の役の差し戻しが 3 往復を超えたとき
+- 差し戻しで修正の依頼が続き、squad-handoff の `references/leader-principal.md` の「修正の依頼の数え方」で止まる回になったとき
 <!-- ENDIF -->
 - 同じ指摘が 2 回続けて差し戻されたとき
 - マージ
