@@ -72,7 +72,7 @@ dbd67dd7af91229c1a2ef29087a0fe24f4a571bcccbab9e30eda3556b64f8ee5  ./docs/depende
 b14070c704a91ead7fb5a051ea77efa3e563bdcf53bdf161abc946a64803c100  ./docs/doc-style.md
 bb76874f47d1b0e9e64795efca4b32b48a15791cad6e77fd3625b1f23d377a17  ./docs/host-start-daemon.md
 69c64f94fb80736ebc4f659805510155715a0d8b78510aa9ab40aeb284d87a12  ./docs/install.md
-d3743e6b53fe5186b099d532abf4fbf4f8af1cdf1d4583b02627eaeb6eb7230a  ./docs/instruction-reread.md
+ea7ebff44ce2dfa5cf4c68c764dde731c5c34514ea14fe1009369476511df8b0  ./docs/instruction-reread.md
 369c5b96674d47f949a255bb28643e07bb2a623a6b1c24628805724591a94b50  ./docs/leader-eval-picks.md
 fe4adf3a6167890a5591783236d03ca51691355d1809a7b9640818d4168d8689  ./docs/leader-principles.md
 f3e7834c16bb59c09a819b29a92ccea1d2ba7bdbe50505af4e1912167369d653  ./docs/metrics.md
@@ -80,6 +80,7 @@ a6ce83495ac89b59139376a410c8aa2802436d75cbc32bdc9d81b31b13a9e4e2  ./docs/planner
 cb269eb5a385b50a86711fe2c711acc106545f5416c4d5213570aa19f30ee5b8  ./docs/principal-review.md
 f5a7d4c13d05d363e9405f9122ef167747e86d753645ef2acd2965f5452d5e80  ./docs/procedure-review.md
 77efca1ad98aca2415595ba438574ad76dd41a3817872cef79f96de676cacddd  ./docs/release.md
+fc728c430576902fa08425db3a15ee58e4f25cde9ecefabd9f4ba98222832185  ./docs/reread-followups.md
 4843f61c2a09e09940b74d1e6b63c659134c505d8b1cb14ab65b5c14abd34ada  ./docs/review-next-step.md
 a19dabe6e06b23a4863cd1c1da37aa61177fd3440f6f4217b3a3fd4949f6a28f  ./docs/review-rework.md
 8cda3744ea961072184c2ebc0ea3ec7d65b888ff708e599a4a9ee72f11a183a5  ./docs/screens.md
