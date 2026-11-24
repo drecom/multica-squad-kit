@@ -22,11 +22,11 @@ c64ff136b0a19ba329f98b05b879ced23358f4863b7aa22d560c2359dba780a9  ./README.md
 a8589891c83dd2f462ec04992aec83bc8d93e4cb3038f9a7483d890f0274ff06  ./common/agents/FORMAT
 f66bbf1d2dcfc1eac345bee849f15e23eeb6002ab1d3a5b81ec24b45dbfe64a7  ./common/agents/ci-monitor.md
 a1571e2283b199ca69a84efbfdcc49a6b0f280576c35f275c5a254d4841e2dff  ./common/agents/claude-fixer.md
-d67e591f01817f4c6a9d4322cbbd2597d16d93cef9cd40915a285d148df60a36  ./common/agents/claude-implementer.md
+02391d95bc271de5868976d941660b0a06356ccea0c045b0e2f858a7b82d0a5b  ./common/agents/claude-implementer.md
 8f3a78b8334ffc1a8faf1300f76df3f7659e70e557876cbed17fe65cef1ab170  ./common/agents/claude-principal.md
 632f462030a2a823466c73cf566347a9d632d5631a62ab31a0f2dccf7d9ec512  ./common/agents/code-reviewer.md
 7a5c0b517aef8db1348da452d6c00844ac80f4b923802faca1953c8ecc2005df  ./common/agents/codex-fixer.md
-625235c4216f7d57d4966cd166f6bcc1b623921205525c6e8c1d4b2a37a61555  ./common/agents/codex-implementer.md
+efac5967143132fba1b1f2f3b628727e89a1066b179f24b296379367be7310ec  ./common/agents/codex-implementer.md
 d6819b8e501d4821d9810ab7dc45bea7945fe4fea2df75a080aa7e1de0922438  ./common/agents/codex-principal.md
 14a98d0aa700d4be8dbe25602182060e9ec819636ff22cdadff79dda2a304c73  ./common/agents/dependabot-merger.md
 ca8d744efdf80b0881c16cc8d6175460769960d2fbdae82f5aac75942a68fffd  ./common/agents/designer.md
@@ -67,8 +67,9 @@ f1cc2eac32869c0fab5879732c833fe9d56c3d3cf72502be3fc4ab12f789e1dc  ./common/skill
 57693434623b5b8b4947ab836b372bfbfb50b910abfd296af162641a898f1a6b  ./common/skills/squad-handoff/references/leader-review-wait.md
 dae32cbf310396b22441c31b4924b9135eaefaeb0a8c71ea6119085a8e117aac  ./common/skills/squad-handoff/references/leader-run-status.md
 1caa0a53bbaafea6d15e8105f94b22e1cd5b487b9891529111085f838bd88681  ./common/squad.md
-c06d0ec2e0bd0aaa68c4aef9ba36f44fd899ba1cc9a8fd1261a6240b10ca8c84  ./docs/README.md
+599ce1ee7c1d8cf41f9c87f988120a88fe61f5a2cbba762c2bc2b98effdf9be0  ./docs/README.md
 c380ac8fd57091fa1d1ad80ff9724cba6667a7199b440a40b4be9b0e25f83623  ./docs/agent-path.md
+3ca4ffccd35ce4ddcb26bc3c40ef34d2d2295eb27b8b0e08ea0522827b8bbb9c  ./docs/bug-repro-test.md
 8f528132703a8bdc7d6758547d25f7e7441e65878463412313f9f7adffbea231  ./docs/decide-record-read.md
 f0e5f01295e7cf698c436e9e5bbd7ca55a237a55b50964859cd918ac22c66a82  ./docs/default-branch.md
 9bbc0396d019384ee98310a56767e2c6f42338839483d831b37611c5b31e9db9  ./docs/dependency-audit.md
@@ -145,7 +146,7 @@ be9a67eb3b8da9a4012424d8ab5a9c61beecba7f11afcae4595541fbb56257de  ./skeleton/.ag
 18454e4d0424a4c4e9474140fc9d5b0b3854a1b4f59d10258cd85c9ffb044da6  ./skeleton/project.md
 86d88f085a22c1879850188758a47bce16efb46c8ed45507a9bc2056bb09be58  ./skeleton/verify-repository.md
 ec94c1189f1071bf59f9c20765667893b12a24881b6a68739d14f2ecbe0ff678  ./tests/action-advisories-test.sh
-6b61b64e0afd88b71bec8fd429d5f0daf8190f0ba8ac20d40a463e0840f731d5  ./tests/agent-templates-test.sh
+8435b7e12f1aac1778642d5b041f8a0f04d064e187141c48172094de62d50a34  ./tests/agent-templates-test.sh
 2c4dce6d55a2bec00a23cf829eb9939041a27c4bb78891f0aeb0d485ad1713c4  ./tests/ansi-to-png.py
 dfbb19bc0056d40e3259c72c68024a744c89987fbb8a18fdd593f6bbd9b8391b  ./tests/arg-limit-lib.sh
 4effb137e0876ad6cf25ccf0a3858c17e80fff848d6e5deb1b70405f7b2d3b8a  ./tests/audit-targets-test.sh
