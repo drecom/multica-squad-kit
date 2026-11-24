@@ -182,7 +182,7 @@ docs/README.md: 索引: ファイルがない
 | `docs/leader-principles.md` | 「モデルと思考の深さ」に advisor の案を並べる 1 文を、「検討した案」に advisor を既定にしない理由の 1 項目を足す。この文書と同じコミットで足した |
 | `docs/doc-style.md` | 「リンクの検査」に、索引の検査を足す。この文書と同じコミットで足した |
 | `manual.md` | 目次の項目と、[章の全文](#章の全文)の章を足す |
-| `scripts/check-links.py` | [索引の検査](#索引の検査)を足す |
+| `scripts/check-links.py` | [索引の検査](#索引の検査)と、`--index` とファイルを同時に渡すと終了コード 2 で止まる扱いを足し、先頭の説明を合わせて直す |
 | `tests/links-test.sh` | [テスト](#テスト)の確認を足す |
 | `STYLE.md` | 「リンク」の表に、設計の文書を索引に載せる決まりの行を足す。CI の列は「リンクの検査」にする |
 | `MANIFEST` | `bash scripts/manifest.sh` で作り直す |
