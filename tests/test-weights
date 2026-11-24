@@ -3,14 +3,14 @@
 # 150 秒は 1 本の目安で、機械では確認しない。上限は tests/run.sh の 450 秒。macOS の ==== PASS の実測値を写す。
 # 実測元: 97de5dd96fc45c2cc085f9f5d28224ff74dccc40
 # 試行 1、macOS 全 4 シャード、並列 3。全 100 本。
-# autopilot-targets の 3 本は、728ed04 の CI（macOS）で 1 本だった実測 182 秒を、手元の所要時間の比（20:26:52）で割った暫定値。分けたあとの CI の実測に直す。
+# autopilot-targets の 3 本は、d5f96eaed7ba58076dafca6190a4e0a959fb49e3 の CI（macOS 全 5 シャード）の実測に直した。
 # 絞ったテストの 6 本は、0a980cc40edb7f02484a148833de6c31da716132 の CI（macOS 全 5 シャード）の実測に直した。
 tests/action-advisories-test.sh 6
 tests/agent-templates-test.sh 35
 tests/audit-targets-test.sh 1
-tests/autopilot-targets-test.sh 40
-tests/autopilot-targets-registration-test.sh 53
-tests/autopilot-targets-webhook-test.sh 105
+tests/autopilot-targets-test.sh 30
+tests/autopilot-targets-registration-test.sh 41
+tests/autopilot-targets-webhook-test.sh 81
 tests/build-assets-test.sh 21
 tests/capture-cli-fixtures-test.sh 3
 tests/ci-install-test.sh 17
