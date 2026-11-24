@@ -2641,3 +2641,40 @@ grep -v '"which": "old"' "$test_dir/summary-runs.jsonl" >"$test_dir/summary-new-
 # run.sh から流した code-reviewer の summary.md にも、同じ決まりで出る（t1 は新旧とも合格）
 grep -qx '今の指示でも通る場面: t1' "$test_dir/reviewer-out/summary.md" || { echo "run.sh の summary.md に、今の指示でも通る場面がありません" >&2; exit 1; }
 echo "PASS leader-eval: code-reviewer の summary.md は、見出しを役の名前に替え、今の指示も全回で合格した場面を表の下に挙げる。リーダーの評価の summary.md は今のまま"
+
+# --- reviewer-scenes の場面の形 ---
+# 置いてある場面は review-1 だけ。場面を足すときは、人間が見逃しと認めたタスクで 1 つずつ足し、ここの一覧にも足す
+reviewer_scenes_dir="$eval_dir/reviewer-scenes"
+expected_reviewer_scenes='review-1'
+reviewer_present=
+for dir in "$reviewer_scenes_dir"/*/; do
+	id=$(basename "$dir")
+	[[ " $expected_reviewer_scenes " == *" $id "* ]] || { echo "reviewer-scenes に設計にない場面があります: $id" >&2; exit 1; }
+	reviewer_present="$reviewer_present $id"
+	[[ $id =~ ^review-[0-9]+$ ]] || { echo "$id: 場面の ID が review-<番号> ではありません" >&2; exit 1; }
+	[[ -f $dir/scene.md && -f $dir/cli.json ]] || { echo "$id: scene.md と cli.json が要ります" >&2; exit 1; }
+	"${helper[@]}" scene "$dir/scene.md" >"$test_dir/reviewer-scene.json" ||
+		{ echo "$id: 場面の読み取りを通りません" >&2; exit 1; }
+	[[ $(jq -r .id "$test_dir/reviewer-scene.json") == "$id" ]] || { echo "$id: 場面の ID がディレクトリ名と違います" >&2; exit 1; }
+	[[ $(jq -r .type "$test_dir/reviewer-scene.json") == 見逃し ]] || { echo "$id: 型が 見逃し ではありません" >&2; exit 1; }
+	jq -e '.commands | type == "array" and all(.[]; has("match") and (.match | type == "string"))' "$dir/cli.json" >/dev/null ||
+		{ echo "$id: cli.json の形が違います" >&2; exit 1; }
+	jq -e '.git == true' "$dir/cli.json" >/dev/null || { echo "$id: cli.json に \"git\": true がありません" >&2; exit 1; }
+	jq -e '.files | to_entries | any(.key | test("(^|/)\\.claude/skills/verify/SKILL\\.md$"))' "$dir/cli.json" >/dev/null ||
+		{ echo "$id: cli.json の files に verify のスキルのファイルがありません" >&2; exit 1; }
+	# 依頼のコミットを手元に用意するための git の見本がある
+	jq -e '.commands | map(.match) | any(startswith("git fetch")) and any(startswith("git checkout")) and any(startswith("git rev-parse"))' "$dir/cli.json" >/dev/null ||
+		{ echo "$id: cli.json に git fetch・git checkout・git rev-parse の見本がありません" >&2; exit 1; }
+	if grep -Eqi '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' "$dir/scene.md" "$dir/cli.json"; then
+		echo "$id: UUID の形の値があります" >&2
+		exit 1
+	fi
+done
+[[ "$reviewer_present" == " review-1" ]] || { echo "reviewer-scenes の場面が review-1 だけではありません:$reviewer_present" >&2; exit 1; }
+# review-1: 依頼のコミットの SHA が、場面と git の見本でそろい、[採点] の基準だけを持つ
+review_sha=$(grep -o '[0-9a-f]\{40\}' "$reviewer_scenes_dir/review-1/scene.md" | head -1)
+jq -e --arg sha "$review_sha" '.commands | any(.match == "git rev-parse HEAD" and .stdout == ($sha + "\n"))' "$reviewer_scenes_dir/review-1/cli.json" >/dev/null ||
+	{ echo "review-1 の git rev-parse HEAD の見本が、場面の SHA と違います" >&2; exit 1; }
+"${helper[@]}" scene "$reviewer_scenes_dir/review-1/scene.md" | jq -e '(.criteria | length) == 3 and all(.criteria[]; .kind == "採点")' >/dev/null ||
+	{ echo "review-1 の基準が 3 件の [採点] ではありません" >&2; exit 1; }
+echo "PASS leader-eval: reviewer-scenes の場面（$(wc -w <<<"$reviewer_present" | tr -d ' ') 場面）は、場面の読み取りを通り、git の許可と verify のスキルのファイルを持ち、UUID を含まない"

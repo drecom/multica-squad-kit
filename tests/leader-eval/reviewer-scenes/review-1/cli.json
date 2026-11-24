@@ -1,0 +1,80 @@
+{
+  "commands": [
+    {
+      "match": "squad-preflight",
+      "stdout": "squad-preflight: ガードの gh と、すべての見張りが使えます。\n"
+    },
+    {
+      "match": "multica issue get issue-shop-2",
+      "stdout": "{\n  \"id\": \"issue-shop-2\",\n  \"identifier\": \"SHOP-2\",\n  \"title\": \"WSL では DNS の設定を置かない\",\n  \"status\": \"in_progress\",\n  \"assignee_type\": \"squad\",\n  \"assignee_id\": \"squad-shop\",\n  \"project_id\": \"project-shop\",\n  \"labels\": [],\n  \"metadata\": {\n    \"repository\": \"example/shop\",\n    \"branch\": \"fix/wsl-dns\",\n    \"pr_url\": \"https://github.com/example/shop/pull/8\"\n  },\n  \"description\": \"WSL では DNS の設定を置かず、`resolved` を呼ばない。Lima では、サービスの再起動に失敗したら、パッケージを入れずに終了コード 1 で止まる。\"\n}\n"
+    },
+    {
+      "match": "multica issue comment list issue-shop-2",
+      "stdout": "[\n  {\n    \"id\": \"comment-1\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-orchestrator\",\n    \"parent_id\": null,\n    \"content\": \"[@shop-claude-implementer-member1](mention://agent/agent-claude-implementer) 実装を頼みます。\\n\\nWSL では DNS の設定を置かず、`resolved` を呼ばない。Lima では、サービスの再起動に失敗したら、パッケージを入れずに終了コード 1 で止まる。\",\n    \"created_at\": \"2026-01-12T09:00:00Z\"\n  },\n  {\n    \"id\": \"comment-2\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-claude-implementer\",\n    \"parent_id\": null,\n    \"content\": \"[@SQUAD-SHOP](mention://squad/squad-shop) 実装を push しました。PR: https://github.com/example/shop/pull/8\\n\\n確認したこと:\\n- `bash tests/run.sh` が通った\",\n    \"created_at\": \"2026-01-12T10:00:00Z\"\n  },\n  {\n    \"id\": \"comment-3\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-orchestrator\",\n    \"parent_id\": null,\n    \"content\": \"[@shop-code-reviewer-member1](mention://agent/agent-code-reviewer) 実装の PR のレビューを頼みます。\\n\\n返事を待つ役: [@shop-code-reviewer-member1](mention://agent/agent-code-reviewer)\\n確認するコミット: 5c2f9a71b3d4e6f8091a2b3c4d5e6f708192a3b4\\n振り分け: コードレビュー（使用率: 空いている）\\n\\nPR: https://github.com/example/shop/pull/8。差分は `gh pr diff` で読めます。\",\n    \"created_at\": \"2026-01-12T10:10:00Z\"\n  }\n]\n"
+    },
+    {
+      "match": "multica issue pull-requests issue-shop-2",
+      "stdout": "{\n  \"pull_requests\": [\n    {\n      \"url\": \"https://github.com/example/shop/pull/8\",\n      \"state\": \"open\",\n      \"draft\": true\n    }\n  ]\n}\n"
+    },
+    {
+      "match": "gh pr view",
+      "stdout": "{\n  \"number\": 8,\n  \"title\": \"fix: WSL では DNS の設定を置かない\",\n  \"state\": \"OPEN\",\n  \"isDraft\": true,\n  \"baseRefName\": \"main\",\n  \"headRefName\": \"fix/wsl-dns\",\n  \"headRefOid\": \"5c2f9a71b3d4e6f8091a2b3c4d5e6f708192a3b4\",\n  \"mergeable\": \"MERGEABLE\",\n  \"files\": [\n    {\n      \"path\": \"scripts/provision.sh\"\n    },\n    {\n      \"path\": \"tests/guest-dns-test.sh\"\n    }\n  ],\n  \"body\": \"WSL では DNS の設定を置かず、`resolved` を呼ばない。Lima では、サービスの再起動に失敗したら、パッケージを入れずに終了コード 1 で止まる。\"\n}\n"
+    },
+    {
+      "match": "gh pr diff",
+      "stdout": "diff --git a/scripts/provision.sh b/scripts/provision.sh\nindex 1a2b3c4..5d6e7f8 100644\n--- a/scripts/provision.sh\n+++ b/scripts/provision.sh\n@@ -1,7 +1,12 @@\n #!/usr/bin/env bash\n set -euo pipefail\n platform=$1\n dns_conf=${DNS_CONF:-/etc/shop/dns.conf}\n-printf 'nameserver 10.0.0.2\\n' >\"$dns_conf\"\n-systemctl restart resolved\n-apt-get install -y shop-agent\n+if [[ $platform == wsl ]]; then\n+  # WSL は DNS を Windows 側が持つので、設定を置かず resolved も呼ばない\n+  apt-get install -y shop-agent\n+  exit 0\n+fi\n+printf 'nameserver 10.0.0.2\\n' >\"$dns_conf\"\n+systemctl restart resolved || exit 1\n+apt-get install -y shop-agent\ndiff --git a/tests/guest-dns-test.sh b/tests/guest-dns-test.sh\nnew file mode 100644\nindex 0000000..9e0f1a2\n--- /dev/null\n+++ b/tests/guest-dns-test.sh\n@@ -0,0 +1,18 @@\n+#!/usr/bin/env bash\n+# WSL では DNS の設定を置かず、Lima では再起動に失敗したらパッケージを入れずに止まることを確認する\n+set -euo pipefail\n+source tests/guest-lib.sh\n+\n+reset_guest\n+provision wsl\n+[[ ! -e $dns_conf ]]\n+! calls_of | grep -q 'resolved'\n+echo \"PASS guest-dns: WSL では DNS の設定を置かず、resolved を呼ばない\"\n+\n+reset_guest\n+guest_state fail-restart\n+if provision lima; then\n+  exit 1\n+fi\n+! calls_of | grep -q '^apt-get'\n+echo \"PASS guest-dns: Lima では再起動に失敗したら、パッケージを入れずに止まる\"\n"
+    },
+    {
+      "match": "gh pr checks",
+      "stdout": "test\tpass\t28s\thttps://github.com/example/shop/actions/runs/3001/job/5\nlint\tpass\t11s\thttps://github.com/example/shop/actions/runs/3001/job/6\n"
+    },
+    {
+      "match": "multica repo checkout https://github.com/example/shop",
+      "stdout": "Checked out https://github.com/example/shop → ./shop (branch: agent/code-reviewer/review-1)\n"
+    },
+    {
+      "match": "git fetch",
+      "stdout": ""
+    },
+    {
+      "match": "git checkout",
+      "stdout": "HEAD is now at 5c2f9a7 fix: WSL では DNS の設定を置かない\n"
+    },
+    {
+      "match": "git switch",
+      "stdout": "HEAD is now at 5c2f9a7 fix: WSL では DNS の設定を置かない\n"
+    },
+    {
+      "match": "git rev-parse HEAD",
+      "stdout": "5c2f9a71b3d4e6f8091a2b3c4d5e6f708192a3b4\n"
+    },
+    {
+      "match": "git rev-parse",
+      "stdout": "5c2f9a71b3d4e6f8091a2b3c4d5e6f708192a3b4\n"
+    },
+    {
+      "match": "git status",
+      "stdout": "HEAD detached at 5c2f9a7\nnothing to commit, working tree clean\n"
+    },
+    {
+      "match": "git log",
+      "stdout": "5c2f9a71b3d4e6f8091a2b3c4d5e6f708192a3b4 fix: WSL では DNS の設定を置かない\n2e8b1c64a7d9f0123456789abcdef0123456789a chore: guest の準備の手順を足す\n"
+    },
+    {
+      "match": "git diff",
+      "stdout": "diff --git a/scripts/provision.sh b/scripts/provision.sh\nindex 1a2b3c4..5d6e7f8 100644\n--- a/scripts/provision.sh\n+++ b/scripts/provision.sh\n@@ -1,7 +1,12 @@\n #!/usr/bin/env bash\n set -euo pipefail\n platform=$1\n dns_conf=${DNS_CONF:-/etc/shop/dns.conf}\n-printf 'nameserver 10.0.0.2\\n' >\"$dns_conf\"\n-systemctl restart resolved\n-apt-get install -y shop-agent\n+if [[ $platform == wsl ]]; then\n+  # WSL は DNS を Windows 側が持つので、設定を置かず resolved も呼ばない\n+  apt-get install -y shop-agent\n+  exit 0\n+fi\n+printf 'nameserver 10.0.0.2\\n' >\"$dns_conf\"\n+systemctl restart resolved || exit 1\n+apt-get install -y shop-agent\ndiff --git a/tests/guest-dns-test.sh b/tests/guest-dns-test.sh\nnew file mode 100644\nindex 0000000..9e0f1a2\n--- /dev/null\n+++ b/tests/guest-dns-test.sh\n@@ -0,0 +1,18 @@\n+#!/usr/bin/env bash\n+# WSL では DNS の設定を置かず、Lima では再起動に失敗したらパッケージを入れずに止まることを確認する\n+set -euo pipefail\n+source tests/guest-lib.sh\n+\n+reset_guest\n+provision wsl\n+[[ ! -e $dns_conf ]]\n+! calls_of | grep -q 'resolved'\n+echo \"PASS guest-dns: WSL では DNS の設定を置かず、resolved を呼ばない\"\n+\n+reset_guest\n+guest_state fail-restart\n+if provision lima; then\n+  exit 1\n+fi\n+! calls_of | grep -q '^apt-get'\n+echo \"PASS guest-dns: Lima では再起動に失敗したら、パッケージを入れずに止まる\"\n"
+    },
+    {
+      "match": "git show",
+      "stdout": "diff --git a/scripts/provision.sh b/scripts/provision.sh\nindex 1a2b3c4..5d6e7f8 100644\n--- a/scripts/provision.sh\n+++ b/scripts/provision.sh\n@@ -1,7 +1,12 @@\n #!/usr/bin/env bash\n set -euo pipefail\n platform=$1\n dns_conf=${DNS_CONF:-/etc/shop/dns.conf}\n-printf 'nameserver 10.0.0.2\\n' >\"$dns_conf\"\n-systemctl restart resolved\n-apt-get install -y shop-agent\n+if [[ $platform == wsl ]]; then\n+  # WSL は DNS を Windows 側が持つので、設定を置かず resolved も呼ばない\n+  apt-get install -y shop-agent\n+  exit 0\n+fi\n+printf 'nameserver 10.0.0.2\\n' >\"$dns_conf\"\n+systemctl restart resolved || exit 1\n+apt-get install -y shop-agent\ndiff --git a/tests/guest-dns-test.sh b/tests/guest-dns-test.sh\nnew file mode 100644\nindex 0000000..9e0f1a2\n--- /dev/null\n+++ b/tests/guest-dns-test.sh\n@@ -0,0 +1,18 @@\n+#!/usr/bin/env bash\n+# WSL では DNS の設定を置かず、Lima では再起動に失敗したらパッケージを入れずに止まることを確認する\n+set -euo pipefail\n+source tests/guest-lib.sh\n+\n+reset_guest\n+provision wsl\n+[[ ! -e $dns_conf ]]\n+! calls_of | grep -q 'resolved'\n+echo \"PASS guest-dns: WSL では DNS の設定を置かず、resolved を呼ばない\"\n+\n+reset_guest\n+guest_state fail-restart\n+if provision lima; then\n+  exit 1\n+fi\n+! calls_of | grep -q '^apt-get'\n+echo \"PASS guest-dns: Lima では再起動に失敗したら、パッケージを入れずに止まる\"\n"
+    }
+  ],
+  "git": true,
+  "files": {
+    "shop/AGENTS.md": "# shop の指示\n\nテストは `bash tests/run.sh`。シェルのテストは `tests/` に置く。\n",
+    "shop/.claude/skills/verify/SKILL.md": "---\nname: verify\ndescription: shop の変更に合うテストを選んで流す\n---\n\n# shop の検証\n\n- シェルのスクリプトを変えたときは `bash tests/run.sh` を流す。`tests/guest-*.sh` を含む。\n- 結果は PR のコメントに書く。\n",
+    "shop/scripts/provision.sh": "#!/usr/bin/env bash\nset -euo pipefail\nplatform=$1\ndns_conf=${DNS_CONF:-/etc/shop/dns.conf}\nif [[ $platform == wsl ]]; then\n  # WSL は DNS を Windows 側が持つので、設定を置かず resolved も呼ばない\n  apt-get install -y shop-agent\n  exit 0\nfi\nprintf 'nameserver 10.0.0.2\\n' >\"$dns_conf\"\nsystemctl restart resolved || exit 1\napt-get install -y shop-agent\n",
+    "shop/tests/guest-lib.sh": "# guest のテストの共通の部品。呼ばれたコマンドは、スタブが記録のファイルに書く\ndns_conf=$(mktemp -d)/dns.conf\ncalls_log=$(mktemp)\nreset_guest() { : >\"$calls_log\"; rm -f \"$dns_conf\"; guest_mode=ok; }\nguest_state() { guest_mode=$1; }\ncalls_of() { cat \"$calls_log\"; }\nprovision() { PATH=\"tests/stub-bin:$PATH\" CALLS_LOG=\"$calls_log\" GUEST_MODE=$guest_mode DNS_CONF=$dns_conf bash scripts/provision.sh \"$1\"; }\n",
+    "shop/tests/guest-dns-test.sh": "#!/usr/bin/env bash\n# WSL では DNS の設定を置かず、Lima では再起動に失敗したらパッケージを入れずに止まることを確認する\nset -euo pipefail\nsource tests/guest-lib.sh\n\nreset_guest\nprovision wsl\n[[ ! -e $dns_conf ]]\n! calls_of | grep -q 'resolved'\necho \"PASS guest-dns: WSL では DNS の設定を置かず、resolved を呼ばない\"\n\nreset_guest\nguest_state fail-restart\nif provision lima; then\n  exit 1\nfi\n! calls_of | grep -q '^apt-get'\necho \"PASS guest-dns: Lima では再起動に失敗したら、パッケージを入れずに止まる\"\n"
+  }
+}
