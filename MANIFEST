@@ -67,13 +67,13 @@ f1cc2eac32869c0fab5879732c833fe9d56c3d3cf72502be3fc4ab12f789e1dc  ./common/skill
 57693434623b5b8b4947ab836b372bfbfb50b910abfd296af162641a898f1a6b  ./common/skills/squad-handoff/references/leader-review-wait.md
 dae32cbf310396b22441c31b4924b9135eaefaeb0a8c71ea6119085a8e117aac  ./common/skills/squad-handoff/references/leader-run-status.md
 1caa0a53bbaafea6d15e8105f94b22e1cd5b487b9891529111085f838bd88681  ./common/squad.md
-b4a2b503497a70c65e130c137f14aff455d88923b1aebc227f8fdd4a74284a40  ./docs/README.md
+c06d0ec2e0bd0aaa68c4aef9ba36f44fd899ba1cc9a8fd1261a6240b10ca8c84  ./docs/README.md
 c380ac8fd57091fa1d1ad80ff9724cba6667a7199b440a40b4be9b0e25f83623  ./docs/agent-path.md
 8f528132703a8bdc7d6758547d25f7e7441e65878463412313f9f7adffbea231  ./docs/decide-record-read.md
 f0e5f01295e7cf698c436e9e5bbd7ca55a237a55b50964859cd918ac22c66a82  ./docs/default-branch.md
 9bbc0396d019384ee98310a56767e2c6f42338839483d831b37611c5b31e9db9  ./docs/dependency-audit.md
 59c5e3e26eae406bca7d9a93f743a6a27b2bd71882403d633013040cb63d2ea4  ./docs/doc-style.md
-4f8de28d5ddd232b9651261f5b45dacf31a5d555cb12fb0f8e4dd46a1a49bb90  ./docs/flow-and-index.md
+7e921e0c0d40b1a77d39b6cd262101e231a4caca7f6589a51fbae4ff2cd0d52b  ./docs/flow-and-index.md
 ce01904b58b09ea957686673d8f9883b1e59f5e84dbdb74bd7ab30759d1a1797  ./docs/host-start-daemon.md
 69c64f94fb80736ebc4f659805510155715a0d8b78510aa9ab40aeb284d87a12  ./docs/install.md
 ea7ebff44ce2dfa5cf4c68c764dde731c5c34514ea14fe1009369476511df8b0  ./docs/instruction-reread.md
