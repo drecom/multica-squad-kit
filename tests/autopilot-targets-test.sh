@@ -578,3 +578,150 @@ jq -e '.leftovers==[]' "$TEST_DB/result.json" >/dev/null
 jq -e 'all(.issues[]; .metadata.squad_kit_task!="dependabot-webhook-removal")' "$TEST_DB/db.json" >/dev/null
 echo 'PASS autopilot-targets: 別の担当の登録は、対象から外しても Webhook を外すタスクの対象にしない'
 )
+
+# 7-1、7-2: 確認の表示と、対象を絞った一覧での導入の確認を本体で行う。
+(
+phase5_kit=$root
+mkdir -p "$test_dir/phase5-extension" "$test_dir/phase5-bin"
+cp "$root/VERSION" "$test_dir/phase5-extension/kit-version"
+cat >"$test_dir/phase5-extension/autopilots.md" <<'DEFINITION'
+## App events {{project_key}} {{repository}}
+
+- 範囲: `repository`
+- 担当: {{agent.dependabot-merger.name}}
+- 実行: `run_only`
+- トリガー: `webhook`
+
+```text
+{{repository}} のイベントを確認する。
+```
+DEFINITION
+printf '%s\n' '{"週 1 回の依存ライブラリの脆弱性チェック":{"example/app":{}},"Dependabot の PR の週次の確認":{"example/app":{}},"App events":{"example/app":{}}}' >"$test_dir/phase5-extension/autopilot-targets.json"
+python3 "$root/lib/extensions.py" "$root" "$test_dir/phase5-extension" "$test_dir/phase5-package"
+phase5_package=$test_dir/phase5-package
+cp -R "$root/lib" "$phase5_package/"
+cp "$root/VERSION" "$phase5_package/"
+export TEST_DB=$test_dir/phase5-db TEST_PACKAGE="$phase5_package"
+mkdir -p "$TEST_DB"
+python3 "$root/tests/project-issues-fixture.py" "$phase5_package" "$TEST_DB/db.json"
+python3 "$root/tests/installation-fixture.py" "$TEST_DB"
+printf '#!/bin/bash\nexec %q %q "$TEST_DB" "$@"\n' "$(command -v python3)" "$root/tests/setup-runtime-cli.py" >"$test_dir/phase5-bin/multica"
+chmod +x "$test_dir/phase5-bin/multica"
+export PATH="$test_dir/phase5-bin:$PATH"
+
+# 登録する予定は実際の prepare_autopilots で作る。
+(
+root=$phase5_package
+source "$root/lib/render.sh"
+source "$root/lib/autopilots.sh"
+die() { echo "$*" >&2; exit 1; }
+project_work=$TEST_DB/work
+records=$(cat "$project_work/records.json")
+enabled='orchestrator codex-implementer ci-monitor dependabot-merger'
+selected_repositories='[{"repository":"example/wiki"},{"repository":"example/app"}]'
+jq -n --argjson records "$records" '{project_id:"project-a",project_key:"demo",member_key:"owner",squad_id:"squad-a"}|reduce ($records|to_entries[]) as $r (.; .["agent."+$r.key+".name"]=$r.value.name)' >"$project_work/values.json"
+prepare_autopilots
+jq -e 'length==2 and all(.[]; .repository=="example/app")' "$project_work/autopilots.json" >/dev/null
+)
+python3 - "$TEST_DB" <<'STATE'
+import json
+import sys
+from pathlib import Path
+folder = Path(sys.argv[1])
+db = json.loads((folder / 'db.json').read_text())
+records = json.loads((folder / 'work/records.json').read_text())
+definitions = json.loads((folder / 'work/autopilots.json').read_text())
+db['autopilots'], db['triggers'] = [], {}
+for n, desired in enumerate(definitions):
+    id_ = f'phase5-{n}'
+    agent = next(record['id'] for record in records.values() if record['name'] == desired['agent'])
+    db['autopilots'].append(dict(id=id_, title=desired['title'], description=desired['instructions'].rstrip('\n'),
+        project_id='project-a', status='active', assignee_type='agent', assignee_id=agent, execution_mode=desired['mode']))
+    trigger = dict(id=id_ + '-trigger', kind=desired.get('trigger', 'schedule'), enabled=True)
+    if trigger['kind'] == 'schedule':
+        trigger.update(cron_expression=desired['cron'], timezone=desired['timezone'])
+    db['triggers'][id_] = [trigger]
+# 外した分は、不一致の内容が残っていても導入の確認の対象にしない。
+db['autopilots'].append(dict(id='outside-wiki', title='Dependabot の PR の週次の確認 demo example/wiki',
+    description='old', project_id='project-a', status='paused', assignee_type='agent',
+    assignee_id='agent-dependabot-merger', execution_mode='run_only'))
+db['triggers']['outside-wiki'] = []
+db['resources'] = [dict(resource_type='github_repo', resource_ref=dict(url=f'https://github.com/example/{repo}'))
+                   for repo in ['wiki', 'app']]
+(folder / 'db.json').write_text(json.dumps(db))
+STATE
+cp "$TEST_DB/db.json" "$test_dir/phase5-baseline"
+cat >"$test_dir/phase5-driver" <<'DRIVER'
+set -euo pipefail
+root=$TEST_PACKAGE
+cd "$root"
+die() { echo "$*" >&2; exit 1; }
+source "$root/lib/ui.sh"
+source "$root/lib/check.sh"
+source "$root/lib/render.sh"
+source "$root/lib/project.sh"
+source "$root/lib/setup-issues.sh"
+source "$root/lib/installation.sh"
+server_url=https://example.test; workspace_id=workspace-a
+project_id=project-a; project_key=demo; member_key=owner; host_owner_id=actor
+squad_id=squad-a; squad_name=DEMO-OWNER
+member_ids='["actor"]'; runtimes='["codex"]'; codex_runtime_id=runtime-codex
+project_work=$TEST_DB/work
+records=$(cat "$project_work/records.json")
+enabled='orchestrator codex-implementer ci-monitor dependabot-merger'
+setup_installation_rows='[]'; setup_issue_rows='[]'; setup_issue_failures='[]'
+verify_project_installation
+project_installation_completion
+printf '%s\n' "$setup_installation_rows" >"$TEST_DB/installation-rows.json"
+[[ $(jq length <<<"$setup_issue_failures") == 0 ]]
+DRIVER
+phase5_run() { /bin/bash "$test_dir/phase5-driver" >"$test_dir/out" 2>"$test_dir/err"; }
+phase5_edit() { jq "$1" "$TEST_DB/db.json" >"$TEST_DB/new"; mv "$TEST_DB/new" "$TEST_DB/db.json"; }
+phase5_run
+jq -e 'all(.[]; .status=="一致") and ([.[]|select(.name|startswith("オートパイロット "))]|length)==2 and all(.[]; (.name|contains("example/wiki")|not))' "$TEST_DB/installation-rows.json" >/dev/null
+jq -e '.issues==[]' "$TEST_DB/db.json" >/dev/null
+! jq -es 'any(.[]; .[0:3]==["autopilot","get","outside-wiki"])' "$TEST_DB/calls.jsonl" >/dev/null
+echo 'PASS autopilot-targets: 対象を絞って全 5 群の導入の確認が通り、外した Wiki の登録は確認も起票もしない'
+
+cat >"$test_dir/phase5-plan" <<'PLAN'
+set -euo pipefail
+root=$TEST_PACKAGE
+die() { echo "$*" >&2; exit 1; }
+source "$root/lib/ui.sh"
+source "$root/lib/check.sh"
+source "$root/lib/render.sh"
+source "$root/lib/answers.sh"
+source "$root/lib/questions.sh"
+server_url=https://example.test; workspace_id=workspace-a; project_id=project-a
+project_key=demo; member_key=owner; question_actor_id=actor
+question_squads=$(jq '.squads' "$TEST_DB/db.json")
+question_people=$(jq '.members' "$TEST_DB/db.json")
+template_roles='orchestrator security-reviewer dependabot-merger usage-monitor'
+runtimes='["codex"]'; excluded_roles=${TEST_EXCLUDED:-[]}
+repositories='[{"repository":"example/wiki"},{"repository":"example/app"}]'
+link_repositories='[]'; member_ids='["actor"]'
+confirmation_plan >"$TEST_DB/plan.json"
+confirmation_show "$(cat "$TEST_DB/plan.json")"
+for kind in security-reviewer dependabot-merger; do
+ role_choice_text "$(jq -c --arg kind "$kind" '.[]|select(.key==$kind)' <<<"$role_choices")" '  ' ''
+done >"$TEST_DB/role-text"
+PLAN
+/bin/bash "$test_dir/phase5-plan" >"$test_dir/out" 2>"$test_dir/err"
+jq -e '([.[]|select(.group=="オートパイロット")]|length)==3 and all(.[]|select(.group=="オートパイロット"); (.name|contains("example/wiki")|not))' "$TEST_DB/plan.json" >/dev/null
+! grep -qF 'example/wiki' "$TEST_DB/role-text"
+grep -qF 'example/app' "$TEST_DB/role-text"
+TEST_EXCLUDED='["security-reviewer","dependabot-merger"]' /bin/bash "$test_dir/phase5-plan" >"$test_dir/out" 2>"$test_dir/err"
+jq -e 'all(.[]|select(.group=="役" and (.name=="security-reviewer" or .name=="dependabot-merger")); (.value|contains("example/app")) and (.value|contains("example/wiki")|not))' "$TEST_DB/plan.json" >/dev/null
+echo 'PASS autopilot-targets: 確認の表示と外す役の 2 種の一覧は、原本の定期確認を対象の app だけにする'
+
+for id in phase5-0 phase5-1; do
+ cp "$test_dir/phase5-baseline" "$TEST_DB/db.json"
+ phase5_edit ".autopilots|=map(if .id==\"$id\" then .status=\"paused\" else . end)"
+ phase5_run
+ jq -e '[.[]|select(.status=="要確認")]|length==1 and .[0].reason=="一時停止しています。止めたままでよいか確認し、動かすなら画面で再開してください。"' "$TEST_DB/installation-rows.json" >/dev/null
+ phase5_edit ".autopilots|=map(if .id==\"$id\" then .description=\"old\" else . end)"
+ phase5_run
+ jq -e '[.[]|select(.status=="要確認")]|length==1 and .[0].reason=="定義と一致しません。"' "$TEST_DB/installation-rows.json" >/dev/null
+done
+echo 'PASS autopilot-targets: スケジュールと Webhook の登録で、状態だけが一時停止なら再開を案内し、ほかの不一致は今の理由を保つ'
+)
