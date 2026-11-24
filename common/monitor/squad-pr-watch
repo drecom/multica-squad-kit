@@ -4,8 +4,9 @@
 # 人間に回すたびに 1 回きりの規則を入れ直し、すでにあるコンフリクトも次の確認で拾う。
 #
 #   squad-pr-watch link-check <タスク>
-#     metadata の pr_url と紐付いた PR の一覧を比べ、紐付けの状態を 1 行で出す。書き込まない。
-#     読めないときも「未確認」の行を出し、0 で終わる。
+#     metadata の pr_url と紐付いた PR の一覧を比べ、紐付けの状態を 1 行で出す。
+#     紐付け直しのマーク（pr_link_pending）があるときだけ、紐付けを試み直し、タスクに記録を書く。
+#     マークがなければ書き込まない。読めないときも「未確認」の行を出し、0 で終わる。
 #   squad-pr-watch conflicts <タスク> [--leader <リーダーの ID>]
 #     古いコンフリクトの規則を消し、呼び出した orchestrator 自身を起こす規則を作る。
 #     --leader を渡すと、その ID のリーダーを起こす。役の実行（squad-review-next decide）から呼ぶときに使う。
@@ -38,6 +39,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/squad-pr-link-lib"
 PR_WATCH_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/squad-pr-watch"
 UNLINKED_MARK='紐付いていない PR のマージ待ちの見張りで起きました。'
 UNLINKED_INTERVAL=1h
+UNLINKED_LINK_INTERVAL=21600
 UNLINKED_LIMIT_HOURS=72
 UNLINKED_MAX_FIRES=100
 
@@ -130,7 +132,7 @@ print(json.dumps(dict(state=state, url=url, reason=reason, line=line,
 URLPY
 }
 
-# コメントの一覧は標準入力で受け、返信先と間隔に数える記録を検証する。
+# コメントの一覧は標準入力で受け、返信先、間隔に数える記録、一度紐付いたかを検証する。
 link_record_data() {
 	python3 -c '
 import datetime
@@ -138,20 +140,23 @@ import json
 import re
 import sys
 
-url, record, now = sys.argv[1], sys.argv[2], int(sys.argv[3])
-parent, latest = "", None
+url, record, now, interval = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4])
+prefix = "紐付けの試み直し:"
+parent, latest, linked = "", None, False
 for comment in json.load(sys.stdin):
     content = comment.get("content")
     lines = content.splitlines() if isinstance(content, str) else []
     if comment.get("author_type") != "agent" or len(lines) < 2:
         continue
-    if lines[0] != "/note" or not lines[1].startswith("紐付けの試み直し:"):
+    if lines[0] != "/note" or not lines[1].startswith(prefix):
         continue
     if comment["id"] == record:
         parent = record
     match = re.search(r" pr: (\S+)(?: |$)", lines[1])
     if not match or match[1].casefold() != url.casefold():
         continue
+    if lines[1][len(prefix):match.start()].strip() in ("紐付いた", "紐付いていた"):
+        linked = True
     try:
         stamp = datetime.datetime.fromisoformat(comment["created_at"].replace("Z", "+00:00"))
         if stamp.tzinfo is None:
@@ -160,7 +165,8 @@ for comment in json.load(sys.stdin):
     except (ValueError, TypeError, AttributeError):
         continue
     latest = value if latest is None else max(latest, value)
-print(json.dumps(dict(parent=parent, recent=latest is not None and now < latest + 300)))
+print(json.dumps(dict(parent=parent, linked=linked,
+                     recent=latest is not None and now < latest + interval)))
 ' "$@"
 }
 
@@ -179,9 +185,10 @@ link_record_post() (
 	fi
 )
 
+# 第 2 引数は、前の記録からこの秒数がたつまで試み直さない間隔。省くと 5 分にする。
 link_check() {
-	local issue=$1 retry=${2:-1} cmd task data pr_url prs line
-	local comments record info parent='' result='' now
+	local issue=$1 interval=${2:-300} cmd task data pr_url prs line
+	local comments record info parent='' result='' now mark=0 readable=1
 	for cmd in jq python3 multica; do
 		if ! command -v "$cmd" >/dev/null 2>&1; then
 			printf '紐付け: 未確認 pr: 不明 理由: %s が見つからない\n' "$cmd"
@@ -202,22 +209,39 @@ link_check() {
 	fi
 	data=$(pr_url_data "$task" "$prs")
 	line=$(jq -r .line <<<"$data")
-	if [[ $retry == 1 ]] && {
-		{ [[ $line == '紐付け: 紐付いていない '* ]] && jq -e '.pending_matches' <<<"$data" >/dev/null; } \
-		|| { [[ $line == '紐付け: 紐付いている '* ]] && jq -e '.metadata | has("pr_link_pending")' <<<"$task" >/dev/null; }
-	}; then
-		comments=$(squad_cli_read issue-comments "$issue") || comments='[]'
+	jq -e '.metadata | has("pr_link_pending")' <<<"$task" >/dev/null && mark=1
+	if { [[ $line == '紐付け: 紐付いていない '* ]] && jq -e '.pending_matches' <<<"$data" >/dev/null; } \
+		|| { [[ $line == '紐付け: 紐付いている '* ]] && ((mark)); }; then
 		record=$(jq -r '.metadata.pr_link_record | select(type == "string")' <<<"$task")
 		now=$(date +%s)
-		info=$(printf '%s\n' "$comments" | link_record_data "$pr_url" "$record" "$now")
-		parent=$(jq -r .parent <<<"$info")
-		if [[ $line == '紐付け: 紐付いていない '* ]] && jq -e '.recent' <<<"$info" >/dev/null; then
+		if comments=$(squad_cli_read issue-comments "$issue") \
+			&& info=$(printf '%s\n' "$comments" | link_record_data "$pr_url" "$record" "$now" "$interval"); then
+			parent=$(jq -r .parent <<<"$info")
+		else
+			readable=0
+		fi
+		if [[ $line == '紐付け: 紐付いていない '* ]]; then
+			# コメントを読めないときと、一度紐付いたときは試み直さない。一度紐付いたときはマークを消し直す。
+			if ((! readable)); then
+				printf '%s\n' "$line"
+				return 0
+			fi
+			if jq -e '.linked' <<<"$info" >/dev/null; then
+				multica issue metadata delete "$issue" --key pr_link_pending >/dev/null 2>&1 || :
+				printf '%s\n' "$line"
+				return 0
+			fi
+			if jq -e '.recent' <<<"$info" >/dev/null; then
+				printf '%s\n' "$line"
+				return 0
+			fi
+		elif ((! readable)); then
+			# 記録の置き場所を決められないので、記録もマークの削除もせず、次の判定に任せる。
 			printf '%s\n' "$line"
 			return 0
 		fi
 	fi
-	if [[ $retry == 1 && $line == '紐付け: 紐付いていない '* ]] \
-		&& jq -e '.pending_matches' <<<"$data" >/dev/null; then
+	if [[ $line == '紐付け: 紐付いていない '* ]] && jq -e '.pending_matches' <<<"$data" >/dev/null; then
 		# 応答よりも、呼び出し後に読み直した一覧を優先して判定する。
 		if pr_link_check_api_env; then
 			if pr_link_request_once "$issue" "$pr_url" 30; then
@@ -244,12 +268,10 @@ link_check() {
 		'紐付け: 食い違い '*) result='食い違い' ;;
 		esac
 		link_record_post "$issue" "$parent" "$result" "$pr_url" >/dev/null 2>&1 || :
-	elif [[ $retry == 1 && $line == '紐付け: 紐付いている '* ]] \
-		&& jq -e '.metadata | has("pr_link_pending")' <<<"$task" >/dev/null; then
+	elif [[ $line == '紐付け: 紐付いている '* ]] && ((mark)); then
 		link_record_post "$issue" "$parent" '紐付いていた' "$pr_url" >/dev/null 2>&1 || :
 	fi
-	if [[ $retry == 1 && $line == '紐付け: 紐付いている '* ]] \
-		&& jq -e '.metadata | has("pr_link_pending")' <<<"$task" >/dev/null; then
+	if [[ $line == '紐付け: 紐付いている '* ]] && ((mark)); then
 		multica issue metadata delete "$issue" --key pr_link_pending >/dev/null 2>&1 || :
 	fi
 	printf '%s\n' "$line"
@@ -784,7 +806,7 @@ unlinked_check() {
 		unlinked_stop "$issue" 'マージ待ちから外れている'
 		return 0
 	fi
-	link_line=$(link_check "$issue" 0)
+	link_line=$(link_check "$issue" "$UNLINKED_LINK_INTERVAL")
 	case $link_line in
 	'紐付け: 紐付いている '*) unlinked_stop "$issue" 'PR がタスクに紐付いた'; return 0 ;;
 	'紐付け: 食い違い '*)

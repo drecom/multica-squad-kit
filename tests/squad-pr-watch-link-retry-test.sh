@@ -224,15 +224,73 @@ pending_remains
 api_once
 echo 'PASS link-retry: すでに紐付いたマークも消し、削除の失敗では出力と終了コードを変えない'
 
+# 一度紐付いた記録のある PR は、マークが残り、人間が紐付けを外しても試み直さない。
+for kind in record-deletion-failed retry-deletion-failed; do
+	reset_retry
+	if [[ $kind == record-deletion-failed ]]; then
+		after_urls "$pr"
+		cp "$test_dir/pulls-after.json" "$test_dir/pulls.json"
+	else
+		after_urls "$pr"
+	fi
+	echo 'issue metadata delete' >"$test_dir/fail"
+	check_retry "紐付け: 紐付いている pr: $pr"
+	pending_remains
+	rm -f "$test_dir/fail"
+	calls_before=$(jq -s 'length' "$test_dir/curl-calls.jsonl")
+	# 人間がタスクの画面で紐付けを外す。
+	printf '{"pull_requests":[]}' >"$test_dir/pulls.json"
+	check_retry "紐付け: 紐付いていない pr: $pr"
+	[[ $(jq -s 'length' "$test_dir/curl-calls.jsonl") == "$calls_before" ]]
+	[[ $(jq -s 'length' "$test_dir/posted.jsonl") == 1 ]]
+	pending_deleted
+done
+echo 'PASS link-retry: 一度紐付いた記録があれば、マークが残り紐付けが外されても API を呼ばず記録を書かず、マークを消し直す'
+
+# すでに紐付いていてマークがあり、コメントを読めないときも、記録を書かず、マークを消さない。
+reset_retry
+after_urls "$pr"
+cp "$test_dir/pulls-after.json" "$test_dir/pulls.json"
+echo 'issue comment list' >"$test_dir/fail"
+check_retry "紐付け: 紐付いている pr: $pr"
+no_api
+[[ ! -s $test_dir/posted.jsonl ]]
+pending_remains
+assert_jq -s 'all(.[]; .[0:3] != ["issue","metadata","delete"] and .[0:3] != ["issue","metadata","set"])' "$test_dir/calls.jsonl"
+echo 'PASS link-retry: 紐付いていてもコメントを読めなければ、記録を書かず、マークも消さない'
+
+for failure in comments post; do
+	reset_retry
+	if [[ $failure == comments ]]; then
+		echo 'issue comment list' >"$test_dir/fail"
+	else
+		touch "$test_dir/fail-post"
+	fi
+	check_retry "紐付け: 紐付いていない pr: $pr"
+	if [[ $failure == comments ]]; then
+		no_api
+		[[ ! -s $test_dir/posted.jsonl ]]
+		pending_remains
+		assert_jq 'has("metadata") and (.metadata | has("pr_link_record") | not)' "$test_dir/task.json"
+		assert_jq -s 'all(.[]; .[0:3] != ["issue","metadata","delete"] and .[0:3] != ["issue","metadata","set"])' "$test_dir/calls.jsonl"
+	else
+		api_once
+	fi
+done
+echo 'PASS link-retry: コメントを読めなければ API を呼ばず、マークも記録も変えない'
+
+# マージ待ちの見張りでは、最後の記録から 6 時間がたっているときだけ試み直す。
 reset_retry
 update_task '.status = "in_review"'
 line=$(cd "$test_dir" && bash "$script" unlinked-check test-issue orchestrator)
 [[ $line == /note$'\nCI abcdef0: 失敗あり\nコンフリクト: MERGEABLE head: abcdef0123456789 知らせ: なし' ]]
-no_api
+api_once
+assert_jq -s '[.[] | select(.body | startswith("/note\n紐付けの試み直し: 一覧にない（200） pr: '"$pr"' 時刻: "))] | length == 1' "$test_dir/posted.jsonl"
 pending_remains
-echo 'PASS link-retry: マージ待ちの見張りの判定では試み直さず、今の出力を保つ'
+echo 'PASS link-retry: マージ待ちの見張りは、記録がなければ API を 1 回呼び、今の出力を保つ'
 
 reset_retry
+fixture issue-wakeups >"$test_dir/rule-base.json"
 python3 - "$test_dir" "$script" <<'RECORDPY'
 import copy
 import datetime
@@ -351,4 +409,53 @@ for failure in ("post", "metadata"):
     deletion = next(i for i,c in enumerate(calls) if c[:3] == ["issue", "metadata", "delete"])
     assert posting < deletion
 print("PASS link-record: 投稿か ID の保存が失敗しても、判定と終了コードを保ち、マークを消す")
+
+def run_unlinked(expect=None):
+    result = subprocess.run(["bash", script, "unlinked-check", "test-issue", "orchestrator"], cwd=work,
+                            text=True, capture_output=True)
+    assert result.returncode == 0, result
+    if expect is not None:
+        assert expect in result.stdout or expect in " ".join(rows("calls.jsonl")[-1]), result
+    return result
+
+def unlinked_task():
+    task = read("task.json")
+    task["status"] = "in_review"
+    write("task.json", task)
+
+now = datetime.datetime.now(datetime.timezone.utc)
+for age, expected in ((datetime.timedelta(hours=6, minutes=1), 1), (datetime.timedelta(hours=5, minutes=59), 0)):
+    reset()
+    unlinked_task()
+    value = comment(created=(now - age).isoformat())
+    write("comments.json", [value])
+    run_unlinked()
+    assert len(rows("curl-calls.jsonl")) == expected, age
+    assert len([r for r in rows("posted.jsonl") if r["body"].startswith("/note\n紐付けの試み直し:")]) == expected, age
+print("PASS link-record: マージ待ちの見張りは 6 時間を過ぎたときだけ API を 1 回呼び、6 時間の中では呼ばない")
+
+# 人間が書いた行は間隔に数えない。
+reset()
+unlinked_task()
+write("comments.json", [comment(author="member", created=now.isoformat())])
+run_unlinked()
+assert len(rows("curl-calls.jsonl")) == 1
+print("PASS link-record: 人間が書いた試み直しの行は、マージ待ちの見張りの間隔に数えない")
+
+# 試み直しで紐付くと、見張りの規則を消し、止めた記録を標準出力に出す。
+reset()
+unlinked_task()
+write("comments.json", [comment(created=(now - datetime.timedelta(hours=7)).isoformat())])
+write("pulls-after.json", {"pull_requests": [{"html_url": pr}]})
+(work / "api-status").write_text("200")
+rules = read("rule-base.json")
+mark = "紐付いていない PR のマージ待ちの見張りで起きました。"
+write("rules.json", [dict(rules, id="mine", instruction=mark + "\n確認"),
+                     dict(rules, id="other", instruction="PR の CI が終わりました。")])
+result = run_unlinked()
+assert len(rows("curl-calls.jsonl")) == 1
+assert "pr_link_pending" not in read("task.json")["metadata"]
+assert result.stdout == "/note\n止めた: PR がタスクに紐付いた\n", result
+assert [rule["id"] for rule in read("rules.json")] == ["other"], read("rules.json")
+print("PASS link-record: マージ待ちで紐付くと、見張りの規則を消し、止めた記録を出す")
 RECORDPY
