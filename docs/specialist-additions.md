@@ -91,12 +91,14 @@ extension/
 4. ファイルを消す
 
 ```bash
-(umask 077; multica agent env get <エージェントの ID> --output json | jq '.custom_env' > custom-env.json)
-multica agent env set <エージェントの ID> --custom-env-file custom-env.json
-rm custom-env.json
+env_file=$(mktemp)
+trap 'rm -f "$env_file"' EXIT
+multica agent env get <エージェントの ID> --output json | jq '.custom_env' > "$env_file"
+multica agent env set <エージェントの ID> --custom-env-file "$env_file"
+rm -f "$env_file"
 ```
 
-`umask 077` は、ファイルを所有者だけが読める権限で作るためである。作ったあとに権限を変えるのでは、その前に他の利用者が読める。
+`mktemp` は、新しいファイルを所有者だけが読める権限で作る。同名のファイルやリンクが残っていても使わず、`trap` が、途中で止まってもシェルを閉じるときにファイルを消す。
 
 > [!WARNING]
 > `multica agent env set` は、環境変数の全体を置き換える。鍵だけを渡すと、セットアップが置いた値が消える。消したときは、同じプロジェクトでセットアップを流し直す。
