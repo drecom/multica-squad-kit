@@ -188,6 +188,10 @@ print('PASS capture issue-list-all: 絞り込みなしの一覧を先頭から�
 gh = runpy.run_path('tests/capture-gh-fixtures.py')
 assert gh['read_only'](['gh','api','repos/example/public/pulls','--paginate'])
 assert gh['read_only'](['gh','pr','view','1','--repo','example/public','--json','title'])
+default_branch_command = ['gh', 'api', 'repos/actions/checkout', '--jq',
+                          'with_entries(select(.key == "default_branch"))']
+assert gh['read_only'](default_branch_command)
+assert not gh['read_only'](default_branch_command[:-1] + ['.default_branch'])
 for flag in ('--method=POST','-XPOST','--field=x=y','-fbody=x','--input=-'):
     assert not gh['read_only'](['gh','api','repos/example/public/issues',flag])
 assert not gh['read_only'](['gh','pr','merge','1'])
@@ -207,6 +211,7 @@ with tempfile.TemporaryDirectory(dir='tmp', prefix='gh-capture-main.') as direct
     stub.write_text('#!/bin/sh\necho "gh version 0.0.0 (fixture)"\n')
     stub.chmod(0o755)
     sources = json.loads((fixtures / 'GH-CAPTURE.json').read_text())['sources']
+    assert sources['gh-default-branch'] == default_branch_command
     gh_names = {name for name, entry in entries.items() if entry.get('capture') == 'external' and entry['command'][0] == 'gh'}
     assert gh_names == set(sources) and 'codex-rate-limits' in entries
     assert entries['codex-rate-limits'].get('capture') == 'external'
