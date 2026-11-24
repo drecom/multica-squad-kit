@@ -15,7 +15,7 @@ e26217d9263a7ee07305e8624b87471bdf97acb3c4695c0046804fd6ffeb837a  ./.agents/rule
 dfc7b81f937d5fb799b18ca4d9b7ac4ce58cee16f14edceb75bee2dfae80f53f  ./AGENTS.md
 642c5db54b974b7c537ebccb41bbcf8e0252eb6507e9ae23071b03ec153c6664  ./CHANGELOG.md
 1eb99314d85723af288e50d11188f125f136b52e043917134038c50c02ef6a94  ./CONTRIBUTING.md
-4ccdcd88556c214959e4c351d45924a6b7a46f45bd5c7a7467c974d9c4733373  ./EXTENSIONS.md
+45fcd5ac2910627fecd99c126a2785e44182ac5029336ddde067ba7407680739  ./EXTENSIONS.md
 c64ff136b0a19ba329f98b05b879ced23358f4863b7aa22d560c2359dba780a9  ./README.md
 dcea33253a2601bc3a6557ebb572f1f1e995591636ea70aed7bd88ec670e57a2  ./STYLE.md
 6bf25061d3caea72d34f961997d35aca8c8d960aaddac2413516882e6706c97e  ./VERSION
@@ -89,6 +89,7 @@ e5f415519c2a4f9041b91579574e6402e4822d3d3211795db113e44f1017c330  ./docs/review-
 a19dabe6e06b23a4863cd1c1da37aa61177fd3440f6f4217b3a3fd4949f6a28f  ./docs/review-rework.md
 8cda3744ea961072184c2ebc0ea3ec7d65b888ff708e599a4a9ee72f11a183a5  ./docs/screens.md
 51e212138a351496c5fc7ea6b540b32e7a0a15460e4b476a5a0f7899d30ab0e2  ./docs/setup-completion.md
+0d3ca9fdfa17b18bff9bee77f06a78b1d55c17a30ce11edb3042a4efc2ef5766  ./docs/specialist-additions.md
 a5a5b65ff5b6419bb3d4f17bf8c2958d8581c42f18dde4fae613c04e1043672e  ./docs/supply-chain.md
 bbaa1eecbf5bb6d96ad053eba8ed180f6e82fb1ba3298947fe8a151e0502bdff  ./docs/terminal-tests-map.md
 abbb6a7aed1c8da4f421fe06ac0838895c082e6f900e1e116ceda0f72ad9eaa9  ./docs/terminal-tests.md
@@ -132,13 +133,15 @@ e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./scripts/styl
 a44fda9e4a5718c6a90537c5f3275733e3958bf9906144b851feab924acc4714  ./setup.sh
 595fd8697be17ce33adec5b6851a97ed974231aad8e48b244aee70c4128f26b7  ./skeleton/.agents/review-paths
 51eb4a7c0fd29e15873a87c8dd06c550af1097bd66324f9bd0dc41f379eb769f  ./skeleton/.agents/rules/code.md
+9af1cb6c7844a8ccabe3f2183600c0f6d7bfb31c8554328cade8900119b7eabc  ./skeleton/.agents/rules/database.md
 813658fb296b853b8b45077b49a4d02defcec11a572638cd0b0246116a47a6a7  ./skeleton/.agents/rules/docs.md
 219c838d6978b8587775d9c98edd8966b3f36cf2c56a71f0866df8e7ab94ba3d  ./skeleton/.agents/rules/tests.md
+79ba57108d97a45716a708ed97055fc938543f1e81cec9e230d7c3c29b3828a8  ./skeleton/.agents/rules/ui.md
 be9a67eb3b8da9a4012424d8ab5a9c61beecba7f11afcae4595541fbb56257de  ./skeleton/.agents/skills/verify/SKILL.md
 39207a2957165826bbf2b79e0973b523f1ffbdcedc1af58e0b40257415f8bf6d  ./skeleton/AGENTS.md
-324399380871711535be2fc592e25dfec61de3fa9a7dd5f37cbb13cd2f7e8568  ./skeleton/README.md
+33fd31cda4e988ef8116996f2d31db8f69fcd6e32cdfa5abc04f70fef3e0bc78  ./skeleton/README.md
 18454e4d0424a4c4e9474140fc9d5b0b3854a1b4f59d10258cd85c9ffb044da6  ./skeleton/project.md
-b9033019a1fe0384a555a447fe064ade71c427af27a9caa4b175868fdd2085ad  ./skeleton/verify-repository.md
+86d88f085a22c1879850188758a47bce16efb46c8ed45507a9bc2056bb09be58  ./skeleton/verify-repository.md
 ec94c1189f1071bf59f9c20765667893b12a24881b6a68739d14f2ecbe0ff678  ./tests/action-advisories-test.sh
 6b61b64e0afd88b71bec8fd429d5f0daf8190f0ba8ac20d40a463e0840f731d5  ./tests/agent-templates-test.sh
 2c4dce6d55a2bec00a23cf829eb9939041a27c4bb78891f0aeb0d485ad1713c4  ./tests/ansi-to-png.py
@@ -172,6 +175,8 @@ a49b3cae1451eade8ea1f8d3a5243e4e8cd1da7d4c72c194ca917df001504138  ./tests/depend
 7f3ab955c12ef1fe464aee1502109e7af2d1e4e75a8bc1449f20acb977cb8e66  ./tests/doc-compare-test.sh
 17feea6f4137f523c2d7975d8dcc2edea34a652430bf704e93839f6ff4cd4a67  ./tests/draw-terminal.sh
 3c558f7227d899c47b132ad97cf09bb2b7a38abe2ded84c38b83d5d06bc08eb8  ./tests/error-marks-test.sh
+485d97fd3debe98568346afc195e3374cb4517282bcb8b42884b1ccf99448633  ./tests/extensions-key-file-table.tsv
+eee84fa2d69bba35b33e3374452592a4d96a50dfb253b52e1049e0a9f9b7fad9  ./tests/extensions-key-file-test.sh
 fdfa18af712019070c6d715777853fbcd1c1e3d90a2a260654b022c240e9adb1  ./tests/extensions-test.sh
 982caa9101339df558030a13d81877ba900527547b2f5cabe0d24b34473c3af0  ./tests/fixtures/action-advisories/CAPTURE.json
 299aca44446708700c1829a5fb2712ef82f8419d90ad1a5232feb712de676b2c  ./tests/fixtures/action-advisories/SOURCES.md
@@ -734,7 +739,7 @@ c98729878e6706f5780a10fbbdd9246ef49a12182fb27d46624296d335659336  ./tests/termin
 c0509d732b2b3fa99f882283848bc2ba1c82ed3a6d0a90ac8263045dfee07010  ./tests/terminal-test.sh
 bb7b764515248a871ceb26e80ed0d7a543675fe39a1813d3355767cb94475dc7  ./tests/terms-test.sh
 70b930e2847c9b0174993617f714cab72a321fa0483e64d0c73b4ead24e3a97c  ./tests/test-runner-test.sh
-322fac152c779223f8ef8f4df0336068c063d06e2fe5af6e2854cbd7fbd3479b  ./tests/test-weights
+3c203b255cafd5012565c2500addaf67fa270778a4c96fcfd887b7bd00eb0b4b  ./tests/test-weights
 26c5ee5af12334788f56bf13d7912c59770691d19efffeef2c59ad5be01d7bc9  ./tests/tty-session-cases.py
 a0e2424125413c1c5bc44b0dba0b9c391785e81466da212529b51a8fbfe10013  ./tests/tty-session-test.sh
 a75552e9ce73a6a9face4c56e1a318d10150c76383b5c88d4f0de705dc9cde2f  ./tests/tty-session.py

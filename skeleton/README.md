@@ -29,6 +29,8 @@
 | [.agents/rules/code.md](.agents/rules/code.md) | 同じ相対パス。コードの作業で使うルールのひな形 |
 | [.agents/rules/tests.md](.agents/rules/tests.md) | 同じ相対パス。テストの作業で使うルールのひな形 |
 | [.agents/rules/docs.md](.agents/rules/docs.md) | 同じ相対パス。ドキュメントの作業で使うルールのひな形 |
+| [.agents/rules/database.md](.agents/rules/database.md) | 同じ相対パス。DB を持つリポジトリだけに置く、DB を変える作業のルールのひな形で、記入の例を含む |
+| [.agents/rules/ui.md](.agents/rules/ui.md) | 同じ相対パス。画面を持つリポジトリだけに置く、画面の作業のルールのひな形で、記入の例を含む |
 | [.agents/review-paths](.agents/review-paths) | 作業先のリポジトリのルートからの `.agents/review-paths` に置く任意のファイル。マーク `重要` のないタスクのレビューの観点の対応を上書き・追加し、置かなければ原本の既定で選ぶ |
 | [.agents/skills/verify/SKILL.md](.agents/skills/verify/SKILL.md) | プロジェクトに一つ登録する検証スキルのひな形。リポジトリごとの節を持つ |
 | [verify-repository.md](verify-repository.md) | 上のスキルへ、選んだリポジトリごとに差し込む記入欄 |
