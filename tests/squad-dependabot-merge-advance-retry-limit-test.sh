@@ -8,8 +8,10 @@ cd "$root"
 source "$root/tests/dependabot-merge-test-lib.sh"
 source "$root/tests/dependabot-merge-advance-test-lib.sh"
 
-for mixed in false true; do
-	advance_fixture
+for scenario in main:false main:true develop:false develop:true; do
+	base=${scenario%:*}
+	mixed=${scenario#*:}
+	advance_fixture "$base"
 	edit_pr '.mergeStateStatus = "BEHIND"'
 	run_advance waiting
 	for n in 2 3 4; do
@@ -18,12 +20,15 @@ for mixed in false true; do
 		edit_pr ".headRefOid = \"$new_head\" | .mergeable = \"MERGEABLE\" | .mergeStateStatus = \"BEHIND\""
 		if [[ $mixed == true && $n == 2 ]]; then edit_pr '.mergeable = "CONFLICTING" | .mergeStateStatus = "DIRTY"'; fi
 		: >"$test_dir/calls.jsonl"
-		if [[ $n == 4 ]]; then run_advance behind-limit --retry; no_writes
+		if [[ $n == 4 ]]; then
+			run_advance behind-limit --retry
+			grep -Fx "この実行で 3 回依頼しても対象ブランチ $base に追いつけませんでした。" "$test_dir/output" >/dev/null
+			no_writes
 		else run_advance waiting --retry; fi
 		jq -e --argjson expected "$((n < 4 ? n : 3))" 'length == $expected' "$test_dir/comments.json" >/dev/null
 	done
 done
-echo 'PASS advance: 反映後に main に遅れれば頼み直し、rebase・recreate の合計 3 回で behind-limit'
+echo 'PASS advance: 反映後に対象ブランチに遅れれば頼み直し、合計 3 回で behind-limit と対象ブランチ名を返す'
 
 retries_after_response() {
 	advance_fixture

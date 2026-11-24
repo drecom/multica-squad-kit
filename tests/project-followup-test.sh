@@ -3,6 +3,28 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 source "$root/tests/project-followup-test-lib.sh"
 
+reset_db
+run
+run
+# 読む側: 登録されたオートパイロットの指示を実行する監査の役と Dependabot の役。
+# 展開した原本だけでなく、セットアップを 2 回流した後の登録内容を確認する。
+for role in security-reviewer dependabot-merger; do
+	jq -er --arg role "agent-$role" '[.[] | select(.assignee_id==$role and .project_id=="project-a")]
+		| if length==1 then .[0].description else error("対象の登録が一意ではありません") end
+		| select(type=="string" and length>0)' "$TEST_DB/autopilots.json" >"$test_dir/registered-$role"
+	grep -qF 'git ls-remote --symref origin HEAD' "$test_dir/registered-$role"
+	grep -qF '対象ブランチ:' "$test_dir/registered-$role"
+	grep -qF 'git fetch origin +refs/heads/<ブランチ名>:refs/remotes/origin/<ブランチ名>' "$test_dir/registered-$role"
+	grep -qF 'git checkout --detach refs/remotes/origin/<ブランチ名>' "$test_dir/registered-$role"
+	if grep -Eq 'main の最新|--ref main|git fetch origin main|git checkout --detach origin/main|FETCH_HEAD' "$test_dir/registered-$role"; then
+		echo "登録に main の固定が残っています: $role" >&2
+		exit 1
+	fi
+done
+grep -qF '確認したコミット:' "$test_dir/registered-security-reviewer"
+grep -qF 'squad-dependabot-merge example/project project-a list --base <対象ブランチ>' "$test_dir/registered-dependabot-merger"
+echo 'PASS followup: セットアップを 2 回流したあとの監査と Dependabot の登録に、デフォルトブランチの取得と結果の行が残る'
+
 followup_completed_one
 : >"$TEST_DB/calls"; run; no_writes
 grep -q '^✔ [^+]*$' "$test_dir/out"

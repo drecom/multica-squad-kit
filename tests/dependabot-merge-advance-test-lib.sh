@@ -23,6 +23,7 @@ chmod +x "$test_dir/bin/date" "$test_dir/bin/sleep"
 
 advance_fixture() {
 	reset_fixture
+	advance_base=${1-main}
 	rm -f "$test_dir/changed-head" "$test_dir/merge-fail" "$test_dir/next-checks.json" "$test_dir/next-pr.json" "$test_dir/fail" "$test_dir/tick-on" "$test_dir/comments-page2.json"
 	printf '200000\n' >"$test_dir/now"
 	printf '[]\n' >"$test_dir/comments.json"
@@ -40,6 +41,12 @@ EOF
 	: >"$test_dir/sleeps"
 	: >"$test_dir/body-files"
 	add_pr 1 dependabot/go_modules/api/example "$(metadata patch)"
+	if [[ $advance_base != main ]]; then
+		jq --arg base "$advance_base" '.default_branch=$base' "$test_dir/default-branch.json" >"$test_dir/edit.json"
+		mv "$test_dir/edit.json" "$test_dir/default-branch.json"
+		jq --arg base "$advance_base" '.baseRefName=$base' "$test_dir/pr-1.json" >"$test_dir/edit.json"
+		mv "$test_dir/edit.json" "$test_dir/pr-1.json"
+	fi
 	reviewed=$(printf '%040d' 1)
 	run_deadline=214400
 }
@@ -47,7 +54,7 @@ EOF
 run_advance() {
 	local expected=$1
 	shift
-	if bash "$script" example/template project-a advance 1 --reviewed-head "$reviewed" --run-deadline "$run_deadline" "$@" >"$test_dir/output" 2>"$test_dir/error"; then :
+	if bash "$script" example/template project-a advance 1 --base "$advance_base" --reviewed-head "$reviewed" --run-deadline "$run_deadline" "$@" >"$test_dir/output" 2>"$test_dir/error"; then :
 	else cat "$test_dir/error" >&2; return 1; fi
 	if [[ -s $test_dir/error || $(sed -n '1p' "$test_dir/output") != "$expected" || $(wc -l <"$test_dir/output") -ne 2 ]]; then
 		printf '期待した結果: %s\n実際の結果:\n' "$expected" >&2

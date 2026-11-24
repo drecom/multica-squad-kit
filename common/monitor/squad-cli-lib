@@ -1094,6 +1094,31 @@ squad_cli_contracts() {
         "kind": "array"
       }
     },
+    "gh-default-branch": {
+      "command": [
+        "gh",
+        "api",
+        "{endpoint}",
+        "--jq",
+        "with_entries(select(.key == \"default_branch\"))"
+      ],
+      "shape": "object",
+      "capture": "external",
+      "fields": [
+        {
+          "path": "default_branch",
+          "class": "required",
+          "nullable": false,
+          "validate": "type == \"string\" and length > 0"
+        }
+      ],
+      "samples": [
+        {
+          "name": "element",
+          "where": "true"
+        }
+      ]
+    },
     "gh-branch-rules": {
       "command": [
         "gh",
@@ -1871,6 +1896,8 @@ def normalize(value, schema, index, prefix=""):
             report("に欄がありません", prefix + field["path"], value, index, when)
         elif required and actual is None and not field["nullable"]:
             report("の欄が null です", prefix + field["path"], value, index, when)
+        elif actual is not missing and actual is not None and field.get("validate") and not matches(actual, field["validate"]):
+            report("の欄の形が不正です", prefix + field["path"], value, index, when)
     result = project(value, tree)
     mapping = schema.get("values")
     if mapping:
