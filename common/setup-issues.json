@@ -15,7 +15,7 @@
     "title": "{{repository}} の Dependabot の Webhook を外す",
     "assignee": "actor",
     "label": "運用",
-    "body": "セットアップで Dependabot の PR の Webhook を使わないと答えましたが、前の実行で作った Webhook のトリガーが残っています。セットアップはトリガーと GitHub の Webhook を消しません。週次のスケジュールだけで扱うなら、オートパイロットを編集できる人が Webhook のトリガーを外し、リポジトリの管理者が GitHub の Webhook を消してください。Webhook を続けて使うなら、使うと答えてセットアップを流し直してください。Webhook の URL は認証情報なので、タスクやログに貼らないでください。\n\n手順: [Dependabot の Webhook を外す]({{manual_url}}#dependabot-の-webhook-を外す)"
+    "body": "Webhook を使わない答え、または Dependabot の確認の対象から外した設定で、前の実行で作った Webhook のトリガーが残っています。セットアップはトリガーと GitHub の Webhook を消しません。Webhook をやめるなら、オートパイロットを編集できる人が Webhook のトリガーを外し、リポジトリの管理者が GitHub の Webhook を消してください。Webhook を続けて使うなら、確認の対象に戻し、Webhook を使う答えでセットアップを流し直してください。Webhook の URL は認証情報なので、タスクやログに貼らないでください。\n\n手順: [Dependabot の Webhook を外す]({{manual_url}}#dependabot-の-webhook-を外す)"
   },
   "repository-rules": {
     "title": "{{repository}} に AGENTS.md と作業別のルールを置く",

@@ -1,11 +1,26 @@
 # Dependabot の役を残し、Webhook を使うと答えたときだけ真。
 dependabot_webhook_active() { [[ " $enabled " == *' dependabot-merger '* && ${dependabot_webhook:-false} == true ]]; }
 
+# 選んだリポジトリのうち、Dependabot の定期確認の対象だけを返す。
+dependabot_repositories() {
+	if [[ ! -f $root/extension-autopilot-targets.json ]]; then printf '%s\n' "$selected_repositories"; return 0; fi
+	jq -ce --argjson repos "$selected_repositories" '
+		.["Dependabot の PR の週次の確認"] as $targets |
+		$repos | if $targets==null then . else map(select(.repository as $repo | $targets | has($repo))) end
+	' "$root/extension-autopilot-targets.json"
+}
+
+# 空の一覧（管理する登録がない）と、一覧を読めない場合を分ける。
+dependabot_autopilot_ids() {
+	mc autopilot list --output json 2>/dev/null | jq -ce --arg title "$(autopilot_title dependabot-merger "$1")" --arg project "$project_id" --arg agent "$2" '
+		select(.autopilots|type=="array") |
+		[.autopilots[] | select(.title==$title and .project_id==$project and .assignee_type=="agent" and .assignee_id==$agent) | .id] |
+		select(all(.[]; type=="string" and length>0))' 2>/dev/null
+}
+
 # 管理する Dependabot のオートパイロットの ID。リポジトリと担当で一つに決まらなければ偽。
 dependabot_autopilot_id() {
-	mc autopilot list --output json 2>/dev/null | jq -er --arg title "$(autopilot_title dependabot-merger "$1")" --arg project "$project_id" --arg agent "$2" '
-		[.autopilots[] | select(.title==$title and .project_id==$project and .assignee_type=="agent" and .assignee_id==$agent)] |
-		select(length==1) | .[0].id | select(type=="string" and length>0)' 2>/dev/null
+	dependabot_autopilot_ids "$1" "$2" | jq -er 'select(length==1) | .[0]' 2>/dev/null
 }
 
 # URL と署名の秘密はこのパイプからだけ出し、呼び出す側もパイプで受ける。
@@ -91,15 +106,18 @@ register_dependabot_webhook() (
 )
 
 prepare_project_webhooks() {
-	local repo row reason
+	local repo row reason targets excluded
+	[[ " $enabled " == *' dependabot-merger '* ]] || return 0
+	targets=$(dependabot_repositories) || die 'Dependabot の対象のリポジトリを読めませんでした。'
+	excluded=$(jq -c --argjson targets "$targets" 'map(select(.repository as $repo | $targets | all(.[]; .repository!=$repo)))' <<<"$selected_repositories")
 	# Webhook を使わない答えなら、登録を試みず、登録とフィルターのタスクも起票しない。
-	if [[ " $enabled " == *' dependabot-merger '* ]] && ! dependabot_webhook_active; then
-		prepare_project_webhook_leftovers
+	if ! dependabot_webhook_active; then
+		prepare_project_webhook_leftovers "$targets"
+		prepare_project_webhook_leftovers "$excluded" excluded
 		return 0
 	fi
-	dependabot_webhook_active || return 0
 	# 作る間の一覧の値は、登録を試すリポジトリの数。
-	webhook_summary=$(jq length <<<"$selected_repositories")
+	webhook_summary=$(jq length <<<"$targets")
 	while IFS= read -r repo; do
 		ui_phase_progress 0 0 "$repo"
 		if ! row=$(register_dependabot_webhook "$repo"); then
@@ -108,24 +126,36 @@ prepare_project_webhooks() {
 		setup_webhook_rows=$(jq -c --argjson row "$row" '.+[$row]' <<<"$setup_webhook_rows")
 		reason=$(jq -r '.reason' <<<"$row")
 		if [[ -n $reason ]]; then queue_project_issue dependabot-webhook "$(jq -nc --arg repo "$repo" '[$repo]')" "$host_owner_id" "$repo"; fi
-	done < <(jq -r '.[].repository' <<<"$selected_repositories")
+	done < <(jq -r '.[].repository' <<<"$targets")
+	prepare_project_webhook_leftovers "$excluded" excluded
 }
 
 # Webhook を使わない答えでも、前の実行で作ったトリガーは消さない。残っていれば、外すよう表示して起票する。
 # 読むのは Multica のトリガーの種類だけで、GitHub と Webhook の URL には触れない。
 prepare_project_webhook_leftovers() {
-	local repo agent id kinds
+	local repos=${1:-$selected_repositories} reason=${2:-unused} repo agent id ids kinds
 	agent=$(jq -er '.["dependabot-merger"].id' <<<"$records") || agent=''
 	while IFS= read -r repo; do
-		if [[ -n $agent ]] && id=$(dependabot_autopilot_id "$repo" "$agent") &&
-			kinds=$(mc autopilot get "$id" --output json 2>/dev/null | jq -ce --arg id "$id" 'select(.autopilot.id==$id) | [.triggers[].kind]' 2>/dev/null); then
+		id=''
+		if [[ -n $agent ]]; then
+			if [[ $reason == excluded ]]; then
+				ids=$(dependabot_autopilot_ids "$repo" "$agent") || ids=''
+				[[ $ids != '[]' ]] || continue
+				id=$(jq -er 'select(length==1) | .[0]' <<<"$ids" 2>/dev/null) || id=''
+			else
+				id=$(dependabot_autopilot_id "$repo" "$agent") || id=''
+			fi
+		fi
+		if [[ -n $id ]] && kinds=$(mc autopilot get "$id" --output json 2>/dev/null | jq -ce --arg id "$id" --arg project "$project_id" --arg agent "$agent" '
+			select(.autopilot.id==$id and .autopilot.project_id==$project and .autopilot.assignee_type=="agent" and .autopilot.assignee_id==$agent) |
+			select(.triggers|type=="array") | [.triggers[].kind] | select(all(.[]; type=="string"))' 2>/dev/null); then
 			jq -e 'index("webhook")!=null' >/dev/null <<<"$kinds" || continue
-			setup_webhook_leftovers=$(jq -c --arg repository "$repo" '.+[{repository:$repository,state:"残っている"}]' <<<"$setup_webhook_leftovers")
+			setup_webhook_leftovers=$(jq -c --arg repository "$repo" --arg reason "$reason" '.+[{repository:$repository,state:"残っている",reason:$reason}]' <<<"$setup_webhook_leftovers")
 			queue_project_issue dependabot-webhook-removal "$(jq -nc --arg repo "$repo" '[$repo]')" "$host_owner_id" "$repo"
 		else
-			setup_webhook_leftovers=$(jq -c --arg repository "$repo" '.+[{repository:$repository,state:"確認できない"}]' <<<"$setup_webhook_leftovers")
+			setup_webhook_leftovers=$(jq -c --arg repository "$repo" --arg reason "$reason" '.+[{repository:$repository,state:"確認できない",reason:$reason}]' <<<"$setup_webhook_leftovers")
 		fi
-	done < <(jq -r '.[].repository' <<<"$selected_repositories")
+	done < <(jq -r '.[].repository' <<<"$repos")
 }
 
 # 結果の語を、マーク 1 文字にする。作ったものと既存のものは ✔、飛ばしたものは ·、記録のない配信は !、失敗は ✖。
@@ -143,14 +173,16 @@ project_webhook_completion() {
 	local repository trigger registration delivery reason state width=0 size
 	[[ $(jq length <<<"${setup_webhook_leftovers:-[]}") != 0 || $(jq length <<<"${setup_webhook_rows:-[]}") != 0 ]] || return 0
 	printf '\n'
-	while IFS=$'\t' read -r repository state; do
+	while IFS=$'\t' read -r repository state reason; do
 		printf '  '
-		if [[ $state == 残っている ]]; then
+		if [[ $state == 残っている && $reason == excluded ]]; then
+			ui_mark out warn "$repository" 'Dependabot の確認の対象から外しましたが、前の実行で作った Webhook のトリガーが残っています。外すよう起票しました。'
+		elif [[ $state == 残っている ]]; then
 			ui_mark out warn "$repository" 'Webhook を使わない答えですが、前の実行で作った Webhook のトリガーが残っています。外すよう起票しました。'
 		else
 			ui_mark out warn "$repository" '前の実行で作った Webhook のトリガーが残っているかを確認できませんでした。Multica の画面で確認してください。'
 		fi
-	done < <(jq -r '.[] | [.repository,.state] | @tsv' <<<"${setup_webhook_leftovers:-[]}")
+	done < <(jq -r '.[] | [.repository,.state,(.reason // "unused")] | @tsv' <<<"${setup_webhook_leftovers:-[]}")
 	while IFS= read -r repository; do
 		size=$(ui_width "$repository")
 		if ((size > width)); then width=$size; fi
