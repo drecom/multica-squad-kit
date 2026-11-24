@@ -2386,3 +2386,344 @@ assert lines[2] == "| codex m | xhigh | 12,345 | 未確認 | 61 秒 | 1/2 |", li
 assert lines[3] == "| claude m | high | 未確認 | 未確認 | 1 秒 | 0/0（実行の失敗） |", lines[3]
 print("PASS leader-eval: 使用量は Claude の usage と Codex の tokens used から読み、読めないものと Codex の内訳は未確認のままにする")
 PY_USAGE
+
+# --- コードレビュアーの評価（--role code-reviewer）---
+# reviewer-scenes の場面は別のフェーズで置く。ここでは、道具の動作を確認するために、リポジトリの写しと一時の場面を使う。
+# 写しは自分の git の履歴を持ち、基準の参照（HEAD）と作業ツリーで code-reviewer.md を変えて、新旧の違いを作る
+rr="$test_dir/reviewer-root"
+mkdir -p "$rr/tests/leader-eval/reviewer-scenes"
+cp -R "$root/lib" "$rr/lib"
+cp -R "$root/common" "$rr/common"
+for file in run.sh leader_eval.py values.json runtime-brief.md; do cp "$eval_dir/$file" "$rr/tests/leader-eval/$file"; done
+git -C "$rr" init -q
+git -C "$rr" add -A
+git -C "$rr" -c user.name=test -c user.email=test@example.com commit -q -m base
+make_reviewer_scene() { # $1=場面の ID
+	local dir="$rr/tests/leader-eval/reviewer-scenes/$1"
+	mkdir -p "$dir"
+	cat >"$dir/scene.md" <<EOF_SCENE
+- 場面の ID: $1
+- 型: 見逃し
+
+## 元の出来事
+
+評価の道具を確認するための場面である。
+
+## 入力
+
+あなたは、タスク \`issue-shop-1\` で、PR のレビューを頼まれました。
+
+## 合格の基準
+
+1. [採点] 返答がある。
+EOF_SCENE
+	printf '{"commands": [], "git": true}\n' >"$dir/cli.json"
+}
+for id in t1 t2 t3 t4; do make_reviewer_scene "$id"; done
+# 新しい指示だけを変える。印の行を足し、モデルを替える
+sed -i.bak -e 's/claude-sonnet-5-5/claude-opus-5-5/' -e 's/^# コードレビュー$/# コードレビュー\n\n新しい指示の印/' "$rr/common/agents/code-reviewer.md"
+rm -f "$rr/common/agents/code-reviewer.md.bak"
+rr_run() { # 引数は run.sh へ渡す
+	PATH="$reviewer_bin:$PATH" bash "$rr/tests/leader-eval/run.sh" --baseline HEAD "$@"
+}
+reviewer_bin="$test_dir/reviewer-bin"
+mkdir -p "$reviewer_bin"
+cat >"$reviewer_bin/claude" <<'EOF2'
+#!/usr/bin/env bash
+# LEADER_EVAL_STUB_AGENT
+model= effort= prev=
+for arg in "$@"; do
+	case $prev in --model) model=$arg ;; --effort) effort=$arg ;; esac
+	prev=$arg
+done
+case "$*" in
+*"[leader-eval-scorer]"*) echo "scorer $model $effort" >>"$STUB_LOG"; echo '{"pass": true, "reason": "ok"}'; exit 0 ;;
+esac
+# 描いた指示が、コードレビュアーの指示と名前か。新しい指示の印があるかも、記録に残す
+grep -q 'shop-code-reviewer-member1' CLAUDE.md || exit 3
+if grep -q '新しい指示の印' CLAUDE.md; then mark=new; else mark=old; fi
+echo "reviewer $model $effort $mark" >>"$STUB_LOG"
+echo '{"type":"result","result":"done","is_error":false,"permission_denials":[]}'
+EOF2
+chmod +x "$reviewer_bin/claude"
+export STUB_LOG="$test_dir/reviewer.log"
+: >"$STUB_LOG"
+rr_run --role code-reviewer --scenes t1 --runs 2 --jobs 2 --out "$test_dir/reviewer-out" >"$test_dir/reviewer.out" 2>"$test_dir/reviewer.err" ||
+	{ cat "$test_dir/reviewer.err" >&2; exit 1; }
+ro="$test_dir/reviewer-out/instructions"
+# 今の指示は基準の参照の code-reviewer.md、新しい指示は作業ツリーの code-reviewer.md から作る。前置きは code-reviewer の名前にする
+! grep -q '新しい指示の印' "$ro/old/instructions.md" || { echo "今の指示に、作業ツリーだけの行があります" >&2; exit 1; }
+grep -q '新しい指示の印' "$ro/new/instructions.md" || { echo "新しい指示が、作業ツリーの code-reviewer.md から作られていません" >&2; exit 1; }
+for which in old new; do
+	grep -q '^# コードレビュー$' "$ro/$which/instructions.md" || { echo "$which: code-reviewer の本文がありません" >&2; exit 1; }
+	grep -q '^\*\*You are: shop-code-reviewer-member1\*\*' "$ro/$which/instructions.md" || { echo "$which: 前置きの名前が code-reviewer ではありません" >&2; exit 1; }
+	grep -q 'agent-code-reviewer' "$ro/$which/instructions.md" || { echo "$which: 前置きの ID が code-reviewer ではありません" >&2; exit 1; }
+	! grep -q 'You are: shop-orchestrator' "$ro/$which/instructions.md" || { echo "$which: 前置きの Agent Identity にリーダーの名前が残っています" >&2; exit 1; }
+	[[ -f $ro/$which/skills/squad-handoff/SKILL.md ]] || { echo "$which: squad-handoff がありません" >&2; exit 1; }
+done
+echo "PASS leader-eval: --role code-reviewer は、今の指示を基準の参照の code-reviewer.md、新しい指示を作業ツリーのものから作り、前置きを code-reviewer の名前にする"
+
+# 流すモデルと思考の深さは、描画した front matter の値。新旧で違うときは、記録に並べる
+grep -qx 'reviewer claude-sonnet-5-5 high old' "$STUB_LOG" || { echo "今の指示のモデルと深さがスタブに渡っていません" >&2; exit 1; }
+grep -qx 'reviewer claude-opus-5-5 high new' "$STUB_LOG" || { echo "新しい指示のモデルと深さがスタブに渡っていません" >&2; exit 1; }
+grep -qx 'scorer claude-opus-5-5 high' "$STUB_LOG" || { echo "採点の役が opus の high ではありません" >&2; exit 1; }
+jq -e '.model == "claude-sonnet-5-5" and .thinking_level == "high"' "$ro/old/meta.json" >/dev/null
+jq -e '.model == "claude-opus-5-5" and .thinking_level == "high"' "$ro/new/meta.json" >/dev/null
+grep -qx 'role: code-reviewer' "$test_dir/reviewer-out/versions.txt"
+grep -qx 'model old: claude-sonnet-5-5 high' "$test_dir/reviewer-out/versions.txt"
+grep -qx 'model new: claude-opus-5-5 high' "$test_dir/reviewer-out/versions.txt"
+grep -qx 'runs: 4 回（上限 18 回）' "$test_dir/reviewer-out/versions.txt"
+! grep -q '^over-limit:' "$test_dir/reviewer-out/versions.txt"
+jq -e -s 'length == 4 and all(.[]; .pass == true)' "$test_dir/reviewer-out/runs.jsonl" >/dev/null
+grep -q '^| t1 | 見逃し | 2/2 | 2/2 | - |$' "$test_dir/reviewer-out/summary.md" || { echo "summary.md の行が違います" >&2; exit 1; }
+grep -q '^| 場面 | 型 | 今の指示 | 新しい指示 | ' "$test_dir/reviewer-out/summary.md" || { echo "summary.md の列の見出しが指示の新旧ではありません" >&2; exit 1; }
+! grep -q '上限を超えて流した' "$test_dir/reviewer-out/summary.md"
+echo "PASS leader-eval: --role code-reviewer は、front matter のモデルと深さで流し、新旧のモデルを記録に並べる"
+
+# 上限: 19 回以上になる指定は、スタブの claude を呼ばず、結果のディレクトリも作らずに終了コード 2 で止まる
+reviewer_limit_stop() { # $1=説明 残りは run.sh の引数
+	local label=$1 code=0
+	shift
+	: >"$STUB_LOG"
+	rm -rf "$test_dir/reviewer-limit"
+	rr_run "$@" --out "$test_dir/reviewer-limit" >"$test_dir/reviewer-limit.out" 2>"$test_dir/reviewer-limit.err" || code=$?
+	[[ $code == 2 ]] || { echo "$label: 終了コードが 2 ではありません（$code）" >&2; exit 1; }
+	[[ ! -s $STUB_LOG ]] || { echo "$label: 止める前に claude を呼んでいます" >&2; exit 1; }
+	[[ ! -e $test_dir/reviewer-limit ]] || { echo "$label: 止める前に結果のディレクトリを作っています" >&2; exit 1; }
+	grep -q '上限の 18 回' "$test_dir/reviewer-limit.err" || { echo "$label: 上限の回数を出していません" >&2; exit 1; }
+}
+reviewer_limit_stop '3 場面 × 4 回 × 新旧（24 回）' --role code-reviewer --scenes t1,t2,t3 --runs 4
+grep -q '24 回' "$test_dir/reviewer-limit.err" || { echo "数えた回数を出していません" >&2; exit 1; }
+reviewer_limit_stop '1 場面 × 19 回 × 新だけ（19 回）' --role code-reviewer --scenes t1 --runs 19 --only new
+reviewer_limit_stop '4 場面 × 3 回 × 新旧（24 回）' --role code-reviewer --scenes t1,t2,t3,t4 --runs 3
+# 場面を省くと、reviewer-scenes のすべての場面を数える（4 場面 × 3 回 × 2 = 24 回）
+reviewer_limit_stop '場面の省略（24 回）' --role code-reviewer --runs 3
+# 符号付き・符号なしの 64 ビットの境界を超えても、数えた回数を正しく出して止まる。
+for large_runs in 9223372036854775808 9223372036854775809 18446744073709551617; do
+	for which in both old new; do
+		limit_args=(--role code-reviewer --scenes t1 --runs "$large_runs")
+		[[ $which == both ]] || limit_args+=(--only "$which")
+		reviewer_limit_stop "$large_runs 回、$which" "${limit_args[@]}"
+		expected_count=$(python3 -c 'import sys; print(int(sys.argv[1]) * (2 if sys.argv[2] == "both" else 1))' "$large_runs" "$which")
+		grep -q "役の実行が $expected_count 回" "$test_dir/reviewer-limit.err" || { echo "大きな値の実行回数が違います" >&2; exit 1; }
+	done
+done
+# 18 回ちょうどは流れる
+: >"$STUB_LOG"
+rr_run --role code-reviewer --scenes t1,t2,t3 --runs 3 --jobs 4 --out "$test_dir/reviewer-18" >"$test_dir/reviewer-18.out" 2>"$test_dir/reviewer-18.err" ||
+	{ cat "$test_dir/reviewer-18.err" >&2; exit 1; }
+[[ $(grep -c '^reviewer ' "$STUB_LOG") == 18 ]] || { echo "18 回流れていません" >&2; exit 1; }
+grep -qx 'runs: 18 回（上限 18 回）' "$test_dir/reviewer-18/versions.txt"
+! grep -q '上限を超えて流した' "$test_dir/reviewer-18/summary.md"
+# 上限を超えた回数でも、--over-limit があれば流れ、summary.md の先頭にコメントの ID が載る
+: >"$STUB_LOG"
+rr_run --role code-reviewer --scenes t1,t2,t3,t4 --runs 3 --jobs 4 --over-limit comment-approved-1 --out "$test_dir/reviewer-over" >"$test_dir/reviewer-over.out" 2>"$test_dir/reviewer-over.err" ||
+	{ cat "$test_dir/reviewer-over.err" >&2; exit 1; }
+[[ $(grep -c '^reviewer ' "$STUB_LOG") == 24 ]] || { echo "上限を超えた承認つきの指定が流れていません" >&2; exit 1; }
+[[ $(head -1 "$test_dir/reviewer-over/summary.md") == '上限を超えて流した: 役の実行 24 回（上限 18 回）。承認したコメントの ID: comment-approved-1' ]] ||
+	{ echo "summary.md の先頭に、上限を超えたことと承認のコメントの ID がありません" >&2; exit 1; }
+grep -qx 'over-limit: comment-approved-1' "$test_dir/reviewer-over/versions.txt"
+# 上限以内で --over-limit を付けても、超えたとは書かない（流した回数が上限以内のため）
+: >"$STUB_LOG"
+rr_run --role code-reviewer --scenes t1 --runs 1 --over-limit comment-approved-2 --out "$test_dir/reviewer-within" >/dev/null 2>"$test_dir/reviewer-within.err" ||
+	{ cat "$test_dir/reviewer-within.err" >&2; exit 1; }
+! grep -q '上限を超えて流した' "$test_dir/reviewer-within/summary.md"
+echo "PASS leader-eval: 上限（18 回）は、19 回以上を流さずに終了コード 2 で止め、18 回ちょうどは流し、--over-limit で流すと summary.md の先頭に承認のコメントの ID を残す"
+
+# 受け付けない指定は、結果のディレクトリを作る前に終了コード 2 で止める
+for bad in '--runtime codex' '--old-skills new' '--thinking high' '--over-limit bad/id'; do
+	: >"$STUB_LOG"
+	code=0
+	rm -rf "$test_dir/reviewer-bad"
+	# shellcheck disable=SC2086
+	rr_run --role code-reviewer --scenes t1 $bad --out "$test_dir/reviewer-bad" >/dev/null 2>"$test_dir/reviewer-bad.err" || code=$?
+	[[ $code == 2 ]] || { echo "終了コードが 2 ではありません（$code）: $bad" >&2; exit 1; }
+	[[ ! -e $test_dir/reviewer-bad && ! -s $STUB_LOG ]] || { echo "止める前に流しています: $bad" >&2; exit 1; }
+	[[ -s $test_dir/reviewer-bad.err ]] || { echo "理由を出していません: $bad" >&2; exit 1; }
+done
+# --over-limit は code-reviewer だけ。ほかの役では、黙って無視せずに止める
+code=0
+rr_run --scenes t1 --over-limit comment-x --out "$test_dir/reviewer-bad" >/dev/null 2>&1 || code=$?
+[[ $code == 2 ]] || { echo "リーダーの評価で --over-limit が通っています" >&2; exit 1; }
+echo "PASS leader-eval: --role code-reviewer は --runtime codex・--old-skills new・--thinking を、--over-limit は code-reviewer 以外を、終了コード 2 で止める"
+
+# --help は、上限の 1 行と文書への案内を出す
+help_out=$(bash "$eval_dir/run.sh" --help)
+grep -q '^上限: --role code-reviewer は、1 回の評価で役の実行を 18 回まで' <<<"$help_out" || { echo "--help に上限の行がありません" >&2; exit 1; }
+grep -q 'docs/review-eval.md の「流す回数の上限」' <<<"$help_out" || { echo "--help に文書への案内がありません" >&2; exit 1; }
+grep -q -- '--over-limit ID' <<<"$help_out" || { echo "--help に --over-limit がありません" >&2; exit 1; }
+grep -q 'code-reviewer' <<<"$help_out" || { echo "--help に --role code-reviewer がありません" >&2; exit 1; }
+echo "PASS leader-eval: --help に、上限 18 回の行と、docs/review-eval.md の節への案内が出る"
+
+# --- コードレビュアーの評価: PR へのコメントの記録と Skill(verify) ---
+# 流す役が gh pr comment と gh pr review を呼ぶスタブ。許可の引数も記録する
+pr_bin="$test_dir/reviewer-pr-bin"
+mkdir -p "$pr_bin"
+cat >"$pr_bin/claude" <<'EOF2'
+#!/usr/bin/env bash
+# LEADER_EVAL_STUB_AGENT
+case "$*" in
+*"[leader-eval-scorer]"*)
+	if [[ $* == *"PR のレビュー本文の印（--body-file）"* ]]; then echo "scorer-saw-pr-comment" >>"$STUB_LOG"; else echo "scorer-missed-pr-comment" >>"$STUB_LOG"; fi
+	echo '{"pass": true, "reason": "ok"}'; exit 0 ;;
+esac
+if [[ $* == *"Skill(verify)"* ]]; then echo "verify-allowed" >>"$STUB_LOG"; else echo "verify-not-allowed" >>"$STUB_LOG"; fi
+printf 'PR のレビュー本文の印（--body-file）\n' >tmp/review.md
+code=0
+gh pr comment 15 --body-file tmp/review.md >/dev/null 2>&1 || code=$?
+echo "gh-pr-comment exit=$code" >>"$STUB_LOG"
+code=0
+gh pr review 15 --comment --body 'PR のレビュー本文の印（--body）' >/dev/null 2>&1 || code=$?
+echo "gh-pr-review exit=$code" >>"$STUB_LOG"
+echo '{"type":"result","result":"done","is_error":false,"permission_denials":[]}'
+EOF2
+chmod +x "$pr_bin/claude"
+rr_pr() { # 引数は run.sh へ渡す
+	PATH="$pr_bin:$PATH" bash "$rr/tests/leader-eval/run.sh" --baseline HEAD "$@"
+}
+: >"$STUB_LOG"
+rr_pr --role code-reviewer --scenes t1 --only new --runs 1 --out "$test_dir/reviewer-pr" >"$test_dir/reviewer-pr.out" 2>"$test_dir/reviewer-pr.err" ||
+	{ cat "$test_dir/reviewer-pr.err" >&2; exit 1; }
+grep -qx 'verify-allowed' "$STUB_LOG" || { echo "code-reviewer の実行で Skill(verify) が許可されていません" >&2; exit 1; }
+grep -qx 'gh-pr-comment exit=0' "$STUB_LOG" || { echo "gh pr comment が成功を返していません" >&2; exit 1; }
+grep -qx 'gh-pr-review exit=0' "$STUB_LOG" || { echo "gh pr review が成功を返していません" >&2; exit 1; }
+grep -qx 'scorer-saw-pr-comment' "$STUB_LOG" || { echo "PR へのコメントの本文が採点の役に渡っていません" >&2; exit 1; }
+pr_result="$test_dir/reviewer-pr/runs/t1/new-1/result.json"
+jq -e '(.comments | length) == 2
+	and (.comments[0] | contains("PR のレビュー本文の印（--body-file）"))
+	and (.comments[1] | contains("PR のレビュー本文の印（--body）"))' "$pr_result" >/dev/null ||
+	{ echo "PR へのコメントの本文が投稿として記録されていません" >&2; exit 1; }
+jq -e '[.calls[] | select(.command | startswith("gh pr")) | .kind] == ["write", "write"]' "$pr_result" >/dev/null ||
+	{ echo "gh pr comment と gh pr review が書き込みとして記録されていません" >&2; exit 1; }
+echo "PASS leader-eval: --role code-reviewer は gh pr comment と gh pr review の本文を投稿として記録して採点の役に渡し、Skill(verify) を許可する"
+
+# リーダーの評価では、見本にない gh pr comment は今のとおり失敗を返し、投稿として記録せず、Skill(verify) も許可しない
+mkdir -p "$rr/tests/leader-eval/scenes"
+cp -R "$rr/tests/leader-eval/reviewer-scenes/t1" "$rr/tests/leader-eval/scenes/t1"
+: >"$STUB_LOG"
+rr_pr --scenes t1 --only new --runs 1 --out "$test_dir/leader-pr" >"$test_dir/leader-pr.out" 2>"$test_dir/leader-pr.err" ||
+	{ cat "$test_dir/leader-pr.err" >&2; exit 1; }
+grep -qx 'verify-not-allowed' "$STUB_LOG" || { echo "リーダーの評価で Skill(verify) が許可されています" >&2; exit 1; }
+grep -qx 'gh-pr-comment exit=1' "$STUB_LOG" || { echo "リーダーの評価で gh pr comment が失敗を返していません" >&2; exit 1; }
+grep -qx 'gh-pr-review exit=1' "$STUB_LOG" || { echo "リーダーの評価で gh pr review が失敗を返していません" >&2; exit 1; }
+grep -qx 'scorer-missed-pr-comment' "$STUB_LOG" || { echo "リーダーの評価で PR へのコメントが採点の役に渡っています" >&2; exit 1; }
+jq -e '(.comments | length) == 0 and ([.calls[] | select(.command | startswith("gh pr")) | .kind] == ["unmatched", "unmatched"])' \
+	"$test_dir/leader-pr/runs/t1/new-1/result.json" >/dev/null ||
+	{ echo "リーダーの評価の gh pr comment の扱いが変わっています" >&2; exit 1; }
+echo "PASS leader-eval: リーダーの評価では、見本にない gh pr comment は失敗を返し、投稿として記録せず、Skill(verify) も許可しない"
+
+# --- コードレビュアーの評価: 要約の見出しと「今の指示でも通る場面」---
+cat >"$test_dir/summary-runs.jsonl" <<'EOF_RUNS'
+{"scene": "r-a", "type": "見逃し", "which": "old", "pass": true, "criteria": [{"n": 1, "pass": true}]}
+{"scene": "r-a", "type": "見逃し", "which": "old", "pass": true, "criteria": [{"n": 1, "pass": true}]}
+{"scene": "r-a", "type": "見逃し", "which": "new", "pass": true, "criteria": [{"n": 1, "pass": true}]}
+{"scene": "r-a", "type": "見逃し", "which": "new", "pass": true, "criteria": [{"n": 1, "pass": true}]}
+{"scene": "r-b", "type": "見逃し", "which": "old", "pass": false, "criteria": [{"n": 1, "pass": false}]}
+{"scene": "r-b", "type": "見逃し", "which": "old", "pass": true, "criteria": [{"n": 1, "pass": true}]}
+{"scene": "r-b", "type": "見逃し", "which": "new", "pass": true, "criteria": [{"n": 1, "pass": true}]}
+{"scene": "r-b", "type": "見逃し", "which": "new", "pass": true, "criteria": [{"n": 1, "pass": true}]}
+{"scene": "r-c", "type": "見逃し", "which": "new", "pass": true, "criteria": [{"n": 1, "pass": true}]}
+EOF_RUNS
+"${helper[@]}" summary "$test_dir/summary-runs.jsonl" "$test_dir/summary-reviewer.md" code-reviewer
+"${helper[@]}" summary "$test_dir/summary-runs.jsonl" "$test_dir/summary-leader.md"
+"${helper[@]}" summary "$test_dir/summary-runs.jsonl" "$test_dir/summary-principal.md" orchestrator
+{
+	echo '| 場面 | 型 | 今の指示 | 新しい指示 | 落ちた基準 |'
+	echo '| --- | --- | --- | --- | --- |'
+	echo '| r-a | 見逃し | 2/2 | 2/2 | - |'
+	echo '| r-b | 見逃し | 1/2 | 2/2 | - |'
+	echo '| r-c | 見逃し | - | 1/1 | - |'
+	echo
+	echo '今の指示でも通る場面: r-a'
+} >"$test_dir/summary-reviewer.expected"
+diff "$test_dir/summary-reviewer.expected" "$test_dir/summary-reviewer.md" ||
+	{ echo "code-reviewer の summary.md が、見出しと「今の指示でも通る場面」の決まりと違います" >&2; exit 1; }
+for leader_summary in "$test_dir/summary-leader.md" "$test_dir/summary-principal.md"; do
+	grep -qx '| 場面 | 型 | 今のリーダー | 新しいリーダー | 落ちた基準 |' "$leader_summary" ||
+		{ echo "リーダーの評価の summary.md の見出しが変わっています" >&2; exit 1; }
+	! grep -q '今の指示' "$leader_summary" || { echo "リーダーの評価の summary.md に、新旧の指示の語が入っています" >&2; exit 1; }
+	(( $(wc -l <"$leader_summary") == 5 )) || { echo "リーダーの評価の summary.md に行が増えています" >&2; exit 1; }
+done
+# 今の指示を流していない（--only new）記録だけのときは、この節を出さない
+grep -v '"which": "old"' "$test_dir/summary-runs.jsonl" >"$test_dir/summary-new-only.jsonl"
+"${helper[@]}" summary "$test_dir/summary-new-only.jsonl" "$test_dir/summary-new-only.md" code-reviewer
+! grep -q '今の指示でも通る場面' "$test_dir/summary-new-only.md" || { echo "今の指示を流していないのに、通る場面を挙げています" >&2; exit 1; }
+# run.sh から流した code-reviewer の summary.md にも、同じ決まりで出る（t1 は新旧とも合格）
+grep -qx '今の指示でも通る場面: t1' "$test_dir/reviewer-out/summary.md" || { echo "run.sh の summary.md に、今の指示でも通る場面がありません" >&2; exit 1; }
+echo "PASS leader-eval: code-reviewer の summary.md は、見出しを役の名前に替え、今の指示も全回で合格した場面を表の下に挙げる。リーダーの評価の summary.md は今のまま"
+
+# --- reviewer-scenes の場面の形 ---
+# 置いてある場面は review-1 だけ。場面を足すときは、人間が見逃しと認めたタスクで 1 つずつ足し、ここの一覧にも足す
+reviewer_scenes_dir="$eval_dir/reviewer-scenes"
+expected_reviewer_scenes='review-1'
+reviewer_present=
+for dir in "$reviewer_scenes_dir"/*/; do
+	id=$(basename "$dir")
+	[[ " $expected_reviewer_scenes " == *" $id "* ]] || { echo "reviewer-scenes に設計にない場面があります: $id" >&2; exit 1; }
+	reviewer_present="$reviewer_present $id"
+	[[ $id =~ ^review-[0-9]+$ ]] || { echo "$id: 場面の ID が review-<番号> ではありません" >&2; exit 1; }
+	[[ -f $dir/scene.md && -f $dir/cli.json ]] || { echo "$id: scene.md と cli.json が要ります" >&2; exit 1; }
+	"${helper[@]}" scene "$dir/scene.md" >"$test_dir/reviewer-scene.json" ||
+		{ echo "$id: 場面の読み取りを通りません" >&2; exit 1; }
+	[[ $(jq -r .id "$test_dir/reviewer-scene.json") == "$id" ]] || { echo "$id: 場面の ID がディレクトリ名と違います" >&2; exit 1; }
+	[[ $(jq -r .type "$test_dir/reviewer-scene.json") == 見逃し ]] || { echo "$id: 型が 見逃し ではありません" >&2; exit 1; }
+	jq -e '.commands | type == "array" and all(.[]; has("match") and (.match | type == "string"))' "$dir/cli.json" >/dev/null ||
+		{ echo "$id: cli.json の形が違います" >&2; exit 1; }
+	jq -e '.git == true' "$dir/cli.json" >/dev/null || { echo "$id: cli.json に \"git\": true がありません" >&2; exit 1; }
+	jq -e '.files | to_entries | any(.key | test("(^|/)\\.claude/skills/verify/SKILL\\.md$"))' "$dir/cli.json" >/dev/null ||
+		{ echo "$id: cli.json の files に verify のスキルのファイルがありません" >&2; exit 1; }
+	# 依頼のコミットを手元に用意するための git の見本がある
+	jq -e '.commands | map(.match) | any(startswith("git fetch")) and any(startswith("git checkout")) and any(startswith("git rev-parse"))' "$dir/cli.json" >/dev/null ||
+		{ echo "$id: cli.json に git fetch・git checkout・git rev-parse の見本がありません" >&2; exit 1; }
+	if grep -Eqi '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' "$dir/scene.md" "$dir/cli.json"; then
+		echo "$id: UUID の形の値があります" >&2
+		exit 1
+	fi
+done
+[[ "$reviewer_present" == " review-1" ]] || { echo "reviewer-scenes の場面が review-1 だけではありません:$reviewer_present" >&2; exit 1; }
+# review-1: 依頼のコミットの SHA が、場面と git の見本でそろい、[採点] の基準だけを持つ
+review_sha=$(grep -o '[0-9a-f]\{40\}' "$reviewer_scenes_dir/review-1/scene.md" | head -1)
+jq -e --arg sha "$review_sha" '.commands | any(.match == "git rev-parse HEAD" and .stdout == ($sha + "\n"))' "$reviewer_scenes_dir/review-1/cli.json" >/dev/null ||
+	{ echo "review-1 の git rev-parse HEAD の見本が、場面の SHA と違います" >&2; exit 1; }
+"${helper[@]}" scene "$reviewer_scenes_dir/review-1/scene.md" | jq -e '(.criteria | length) == 3 and all(.criteria[]; .kind == "採点")' >/dev/null ||
+	{ echo "review-1 の基準が 3 件の [採点] ではありません" >&2; exit 1; }
+echo "PASS leader-eval: reviewer-scenes の場面（$(wc -w <<<"$reviewer_present" | tr -d ' ') 場面）は、場面の読み取りを通り、git の許可と verify のスキルのファイルを持ち、UUID を含まない"
+
+# review-1 の検証スキルに書かれたコマンドを、許可した CLI のスタブでたどり、PR の投稿まで流す。
+cp -R "$reviewer_scenes_dir/review-1" "$rr/tests/leader-eval/reviewer-scenes/review-1"
+verify_bin="$test_dir/reviewer-verify-bin"
+mkdir -p "$verify_bin"
+cat >"$verify_bin/claude" <<'EOF_VERIFY'
+#!/usr/bin/env bash
+# LEADER_EVAL_STUB_AGENT
+set -euo pipefail
+case "$*" in
+*"[leader-eval-scorer]"*)
+	[[ $* == *"gh pr checks 8 --repo example/shop"* && $* == *"検証を通り、指摘を PR に投稿した"* ]] || exit 4
+	echo '{"pass": true, "reason": "ok"}'; exit 0 ;;
+esac
+[[ $* == *"Skill(verify)"* && $* == *"Bash(gh *)"* ]] || exit 3
+git fetch origin >/dev/null
+git checkout 5c2f9a71b3d4e6f8091a2b3c4d5e6f708192a3b4 >/dev/null
+cd shop
+command=$(sed -n 's/.*`\([^`]*\)`.*/\1/p' .claude/skills/verify/SKILL.md)
+[[ $command == gh\ * ]] || exit 3
+grep -qF "\`$command\`" AGENTS.md
+# スキルの手順が、Bash(gh *) の許可と、評価の gh のスタブで完結することを確認する。
+$command >../tmp/checks.txt
+grep -q $'test\tpass' ../tmp/checks.txt
+grep -q $'lint\tpass' ../tmp/checks.txt
+printf '検証を通り、指摘を PR に投稿した\n' >../tmp/review.md
+gh pr comment 8 --repo example/shop --body-file ../tmp/review.md >/dev/null
+echo '{"type":"result","result":"done","is_error":false,"permission_denials":[]}'
+EOF_VERIFY
+chmod +x "$verify_bin/claude"
+PATH="$verify_bin:$PATH" bash "$rr/tests/leader-eval/run.sh" --baseline HEAD --role code-reviewer --scenes review-1 --only new --runs 1 --out "$test_dir/reviewer-verify" >"$test_dir/reviewer-verify.out" 2>"$test_dir/reviewer-verify.err" ||
+	{ cat "$test_dir/reviewer-verify.err" >&2; exit 1; }
+jq -e '.pass == true and .exit_code == 0 and .permission_denials == []
+	and all(.calls[]; .kind != "unmatched" and .kind != "denied")
+	and any(.calls[]; .command == "gh pr checks 8 --repo example/shop" and .kind == "read" and .exit == 0)
+	and (.comments | any(contains("検証を通り、指摘を PR に投稿した")))' \
+	"$test_dir/reviewer-verify/runs/review-1/new-1/result.json" >/dev/null ||
+	{ echo "review-1 の検証手順から PR の投稿と採点まで通りません" >&2; exit 1; }
+echo "PASS leader-eval: review-1 の検証手順は、許可した CLI のスタブで完結し、PR の投稿を採点の役へ渡す"
