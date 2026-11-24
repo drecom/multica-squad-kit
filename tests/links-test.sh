@@ -80,24 +80,42 @@ ok '# 題\n\n```text\n```text\n[先](none.md)\n```\n[先](#題)\n'
 deny '# 題\n\n> ```text\n> <!--\n[先](missing.md)\n' 5 'missing.md のファイルがない'
 echo 'PASS links: コメント内のフェンスとコード、フェンス内のコメントを隠し、閉じた後の本文は検査する'
 
+# 字下げしたコードの中は、リンクとアンカーを検査しない。
+ok '# 題\n\n    [先](none.md) <!--\n    [名前]: none.md\n\n[先](#題)\n'
+ok '# 題\n\n\t[先](none.md)\n\n[先](#題)\n'
+deny '# 題\n\n    <a id="fake"></a>\n\n[先](#fake)\n' 5 '#fake の見出しがない'
+deny '# 題\n\n本文\n    [先](missing.md)\n' 4 'missing.md のファイルがない'
+echo 'PASS links: 字下げしたコードを隠し、段落の続きの字下げは検査する'
+
 # 索引の検査は、docs/ の直下の文書が索引のリンクの先に載っているかを調べる。リポジトリの索引は、先頭の引数なしの検査で確認した。
 check | grep -qF '索引にない文書 0 本' || { echo 'FAIL links: 引数なしの検査が、索引の集計を出さない' >&2; exit 1; }
-index_dir="$test_dir/index"
-mkdir -p "$index_dir/sub"
+index_repo="$test_dir/index-repository"
+index_dir="$index_repo/docs"
+mkdir -p "$index_dir/sub" "$index_repo/scripts"
+cp "$root/scripts/check-links.py" "$index_repo/scripts/check-links.py"
+git init -q "$index_repo"
 printf '# 文書\n\nあ。\n' >"$index_dir/a.md"
 printf '# 文書\n\nい。\n' >"$index_dir/b.md"
 printf '# 文書\n\nう。\n' >"$index_dir/sub/c.md"
 index_check() {
 	printf '%b' "$1" >"$index_dir/README.md"
-	check --index "$index_dir/README.md" >"$test_dir/out" 2>"$test_dir/err"
+	if [ "$index_mode" = explicit ]; then
+		check --index "$index_dir/README.md" >"$test_dir/out" 2>"$test_dir/err"
+	else
+		git -C "$index_repo" add docs/README.md
+		python3 "$index_repo/scripts/check-links.py" >"$test_dir/out" 2>"$test_dir/err"
+	fi
 }
 index_deny() {
-	if index_check "$1"; then echo "FAIL links: 索引にない文書があるのに通ってしまった: $2" >&2; exit 1; fi
+	local status=0
+	index_check "$1" || status=$?
+	[ "$status" -eq 1 ] || { echo "FAIL links: 索引にない文書の終了コードが 1 でない: $status ($index_mode)" >&2; cat "$test_dir/err" >&2; exit 1; }
 	grep -qF "README.md: 索引: $2 が載っていない" "$test_dir/err" || { echo "FAIL links: 載っていない文書の行が違う: $2" >&2; cat "$test_dir/err" >&2; exit 1; }
 }
 index_ok() {
 	index_check "$1" || { echo 'FAIL links: 載っている文書が、載っていないと数えられた' >&2; cat "$test_dir/err" >&2; exit 1; }
 }
+for index_mode in explicit default; do
 index_deny '# 索引\n\n[a](a.md)\n' 'b.md'
 grep -qF '索引にない文書 1 本' "$test_dir/out" || { echo 'FAIL links: 索引の集計の行が違う' >&2; cat "$test_dir/out" >&2; exit 1; }
 if grep -qF 'a.md が載っていない' "$test_dir/err"; then echo 'FAIL links: 載っている文書を、載っていないと数えた' >&2; exit 1; fi
@@ -113,7 +131,30 @@ echo 'PASS links: アンカー付きのリンクで載せた文書も、載っ�
 index_deny '# 索引\n\n[a](a.md) と `[b](b.md)`\n' 'b.md'
 index_deny '# 索引\n\n[a](a.md)\n\n```text\n[b](b.md)\n```\n' 'b.md'
 index_deny '# 索引\n\n[a](a.md)\n\n<!-- [b](b.md) -->\n' 'b.md'
+index_deny '# 索引\n\n[a](a.md)\n\n    [b](b.md)\n' 'b.md'
+index_deny '# 索引\n\n[a](a.md)\n\n\t[b](b.md)\n' 'b.md'
+index_deny '# 索引\n\n[a](a.md)\n\n>     [b](b.md)\n' 'b.md'
+index_ok '# 索引\n\n[a](a.md)\n    [b](b.md)\n'
 echo 'PASS links: コードと HTML のコメントの中のリンクは、載っていると数えない'
+
+# 参照の定義だけでは載っていない。本文で使った参照は、書き方によらず載っている。
+index_deny '# 索引\n\n[a](a.md)\n\n[b]: b.md\n' 'b.md'
+index_deny '# 索引\n\n[a](a.md)\n\n    [文書][b]\n\n[b]: b.md\n' 'b.md'
+index_ok '# 索引\n\n[a](a.md) と [文書][b]\n\n[b]: b.md#文書\n'
+index_ok '# 索引\n\n[a](a.md) と [b][]\n\n[b]: ./b.md\n'
+index_ok '# 索引\n\n[a](a.md) と [b]\n\n[b]: b.md\n'
+index_ok '# 索引\n\n[a](a.md) と [文書][B  文書]\n\n[b 文書]: <b.md>\n'
+echo 'PASS links: 未使用の参照定義は数えず、本文で使った参照形式は数える'
+
+# 画像だけでは、文書へ進むリンクを置いたことにはならない。
+index_deny '# 索引\n\n[a](a.md) と ![b](b.md)\n' 'b.md'
+index_deny '# 索引\n\n[a](a.md) と ![文書][b]\n\n[b]: b.md\n' 'b.md'
+index_deny '# 索引\n\n[a](a.md) と ![b][]\n\n[b]: b.md\n' 'b.md'
+index_deny '# 索引\n\n[a](a.md) と ![b]\n\n[b]: b.md\n' 'b.md'
+index_ok '# 索引\n\n[a](a.md) と [![画像](sub/c.md)](b.md)\n'
+echo 'PASS links: 画像は数えず、画像を文字にした通常のリンクは数える'
+echo "PASS links: 索引の確認は $index_mode で通った"
+done
 
 # 索引のファイルがないと、引数の誤りとして終了コード 2 で止まる。
 status=0

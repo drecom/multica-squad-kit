@@ -22,7 +22,8 @@ ROOT = Path(__file__).resolve().parent.parent
 FENCE_RE = re.compile(r'^\s*(`{3,}|~{3,})')
 QUOTE_RE = re.compile(r'^(?: {0,3}>[ \t]?)+')
 HEADING_RE = re.compile(r'^ {0,3}#{1,6}[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$')
-TOKEN_RE = re.compile(r'<!--|`+|^[ \t]*~{3,}[^\n]*', re.MULTILINE)
+INDENTED_RE = re.compile(r'^(?: {4}| {0,3}\t)')
+TOKEN_RE = re.compile(r'<!--|`+|^[ \t]*~{3,}[^\n]*|^(?: {4}| {0,3}\t)[^\n]*', re.MULTILINE)
 BACKTICKS_RE = re.compile(r'`+')
 BLOCK_RE = re.compile(r'^(?: {0,3}(?:#{1,6}[ \t]|(?:[-+*]|[0-9]+[.)])[ \t]|(?:-{3,}|_{3,}|\*{3,})[ \t]*$))')
 ESCAPE_RE = re.compile(r'\\[\[\]()]')
@@ -30,7 +31,10 @@ ANCHOR_RE = re.compile(r'<a\s[^>]*?\b(?:id|name)\s*=\s*"([^"]+)"')
 LINK_RE = re.compile(
     r'\[(?:[^\[\]]|\[[^\[\]]*\])*\]'
     r'\(\s*(<[^>\n]*>|(?:[^\s()]|\([^\s()]*\))*)(?:\s+(?:"[^"]*"|\'[^\']*\'))?\s*\)')
-DEFINITION_RE = re.compile(r'^ {0,3}\[[^\]^][^\]]*\]:[ \t]*(<[^>]+>|\S+)')
+DEFINITION_RE = re.compile(r'^ {0,3}\[(?P<label>[^\]^][^\]]*)\]:[ \t]*(?P<target><[^>]+>|\S+)')
+NAVIGATION_RE = re.compile(
+    r'!?(?:' + LINK_RE.pattern
+    + r'|\[(?P<label>[^\[\]\n]+)\](?:[ \t]*\[(?P<reference>[^\[\]\n]*)\])?)')
 SKIPPED_SCHEMES = ('http:', 'https:', 'mailto:', 'mention:')
 
 # 見出しの文字から、文字の飾りを外す。コードの中身は、そのまま残す。
@@ -92,10 +96,23 @@ def scan(path):
                     raw[index] = ' '
 
     position = 0
+    indented_rows = set()
     while token := TOKEN_RE.search(text, position):
         start = token.start()
         row = bisect_right(starts, start) - 1
         position = token.end()
+        if start == starts[row] and INDENTED_RE.match(contents[row]):
+            previous = contents[row - 1] if row else ''
+            # 段落の続きの字下げはコードではない。
+            if (not previous.strip() or row - 1 in indented_rows
+                    or depths[row - 1] != depths[row]
+                    or HEADING_RE.match(previous) or FENCE_RE.match(previous)
+                    or DEFINITION_RE.match(previous)):
+                indented_rows.add(row)
+                hide(start, position, hide_raw=True)
+                continue
+            position = start + len(contents[row]) - len(contents[row].lstrip(' \t'))
+            continue
         if escaped(text, start):
             continue
         if token.group(0) == '<!--':
@@ -184,7 +201,34 @@ def link_targets(path):
             yield number, match.group(1)
         definition = DEFINITION_RE.match(masked)
         if definition:
-            yield number, definition.group(1)
+            yield number, definition.group('target')
+
+
+def navigation_targets(path):
+    """本文から進めるリンクだけを返し、画像と未使用の参照定義を除く。"""
+    lines = scan(path)
+    definitions = {}
+
+    def label_key(label):
+        return ' '.join(label.split()).casefold()
+
+    for _, _, masked in lines:
+        definition = DEFINITION_RE.match(masked)
+        if definition:
+            definitions.setdefault(label_key(definition.group('label')), definition.group('target'))
+    for number, _, masked in lines:
+        if DEFINITION_RE.match(masked):
+            continue
+        for match in NAVIGATION_RE.finditer(masked):
+            if match.group(0).startswith('!') and not escaped(masked, match.start()):
+                continue
+            if match.group(1) is not None:
+                yield number, match.group(1)
+            else:
+                label = match.group('reference') or match.group('label')
+                target = definitions.get(label_key(label))
+                if target is not None:
+                    yield number, target
 
 
 def resolve(path, written):
@@ -223,7 +267,7 @@ def check_file(path):
 def check_index(index):
     """索引に載っていない文書の名前と、検査した文書の数を返す。"""
     listed = set()
-    for _, written in link_targets(index):
+    for _, written in navigation_targets(index):
         found = resolve(index, written)
         if found and found[0].parent == index.parent:
             listed.add(found[0].name)
