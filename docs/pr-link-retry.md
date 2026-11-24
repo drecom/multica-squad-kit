@@ -226,7 +226,7 @@ PR を作った役の引き継ぎにある `紐付けの失敗:` の段落は、
 
 | ファイル | 変えること |
 | --- | --- |
-| `common/monitor/squad-pr-link-lib` | API を 1 回呼ぶ関数を切り出す。`pr_link_pull_request` はそれを使い、動作を変えない |
+| `common/monitor/squad-pr-link-lib` | API を 1 回呼ぶ関数と、呼ぶのに要る環境を確認する関数を切り出す。`pr_link_pull_request` はそれらを使い、動作を変えない |
 | `common/monitor/squad-pr-link` | 失敗して 1 で終わる前に、[試み直す PR のマーク](#試み直す-pr-のマーク)を書く。標準出力と標準エラーの文と終了コードは変えない |
 | `common/monitor/squad-pr-watch` | `link-check` に[試み直しの動作](#試み直しの動作)と[記録](#試み直しの記録)を足し、`unlinked-check` の中では 6 時間の間隔で試み直す。使い方のコメントの「書き込まない」を直す |
 | `common/monitor/squad-review-next` | `decide` の人間を呼ぶコメントで、`紐付けの失敗:` の段落と連携の案内を、紐付いていないときだけ書く |
