@@ -33,6 +33,7 @@ tests/manual-test.sh 14
 tests/metrics-breakdown-test.sh 1
 tests/metrics-collect-test.sh 10
 tests/metrics-test.sh 1
+tests/own-review-paths-test.sh 1
 tests/pre-push-test.sh 2
 tests/project-changes-test.sh 16
 tests/project-create-test.sh 84

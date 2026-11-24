@@ -1,0 +1,35 @@
+# このリポジトリの観点の対応。原本の既定の対応に当たらない場所を足し、スクリプトの観点を足す。
+# 書き方と、上書き・追加の決まりは docs/review-next-step.md の「観点の選び方」にある。
+# 行を選んだ理由は docs/own-review-paths.md にある。
+
+# 生成物・バージョンの番号・設定とデータ。中身の誤りはコードのレビューで見る
+MANIFEST code-reviewer
+VERSION code-reviewer
+.gitattributes code-reviewer
+.gitignore code-reviewer
+.markdownlint.json code-reviewer
+common/labels code-reviewer
+common/setup-issues.json code-reviewer
+common/agents/FORMAT code-reviewer
+scripts/metrics-plan.json code-reviewer
+scripts/style-exempt.txt code-reviewer
+skeleton/.agents/review-paths code-reviewer
+
+# 依存の更新の設定と、この対応のファイル。外から入るものと、頼む観点を決めるので、セキュリティも頼む
+.github/dependabot.yml code-reviewer,security-reviewer
+.agents/review-paths code-reviewer,security-reviewer
+
+# 役やホストが実行するスクリプトと設定。権限に関わるので、セキュリティも頼む
+common/guard/ code-reviewer,security-reviewer
+common/shell/ code-reviewer,security-reviewer
+common/codex/ code-reviewer,security-reviewer
+
+# 起動と見張りのスクリプト。待ち時間にも関わるので、性能も頼む
+common/host/ code-reviewer,security-reviewer,performance-reviewer
+common/monitor/ code-reviewer,security-reviewer,performance-reviewer
+vm/ code-reviewer,security-reviewer,performance-reviewer
+
+# セットアップのスクリプト。登録と認証に関わるので、セキュリティも頼む
+setup.sh code-reviewer,security-reviewer
+install.sh code-reviewer,security-reviewer
+lib/ code-reviewer,security-reviewer
