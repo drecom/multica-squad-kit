@@ -2386,3 +2386,161 @@ assert lines[2] == "| codex m | xhigh | 12,345 | 未確認 | 61 秒 | 1/2 |", li
 assert lines[3] == "| claude m | high | 未確認 | 未確認 | 1 秒 | 0/0（実行の失敗） |", lines[3]
 print("PASS leader-eval: 使用量は Claude の usage と Codex の tokens used から読み、読めないものと Codex の内訳は未確認のままにする")
 PY_USAGE
+
+# --- コードレビュアーの評価（--role code-reviewer）---
+# reviewer-scenes の場面は別のフェーズで置く。ここでは、道具の動作を確認するために、リポジトリの写しと一時の場面を使う。
+# 写しは自分の git の履歴を持ち、基準の参照（HEAD）と作業ツリーで code-reviewer.md を変えて、新旧の違いを作る
+rr="$test_dir/reviewer-root"
+mkdir -p "$rr/tests/leader-eval/reviewer-scenes"
+cp -R "$root/lib" "$rr/lib"
+cp -R "$root/common" "$rr/common"
+for file in run.sh leader_eval.py values.json runtime-brief.md; do cp "$eval_dir/$file" "$rr/tests/leader-eval/$file"; done
+git -C "$rr" init -q
+git -C "$rr" add -A
+git -C "$rr" -c user.name=test -c user.email=test@example.com commit -q -m base
+make_reviewer_scene() { # $1=場面の ID
+	local dir="$rr/tests/leader-eval/reviewer-scenes/$1"
+	mkdir -p "$dir"
+	cat >"$dir/scene.md" <<EOF_SCENE
+- 場面の ID: $1
+- 型: 見逃し
+
+## 元の出来事
+
+評価の道具を確認するための場面である。
+
+## 入力
+
+あなたは、タスク \`issue-shop-1\` で、PR のレビューを頼まれました。
+
+## 合格の基準
+
+1. [採点] 返答がある。
+EOF_SCENE
+	printf '{"commands": [], "git": true}\n' >"$dir/cli.json"
+}
+for id in t1 t2 t3 t4; do make_reviewer_scene "$id"; done
+# 新しい指示だけを変える。印の行を足し、モデルを替える
+sed -i.bak -e 's/claude-sonnet-5-5/claude-opus-5-5/' -e 's/^# コードレビュー$/# コードレビュー\n\n新しい指示の印/' "$rr/common/agents/code-reviewer.md"
+rm -f "$rr/common/agents/code-reviewer.md.bak"
+rr_run() { # 引数は run.sh へ渡す
+	PATH="$reviewer_bin:$PATH" bash "$rr/tests/leader-eval/run.sh" --baseline HEAD "$@"
+}
+reviewer_bin="$test_dir/reviewer-bin"
+mkdir -p "$reviewer_bin"
+cat >"$reviewer_bin/claude" <<'EOF2'
+#!/usr/bin/env bash
+# LEADER_EVAL_STUB_AGENT
+model= effort= prev=
+for arg in "$@"; do
+	case $prev in --model) model=$arg ;; --effort) effort=$arg ;; esac
+	prev=$arg
+done
+case "$*" in
+*"[leader-eval-scorer]"*) echo "scorer $model $effort" >>"$STUB_LOG"; echo '{"pass": true, "reason": "ok"}'; exit 0 ;;
+esac
+# 描いた指示が、コードレビュアーの指示と名前か。新しい指示の印があるかも、記録に残す
+grep -q 'shop-code-reviewer-member1' CLAUDE.md || exit 3
+if grep -q '新しい指示の印' CLAUDE.md; then mark=new; else mark=old; fi
+echo "reviewer $model $effort $mark" >>"$STUB_LOG"
+echo '{"type":"result","result":"done","is_error":false,"permission_denials":[]}'
+EOF2
+chmod +x "$reviewer_bin/claude"
+export STUB_LOG="$test_dir/reviewer.log"
+: >"$STUB_LOG"
+rr_run --role code-reviewer --scenes t1 --runs 2 --jobs 2 --out "$test_dir/reviewer-out" >"$test_dir/reviewer.out" 2>"$test_dir/reviewer.err" ||
+	{ cat "$test_dir/reviewer.err" >&2; exit 1; }
+ro="$test_dir/reviewer-out/instructions"
+# 今の指示は基準の参照の code-reviewer.md、新しい指示は作業ツリーの code-reviewer.md から作る。前置きは code-reviewer の名前にする
+! grep -q '新しい指示の印' "$ro/old/instructions.md" || { echo "今の指示に、作業ツリーだけの行があります" >&2; exit 1; }
+grep -q '新しい指示の印' "$ro/new/instructions.md" || { echo "新しい指示が、作業ツリーの code-reviewer.md から作られていません" >&2; exit 1; }
+for which in old new; do
+	grep -q '^# コードレビュー$' "$ro/$which/instructions.md" || { echo "$which: code-reviewer の本文がありません" >&2; exit 1; }
+	grep -q '^\*\*You are: shop-code-reviewer-member1\*\*' "$ro/$which/instructions.md" || { echo "$which: 前置きの名前が code-reviewer ではありません" >&2; exit 1; }
+	grep -q 'agent-code-reviewer' "$ro/$which/instructions.md" || { echo "$which: 前置きの ID が code-reviewer ではありません" >&2; exit 1; }
+	! grep -q 'You are: shop-orchestrator' "$ro/$which/instructions.md" || { echo "$which: 前置きの Agent Identity にリーダーの名前が残っています" >&2; exit 1; }
+	[[ -f $ro/$which/skills/squad-handoff/SKILL.md ]] || { echo "$which: squad-handoff がありません" >&2; exit 1; }
+done
+echo "PASS leader-eval: --role code-reviewer は、今の指示を基準の参照の code-reviewer.md、新しい指示を作業ツリーのものから作り、前置きを code-reviewer の名前にする"
+
+# 流すモデルと思考の深さは、描画した front matter の値。新旧で違うときは、記録に並べる
+grep -qx 'reviewer claude-sonnet-5-5 high old' "$STUB_LOG" || { echo "今の指示のモデルと深さがスタブに渡っていません" >&2; exit 1; }
+grep -qx 'reviewer claude-opus-5-5 high new' "$STUB_LOG" || { echo "新しい指示のモデルと深さがスタブに渡っていません" >&2; exit 1; }
+grep -qx 'scorer claude-opus-5-5 high' "$STUB_LOG" || { echo "採点の役が opus の high ではありません" >&2; exit 1; }
+jq -e '.model == "claude-sonnet-5-5" and .thinking_level == "high"' "$ro/old/meta.json" >/dev/null
+jq -e '.model == "claude-opus-5-5" and .thinking_level == "high"' "$ro/new/meta.json" >/dev/null
+grep -qx 'role: code-reviewer' "$test_dir/reviewer-out/versions.txt"
+grep -qx 'model old: claude-sonnet-5-5 high' "$test_dir/reviewer-out/versions.txt"
+grep -qx 'model new: claude-opus-5-5 high' "$test_dir/reviewer-out/versions.txt"
+grep -qx 'runs: 4 回（上限 18 回）' "$test_dir/reviewer-out/versions.txt"
+! grep -q '^over-limit:' "$test_dir/reviewer-out/versions.txt"
+jq -e -s 'length == 4 and all(.[]; .pass == true)' "$test_dir/reviewer-out/runs.jsonl" >/dev/null
+grep -q '^| t1 | 見逃し | 2/2 | 2/2 | - |$' "$test_dir/reviewer-out/summary.md" || { echo "summary.md の行が違います" >&2; exit 1; }
+grep -q '^| 場面 | 型 | 今の指示 | 新しい指示 | ' "$test_dir/reviewer-out/summary.md" || { echo "summary.md の列の見出しが指示の新旧ではありません" >&2; exit 1; }
+! grep -q '上限を超えて流した' "$test_dir/reviewer-out/summary.md"
+echo "PASS leader-eval: --role code-reviewer は、front matter のモデルと深さで流し、新旧のモデルを記録に並べる"
+
+# 上限: 19 回以上になる指定は、スタブの claude を呼ばず、結果のディレクトリも作らずに終了コード 2 で止まる
+reviewer_limit_stop() { # $1=説明 残りは run.sh の引数
+	local label=$1 code=0
+	shift
+	: >"$STUB_LOG"
+	rm -rf "$test_dir/reviewer-limit"
+	rr_run "$@" --out "$test_dir/reviewer-limit" >"$test_dir/reviewer-limit.out" 2>"$test_dir/reviewer-limit.err" || code=$?
+	[[ $code == 2 ]] || { echo "$label: 終了コードが 2 ではありません（$code）" >&2; exit 1; }
+	[[ ! -s $STUB_LOG ]] || { echo "$label: 止める前に claude を呼んでいます" >&2; exit 1; }
+	[[ ! -e $test_dir/reviewer-limit ]] || { echo "$label: 止める前に結果のディレクトリを作っています" >&2; exit 1; }
+	grep -q '上限の 18 回' "$test_dir/reviewer-limit.err" || { echo "$label: 上限の回数を出していません" >&2; exit 1; }
+}
+reviewer_limit_stop '3 場面 × 4 回 × 新旧（24 回）' --role code-reviewer --scenes t1,t2,t3 --runs 4
+grep -q '24 回' "$test_dir/reviewer-limit.err" || { echo "数えた回数を出していません" >&2; exit 1; }
+reviewer_limit_stop '1 場面 × 19 回 × 新だけ（19 回）' --role code-reviewer --scenes t1 --runs 19 --only new
+reviewer_limit_stop '4 場面 × 3 回 × 新旧（24 回）' --role code-reviewer --scenes t1,t2,t3,t4 --runs 3
+# 場面を省くと、reviewer-scenes のすべての場面を数える（4 場面 × 3 回 × 2 = 24 回）
+reviewer_limit_stop '場面の省略（24 回）' --role code-reviewer --runs 3
+# 18 回ちょうどは流れる
+: >"$STUB_LOG"
+rr_run --role code-reviewer --scenes t1,t2,t3 --runs 3 --jobs 4 --out "$test_dir/reviewer-18" >"$test_dir/reviewer-18.out" 2>"$test_dir/reviewer-18.err" ||
+	{ cat "$test_dir/reviewer-18.err" >&2; exit 1; }
+[[ $(grep -c '^reviewer ' "$STUB_LOG") == 18 ]] || { echo "18 回流れていません" >&2; exit 1; }
+grep -qx 'runs: 18 回（上限 18 回）' "$test_dir/reviewer-18/versions.txt"
+! grep -q '上限を超えて流した' "$test_dir/reviewer-18/summary.md"
+# 上限を超えた回数でも、--over-limit があれば流れ、summary.md の先頭にコメントの ID が載る
+: >"$STUB_LOG"
+rr_run --role code-reviewer --scenes t1,t2,t3,t4 --runs 3 --jobs 4 --over-limit comment-approved-1 --out "$test_dir/reviewer-over" >"$test_dir/reviewer-over.out" 2>"$test_dir/reviewer-over.err" ||
+	{ cat "$test_dir/reviewer-over.err" >&2; exit 1; }
+[[ $(grep -c '^reviewer ' "$STUB_LOG") == 24 ]] || { echo "上限を超えた承認つきの指定が流れていません" >&2; exit 1; }
+[[ $(head -1 "$test_dir/reviewer-over/summary.md") == '上限を超えて流した: 役の実行 24 回（上限 18 回）。承認したコメントの ID: comment-approved-1' ]] ||
+	{ echo "summary.md の先頭に、上限を超えたことと承認のコメントの ID がありません" >&2; exit 1; }
+grep -qx 'over-limit: comment-approved-1' "$test_dir/reviewer-over/versions.txt"
+# 上限以内で --over-limit を付けても、超えたとは書かない（流した回数が上限以内のため）
+: >"$STUB_LOG"
+rr_run --role code-reviewer --scenes t1 --runs 1 --over-limit comment-approved-2 --out "$test_dir/reviewer-within" >/dev/null 2>"$test_dir/reviewer-within.err" ||
+	{ cat "$test_dir/reviewer-within.err" >&2; exit 1; }
+! grep -q '上限を超えて流した' "$test_dir/reviewer-within/summary.md"
+echo "PASS leader-eval: 上限（18 回）は、19 回以上を流さずに終了コード 2 で止め、18 回ちょうどは流し、--over-limit で流すと summary.md の先頭に承認のコメントの ID を残す"
+
+# 受け付けない指定は、結果のディレクトリを作る前に終了コード 2 で止める
+for bad in '--runtime codex' '--old-skills new' '--thinking high' '--over-limit bad/id'; do
+	: >"$STUB_LOG"
+	code=0
+	rm -rf "$test_dir/reviewer-bad"
+	# shellcheck disable=SC2086
+	rr_run --role code-reviewer --scenes t1 $bad --out "$test_dir/reviewer-bad" >/dev/null 2>"$test_dir/reviewer-bad.err" || code=$?
+	[[ $code == 2 ]] || { echo "終了コードが 2 ではありません（$code）: $bad" >&2; exit 1; }
+	[[ ! -e $test_dir/reviewer-bad && ! -s $STUB_LOG ]] || { echo "止める前に流しています: $bad" >&2; exit 1; }
+	[[ -s $test_dir/reviewer-bad.err ]] || { echo "理由を出していません: $bad" >&2; exit 1; }
+done
+# --over-limit は code-reviewer だけ。ほかの役では、黙って無視せずに止める
+code=0
+rr_run --scenes t1 --over-limit comment-x --out "$test_dir/reviewer-bad" >/dev/null 2>&1 || code=$?
+[[ $code == 2 ]] || { echo "リーダーの評価で --over-limit が通っています" >&2; exit 1; }
+echo "PASS leader-eval: --role code-reviewer は --runtime codex・--old-skills new・--thinking を、--over-limit は code-reviewer 以外を、終了コード 2 で止める"
+
+# --help は、上限の 1 行と文書への案内を出す
+help_out=$(bash "$eval_dir/run.sh" --help)
+grep -q '^上限: --role code-reviewer は、1 回の評価で役の実行を 18 回まで' <<<"$help_out" || { echo "--help に上限の行がありません" >&2; exit 1; }
+grep -q 'docs/review-eval.md の「流す回数の上限」' <<<"$help_out" || { echo "--help に文書への案内がありません" >&2; exit 1; }
+grep -q -- '--over-limit ID' <<<"$help_out" || { echo "--help に --over-limit がありません" >&2; exit 1; }
+grep -q 'code-reviewer' <<<"$help_out" || { echo "--help に --role code-reviewer がありません" >&2; exit 1; }
+echo "PASS leader-eval: --help に、上限 18 回の行と、docs/review-eval.md の節への案内が出る"
