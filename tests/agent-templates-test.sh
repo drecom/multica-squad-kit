@@ -1112,6 +1112,51 @@ done
 absent -qF '監査の結果: <依存の名前>' "$test_dir/audit-pilot"
 echo 'PASS templates: 監査する役の指示と週次の指示に、4 つの結果と 2 つの行の形があり、行の形は役の指示だけに置く'
 
+# 読む側: Git が読む取得・手元の確認のコマンド、見張りに渡す --base、監査と Dependabot の結果の行。
+# 承認された docs/default-branch.md の取得失敗の分類と、停止時・空配列時の返答も確認する。
+for scenario in all no-planner no-designer no-planning claude-only codex-only no-reviews minimum runtime-claude-only runtime-codex-only; do
+	pilots=$test_dir/$scenario/autopilots
+	for role in security-reviewer dependabot-merger; do
+		[[ -f $test_dir/$scenario/$role ]] || continue
+		if [[ $role == security-reviewer ]]; then heading='^## 週 1 回の依存ライブラリの脆弱性チェック '
+		else heading='^## Dependabot の PR の週次の確認 '; fi
+		awk -v heading="$heading" '$0 ~ heading {inside=1; next} inside && /^## / {exit} inside {print}' "$pilots" >"$test_dir/default-branch-pilot"
+		pilot=$test_dir/default-branch-pilot
+		[[ -s $pilot ]]
+		for command in 'git ls-remote --symref origin HEAD' 'git status --porcelain' 'git branch -r --contains HEAD' \
+			'git fetch origin refs/heads/<ブランチ名>' 'git checkout --detach FETCH_HEAD' 'git rev-parse HEAD'; do
+			grep -qF -- "$command" "$pilot"
+		done
+		for token in 'ref: refs/heads/<ブランチ名><タブ>HEAD' 'コマンドの失敗' 'ref: の行がない' 'ref: の行が 2 行以上'; do
+			grep -qF -- "$token" "$pilot"
+		done
+		absent -qE 'main の最新|--ref main|git fetch origin main|git checkout --detach origin/main|「なし」とだけ返' "$pilot"
+		if [[ $role == security-reviewer ]]; then
+			grep -qF '依存を監査せず、チェックを done にしない' "$pilot"
+			grep -qF '対象ブランチ: <ブランチ名>' "$pilot"
+			grep -qF '確認したコミット: <40 桁の SHA>' "$pilot"
+			grep -qF '両方を「なし」にする' "$pilot"
+			# 報告を読む人が、監査の結果より前に対象を読める順序を確認する。
+			grep -qF '`監査の結果:` より前に `対象ブランチ:' "$pilot"
+		else
+			grep -qF 'squad-dependabot-merge example/project project-a list --base <対象ブランチ>' "$pilot"
+			grep -qF 'advance <PR> --base <対象ブランチ> --reviewed-head' "$pilot"
+			grep -qF 'PR の確認・追従・マージ・タスクの作成を始めず' "$pilot"
+			grep -qF 'squad-dependabot-merge list の失敗:' "$pilot"
+			grep -qF '対象ブランチ: なし' "$pilot"
+			grep -qF '「対象ブランチ: <ブランチ名>」と「なし」の 2 行' "$pilot"
+			grep -qF '対象外のブランチ向け' "$pilot"
+			absent -qF 'main に追いつけない' "$pilot"
+			awk '/^## 結果の出し方$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$test_dir/$scenario/$role" >"$test_dir/dependabot-result"
+			grep -qF '1 行目を `対象ブランチ:` の行にし' "$test_dir/dependabot-result"
+			grep -qF 'list が返したすべての PR' "$test_dir/dependabot-result"
+			grep -qF '対象ブランチの行と「なし」の 2 行' "$test_dir/dependabot-result"
+			absent -qF '「なし」とだけ返す' "$test_dir/dependabot-result"
+		fi
+	done
+done
+echo 'PASS templates: 週次の 2 つの指示がデフォルトブランチを取得し、失敗で止まり、対象の行を返す'
+
 # 読む側: 役の指示が指す common/skills/squad-handoff/SKILL.md の節「更新を知らされたときに照合する」を、全役が更新を知らされたときに読む。
 # 照合のために役が流す読み取りのコマンドと、報告の行の形。
 awk '/^## 更新を知らされたときに照合する$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$handoff_skill" >"$test_dir/reconcile-section"
