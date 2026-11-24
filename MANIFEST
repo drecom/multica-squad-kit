@@ -67,7 +67,7 @@ e83b2b393f492cbe1bcc1513456a225e449292f2ba67b33fa0860dda48627833  ./common/skill
 57693434623b5b8b4947ab836b372bfbfb50b910abfd296af162641a898f1a6b  ./common/skills/squad-handoff/references/leader-review-wait.md
 0e603565f0f6810c8d6bc105e6436298446fe9c3fbe70cea14160c95427c1b4c  ./common/skills/squad-handoff/references/leader-run-status.md
 1caa0a53bbaafea6d15e8105f94b22e1cd5b487b9891529111085f838bd88681  ./common/squad.md
-fa659b76c707256e4c9ec213e35fd774e7400fa929924ff170d1bf3bcf5cf61f  ./docs/README.md
+5d91b2dbb56ca90ea65f52cad579c4e8e7b792cd07bbf0f0d4b28cc35972fad9  ./docs/README.md
 c380ac8fd57091fa1d1ad80ff9724cba6667a7199b440a40b4be9b0e25f83623  ./docs/agent-path.md
 62062b7363a33eb140e814eeff5b3898d2d7d06aadc1ff95a07aa88aa001dbc7  ./docs/autopilot-targets.md
 3ca4ffccd35ce4ddcb26bc3c40ef34d2d2295eb27b8b0e08ea0522827b8bbb9c  ./docs/bug-repro-test.md
@@ -82,6 +82,7 @@ ce01904b58b09ea957686673d8f9883b1e59f5e84dbdb74bd7ab30759d1a1797  ./docs/host-st
 ea7ebff44ce2dfa5cf4c68c764dde731c5c34514ea14fe1009369476511df8b0  ./docs/instruction-reread.md
 369c5b96674d47f949a255bb28643e07bb2a623a6b1c24628805724591a94b50  ./docs/leader-eval-picks.md
 69b7173fb109007371f2c2279b77b4f60cc288d602abbea067c7dc0bef6278f1  ./docs/leader-principles.md
+bf58e7dec68627ff1764b17c906f19c7eed9a0ddb35541572d0892fd20088ede  ./docs/merge-request-reading.md
 f3e7834c16bb59c09a819b29a92ccea1d2ba7bdbe50505af4e1912167369d653  ./docs/metrics.md
 fc4ec5836bb4c9b565596c63b7e0255ce645fb797e1a9bbb07b3b68e3e1f521b  ./docs/own-review-paths.md
 528418dec994f2976e6f04dc655db2e4545405370630db4df109d812887e6bbc  ./docs/planner-requirements.md
@@ -91,7 +92,7 @@ a58a91809ea09df148c193b451ff8955d8b9c9a7b702cace304633e1673c4b43  ./docs/procedu
 29fe97cb493ffe208a7fd6de93e446bb965f5d5ed881a51196cbd0862ef62525  ./docs/release.md
 831e680a61062b16baeb44eea1decedecfc2618038a723f78d9c3bf6312804d4  ./docs/reread-followups.md
 bd51e478eda6d22c43438ec3112725edfb7818f1075750dd218afebadead3733  ./docs/review-eval.md
-08f754a23fc9920be7066220bdddc7a9691d46fedb09cbf3bddc1c995158bc3a  ./docs/review-next-step.md
+3930c655c08b3c0132a3f08ccbd1e45a86f807b8e193b019493e91504bcf0df9  ./docs/review-next-step.md
 ec9e148fd1b63d9314b4845e41e79cc58be28b916ad9d25df2ed571edd0e10d6  ./docs/review-rework.md
 ea489bd6b37ccef2488c766eee998ce62198247d71b54dab7e30d4105283f7fb  ./docs/screens.md
 532250eb72bfbc789cb82f2cf527bcdeb21dfbdb38bfc1184b75e62a23373030  ./docs/setup-completion.md
