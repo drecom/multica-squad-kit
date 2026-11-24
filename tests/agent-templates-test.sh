@@ -1292,3 +1292,46 @@ command_forms_check="$root/tests/command-forms-check.py"
 python3 "$command_forms_check" check "$root/tests/command-forms-table.tsv" "$root" >/dev/null
 python3 "$command_forms_check" table "$root/tests/command-forms-table.tsv" "$root" >"$test_dir/command-forms-table.out"
 echo "PASS templates: 機械やほかのファイルが読むコマンドの形を、読む側が実行する指示が持つ。参照のコマンドの名前と形は、表の行ごとに 1 か所だけ変えた写しで照合する（$(<"$test_dir/command-forms-table.out")）"
+
+# 読む側: squad-review-next decide が、タスクの要約から `前からある不具合 <N> 件`（マークの行）と `指摘の一覧: <N> 件` を読む。
+# 共通スキルの見本と型の行を、decide の同じ正規表現で読めること。正規表現は decide の定数から取るので、読み方が変われば落ちる。
+decide_script="$root/common/monitor/squad-review-next"
+result_section=$(awk '/^## PR にレビューやテストの結果を書く$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$type_skill")
+sample_mark=$(grep -m1 -E '^⚠️ example-code-reviewer: ' <<<"$result_section")
+[[ -n $sample_mark ]]
+# 見本に、前からある不具合の欄が `前からある不具合:` の行と項目で 1 回ある。
+[[ $(grep -cxF -- '前からある不具合:' <<<"$result_section") == 1 ]]
+grep -qE -- '^- `[^`]+`: ' <<<"$(grep -xF -A1 -- '前からある不具合:' <<<"$result_section")"
+reply_section=$(awk '/^## レビューと E2E の返事を返す$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$type_skill")
+list_head=$(grep -m1 -oE '`指摘の一覧: <N> 件`' <<<"$reply_section")
+[[ -n $list_head ]]
+grep -qF -- '`- <番号>. <重大度>: <場所>。影響: <影響>`' <<<"$reply_section"
+python3 -I - "$decide_script" "$sample_mark" "$list_head" <<'READPY'
+import re
+import sys
+
+script, mark, head = sys.argv[1:4]
+patterns = {}
+for line in open(script, encoding="utf-8"):
+    for name in ("PRE_COUNT", "LIST_HEAD"):
+        if line.startswith(name + " = re.compile("):
+            patterns[name] = eval(line.split("=", 1)[1], {"re": re})
+assert set(patterns) == {"PRE_COUNT", "LIST_HEAD"}, patterns
+found = patterns["PRE_COUNT"].search(mark)
+assert found and found.group(1) == "1", mark
+row = head.strip("`").replace("<N>", "2")
+found = patterns["LIST_HEAD"].fullmatch(row)
+assert found and found.group(1) == "2", row
+READPY
+echo 'PASS templates: 共通スキルの見本のマークの行と指摘の一覧の行が、decide の件数の読み方で読め、見本に前からある不具合の欄がある'
+
+# 読む側: リーダーが手で書くマージの依頼。leader-pr-checks.md の 4 行の名前が、decide が書く依頼と同じ行頭の形で 1 回ずつあり、指摘を要約の `指摘の一覧:` から写すと書いてある。
+manual_section=$(awk '/^### 手で書くマージの依頼の行$/ {inside=1; next} inside && /^#{1,3} / {exit} inside {print}' "$refs/leader-pr-checks.md")
+[[ -n $manual_section ]]
+for name in '読む深さ: ' 'マージの前に人間がすること: ' '直さずに残した指摘: ' '前からある不具合: '; do
+	[[ $(grep -c -- "^$name" <<<"$manual_section") == 1 ]]
+	grep -qF -- "$name" "$decide_script"
+done
+grep -qF -- '指摘の一覧:' <<<"$manual_section"
+grep -qF -- '「手で書くマージの依頼の行」' "$refs/leader-pr-checks.md"
+echo 'PASS templates: リーダーの手順に、手で書くマージの依頼の 4 行の名前が行頭の形で 1 回ずつあり、指摘を要約の指摘の一覧から写すと書いてある'
