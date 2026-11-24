@@ -115,7 +115,7 @@ lib/ code-reviewer,security-reviewer
 
 ## 変更の一覧
 
-実装で変えるファイルは、次の 4 つである。ほかのファイルは変えない。
+観点の対応のために変えるファイルは、この文書のほかに次の 5 つである。ほかのファイルは変えない。
 
 | ファイル | 変えること |
 | --- | --- |
@@ -123,6 +123,7 @@ lib/ code-reviewer,security-reviewer
 | `tests/own-review-paths-test.sh` | 新しく置く。[テスト](#テスト)の 5 つを確認する |
 | `tests/test-weights` | 上のテストの重みの行を足す |
 | `MANIFEST` | `bash scripts/manifest.sh` で作り直す |
+| `docs/review-next-step.md` | 「プロジェクトのひな形」の節に、この文書へのリンクの文を 1 つ足す。この文書と同じコミットで足した |
 
 ## 互換性と影響を受ける利用者
 
