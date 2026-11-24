@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # multica-squad-kit-managed
 # Dependabot の週次の確認で、判断の要らない処理を行う。
-#   squad-dependabot-merge <OWNER/REPO> <プロジェクト ID> list — 開いている PR の更新の種類と必須 CI を JSON で返す。
+#   squad-dependabot-merge <OWNER/REPO> <プロジェクト ID> list --base <ブランチ名> — 開いている PR の更新の種類と必須 CI を JSON で返す。
 #   squad-dependabot-merge <OWNER/REPO> <プロジェクト ID> advance <PR> --reviewed-head <SHA> --run-deadline <epoch> [--retry]
 #   squad-dependabot-merge <OWNER/REPO> <プロジェクト ID> escalate <PR> <本文のファイル> --assignee <名前>
 # macOS の bash 3.2 でも動くよう、連想配列は使わない。
@@ -12,7 +12,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/squad-cli-lib"
 RUN_SECONDS=14400
 
 usage() {
-	echo '使い方: squad-dependabot-merge <OWNER/REPO> <プロジェクト ID> list | advance <PR> --reviewed-head <SHA> --run-deadline <epoch> [--retry] | escalate <PR> <本文のファイル> --assignee <名前>' >&2
+	echo '使い方: squad-dependabot-merge <OWNER/REPO> <プロジェクト ID> list --base <ブランチ名> | advance <PR> --reviewed-head <SHA> --run-deadline <epoch> [--retry] | escalate <PR> <本文のファイル> --assignee <名前>' >&2
 	exit 2
 }
 
@@ -95,9 +95,19 @@ ecosystem_of() {
 	esac
 }
 
+check_base() {
+	local repository default_branch
+	repository=$(squad_cli_read gh-default-branch "repos/$REPO") || return 1
+	default_branch=$(jq -er '.default_branch' <<<"$repository") || return 1
+	if [[ $BASE != "$default_branch" ]]; then
+		printf '対象ブランチ %s がデフォルトブランチ %s と一致しません。\n' "$BASE" "$default_branch" >&2
+		return 1
+	fi
+}
+
 required_checks() {
-	local rules
-	rules=$(squad_cli_read gh-branch-rules "repos/$REPO/rules/branches/main") || return 1
+	local base=$1 rules
+	rules=$(squad_cli_read gh-branch-rules "repos/$REPO/rules/branches/$base") || return 1
 	jq -e ' .
 		| [.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]
 			| {context, integration_id}] | unique
@@ -116,7 +126,7 @@ list_prs() {
 		echo '[]'
 		return
 	fi
-	required=$(required_checks)
+	required=$(required_checks "$BASE")
 	numbers=$(jq -r '.[].number' <<<"$prs")
 	while IFS= read -r number; do
 		pr=$(squad_cli_read gh-dependabot-pr "$number" "$REPO")
@@ -142,7 +152,7 @@ list_prs() {
 		statuses=$(squad_cli_read gh-statuses "repos/$REPO/commits/$head/statuses?per_page=100")
 		ci=$(required_ci "$required" "$checks" "$statuses")
 		results=$(jq --argjson pr "$pr" --arg ecosystem "$ecosystem" --arg kind "$kind" --arg ci "$ci" '. + [{
-			number: $pr.number, title: $pr.title, head_sha: $pr.headRefOid,
+			number: $pr.number, title: $pr.title, head_sha: $pr.headRefOid, base: $pr.baseRefName,
 			update_type: $kind, ecosystem: $ecosystem, ci: $ci, mergeable: $pr.mergeable
 		}]' <<<"$results")
 	done <<<"$numbers"
@@ -264,7 +274,7 @@ advance() {
 		fi
 		mergeable=$(jq -r .mergeable <<<"$pr")
 		merge_state=$(jq -r .mergeStateStatus <<<"$pr")
-		required=$(required_checks)
+		required=$(required_checks main)
 		checks=$(squad_cli_read gh-check-runs "repos/$REPO/commits/$head/check-runs?filter=latest&per_page=100" | jq .check_runs)
 		statuses=$(squad_cli_read gh-statuses "repos/$REPO/commits/$head/statuses?per_page=100")
 		ci=$(required_ci "$required" "$checks" "$statuses")
@@ -441,7 +451,10 @@ shift 2
 
 case ${1:-} in
 list)
-	(($# == 1)) || usage
+	(($# == 3)) || usage
+	[[ $2 == --base && $3 =~ ^[A-Za-z0-9._/-]+$ && $3 != -* ]] || usage
+	BASE=$3
+	check_base
 	list_prs
 	;;
 advance)

@@ -11,7 +11,7 @@ source "$root/tests/dependabot-merge-advance-test-lib.sh"
 for defect in pulls-number rule-context pr-author commit-message check-app status-context file-additions head comments-body viewer-login; do
  advance_fixture
  action=list
- args=()
+ args=(--base main)
  case $defect in
  pulls-number) reading=gh-dependabot-pulls; field=number; filter='[del(.number)]' ;;
  rule-context) reading=gh-branch-rules; field=context; filter='[del(.parameters.required_status_checks[0].context)]' ;;
