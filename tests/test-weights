@@ -97,6 +97,7 @@ tests/squad-pr-watch-ci-handoff-test.sh 38
 tests/squad-pr-watch-ci-now-test.sh 25
 tests/squad-pr-watch-ci-test.sh 41
 tests/squad-pr-watch-ci-wait-test.sh 101
+tests/squad-pr-watch-link-retry-test.sh 97
 tests/squad-pr-watch-register-test.sh 30
 tests/squad-pr-watch-unlinked-check-test.sh 40
 tests/squad-pr-watch-unlinked-concurrent-test.sh 5
