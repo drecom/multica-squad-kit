@@ -67,7 +67,7 @@ f1cc2eac32869c0fab5879732c833fe9d56c3d3cf72502be3fc4ab12f789e1dc  ./common/skill
 57693434623b5b8b4947ab836b372bfbfb50b910abfd296af162641a898f1a6b  ./common/skills/squad-handoff/references/leader-review-wait.md
 dae32cbf310396b22441c31b4924b9135eaefaeb0a8c71ea6119085a8e117aac  ./common/skills/squad-handoff/references/leader-run-status.md
 1caa0a53bbaafea6d15e8105f94b22e1cd5b487b9891529111085f838bd88681  ./common/squad.md
-01cc6f475cdd71fd040461214b67cf3a8b4d9a8fa201b81cbd95d58c9f0876f6  ./docs/README.md
+f4563b77ea14261db28a2b31b33c04d0e8a8e3806521fbcd2f323bea2f8231a2  ./docs/README.md
 c380ac8fd57091fa1d1ad80ff9724cba6667a7199b440a40b4be9b0e25f83623  ./docs/agent-path.md
 3ca4ffccd35ce4ddcb26bc3c40ef34d2d2295eb27b8b0e08ea0522827b8bbb9c  ./docs/bug-repro-test.md
 8f528132703a8bdc7d6758547d25f7e7441e65878463412313f9f7adffbea231  ./docs/decide-record-read.md
@@ -83,7 +83,7 @@ e5662d476f467ec567e9b3214b68559e13edc67af1781f19fa0adc48fdcb2add  ./docs/leader-
 f3e7834c16bb59c09a819b29a92ccea1d2ba7bdbe50505af4e1912167369d653  ./docs/metrics.md
 fc4ec5836bb4c9b565596c63b7e0255ce645fb797e1a9bbb07b3b68e3e1f521b  ./docs/own-review-paths.md
 a6ce83495ac89b59139376a410c8aa2802436d75cbc32bdc9d81b31b13a9e4e2  ./docs/planner-requirements.md
-238e4cb4a7558328427efb14182e2316dd37f001e9555c211ae712a1b9944c04  ./docs/pr-link-retry.md
+05d3494a2af980dd7e35ffbc3dfb2b04acfd73edcaf488764ac0048f3f7cea46  ./docs/pr-link-retry.md
 cb269eb5a385b50a86711fe2c711acc106545f5416c4d5213570aa19f30ee5b8  ./docs/principal-review.md
 a58a91809ea09df148c193b451ff8955d8b9c9a7b702cace304633e1673c4b43  ./docs/procedure-review.md
 29fe97cb493ffe208a7fd6de93e446bb965f5d5ed881a51196cbd0862ef62525  ./docs/release.md
