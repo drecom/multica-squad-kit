@@ -58,9 +58,9 @@ flowchart TD
 
 | 種類 | 対象 | 起票するかの判定 |
 | --- | --- | --- |
-| フィルターの設定 | OWNER/REPO | Dependabot の役を残し、Webhook を使う、選んだリポジトリ |
+| フィルターの設定 | OWNER/REPO | Dependabot の役を残し、Webhook を使う、確認の対象のリポジトリ |
 | Webhook の登録 | OWNER/REPO | 今回の実行で登録を飛ばしたか、失敗したリポジトリ |
-| Webhook を外す | OWNER/REPO | Dependabot の役を残し、Webhook を使わない答えで、Webhook のトリガーが残っているリポジトリ |
+| Webhook を外す | OWNER/REPO | Dependabot の役を残し、Webhook を使わない答えか確認の対象外で、Webhook のトリガーが残るリポジトリ |
 | AGENTS.md の配置 | OWNER/REPO | 選んだリポジトリ |
 | 説明と検証スキルの記入 | `project` | プロジェクトに 1 つ |
 | 動きの試し | `project` | プロジェクトに 1 つ |

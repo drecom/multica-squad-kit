@@ -354,10 +354,12 @@ bash 3.2 で動かす。`ui_init`・`ui_paint`・`ui_line`・`ui_error`・`ui_wa
   ✔ claude-runtime
   ✔ codex-runtime
   ! squad-kit-skills  スキルのバージョンが原本と違う
+  ! オートパイロット Dependabot の PR の週次の確認 demo acme/paused  一時停止しています。止めたままでよいか確認し、動かすなら画面で再開してください。
 
   acme/app      ✔ トリガー  ✔ 登録  ✔ 配信 200
   acme/infra    ✔ トリガー  · 登録  ! 配信
   ! acme/old  Webhook を使わない答えですが、前の実行で作った Webhook のトリガーが残っています。外すよう起票しました。
+  ! acme/wiki  Dependabot の確認の対象から外しましたが、前の実行で作った Webhook のトリガーが残っています。外すよう起票しました。
 
   + DEMO-1  acme/app の Dependabot の Webhook のフィルターを設定する
   · DEMO-3  プロジェクトの説明と検証スキルを記入する
@@ -378,6 +380,8 @@ bash 3.2 で動かす。`ui_init`・`ui_paint`・`ui_line`・`ui_error`・`ui_wa
 | Webhook の残り | `project_webhook_completion` | `警告:` の行は付けず、`!`、リポジトリ、文の行にする |
 | 起票したタスク | `project_issue_completion` | 新しく起票したものは `+`、既存のものは `·` と灰の行で、識別子と件名。起票できなかったものは `✖`、件名、灰の理由 |
 | 次にすること | `project_completion` | 案内の文は、それぞれ `›` と空白を付けた行にする。入り直すコマンドは、6 つの空白で字下げした太字の行にする |
+
+導入の確認で状態だけが一時停止の登録は、上の例の理由で再開を促す。ほかの不一致は「定義と一致しません。」のままにする。
 
 1 行目の件数が 0 の種類は出さない。Webhook は、作ったものと既存のものを `✔`、飛ばした登録を `·` で示す。記録のない配信は `!` だけで値を付けず、失敗は `✖` にする。配信の HTTP コードは灰で添える。
 
