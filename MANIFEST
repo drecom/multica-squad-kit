@@ -69,7 +69,7 @@ dae32cbf310396b22441c31b4924b9135eaefaeb0a8c71ea6119085a8e117aac  ./common/skill
 1caa0a53bbaafea6d15e8105f94b22e1cd5b487b9891529111085f838bd88681  ./common/squad.md
 599ce1ee7c1d8cf41f9c87f988120a88fe61f5a2cbba762c2bc2b98effdf9be0  ./docs/README.md
 c380ac8fd57091fa1d1ad80ff9724cba6667a7199b440a40b4be9b0e25f83623  ./docs/agent-path.md
-6e5dc8087e8558e04d80f764e50caa6ea279bfdd4c2752fcb89a9edcf381e535  ./docs/autopilot-targets.md
+34fb89f04d9d4c0566e3d16a1f4328c530f050e1a04f32a9e8cc7d9a8e64a37d  ./docs/autopilot-targets.md
 3ca4ffccd35ce4ddcb26bc3c40ef34d2d2295eb27b8b0e08ea0522827b8bbb9c  ./docs/bug-repro-test.md
 8f528132703a8bdc7d6758547d25f7e7441e65878463412313f9f7adffbea231  ./docs/decide-record-read.md
 f0e5f01295e7cf698c436e9e5bbd7ca55a237a55b50964859cd918ac22c66a82  ./docs/default-branch.md
@@ -152,7 +152,9 @@ ec94c1189f1071bf59f9c20765667893b12a24881b6a68739d14f2ecbe0ff678  ./tests/action
 2c4dce6d55a2bec00a23cf829eb9939041a27c4bb78891f0aeb0d485ad1713c4  ./tests/ansi-to-png.py
 dfbb19bc0056d40e3259c72c68024a744c89987fbb8a18fdd593f6bbd9b8391b  ./tests/arg-limit-lib.sh
 4effb137e0876ad6cf25ccf0a3858c17e80fff848d6e5deb1b70405f7b2d3b8a  ./tests/audit-targets-test.sh
-a88489738f9e976cab9a0958633e5ebccb35fcf414c57e9790023f3573570c35  ./tests/autopilot-targets-test.sh
+51bb1ee0047fe5d9355d7f00c5658033a4ab81383c12bdb80f8a61aa2a365ffe  ./tests/autopilot-targets-registration-test.sh
+138a07ddde908e4b4f90a7bc59237f63610550c9351b58b19f55dd3ec41a67d3  ./tests/autopilot-targets-test.sh
+801e236748fa85dc9961548f1ae51836ce39d4820b38ae4b69584354a17023e0  ./tests/autopilot-targets-webhook-test.sh
 eb6e8b3b469332ed7040533e124f9fd154f14aeae1290ca444c5dbdc5fd66cc7  ./tests/build-assets-test.sh
 98aacb9d075d86dc5201b1712cef788afa2098efb1ff5ab52e236a4a4832e666  ./tests/capture-cli-fixtures-test.sh
 e69f429ad715eebd2adf4822c3265397b216fad1ac8c80c2a7e0e5fb1cdf41f2  ./tests/capture-cli-fixtures.py
@@ -746,7 +748,7 @@ c98729878e6706f5780a10fbbdd9246ef49a12182fb27d46624296d335659336  ./tests/termin
 c0509d732b2b3fa99f882283848bc2ba1c82ed3a6d0a90ac8263045dfee07010  ./tests/terminal-test.sh
 bb7b764515248a871ceb26e80ed0d7a543675fe39a1813d3355767cb94475dc7  ./tests/terms-test.sh
 70b930e2847c9b0174993617f714cab72a321fa0483e64d0c73b4ead24e3a97c  ./tests/test-runner-test.sh
-3fed72d052a88ac50b4332ba3491724ef6f0c0700ce19420b4b0280314d606f9  ./tests/test-weights
+9468ce546073d247acf7ec32c81e33967f8c56979b313f96ba93ff76f9a5ceb8  ./tests/test-weights
 26c5ee5af12334788f56bf13d7912c59770691d19efffeef2c59ad5be01d7bc9  ./tests/tty-session-cases.py
 a0e2424125413c1c5bc44b0dba0b9c391785e81466da212529b51a8fbfe10013  ./tests/tty-session-test.sh
 a75552e9ce73a6a9face4c56e1a318d10150c76383b5c88d4f0de705dc9cde2f  ./tests/tty-session.py

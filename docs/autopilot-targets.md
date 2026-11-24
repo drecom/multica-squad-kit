@@ -222,25 +222,25 @@ Webhook の URL と署名の秘密は、この設計では読まない。外し�
 
 ## テスト
 
-新しいテストを `tests/autopilot-targets-test.sh` に置き、受け入れ条件ごとに確認する。既存のテストは、期待を変えずに流す。
+新しいテストを `tests/autopilot-targets-test.sh`（拡張の読み込みと setup.sh）、`tests/autopilot-targets-registration-test.sh`（登録の流し直し）、`tests/autopilot-targets-webhook-test.sh`（Webhook・起票・導入の確認）に分けて置き、受け入れ条件ごとに確認する。1 本が長いと並列の上限に近づくため、分ける。既存のテストは、期待を変えずに流す。
 
 | 確認すること | テスト |
 | --- | --- |
 | 形・名前・値の誤り、定義にない名前、足りない値を、すべて表示して止まる | `tests/autopilot-targets-test.sh` |
 | 選んでいないリポジトリを書いた設定で、登録の前に止まり、書き込みがない | `tests/autopilot-targets-test.sh` |
 | 対象のリポジトリにだけ作り、指示に値が入る | `tests/autopilot-targets-test.sh` |
-| 原本の 2 つを絞ると、外したリポジトリに定期確認・Webhook の登録がなく、Webhook の登録とフィルターの設定の起票もない | `tests/autopilot-targets-test.sh` |
+| 原本の 2 つを絞ると、外したリポジトリに定期確認・Webhook の登録がなく、Webhook の登録とフィルターの設定の起票もない | `tests/autopilot-targets-webhook-test.sh` |
 | `{{target.*}}` を指示の外（見出し・スケジュールの行・コードブロックの外）に書くと、登録の前に止まる | `tests/autopilot-targets-test.sh` |
 | 定義の名前は空白を含んだまま読み、設定に書いた名前に一致する定義が 2 つあると止まる | `tests/autopilot-targets-test.sh` |
-| 流し直しで外した登録を止めて名前を表示し、同じ設定の 2 回目は書き込みがない | `tests/autopilot-targets-test.sh` |
-| 別の担当・別のプロジェクト・利用者の登録と、人間が止めた登録の状態が変わらず、外したリポジトリの分で「保持しました」と表示しない | `tests/autopilot-targets-test.sh` |
-| 対象に戻すと、止めた登録が `paused` のまま指示とスケジュールが合い、重ねて作らない。導入の確認が一時停止の理由で要確認にする | `tests/autopilot-targets-test.sh` |
-| 外したリポジトリに残った Webhook のトリガーで起票し、登録がなければ黙る | `tests/autopilot-targets-test.sh` |
-| 絞った状態で、確認の表示に外した分が出ず、導入の確認が通る | `tests/autopilot-targets-test.sh` |
+| 流し直しで外した登録を止めて名前を表示し、同じ設定の 2 回目は書き込みがない | `tests/autopilot-targets-registration-test.sh` |
+| 別の担当・別のプロジェクト・利用者の登録と、人間が止めた登録の状態が変わらず、外したリポジトリの分で「保持しました」と表示しない | `tests/autopilot-targets-registration-test.sh` |
+| 対象に戻すと、止めた登録が `paused` のまま指示とスケジュールが合い、重ねて作らない。導入の確認が一時停止の理由で要確認にする | `tests/autopilot-targets-registration-test.sh` |
+| 外したリポジトリに残った Webhook のトリガーで起票し、登録がなければ黙る | `tests/autopilot-targets-webhook-test.sh` |
+| 絞った状態で、確認の表示に外した分が出ず、導入の確認が通る | `tests/autopilot-targets-webhook-test.sh` |
 | 設定がないとき、`autopilots.json` が今と同じ | `tests/autopilot-targets-test.sh` と既存の `tests/project-followup-repositories-test.sh` |
 | 拡張・確認の表示・導入の確認・Webhook・起票の今の動き | 既存の `tests/extensions-test.sh` `tests/setup-extension-test.sh` `tests/confirmation-test.sh` `tests/installation-test.sh` `tests/webhooks-test.sh` `tests/project-followup-webhook-test.sh` `tests/project-changes-test.sh` |
 | 文書のリンクと語 | `tests/manual-test.sh`、`tests/links-test.sh`、`tests/terms-test.sh` |
-| 新しいテストの並列の重み（`CONTRIBUTING.md` の決まり） | `tests/test-weights` に `tests/autopilot-targets-test.sh` の行を足す |
+| 新しいテストの並列の重み（`CONTRIBUTING.md` の決まり） | `tests/test-weights` に、上の 3 本の行を足す |
 
 設定がないときの同一性は、変更前の展開で作った `autopilots.json` を期待値に置き、比べて確認する。
 
