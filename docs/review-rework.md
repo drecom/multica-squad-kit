@@ -123,6 +123,8 @@ N は、そのタスクのリーダーのコメントにある、同じ対象の
 | `tests/leader-eval/scenes/keep-38/scene.md`・`keep-68/scene.md` | 合格の基準の 3 の `[採点]` を下の文にし、`[記録]` の 4 を足す |
 | `tests/leader-eval/scenes/keep-38/cli.json`・`keep-68/cli.json` | `expected_records` の人間を呼ぶコメントの本文に、`手当ての種類: 機械判定` の行を足す |
 | `MANIFEST` | 作り直す |
+| `docs/leader-principles.md` | 原則 7 の手当ての説明を、順の名前と `leader-flow.md` を指す文に置き換える（[置き場所](#置き場所)） |
+| `docs/review-rework.md` | この節を足し、[目的と範囲](#目的と範囲)の決まりの数と、[互換性と影響を受ける利用者](#互換性と影響を受ける利用者)の変わる動作の数を 1 つずつ増やす。[評価の場面](#評価の場面)の 2 行に `手当ての種類:` の行を足す |
 
 `tests/agent-templates-test.sh` に足す確認は、次の 3 つである。
 
