@@ -263,7 +263,7 @@ c8532b22f7a86ec6590a5cde3f64a6295148663e9f9893255209fca16fdea5b0  ./tests/instal
 ca5885f271a4b360f7d7a1eea50fe17cf8f3fa38034a6358be097e7fe46876a7  ./tests/installation-test.sh
 c74bb164a9376d9f8f959c855c358b2b37663ba0acd9dbf627f782ea7a7613fc  ./tests/leader-eval-identities-test.sh
 4ce9e07711aaf25246100fbd56fc0408a16e24c3990c3411361a1bc23304cef6  ./tests/leader-eval-picks-test.sh
-f864da87169c56355096a6765ab7fbcff16f810fb15be2e6bfa2c5b01163bea6  ./tests/leader-eval-test.sh
+a88977382888c21c00ba841a1be8977fc663015e83efba842b1f238e6f820f3d  ./tests/leader-eval-test.sh
 99de8309e2b5d8eca05dfbb781cd523befc7350091891b2539bef087d1619423  ./tests/leader-eval/compat-scenes/compat-1/cli.json
 6a5e34490d671cfb79e7fe4281a21fb1c21c3462a2b6faf85fe78ecb0dbc52a1  ./tests/leader-eval/compat-scenes/compat-1/scene.md
 ee92cce5bee73d7e81ca9a57d87381a883e56792d10554c9cb4055a4de0ce799  ./tests/leader-eval/compat-scenes/compat-2/cli.json
@@ -275,9 +275,9 @@ baa8c68f69c51af76753a625a0c5130ec1758d20a1cf64ef7178caba29418d35  ./tests/leader
 39106f93df876983e707e6b600bf382cded35310520f0cd2cf0186d670e107cf  ./tests/leader-eval/leader_eval.py
 e6f376c69716c48abe2b6cbfa5f6d0081f562bf4fc77b9375b311512e9cc557e  ./tests/leader-eval/principal-scenes/diag-1/cli.json
 10ef26f6017a39617686730092afa8a7cd8de964e6c8d31f6f097567ec62f267  ./tests/leader-eval/principal-scenes/diag-1/scene.md
-2acc7add96775718e3bbd4858eda920fbca77ce7f27eb4172787bb3d7873ef56  ./tests/leader-eval/reviewer-scenes/review-1/cli.json
-d7cbba67bb5e60b85b54c7e766d302cdb17e942cea3a95bf4cf44ad58d0e72c8  ./tests/leader-eval/reviewer-scenes/review-1/scene.md
-121aba9f758ee4ae77a6e586d8ee95bd718db0d68cae1c7cdbf3e28038eddbb5  ./tests/leader-eval/run.sh
+25c796e2ff51264589d1750bdcbfb86173923f60c3fd25e00a52b48e7ef2c624  ./tests/leader-eval/reviewer-scenes/review-1/cli.json
+9fb8e2adbba1b2e725e1915a873df0a0de343b0ae9239bcc582fa93a3ce82a80  ./tests/leader-eval/reviewer-scenes/review-1/scene.md
+8cc3f3882a701d879599908c97552bdd5cd743eb598b40f0ea8e7b7a2c2d563d  ./tests/leader-eval/run.sh
 c6f0d521db751e50379953b54c68c67f68bb2b321d292e4d68406223bf38e799  ./tests/leader-eval/runtime-brief.md
 f8aa7fcafc5ab7039f27d4063c75b1f26de78095674d838155e176e29d54c630  ./tests/leader-eval/scenes/1-1/cli.json
 a9d899889feca2d10d148a675185e1040073ec9a96991e381fc5e26b47868614  ./tests/leader-eval/scenes/1-1/scene.md

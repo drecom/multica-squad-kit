@@ -71,8 +71,8 @@
   ],
   "git": true,
   "files": {
-    "shop/AGENTS.md": "# shop の指示\n\nテストは `bash tests/run.sh`。シェルのテストは `tests/` に置く。\n",
-    "shop/.claude/skills/verify/SKILL.md": "---\nname: verify\ndescription: shop の変更に合うテストを選んで流す\n---\n\n# shop の検証\n\n- シェルのスクリプトを変えたときは `bash tests/run.sh` を流す。`tests/guest-*.sh` を含む。\n- 結果は PR のコメントに書く。\n",
+    "shop/AGENTS.md": "# shop の指示\n\n検証は `gh pr checks 8 --repo example/shop`。この評価では CLI のスタブが検証の結果を返す。シェルのテストは `tests/` に置く。\n",
+    "shop/.claude/skills/verify/SKILL.md": "---\nname: verify\ndescription: shop の変更に合う検証を流す\n---\n\n# shop の検証\n\nシェルのスクリプトを変えたときは `gh pr checks 8 --repo example/shop` を流す。この評価では CLI のスタブが検証の結果を返す。結果は PR のコメントに書く。\n",
     "shop/scripts/provision.sh": "#!/usr/bin/env bash\nset -euo pipefail\nplatform=$1\ndns_conf=${DNS_CONF:-/etc/shop/dns.conf}\nif [[ $platform == wsl ]]; then\n  # WSL は DNS を Windows 側が持つので、設定を置かず resolved も呼ばない\n  apt-get install -y shop-agent\n  exit 0\nfi\nprintf 'nameserver 10.0.0.2\\n' >\"$dns_conf\"\nsystemctl restart resolved || exit 1\napt-get install -y shop-agent\n",
     "shop/tests/guest-lib.sh": "# guest のテストの共通の部品。呼ばれたコマンドは、スタブが記録のファイルに書く\ndns_conf=$(mktemp -d)/dns.conf\ncalls_log=$(mktemp)\nreset_guest() { : >\"$calls_log\"; rm -f \"$dns_conf\"; guest_mode=ok; }\nguest_state() { guest_mode=$1; }\ncalls_of() { cat \"$calls_log\"; }\nprovision() { PATH=\"tests/stub-bin:$PATH\" CALLS_LOG=\"$calls_log\" GUEST_MODE=$guest_mode DNS_CONF=$dns_conf bash scripts/provision.sh \"$1\"; }\n",
     "shop/tests/guest-dns-test.sh": "#!/usr/bin/env bash\n# WSL では DNS の設定を置かず、Lima では再起動に失敗したらパッケージを入れずに止まることを確認する\nset -euo pipefail\nsource tests/guest-lib.sh\n\nreset_guest\nprovision wsl\n[[ ! -e $dns_conf ]]\n! calls_of | grep -q 'resolved'\necho \"PASS guest-dns: WSL では DNS の設定を置かず、resolved を呼ばない\"\n\nreset_guest\nguest_state fail-restart\nif provision lima; then\n  exit 1\nfi\n! calls_of | grep -q '^apt-get'\necho \"PASS guest-dns: Lima では再起動に失敗したら、パッケージを入れずに止まる\"\n"

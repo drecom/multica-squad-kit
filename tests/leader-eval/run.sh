@@ -131,8 +131,17 @@ done
 # 本物のモデルを呼ぶ前、結果のディレクトリを作る前に数える。上限を超えて流すのは、人間が承認したときだけ
 version_count=2
 [[ -z $only ]] || version_count=1
-run_count=$((${#scene_list[@]} * runs * version_count))
-if [[ $eval_role == code-reviewer && $run_count -gt $run_limit && -z $over_limit ]]; then
+# シェルの整数の桁あふれで上限をすり抜けないよう、計算と比較は Python の整数で行う。
+run_counts=$(python3 -I -B - "${#scene_list[@]}" "$runs" "$version_count" "$run_limit" <<'PY_COUNTS'
+import sys
+sys.set_int_max_str_digits(0)
+scenes, runs, versions, limit = map(int, sys.argv[1:])
+count = scenes * runs * versions
+print(count, int(count > limit))
+PY_COUNTS
+)
+read -r run_count exceeds_limit <<<"$run_counts"
+if [[ $eval_role == code-reviewer && $exceeds_limit == 1 && -z $over_limit ]]; then
 	echo "役の実行が $run_count 回になり、上限の $run_limit 回を超えます。何も流しません" >&2
 	echo "--scenes か --runs か --only で $run_limit 回以内に絞ってください。超えて流すには、人間に頼んで承認を得て、承認したコメントの ID を --over-limit で渡します（docs/review-eval.md の「流す回数の上限」）" >&2
 	exit 2
@@ -300,7 +309,7 @@ versions_csv=$(IFS=,; echo "${versions[*]}")
 	--scenes "$out/scene-dirs" --instructions "$out/instructions" --runtime "$runtime" --timeout "$timeout" \
 	--agent-path "$agent_path" --scorer-path "$scorer_path" --role "$eval_role"
 "${helper[@]}" summary "$out/runs.jsonl" "$out/summary.md" "$eval_role"
-if [[ -n $over_limit && $run_count -gt $run_limit ]]; then
+if [[ -n $over_limit && $exceeds_limit == 1 ]]; then
 	# 上限を超えて流したことを、結果の先頭に残す
 	{
 		echo "上限を超えて流した: 役の実行 $run_count 回（上限 $run_limit 回）。承認したコメントの ID: $over_limit"

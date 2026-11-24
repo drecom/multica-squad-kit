@@ -2498,6 +2498,16 @@ reviewer_limit_stop '1 場面 × 19 回 × 新だけ（19 回）' --role code-re
 reviewer_limit_stop '4 場面 × 3 回 × 新旧（24 回）' --role code-reviewer --scenes t1,t2,t3,t4 --runs 3
 # 場面を省くと、reviewer-scenes のすべての場面を数える（4 場面 × 3 回 × 2 = 24 回）
 reviewer_limit_stop '場面の省略（24 回）' --role code-reviewer --runs 3
+# 符号付き・符号なしの 64 ビットの境界を超えても、数えた回数を正しく出して止まる。
+for large_runs in 9223372036854775808 9223372036854775809 18446744073709551617; do
+	for which in both old new; do
+		limit_args=(--role code-reviewer --scenes t1 --runs "$large_runs")
+		[[ $which == both ]] || limit_args+=(--only "$which")
+		reviewer_limit_stop "$large_runs 回、$which" "${limit_args[@]}"
+		expected_count=$(python3 -c 'import sys; print(int(sys.argv[1]) * (2 if sys.argv[2] == "both" else 1))' "$large_runs" "$which")
+		grep -q "役の実行が $expected_count 回" "$test_dir/reviewer-limit.err" || { echo "大きな値の実行回数が違います" >&2; exit 1; }
+	done
+done
 # 18 回ちょうどは流れる
 : >"$STUB_LOG"
 rr_run --role code-reviewer --scenes t1,t2,t3 --runs 3 --jobs 4 --out "$test_dir/reviewer-18" >"$test_dir/reviewer-18.out" 2>"$test_dir/reviewer-18.err" ||
@@ -2678,3 +2688,42 @@ jq -e --arg sha "$review_sha" '.commands | any(.match == "git rev-parse HEAD" an
 "${helper[@]}" scene "$reviewer_scenes_dir/review-1/scene.md" | jq -e '(.criteria | length) == 3 and all(.criteria[]; .kind == "採点")' >/dev/null ||
 	{ echo "review-1 の基準が 3 件の [採点] ではありません" >&2; exit 1; }
 echo "PASS leader-eval: reviewer-scenes の場面（$(wc -w <<<"$reviewer_present" | tr -d ' ') 場面）は、場面の読み取りを通り、git の許可と verify のスキルのファイルを持ち、UUID を含まない"
+
+# review-1 の検証スキルに書かれたコマンドを、許可した CLI のスタブでたどり、PR の投稿まで流す。
+cp -R "$reviewer_scenes_dir/review-1" "$rr/tests/leader-eval/reviewer-scenes/review-1"
+verify_bin="$test_dir/reviewer-verify-bin"
+mkdir -p "$verify_bin"
+cat >"$verify_bin/claude" <<'EOF_VERIFY'
+#!/usr/bin/env bash
+# LEADER_EVAL_STUB_AGENT
+set -euo pipefail
+case "$*" in
+*"[leader-eval-scorer]"*)
+	[[ $* == *"gh pr checks 8 --repo example/shop"* && $* == *"検証を通り、指摘を PR に投稿した"* ]] || exit 4
+	echo '{"pass": true, "reason": "ok"}'; exit 0 ;;
+esac
+[[ $* == *"Skill(verify)"* && $* == *"Bash(gh *)"* ]] || exit 3
+git fetch origin >/dev/null
+git checkout 5c2f9a71b3d4e6f8091a2b3c4d5e6f708192a3b4 >/dev/null
+cd shop
+command=$(sed -n 's/.*`\([^`]*\)`.*/\1/p' .claude/skills/verify/SKILL.md)
+[[ $command == gh\ * ]] || exit 3
+grep -qF "\`$command\`" AGENTS.md
+# スキルの手順が、Bash(gh *) の許可と、評価の gh のスタブで完結することを確認する。
+$command >../tmp/checks.txt
+grep -q $'test\tpass' ../tmp/checks.txt
+grep -q $'lint\tpass' ../tmp/checks.txt
+printf '検証を通り、指摘を PR に投稿した\n' >../tmp/review.md
+gh pr comment 8 --repo example/shop --body-file ../tmp/review.md >/dev/null
+echo '{"type":"result","result":"done","is_error":false,"permission_denials":[]}'
+EOF_VERIFY
+chmod +x "$verify_bin/claude"
+PATH="$verify_bin:$PATH" bash "$rr/tests/leader-eval/run.sh" --baseline HEAD --role code-reviewer --scenes review-1 --only new --runs 1 --out "$test_dir/reviewer-verify" >"$test_dir/reviewer-verify.out" 2>"$test_dir/reviewer-verify.err" ||
+	{ cat "$test_dir/reviewer-verify.err" >&2; exit 1; }
+jq -e '.pass == true and .exit_code == 0 and .permission_denials == []
+	and all(.calls[]; .kind != "unmatched" and .kind != "denied")
+	and any(.calls[]; .command == "gh pr checks 8 --repo example/shop" and .kind == "read" and .exit == 0)
+	and (.comments | any(contains("検証を通り、指摘を PR に投稿した")))' \
+	"$test_dir/reviewer-verify/runs/review-1/new-1/result.json" >/dev/null ||
+	{ echo "review-1 の検証手順から PR の投稿と採点まで通りません" >&2; exit 1; }
+echo "PASS leader-eval: review-1 の検証手順は、許可した CLI のスタブで完結し、PR の投稿を採点の役へ渡す"
