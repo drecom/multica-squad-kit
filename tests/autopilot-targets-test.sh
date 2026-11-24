@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# autopilot-targets.json の確認を、拡張の読み込み（lib/extensions.py）と、setup.sh の選択済みリポジトリの照合で確かめる。
+# autopilot-targets.json の確認を、拡張の読み込み（lib/extensions.py）と、setup.sh の選択済みリポジトリの照合で行う。
 set -euo pipefail
 source "$(dirname "$0")/setup-fixture.sh"
 manifest
@@ -145,7 +145,7 @@ ext="$test_dir/ext"
 mkdir -p "$ext"
 cp "$root/VERSION" "$ext/kit-version"
 base_input yes
-# 質問は読み取りだけを呼ぶ。登録や保存の呼び出しが 1 つもないことを確かめる。
+# 質問は読み取りだけを呼ぶ。登録や保存の呼び出しが 1 つもないことを確認する。
 no_registration() {
  [[ ! -e $test_dir/state ]]
  ! grep -vE '\|(config show|auth status|user profile get --output json|(squad|agent|skill|autopilot|workspace|project|repo) list --output json|workspace member list --output json|project resource list .*)$' "$TEST_CALLS"
@@ -197,3 +197,124 @@ rm -f "$ext/autopilot-targets.json" "$ext/link-repositories.json"
 TEMPLATE_STATE_ROOT="$test_dir/ext-state" run_extension "$ext"
 jq -e '.project_key=="demo"' "$test_dir/ext-state/ws-a/demo.json" >/dev/null
 echo 'PASS setup: 設定がなければ、今までどおり保存する'
+
+# 1-1、3-1 の定期確認、4-1: 登録に渡す一覧を、本体の展開で確認する。
+(
+kit=$root
+source "$kit/lib/render.sh"
+source "$kit/lib/autopilots.sh"
+die() { echo "$*" >&2; exit 1; }
+project_work=$test_dir/expansion
+mkdir -p "$project_work"
+enabled='security-reviewer dependabot-merger usage-monitor'
+selected_repositories='[{"repository":"example/wiki"},{"repository":"example/app"}]'
+records=$(jq -n --arg roles "$template_roles" 'reduce ($roles|split(" ")[]) as $role ({}; .[$role]={id:("id-"+$role),name:("demo-"+$role+"-owner")})')
+jq -n --argjson records "$records" '{project_id:"project-a",project_key:"demo",member_key:"owner",squad_id:"squad-a"} | reduce ($records|to_entries[]) as $r (.; .["agent."+$r.key+".name"]=$r.value.name)' >"$project_work/values.json"
+
+# 変更前の、ファイル全体をリポジトリごとに展開する手順で期待値を作る。
+legacy_expansion() {
+ local repo first=yes
+ template_filter "$enabled" "$root/common/autopilots.md" >"$project_work/legacy.filtered"
+ printf '[]\n' >"$project_work/legacy.json"
+ while IFS= read -r repo; do
+  jq --arg repo "$repo" '.repository=$repo' "$project_work/values.json" >"$project_work/legacy.values"
+  template_apply "$project_work/legacy.values" "$project_work/legacy.filtered" >"$project_work/legacy.rendered"
+  autopilot_sections "$project_work/legacy.rendered" >"$project_work/legacy.sections"
+  jq --arg repo "$repo" --arg first "$first" --slurpfile sections "$project_work/legacy.sections" '.+[$sections[0][] | select(.scope=="repository" or $first=="yes") | .+{repository:(if .scope=="repository" then $repo else null end)}]' "$project_work/legacy.json" >"$project_work/legacy.new"
+  mv "$project_work/legacy.new" "$project_work/legacy.json"
+  first=no
+ done < <(jq -r '.[].repository' <<<"$selected_repositories")
+}
+legacy_expansion
+prepare_autopilots
+cmp "$project_work/legacy.json" "$project_work/autopilots.json"
+echo 'PASS autopilot-targets: 拡張がなければ、名前・指示・スケジュールが変更前の展開と一致する'
+
+exp_ext=$test_dir/exp-extension
+mkdir -p "$exp_ext"
+cp "$kit/VERSION" "$exp_ext/kit-version"
+cat >"$exp_ext/autopilots.md" <<'DEFINITION'
+## Extra check {{project_key}} {{repository}}
+
+- 範囲: `repository`
+- 担当: {{agent.security-reviewer.name}}
+- 実行: `run_only`
+- スケジュール: `0 9 * * 3`（Asia/Tokyo）
+
+指示:
+
+```text
+{{repository}} の追加の確認。
+## 指示の中の見出し
+```
+DEFINITION
+python3 "$kit/lib/extensions.py" "$kit" "$exp_ext" "$test_dir/no-targets"
+root=$test_dir/no-targets
+legacy_expansion
+prepare_autopilots
+cmp "$project_work/legacy.json" "$project_work/autopilots.json"
+jq -e 'length==7 and ([.[]|select(.scope=="member")]|length)==1' "$project_work/autopilots.json" >/dev/null
+echo 'PASS autopilot-targets: 設定のない拡張も、追加の定義を含めて変更前の展開と一致する'
+
+# 同じリポジトリの同名の値でも、定義ごとに違う値を差し込む。
+python3 - "$exp_ext" <<'CONFIG'
+import json
+import sys
+from pathlib import Path
+ext = Path(sys.argv[1])
+scan = """## DAST の結果の確認 {{project_key}} {{repository}}
+
+- 範囲: `repository`
+- 担当: {{agent.security-reviewer.name}}
+- 実行: `run_only`
+- スケジュール: `0 9 * * 4`（Asia/Tokyo）
+
+指示:
+
+```text
+{{repository}} の {{target.branch}} と {{target.artifact}} を確認する。
+## 指示の見出し {{target.branch}}
+```
+"""
+with (ext / 'autopilots.md').open('a') as f:
+    f.write('\n' + scan + '\n' + scan.replace('DAST の結果の確認', '別の DAST の確認'))
+(ext / 'autopilot-targets.json').write_text(json.dumps({
+    'DAST の結果の確認': {'Example/App': {'branch': 'develop', 'artifact': 'zap-report'}},
+    '別の DAST の確認': {'example/app': {'branch': 'release/$name "v" {one}', 'artifact': 'other-report'}},
+    '週 1 回の依存ライブラリの脆弱性チェック': {'example/app': {}},
+    'Dependabot の PR の週次の確認': {'example/app': {}},
+}))
+CONFIG
+python3 "$kit/lib/extensions.py" "$kit" "$exp_ext" "$test_dir/with-targets"
+root=$test_dir/with-targets
+prepare_autopilots
+jq -e 'length==7 and ([.[]|select(.title|startswith("DAST の結果の確認 "))] | length==1 and .[0].repository=="example/app" and .[0].instructions=="example/app の develop と zap-report を確認する。\n## 指示の見出し develop\n" and .[0].cron=="0 9 * * 4" and .[0].timezone=="Asia/Tokyo")' "$project_work/autopilots.json" >/dev/null
+jq -e '[.[]|select(.title|startswith("別の DAST の確認 "))] | length==1 and (.[0].instructions|contains("release/$name \"v\" {one} と other-report"))' "$project_work/autopilots.json" >/dev/null
+echo 'PASS autopilot-targets: app だけの拡張の定期確認に、定義ごとのブランチと成果物を差し込む'
+jq -e '([.[]|select(.title|startswith("週 1 回の依存ライブラリの脆弱性チェック "))]|length)==1 and ([.[]|select(.title|startswith("Dependabot の PR の週次の確認 "))]|length)==1 and all(.[]|select(.title|startswith("週 1 回の依存ライブラリの脆弱性チェック ") or startswith("Dependabot の PR の週次の確認 ")); .repository=="example/app")' "$project_work/autopilots.json" >/dev/null
+echo 'PASS autopilot-targets: 原本の 2 つを app に絞ると、Wiki の定期確認がない'
+jq -e '([.[]|select(.title|startswith("Extra check "))]|length)==2 and ([.[]|select(.scope=="member")]|length)==1' "$project_work/autopilots.json" >/dev/null
+echo 'PASS autopilot-targets: 設定にない定義は全リポジトリに展開し、member の定義は 1 回だけ展開する'
+
+# 見出し前の文は展開せず、member の指示には最初のリポジトリの値を使う。
+python3 - "$root/common/autopilots.md" <<'MEMBER'
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+path.write_text('{{missing}}\n' + path.read_text() + """
+## Member check {{member_key}}
+
+- 範囲: `member`
+- 担当: {{agent.usage-monitor.name}}
+- 実行: `run_only`
+- スケジュール: `0 1 * * 1`（Asia/Tokyo）
+
+```text
+{{repository}}
+```
+""")
+MEMBER
+prepare_autopilots
+jq -e '[.[]|select(.title=="Member check owner")]|length==1 and .[0].repository==null and .[0].instructions=="example/wiki\n"' "$project_work/autopilots.json" >/dev/null
+echo 'PASS autopilot-targets: 見出し前の文は展開せず、member の指示には最初のリポジトリを使う'
+)
