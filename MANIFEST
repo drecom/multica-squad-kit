@@ -24,7 +24,7 @@ f66bbf1d2dcfc1eac345bee849f15e23eeb6002ab1d3a5b81ec24b45dbfe64a7  ./common/agent
 a1571e2283b199ca69a84efbfdcc49a6b0f280576c35f275c5a254d4841e2dff  ./common/agents/claude-fixer.md
 d67e591f01817f4c6a9d4322cbbd2597d16d93cef9cd40915a285d148df60a36  ./common/agents/claude-implementer.md
 8f3a78b8334ffc1a8faf1300f76df3f7659e70e557876cbed17fe65cef1ab170  ./common/agents/claude-principal.md
-6b9851f61fb531312d74211b967397932d78d5f168339f3991c7d3c287df4c3d  ./common/agents/code-reviewer.md
+632f462030a2a823466c73cf566347a9d632d5631a62ab31a0f2dccf7d9ec512  ./common/agents/code-reviewer.md
 7a5c0b517aef8db1348da452d6c00844ac80f4b923802faca1953c8ecc2005df  ./common/agents/codex-fixer.md
 625235c4216f7d57d4966cd166f6bcc1b623921205525c6e8c1d4b2a37a61555  ./common/agents/codex-implementer.md
 d6819b8e501d4821d9810ab7dc45bea7945fe4fea2df75a080aa7e1de0922438  ./common/agents/codex-principal.md
@@ -86,7 +86,7 @@ cb269eb5a385b50a86711fe2c711acc106545f5416c4d5213570aa19f30ee5b8  ./docs/princip
 a58a91809ea09df148c193b451ff8955d8b9c9a7b702cace304633e1673c4b43  ./docs/procedure-review.md
 29fe97cb493ffe208a7fd6de93e446bb965f5d5ed881a51196cbd0862ef62525  ./docs/release.md
 831e680a61062b16baeb44eea1decedecfc2618038a723f78d9c3bf6312804d4  ./docs/reread-followups.md
-78e8b40033b56e472388ef9876fae3bf1bd28ab6e6f0ad04661b20d5ae91e9e2  ./docs/review-eval.md
+bd51e478eda6d22c43438ec3112725edfb7818f1075750dd218afebadead3733  ./docs/review-eval.md
 e5f415519c2a4f9041b91579574e6402e4822d3d3211795db113e44f1017c330  ./docs/review-next-step.md
 a19dabe6e06b23a4863cd1c1da37aa61177fd3440f6f4217b3a3fd4949f6a28f  ./docs/review-rework.md
 8cda3744ea961072184c2ebc0ea3ec7d65b888ff708e599a4a9ee72f11a183a5  ./docs/screens.md
