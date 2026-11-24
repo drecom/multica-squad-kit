@@ -61,7 +61,7 @@ e181e354279cc1d8afe53351a95b0297a2254c29e7f14c998135b74eb2cafa9e  ./common/setup
 4b643dd888c194280ce6d64343d32facab12d5b98d9e6d0c0a0877a061bf89e4  ./common/shell/env.sh
 37406964e6d41993699b0c3e337a76a43d3e800e6d4b9bfd1690e60bb8461932  ./common/skills/squad-handoff/SKILL.md
 34f17665bd8a68b1d9cc0b4d400a1a771b7b32ea7c95fc4d3cc03953b78ab76e  ./common/skills/squad-handoff/references/leader-dispatch.md
-f1cc2eac32869c0fab5879732c833fe9d56c3d3cf72502be3fc4ab12f789e1dc  ./common/skills/squad-handoff/references/leader-flow.md
+749e8db8365e9a14d2da9e3170d3340d211323a55136d5cebbc48b72a0894dbb  ./common/skills/squad-handoff/references/leader-flow.md
 1701c702404b51251692f9af27fbcea277a73b22ac8051b62ba7b96eb37a61b8  ./common/skills/squad-handoff/references/leader-pr-checks.md
 4aedef0f4f62fade2d4f8f93fa351956c7d23c3a4ac57246c08eb78b9cc162e9  ./common/skills/squad-handoff/references/leader-principal.md
 57693434623b5b8b4947ab836b372bfbfb50b910abfd296af162641a898f1a6b  ./common/skills/squad-handoff/references/leader-review-wait.md
@@ -145,7 +145,7 @@ be9a67eb3b8da9a4012424d8ab5a9c61beecba7f11afcae4595541fbb56257de  ./skeleton/.ag
 18454e4d0424a4c4e9474140fc9d5b0b3854a1b4f59d10258cd85c9ffb044da6  ./skeleton/project.md
 86d88f085a22c1879850188758a47bce16efb46c8ed45507a9bc2056bb09be58  ./skeleton/verify-repository.md
 ec94c1189f1071bf59f9c20765667893b12a24881b6a68739d14f2ecbe0ff678  ./tests/action-advisories-test.sh
-6b61b64e0afd88b71bec8fd429d5f0daf8190f0ba8ac20d40a463e0840f731d5  ./tests/agent-templates-test.sh
+30bd3e799235c487094c641ac9bbb509d16d47f4d93a474fab97f1bdd79d1d92  ./tests/agent-templates-test.sh
 2c4dce6d55a2bec00a23cf829eb9939041a27c4bb78891f0aeb0d485ad1713c4  ./tests/ansi-to-png.py
 dfbb19bc0056d40e3259c72c68024a744c89987fbb8a18fdd593f6bbd9b8391b  ./tests/arg-limit-lib.sh
 4effb137e0876ad6cf25ccf0a3858c17e80fff848d6e5deb1b70405f7b2d3b8a  ./tests/audit-targets-test.sh
@@ -493,8 +493,8 @@ f0ea97b55d89d2d058d6520cc53da6c141174a7e6d6e082d95dd19ece91e9187  ./tests/leader
 425fa6f230180ed7a6171caa63d898c7b07b9f6aaee20ce0276caf9dbbfe95a7  ./tests/leader-eval/scenes/keep-36/scene.md
 6ca83efe0ba8a4b974fd73853262770a93423767a856871b1ebc90011b473f19  ./tests/leader-eval/scenes/keep-37/cli.json
 557220581bda142ca4daaf4ea4dfd21da94a85a827c3f46fb3554190ab7e78fa  ./tests/leader-eval/scenes/keep-37/scene.md
-af20f04d5e083a4bfeb6181a3692d106078c15d654fd5eb8b0abed1ce409a654  ./tests/leader-eval/scenes/keep-38/cli.json
-8281818cefb71591de18d6375fe2ec695358772893ffcfcc46dcd657147e26bd  ./tests/leader-eval/scenes/keep-38/scene.md
+39db2516975b58f3d8d282ff28a648797bd8156ef5ec5e3f7ece750d790f72ec  ./tests/leader-eval/scenes/keep-38/cli.json
+43ba327641b0276f772d092d9da869aebc97129d3113799635d7636fde93dd13  ./tests/leader-eval/scenes/keep-38/scene.md
 a0d4bf80c2af98d4041a5ffca299dae9344c7606b09478a1007cdb294062deae  ./tests/leader-eval/scenes/keep-39/cli.json
 344bdbe3a08460573e16ddbd5f020f8f30deb32bcfe168fd97160803fcfaa899  ./tests/leader-eval/scenes/keep-39/scene.md
 3fa7bf8aaf0079b3995958396bbcf0011745bf28ae5ad35364dbec91dc5c8768  ./tests/leader-eval/scenes/keep-4/cli.json
@@ -559,8 +559,8 @@ a9620316f216e4082ea99ac5c92b23a22cb80d205e5e5fbf22c7f3c35a843163  ./tests/leader
 471c03cc947934f10e406ec74cc501bcb156a545db53f7825809945571cecf6e  ./tests/leader-eval/scenes/keep-66/scene.md
 e721ce5c9b8b8ed85a8dbcb9f809c1f5871a929c05ba88195a18517ae8e44366  ./tests/leader-eval/scenes/keep-67/cli.json
 faaf9194d4ab4004e1b76d779165d2e70a556927f5d86d4b30b1fda1f103c391  ./tests/leader-eval/scenes/keep-67/scene.md
-1bd5047702cff0c61aad48f1ce4cbd35b800d5dab0ff341deea8eba45f474891  ./tests/leader-eval/scenes/keep-68/cli.json
-48558abc1f593bbb32880576c04c15cedd9e9a570fbdccebe85f074e0a508762  ./tests/leader-eval/scenes/keep-68/scene.md
+6a8f1f508cfc8dca5dc4a2423c4fff02854892ec3b2fe8236257a92761d0b714  ./tests/leader-eval/scenes/keep-68/cli.json
+f009014a9eb687d4d29434e4ababfd02953c5207c12ce060fb196bd900347266  ./tests/leader-eval/scenes/keep-68/scene.md
 44701a98d605e7d027c9ea079fb5ca32b8954cc8f19bb57bd9325ece47490108  ./tests/leader-eval/scenes/keep-69/cli.json
 1bd731675e39ce792bdb284325a3d999b17fb1e7d3532f2ed4f8280400e5218e  ./tests/leader-eval/scenes/keep-69/scene.md
 1061e295b7a718901ba4672f5a5e3e9a9feb2c2f6ea233b1814c51009bf45d02  ./tests/leader-eval/scenes/keep-7/cli.json

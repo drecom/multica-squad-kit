@@ -1017,6 +1017,25 @@ diag_flow_phrases=(
 for phrase in "${diag_flow_phrases[@]}"; do
 	grep -qF -- "$phrase" "$refs/leader-flow.md"
 done
+# 読む側: リーダーが leader-flow.md の順で手当てを選び、keep-38・keep-68 がコメントの行を判定する。
+render "$roles" "$test_dir/all-values" "$refs/leader-flow.md" >"$test_dir/remedy-flow.md"
+remedy_rows=(
+	'| 1 | 禁止 | 同じ失敗を、起こせない作りにできるか | 作りの変更、ガード、権限 |'
+	'| 2 | 機械判定 | 起きたときに、機械が毎回止められるか | 再現するテスト、CI の検査、スクリプトの判定 |'
+	'| 3 | 動作確認 | 役が動かした結果で、毎回確認できるか | 直したあとに流すコマンドと、見る値 |'
+	'| 4 | 文 | 前の 3 つができないとき、手順の文で防げるか | 手順の直し方、指示の改善のタスクの起票 |'
+)
+remedy_previous_line=0
+for row in "${remedy_rows[@]}"; do
+	[[ $(grep -cxF -- "$row" "$test_dir/remedy-flow.md") == 1 ]]
+	remedy_line=$(grep -nxF -- "$row" "$test_dir/remedy-flow.md" | cut -d: -f1)
+	((remedy_previous_line < remedy_line))
+	remedy_previous_line=$remedy_line
+done
+grep -qF -- '順の遅いものを推すときは、早いものを選ばない理由を書く。' "$test_dir/remedy-flow.md"
+grep -qF -- '上限の延長、再試行、失敗したときの記録の追加、検査を弱める・飛ばす直しは、手当てに数えない。' "$test_dir/remedy-flow.md"
+grep -qF -- '手当ての種類: <禁止 | 機械判定 | 動作確認 | 文>' "$test_dir/remedy-flow.md"
+echo 'PASS templates: 展開した手順に手当ての表の 4 行が順に 1 つずつあり、選ばない理由・数えないもの・行の形がある'
 # 診断に入る条件が、同じ誤りの N の表より先にある。条件を満たさないリーダーは、今の手順のまま数える。
 flow_entry_line=$(grep -nxF -- '#### 診断に入る条件' "$refs/leader-flow.md" | cut -d: -f1)
 flow_steps_line=$(grep -nxF -- '#### 同じ誤りが続くとき' "$refs/leader-flow.md" | cut -d: -f1)
