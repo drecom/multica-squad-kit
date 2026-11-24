@@ -130,8 +130,58 @@ print(json.dumps(dict(state=state, url=url, reason=reason, line=line,
 URLPY
 }
 
+# コメントの一覧は標準入力で受け、返信先と間隔に数える記録を検証する。
+link_record_data() {
+	python3 -c '
+import datetime
+import json
+import re
+import sys
+
+url, record, now = sys.argv[1], sys.argv[2], int(sys.argv[3])
+parent, latest = "", None
+for comment in json.load(sys.stdin):
+    content = comment.get("content")
+    lines = content.splitlines() if isinstance(content, str) else []
+    if comment.get("author_type") != "agent" or len(lines) < 2:
+        continue
+    if lines[0] != "/note" or not lines[1].startswith("紐付けの試み直し:"):
+        continue
+    if comment["id"] == record:
+        parent = record
+    match = re.search(r" pr: (\S+)(?: |$)", lines[1])
+    if not match or match[1].casefold() != url.casefold():
+        continue
+    try:
+        stamp = datetime.datetime.fromisoformat(comment["created_at"].replace("Z", "+00:00"))
+        if stamp.tzinfo is None:
+            continue
+        value = stamp.timestamp()
+    except (ValueError, TypeError, AttributeError):
+        continue
+    latest = value if latest is None else max(latest, value)
+print(json.dumps(dict(parent=parent, recent=latest is not None and now < latest + 300)))
+' "$@"
+}
+
+# 投稿に失敗しても呼び出し元の判定は変えない。元のコメントの ID は投稿後に保存する。
+link_record_post() (
+	local issue=$1 parent=$2 result=$3 pr_url=$4 body response id
+	mkdir -p tmp || return 1
+	body=$(mktemp tmp/pr-watch-link-record.XXXXXX) || return 1
+	trap 'rm -f -- "$body"' EXIT
+	printf '/note\n紐付けの試み直し: %s pr: %s 時刻: %s\n' \
+		"$result" "$pr_url" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$body" || return 1
+	response=$(squad_cli_read issue-comment-add "$issue" "$parent" "$body") || return 1
+	if [[ -z $parent ]]; then
+		id=$(jq -er '.id | select(type == "string" and length > 0)' <<<"$response") || return 1
+		multica issue metadata set "$issue" --key pr_link_record --value "$id" --type string >/dev/null || return 1
+	fi
+)
+
 link_check() {
 	local issue=$1 retry=${2:-1} cmd task data pr_url prs line
+	local comments record info parent='' result='' now
 	for cmd in jq python3 multica; do
 		if ! command -v "$cmd" >/dev/null 2>&1; then
 			printf '紐付け: 未確認 pr: 不明 理由: %s が見つからない\n' "$cmd"
@@ -152,18 +202,51 @@ link_check() {
 	fi
 	data=$(pr_url_data "$task" "$prs")
 	line=$(jq -r .line <<<"$data")
+	if [[ $retry == 1 ]] && {
+		{ [[ $line == '紐付け: 紐付いていない '* ]] && jq -e '.pending_matches' <<<"$data" >/dev/null; } \
+		|| { [[ $line == '紐付け: 紐付いている '* ]] && jq -e '.metadata | has("pr_link_pending")' <<<"$task" >/dev/null; }
+	}; then
+		comments=$(squad_cli_read issue-comments "$issue") || comments='[]'
+		record=$(jq -r '.metadata.pr_link_record | select(type == "string")' <<<"$task")
+		now=$(date +%s)
+		info=$(printf '%s\n' "$comments" | link_record_data "$pr_url" "$record" "$now")
+		parent=$(jq -r .parent <<<"$info")
+		if [[ $line == '紐付け: 紐付いていない '* ]] && jq -e '.recent' <<<"$info" >/dev/null; then
+			printf '%s\n' "$line"
+			return 0
+		fi
+	fi
 	if [[ $retry == 1 && $line == '紐付け: 紐付いていない '* ]] \
 		&& jq -e '.pending_matches' <<<"$data" >/dev/null; then
 		# 応答よりも、呼び出し後に読み直した一覧を優先して判定する。
 		if pr_link_check_api_env; then
-			pr_link_request_once "$issue" "$pr_url" 30 || :
+			if pr_link_request_once "$issue" "$pr_url" 30; then
+				case $PR_LINK_STATUS in
+				200) result='一覧にない（200）' ;;
+				404) result='見つからない（404）' ;;
+				*) result="失敗（応答の状態コード ${PR_LINK_STATUS}）" ;;
+				esac
+			else
+				result='失敗（通信に失敗した）'
+			fi
+		else
+			result="失敗（${PR_LINK_REASON}）"
 		fi
 		if ! prs=$(squad_cli_read issue-pull-requests "$issue"); then
-			printf '紐付け: 未確認 pr: %s 理由: 紐付いた PR の一覧を読めない（CLI の失敗か欄の不正）\n' "$pr_url"
-			return 0
+			line="紐付け: 未確認 pr: $pr_url 理由: 紐付いた PR の一覧を読めない（CLI の失敗か欄の不正）"
+		else
+			data=$(pr_url_data "$task" "$prs")
+			line=$(jq -r .line <<<"$data")
 		fi
-		data=$(pr_url_data "$task" "$prs")
-		line=$(jq -r .line <<<"$data")
+		case $line in
+		'紐付け: 未確認 '*) result='未確認（一覧を読めない）' ;;
+		'紐付け: 紐付いている '*) result='紐付いた' ;;
+		'紐付け: 食い違い '*) result='食い違い' ;;
+		esac
+		link_record_post "$issue" "$parent" "$result" "$pr_url" >/dev/null 2>&1 || :
+	elif [[ $retry == 1 && $line == '紐付け: 紐付いている '* ]] \
+		&& jq -e '.metadata | has("pr_link_pending")' <<<"$task" >/dev/null; then
+		link_record_post "$issue" "$parent" '紐付いていた' "$pr_url" >/dev/null 2>&1 || :
 	fi
 	if [[ $retry == 1 && $line == '紐付け: 紐付いている '* ]] \
 		&& jq -e '.metadata | has("pr_link_pending")' <<<"$task" >/dev/null; then
