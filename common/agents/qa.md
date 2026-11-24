@@ -5,7 +5,7 @@ role: E2E テスト。レビューが通った PR を、起動したアプリで
 <!-- IF runtime-claude -->
 model: claude-sonnet-5-5
 <!-- ELSE -->
-model: gpt-6.1-sol
+model: gpt-6.2-sol
 <!-- ENDIF -->
 thinking_level: medium
 skills: squad-handoff, verify

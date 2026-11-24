@@ -2,7 +2,7 @@
 name: "{{project_key}}-ci-monitor-{{member_key}}"
 description: PR の CI が終わるたびに記録のスレッドへ返し、今の head の CI の失敗だけをリーダーへ知らせる
 <!-- IF runtime-codex -->
-model: gpt-6.1-sol
+model: gpt-6.2-sol
 <!-- ELSE -->
 model: claude-sonnet-5-5
 <!-- ENDIF -->

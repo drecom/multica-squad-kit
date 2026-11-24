@@ -2,7 +2,7 @@
 name: "{{project_key}}-usage-monitor-{{member_key}}"
 description: 使うランタイムの使用上限が近いときと戻ったときにタスクで知らせる
 <!-- IF runtime-codex -->
-model: gpt-6.1-sol
+model: gpt-6.2-sol
 <!-- ELSE -->
 model: claude-sonnet-5-5
 <!-- ENDIF -->

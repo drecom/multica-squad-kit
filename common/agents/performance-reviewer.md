@@ -4,7 +4,7 @@ description: 最新のコードが本番で使えるかを、パフォーマン�
 role: パフォーマンスレビュー。クエリ、件数とともに重くなる処理、同時実行に触れる PR やリリース前のコードを受ける
 <!-- IF runtime-codex -->
 <!-- IF codex-implementer -->
-model: gpt-6.1-sol
+model: gpt-6.2-sol
 <!-- ELSE -->
 model: claude-sonnet-5-5
 <!-- ENDIF -->

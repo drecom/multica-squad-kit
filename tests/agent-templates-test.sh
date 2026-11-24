@@ -442,7 +442,7 @@ done
 echo 'PASS preflight templates: 共通スキルと全構成のリーダー・見張りに、開始時の確認の見出しと呼び方を残す'
 
 for runtime in claude codex; do
-	if [[ $runtime == claude ]]; then expected=claude-sonnet-5-5; else expected=gpt-6.1-sol; fi
+	if [[ $runtime == claude ]]; then expected=claude-sonnet-5-5; else expected=gpt-6.2-sol; fi
 	for file in "$test_dir/runtime-$runtime-only/"*; do
 		case ${file##*/} in squad|autopilots) continue ;; esac
 		role=${file##*/}
@@ -450,10 +450,10 @@ for runtime in claude codex; do
 		if [[ $role == *-principal ]]; then
 			[[ $model == "$(template_field "$test_dir/all/$role" model)" ]]
 		elif [[ $role == planner ]]; then
-			if [[ $runtime == claude ]]; then [[ $model == claude-fable-5-2 ]]; else [[ $model == gpt-6-astra ]]; fi
+			if [[ $runtime == claude ]]; then [[ $model == claude-fable-5-2 ]]; else [[ $model == gpt-6.2-astra ]]; fi
 			[[ $(template_field "$file" thinking_level) == high ]]
 		elif [[ $role == designer ]]; then
-			if [[ $runtime == claude ]]; then [[ $model == claude-opus-5-5 ]]; else [[ $model == gpt-6.1-sol ]]; fi
+			if [[ $runtime == claude ]]; then [[ $model == claude-opus-5-5 ]]; else [[ $model == gpt-6.2-sol ]]; fi
 			[[ $(template_field "$file" thinking_level) == high ]]
 		else [[ $model == "$expected" ]]; fi
 		for field in thinking_level max_concurrent_tasks skills; do
@@ -463,25 +463,25 @@ for runtime in claude codex; do
 done
 echo 'PASS templates: 片方だけのランタイムでは設計表のモデルへ移し、思考の深さ・同時実行数・スキルを保つ'
 
-# 要件を決める役は、Claude を使う構成では Fable 5.2、Codex だけでは Astra で、どの構成でも high にする。
+# 要件を決める役は、Claude を使う構成では Fable 5.2、Codex だけでは GPT-6.2 Astra で、どの構成でも high にする。
 for scenario in all no-designer claude-only codex-only no-reviews runtime-claude-only; do
 	[[ $(template_field "$test_dir/$scenario/planner" model) == claude-fable-5-2 ]]
 	[[ $(template_field "$test_dir/$scenario/planner" thinking_level) == high ]]
 done
-[[ $(template_field "$test_dir/runtime-codex-only/planner" model) == gpt-6-astra ]]
+[[ $(template_field "$test_dir/runtime-codex-only/planner" model) == gpt-6.2-astra ]]
 [[ $(template_field "$test_dir/runtime-codex-only/planner" thinking_level) == high ]]
-echo 'PASS templates: 要件を決める役は Claude を使う構成で Fable 5.2、Codex だけで Astra の high にする'
+echo 'PASS templates: 要件を決める役は Claude を使う構成で Fable 5.2、Codex だけで GPT-6.2 Astra の high にする'
 
-# 設計の役は、Claude を使う構成では Opus 5.5、Codex だけでは Sol で、どの構成でも high にする。
+# 設計の役は、Claude を使う構成では Opus 5.5、Codex だけでは GPT-6.2 Sol で、どの構成でも high にする。
 for scenario in all no-planner claude-only codex-only no-reviews runtime-claude-only; do
 	[[ $(template_field "$test_dir/$scenario/designer" model) == claude-opus-5-5 ]]
 	[[ $(template_field "$test_dir/$scenario/designer" thinking_level) == high ]]
 done
-[[ $(template_field "$test_dir/runtime-codex-only/designer" model) == gpt-6.1-sol ]]
+[[ $(template_field "$test_dir/runtime-codex-only/designer" model) == gpt-6.2-sol ]]
 [[ $(template_field "$test_dir/runtime-codex-only/designer" thinking_level) == high ]]
 [[ $(template_field "$test_dir/all/qa" model) == claude-sonnet-5-5 ]]
 [[ $(template_field "$test_dir/all/orchestrator" model) == claude-sonnet-5-5 ]]
-echo 'PASS templates: 設計の役は Claude を使う構成で Opus 5.5、Codex だけで Sol の high にし、ほかの役のモデルは変えない'
+echo 'PASS templates: 設計の役は Claude を使う構成で Opus 5.5、Codex だけで GPT-6.2 Sol の high にし、ほかの役のモデルは変えない'
 
 printf '<!-- IF runtime-claude -->\nclaude\n<!-- ELSE -->\ncodex\n<!-- ENDIF -->\n<!-- IF planner runtime-codex -->\neither\n<!-- ENDIF -->\n' >"$test_dir/runtime-conditions"
 runtimes='["codex"]' template_filter '' "$test_dir/runtime-conditions" >"$test_dir/runtime-result"
@@ -559,8 +559,8 @@ echo 'PASS templates: 見張り役なしの確認・保留の取得・定期確�
 
 for role in code-reviewer security-reviewer performance-reviewer ux-reviewer; do
 	grep -qx 'model: claude-sonnet-5-5' "$test_dir/claude-only/$role"
-	grep -qx 'model: gpt-6.1-sol' "$test_dir/all/$role"
-	grep -qx 'model: gpt-6.1-sol' "$test_dir/codex-only/$role"
+	grep -qx 'model: gpt-6.2-sol' "$test_dir/all/$role"
+	grep -qx 'model: gpt-6.2-sol' "$test_dir/codex-only/$role"
 	[[ $(grep -c '^model:' "$test_dir/claude-only/$role") == 1 ]]
 done
 echo 'PASS templates: Codex を外したときだけレビュー 4 役を Claude へ替える'
@@ -591,7 +591,7 @@ echo 'PASS templates: 5 ラベルとマーク付き Codex 設定を持ち、固�
 # 最上位の役は、系統ごとに決まったモデルと推論の強さを持ち、読んで指摘するだけにする。
 principal_model() { awk -F': ' -v key="$2" '$1==key {print $2}' "$root/common/agents/$1.md"; }
 test "$(principal_model claude-principal model)" = claude-fable-5-2
-test "$(principal_model codex-principal model)" = gpt-6-astra
+test "$(principal_model codex-principal model)" = gpt-6.2-astra
 for role in claude-principal codex-principal; do
 	test "$(principal_model "$role" thinking_level)" = xhigh
 	test "$(principal_model "$role" skills)" = 'squad-handoff, verify'
@@ -606,7 +606,7 @@ for role in claude-principal codex-principal; do
 done
 for scenario in all no-planner no-designer no-planning claude-only codex-only no-reviews runtime-claude-only runtime-codex-only; do
 	[[ ! -f $test_dir/$scenario/claude-principal ]] || grep -qx 'model: claude-fable-5-2' "$test_dir/$scenario/claude-principal"
-	[[ ! -f $test_dir/$scenario/codex-principal ]] || grep -qx 'model: gpt-6-astra' "$test_dir/$scenario/codex-principal"
+	[[ ! -f $test_dir/$scenario/codex-principal ]] || grep -qx 'model: gpt-6.2-astra' "$test_dir/$scenario/codex-principal"
 	for role in claude-principal codex-principal; do
 		file="$test_dir/$scenario/$role"
 		[[ -f $file ]] || continue
@@ -863,13 +863,13 @@ done
 for phrase in 'ci-wait <タスク>' 'ci-wait-clear <タスク>' 'マージの依頼: <head の完全な SHA>'; do
 	grep -qF -- "$phrase" "$refs/leader-pr-checks.md"
 done
-grep -qF '| 要件定義 | Fable 5.2 | Fable 5.2 | Astra |' "$root/manual.md"
+grep -qF '| 要件定義 | Fable 5.2 | Fable 5.2 | GPT-6.2 Astra |' "$root/manual.md"
 grep -qF '最上位の役が、人間の用意した要件を次の役へ回す前に見直す' "$root/manual.md"
-# 手引きの「片方だけのランタイムで動かす」の表の設計の行は Opus 5.5・Opus 5.5・Sol で、最上位のモデルで動かす役に設計の役を挙げない。
-[[ $(grep -c '^| 設計 | Opus 5.5 | Opus 5.5 | Sol |$' "$root/manual.md") -eq 1 ]]
-[[ $(grep -c '^| 要件定義 | Fable 5.2 | Fable 5.2 | Astra |$' "$root/manual.md") -eq 1 ]]
+# 手引きの「片方だけのランタイムで動かす」の表の設計の行は Opus 5.5・Opus 5.5・GPT-6.2 Sol で、最上位のモデルで動かす役に設計の役を挙げない。
+[[ $(grep -c '^| 設計 | Opus 5.5 | Opus 5.5 | GPT-6.2 Sol |$' "$root/manual.md") -eq 1 ]]
+[[ $(grep -c '^| 要件定義 | Fable 5.2 | Fable 5.2 | GPT-6.2 Astra |$' "$root/manual.md") -eq 1 ]]
 [[ $(grep -c '要件定義の役と設計の役' "$root/manual.md") -eq 0 ]]
-echo 'PASS templates: 手引きの表の設計の行が Opus 5.5・Opus 5.5・Sol で、最上位のモデルで動かす役は要件定義の役だけ'
+echo 'PASS templates: 手引きの表の設計の行が Opus 5.5・Opus 5.5・GPT-6.2 Sol で、最上位のモデルで動かす役は要件定義の役だけ'
 
 # 共通 4 は指示から外した。リーダーの指示に残さない。
 for dir in "$test_dir/"*/; do

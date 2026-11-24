@@ -2,7 +2,7 @@
 name: "{{project_key}}-codex-principal-{{member_key}}"
 description: すべてのタスクの最終レビューと、重要なタスクの設計の見直し、同じ失敗が続いたときの診断をする
 role: 最上位のレビュー。すべてのタスクの PR の最終レビュー、重要なタスクの設計の見直し、同じ失敗の診断をする
-model: gpt-6-astra
+model: gpt-6.2-astra
 thinking_level: xhigh
 skills: squad-handoff, verify
 ---

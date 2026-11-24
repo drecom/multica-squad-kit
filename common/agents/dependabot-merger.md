@@ -2,7 +2,7 @@
 name: "{{project_key}}-dependabot-merger-{{member_key}}"
 description: Dependabot の PR を週 1 回まとめて確認し、条件を満たすものだけマージして、判断が要るものを持ち主に回す
 <!-- IF runtime-codex -->
-model: gpt-6.1-sol
+model: gpt-6.2-sol
 <!-- ELSE -->
 model: claude-sonnet-5-5
 <!-- ENDIF -->

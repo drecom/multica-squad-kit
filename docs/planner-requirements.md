@@ -1,6 +1,6 @@
 # 要件を最上位のモデルで決める
 
-要件を決める役を、Claude なら Fable 5.2、Codex なら Astra の思考の深さ high で動かす。質問は 1 回のコメントにまとめ、「推奨で」を合意として扱う。役を置かない構成では、最上位の役が人間の用意した要件を見直してから次の役へ回す。
+要件を決める役を、Claude なら Fable 5.2、Codex なら GPT-6.2 Astra の思考の深さ high で動かす。質問は 1 回のコメントにまとめ、「推奨で」を合意として扱う。役を置かない構成では、最上位の役が人間の用意した要件を見直してから次の役へ回す。
 
 この文書は、原本を変える人に向けて、要件を決める役のモデルと指示、役を置かない構成の要件の見直しの決まりを書く。
 
@@ -25,7 +25,7 @@
 | --- | --- | --- |
 | 両方 | `claude-fable-5-2`（Fable 5.2） | high |
 | Claude Code だけ | `claude-fable-5-2`（Fable 5.2） | high |
-| Codex だけ | `gpt-6-astra`（Astra） | high |
+| Codex だけ | `gpt-6.2-astra`（GPT-6.2 Astra） | high |
 
 `common/agents/planner.md` の front matter は、次の形である。
 
@@ -33,14 +33,14 @@
 <!-- IF runtime-claude -->
 model: claude-fable-5-2
 <!-- ELSE -->
-model: gpt-6-astra
+model: gpt-6.2-astra
 <!-- ENDIF -->
 thinking_level: high
 ```
 
 FORMAT には「Claude のモデルの役は、runtime-claude がなければ Codex の実装と同じモデルにする」とある。これは、ランタイムのマークを外したあとに `claude-` のモデルが残るときの決まりである。
 
-Codex だけの構成ではランタイムのマークで Astra が残るので、この決まりは働かず、Codex の実装のモデル（Sol）に移らない。最上位の役と同じく、ない方のモデルへ移さない形になる。FORMAT の文は、この役のための例外を持たない。
+Codex だけの構成ではランタイムのマークで GPT-6.2 Astra が残るので、この決まりは働かず、Codex の実装のモデル（GPT-6.2 Sol）に移らない。最上位の役と同じく、ない方のモデルへ移さない形になる。FORMAT の文は、この役のための例外を持たない。
 
 ## 要件を決める役の指示
 
@@ -228,7 +228,7 @@ sub-issue では要件の見直しを頼まない。親で見直した要件の�
 
 影響を受けるのは、原本を導入・更新する人と、導入したプロジェクトの担当である。
 
-- 要件を決める役のモデルは Fable 5.2 か Astra、思考の深さは high である。登録済みのエージェントは、流し直しでこの設定に更新される
+- 要件を決める役のモデルは Fable 5.2 か GPT-6.2 Astra、思考の深さは high である。登録済みのエージェントは、流し直しでこの設定に更新される
 - 要件を決める役の質問は 1 回にまとまり、「推奨で」で合意になる
 - 要件を決める役を外した構成では、リーダーが、人間の用意した要件を次の役へ回す前に、最上位の役に見直しを頼む。見直しはタスクごとに 1 回で、指摘がなければ人間を呼ばずに進む
 - 最上位のモデルの利用枠を使うので、更新の前に利用枠を確認する必要がある
@@ -245,11 +245,11 @@ sub-issue では要件の見直しを頼まない。親で見直した要件の�
 
 | テスト | 確認すること |
 | --- | --- |
-| `tests/agent-templates-test.sh` | Claude だけで `claude-fable-5-2` と high、Codex だけで `gpt-6-astra` と high、両方で `claude-fable-5-2` と high になる。展開した planner に「推奨で」と往復の目安があり、「質問は 1 つずつ」がない |
+| `tests/agent-templates-test.sh` | Claude だけで `claude-fable-5-2` と high、Codex だけで `gpt-6.2-astra` と high、両方で `claude-fable-5-2` と high になる。展開した planner に「推奨で」と往復の目安があり、「質問は 1 つずつ」がない |
 | `tests/agent-templates-test.sh` | 役を外した構成で、リーダーの指示に要件の見直しがあり、最上位の役の指示に `要件の見直し` がある。役を置く構成のリーダーは要件を決める役へ回し、最上位の役の指示に `要件の見直し` が出ない |
 | `tests/agent-templates-test.sh` | 全構成のリーダーの原則に「推す案と理由を添える」がある。要件を決める役と最上位の役をどちらも外した構成で、スクワッドの説明に要件の見直しの行が出ない |
 | `tests/project-runtimes-test.sh` | 片方だけのランタイムで登録する planner のモデル |
-| `tests/setup-runtimes-test-lib.sh` | 期待するモデルの表で、planner は Fable 5.2／Astra で、medium の組に入らない |
+| `tests/setup-runtimes-test-lib.sh` | 期待するモデルの表で、planner は Fable 5.2／GPT-6.2 Astra で、medium の組に入らない |
 | `tests/squad-review-next-decide-route-test.sh` | `見直しの種類: 要件の見直し` と `確認するコミット: タスクの本文 <sha256>` の回で、`要件の見直しの回はリーダーが扱う` で止まり、PR の見張りを呼ばない |
 | `tests/leader-eval-test.sh` | 型 `新` の場面の ID と型を受け付け、場面の一覧にその場面がある。`cli.json` の `planner` が真偽値でなければ止まる |
 
@@ -351,7 +351,7 @@ sub-issue では要件の見直しを頼まない。親で見直した要件の�
 - 見直しの対象をタスクの `updated_at` で表す案は選ばない。コメントやラベルの変更でも値が変わり、本文が同じでも頼み直しになるため
 - 原則 5 の「推す案と理由を添える」を削り、冒頭に任せる案は選ばない。冒頭は目的の文で、原則の順位の中に入らず、評価の場面の採点も原則 5 の文を見るため
 - 原則 7 の手当ての内訳を戻す案は選ばない。上限を超え、内訳は `leader-flow.md` に残るため
-- Codex だけの構成で FORMAT の決まりのとおり Sol に移す案は選ばない。要件を最上位のモデルで決める目的に合わないため
+- Codex だけの構成で FORMAT の決まりのとおり GPT-6.2 Sol に移す案は選ばない。要件を最上位のモデルで決める目的に合わないため
 - 複数のリポジトリにまたがる親で、親の metadata に作業先を並べる案は選ばない。`repository` は 1 つの `OWNER/REPO` を表す決まりで、ほかの役と見張りの読み方を変える必要があるため
   - 作業先は sub-issue の metadata で表す
 - 最上位の役が sub-issue の有無だけでタスクの形を決める案は選ばない。sub-issue のない複数の親を親の値 1 つで見直してしまい、sub-issue のある単一のリポジトリのタスクを、タスクの値で扱う動作とも食い違うため

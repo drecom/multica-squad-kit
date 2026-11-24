@@ -193,14 +193,14 @@ fixture issue-get | jq '. + {assignee_type: "squad", assignee_id: "squad-test"}'
 fixture issue-get | jq '. + {assignee_type: "member", assignee_id: "member-test"}' >"$test_dir/issue-member.json"
 fixture squad-list | jq '[. + {id: "squad-test", name: "DEMO-TEST", leader_id: "orchestrator", archived_at: null}]' >"$test_dir/squads.json"
 fixture agent-get | jq '. as $base | [
-	["claude-implementer", "claude-sonnet-5-5"], ["codex-implementer", "gpt-6.1-sol"],
-	["claude-fixer", "claude-sonnet-5-5"], ["codex-fixer", "gpt-6.1-sol"],
-	["claude-principal", "claude-fable-5-2"], ["codex-principal", "gpt-6.1-sol"],
-	["planner", "claude-opus-5-5"], ["designer", "gpt-6.1-sol"]
+	["claude-implementer", "claude-sonnet-5-5"], ["codex-implementer", "gpt-6.2-sol"],
+	["claude-fixer", "claude-sonnet-5-5"], ["codex-fixer", "gpt-6.2-sol"],
+	["claude-principal", "claude-fable-5-2"], ["codex-principal", "gpt-6.2-sol"],
+	["planner", "claude-opus-5-5"], ["designer", "gpt-6.2-sol"]
 	| . as [$role, $model] | $base + {id: $role, name: ("demo-" + $role + "-test"), model: $model, archived_at: null}
 ] + [
-	$base + {id: "archived-codex-implementer", name: "demo-codex-implementer-test", model: "gpt-6.1-sol", archived_at: "2026-01-01T00:00:00Z"},
-	$base + {id: "other-codex-fixer", name: "other-codex-fixer-test", model: "gpt-6.1-sol", archived_at: null},
+	$base + {id: "archived-codex-implementer", name: "demo-codex-implementer-test", model: "gpt-6.2-sol", archived_at: "2026-01-01T00:00:00Z"},
+	$base + {id: "other-codex-fixer", name: "other-codex-fixer-test", model: "gpt-6.2-sol", archived_at: null},
 	$base + {id: "orchestrator", name: "demo-orchestrator-test", model: "claude-fable-5-2", archived_at: null}
 ]' >"$test_dir/agents.json"
 set_roster() {

@@ -4,7 +4,7 @@ description: PR の正しさ、設計との一致、保守性、リポジトリ�
 role: コードレビュー。実装が終わった PR を受ける
 <!-- IF runtime-codex -->
 <!-- IF codex-implementer -->
-model: gpt-6.1-sol
+model: gpt-6.2-sol
 <!-- ELSE -->
 model: claude-sonnet-5-5
 <!-- ENDIF -->
