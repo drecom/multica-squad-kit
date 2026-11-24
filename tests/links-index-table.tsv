@@ -1,0 +1,73 @@
+# 索引の掲載判定が受ける入力の表。tests/links-test.sh が読む。
+# 1 行が 1 種類の入力で、表の行ごとに次の 2 つを照合する。
+#   1. 索引に載っているかの判定（--index を付けた確認と、引数なしの確認の両方）
+#   2. 通常のリンクの確認（scripts/check-links.py <文書>）で、切れを落とす行（コードや画像でも、検査する先は見逃さない）
+# 文書の先頭の行は、すべての行で [a](a.md)（a は必ず載る）。ほかは b.md を使う。
+# 列（タブ区切り、6 列）:
+#   id: 行の名前
+#   種類: リンクの形・画像・複数行・コード・前のブロック・コメント・エスケープ
+#   文書: 索引の本文。printf の %b で読む（\n は改行、\t はタブ、\\ は \）
+#   載る: 載っていると数える文書（a、b のうち）。ふつうの本文のリンクだけを数える。画像・使わない定義・コードやコメントの中は数えない
+#   検査: 切れを落とすリンクの先を「名前:始まりの行」で並べる（行の番号は文書の行）。名前は a.md なら a。画像の先と使わない定義の先も検査する。コードとコメントの中は検査しない
+#   理由: その扱いにする理由（CommonMark の構文。markdown-it の commonmark の設定で照合した）
+# 入力 A〜D は、前の指摘の入力: A=区切り線のあとの字下げ、B=項目の続きの段落、C=複数行の画像、D=複数行のリンク。
+link-normal	リンクの形	[a](a.md)\n\n[文書](b.md)\n	a,b	a:1,b:3	通常のリンクは、載せたことになる
+link-normal-anchor	リンクの形	[a](a.md)\n\n[文書](./b.md#文書)\n	a,b	a:1,b:3	アンカーと ./ が付いても、同じ文書を指す
+link-normal-angle	リンクの形	[a](a.md)\n\n[文書](<b.md>)\n	a,b	a:1,b:3	山括弧で囲んだ行き先も読む
+link-full	リンクの形	[a](a.md)\n\n[文書][b]\n\n[b]: b.md\n	a,b	a:1,b:5	完全な参照は、定義の行き先を指す
+link-collapsed	リンクの形	[a](a.md)\n\n[b][]\n\n[b]: b.md\n	a,b	a:1,b:5	折りたたみの参照も同じ
+link-shortcut	リンクの形	[a](a.md)\n\n[b]\n\n[b]: b.md\n	a,b	a:1,b:5	ショートカットの参照も同じ
+link-full-label	リンクの形	[a](a.md)\n\n[文書][B  文書]\n\n[b 文書]: <b.md>\n	a,b	a:1,b:5	参照の名前は、大文字小文字と空白の数を無視して照合する
+link-definition-first	リンクの形	[a](a.md)\n\n[b]: b.md\n\n[文書][b]\n	a,b	a:1,b:3	定義が使う箇所より前にあっても同じ
+link-undefined	リンクの形	[a](a.md)\n\n[文書][b]\n	a	a:1	定義のない参照は、リンクにならず、検査する行き先もない
+link-definition-unused	リンクの形	[a](a.md)\n\n[b]: b.md\n	a	a:1,b:3	使わない定義は、載せたことにならない。切れは検査する
+link-definition-gap	リンクの形	[a](a.md)\n\n[文書] [b]\n\n[b]: b.md\n	a,b	a:1,b:5	] と [ の間に空白があると、完全な参照にならない（ショートカットの [文書] は定義がなく、[b] だけが参照になる）
+image-normal	画像	[a](a.md)\n\n![b](b.md)\n	a	a:1,b:3	画像だけでは載せたことにならない。切れは検査する
+image-full	画像	[a](a.md)\n\n![文書][b]\n\n[b]: b.md\n	a	a:1,b:5	画像の参照は、載せたことにならない。定義の切れは検査する
+image-collapsed	画像	[a](a.md)\n\n![b][]\n\n[b]: b.md\n	a	a:1,b:5	折りたたみの画像も同じ
+image-shortcut	画像	[a](a.md)\n\n![b]\n\n[b]: b.md\n	a	a:1,b:5	ショートカットの画像も同じ
+image-in-link	画像	[a](a.md)\n\n[![画像](sub/c.md)](b.md)\n	a,b	a:1,b:3	画像を文字にした通常のリンクは、載せたことになる
+image-escaped	画像	[a](a.md)\n\n\\![b](b.md)\n	a,b	a:1,b:3	! をエスケープすると画像でなく、通常のリンクになる
+multi-link	複数行	[a](a.md)\n\n[文書\nの題](b.md)\n	a,b	a:1,b:3	複数行の通常のリンクは、載せたことになり、始まりの行で検査する（入力 D）
+multi-link-full	複数行	[a](a.md)\n\n[文書\nの題][b]\n\n[b]: b.md\n	a,b	a:1,b:6	複数行の参照のリンクも、載せたことになる
+multi-image	複数行	[a](a.md)\n\n![画像\n説明][b]\n\n[b]: b.md\n	a	a:1,b:6	複数行の画像は、載せたことにならない（入力 C）
+multi-image-inline	複数行	[a](a.md)\n\n![画像\n説明](b.md)\n	a	a:1,b:3	複数行の画像（行き先が直接）も、載せたことにならない
+multi-definition	複数行	[a](a.md)\n\n[b]:\nb.md\n\n[文書][b]\n	a,b	a:1,b:3	行き先が次の行にある定義も読む
+multi-definition-title	複数行	[a](a.md)\n\n[文書][b]\n\n[b]: b.md\n"題"\n	a,b	a:1,b:5	題が次の行にある定義も読む
+multi-link-quote	複数行	[a](a.md)\n\n> [文書\n> の題](b.md)\n	a,b	a:1,b:3	引用の中の複数行のリンクも読む
+multi-link-paragraph-end	複数行	[a](a.md)\n\n[文書\n\nの題](b.md)\n	a	a:1	空行で段落が終わると、リンクにならない
+code-indent4	コード	[a](a.md)\n\n    [文書](b.md)\n	a	a:1	空行のあとの 4 桁の字下げはコードで、載せたことにならない。検査もしない
+code-tab	コード	[a](a.md)\n\n\t[文書](b.md)\n	a	a:1	タブの字下げもコード
+code-fence	コード	[a](a.md)\n\n```text\n[文書](b.md)\n```\n	a	a:1	フェンスの中はコード
+code-fence-tilde	コード	[a](a.md)\n\n~~~text\n[文書](b.md)\n~~~\n	a	a:1	~ のフェンスも同じ
+code-inline	コード	[a](a.md)\n\n`[文書](b.md)`\n	a	a:1	インラインのコードの中はコード
+code-inline-multi	コード	[a](a.md)\n\n`例\n[文書](b.md)`\n	a	a:1	複数行のコードスパンの中もコード
+code-indent-continuation	コード	[a](a.md)\n\n[文書](b.md)\n    [文書](b.md)\n	a,b	a:1,b:3,b:4	段落の続きの字下げは、コードでなく本文（段落を字下げのコードは割れない）。ここは 2 行目を検査する
+code-indent-definition	コード	[a](a.md)\n\n[c]: a.md\n    [文書](b.md)\n	a	a:1,a:3	1 行だけの参照定義は段落を終えるので、次の字下げはコード
+prev-heading	前のブロック	[a](a.md)\n\n# 題\n    [文書](b.md)\n	a	a:1	見出しのあとの字下げはコード（見出しは段落でない）
+prev-heading-closed	前のブロック	[a](a.md)\n\n# 題 #\n    [文書](b.md)\n	a	a:1	閉じる # を付けた見出しも同じ
+prev-setext	前のブロック	[a](a.md)\n\n題\n===\n    [文書](b.md)\n	a	a:1	Setext の見出しのあとの字下げはコード
+prev-setext-dash	前のブロック	[a](a.md)\n\n題\n---\n    [文書](b.md)\n	a	a:1	- の Setext の見出しのあとも同じ
+prev-thematic	前のブロック	[a](a.md)\n\n---\n    [文書](b.md)\n	a	a:1	区切り線のあとの字下げはコード（入力 A）
+prev-thematic-star	前のブロック	[a](a.md)\n\n***\n    [文書](b.md)\n	a	a:1	* の区切り線のあとも同じ
+prev-fence-closed	前のブロック	[a](a.md)\n\n```\nx\n```\n    [文書](b.md)\n	a	a:1	閉じたフェンスのあとの字下げはコード
+prev-comment	前のブロック	[a](a.md)\n\n<!-- 注 -->\n    [文書](b.md)\n	a	a:1	コメントのブロックのあとの字下げはコード
+prev-paragraph	前のブロック	[a](a.md)\n\n本文\n    [文書](b.md)\n	a,b	a:1,b:4	段落のあとの字下げは続きで、載せたことになる
+prev-quote-code	前のブロック	[a](a.md)\n\n>     [文書](b.md)\n	a	a:1	引用の中の字下げはコード
+prev-quote-blank	前のブロック	[a](a.md)\n\n> 引用\n>\n>     [文書](b.md)\n	a	a:1	引用の中の空行のあとの字下げはコード
+prev-quote-then-indent	前のブロック	[a](a.md)\n\n> 引用\n\n    [文書](b.md)\n	a	a:1	引用のあとの空行を置いた字下げはコード
+prev-quote-lazy	前のブロック	[a](a.md)\n\n> 引用\n    [文書](b.md)\n	a,b	a:1,b:4	引用の段落の続きの字下げは本文
+prev-list-continuation	前のブロック	[a](a.md)\n\n- 項目\n\n    [文書](b.md)\n	a,b	a:1,b:5	リストの項目の続きの段落（中身の桁より 4 未満の字下げ）はコードでなく本文（入力 B）
+prev-list-code	前のブロック	[a](a.md)\n\n- 項目\n\n      [文書](b.md)\n	a	a:1	項目の中身の桁から 4 桁以上の字下げは、項目の中のコード
+prev-list-ordered	前のブロック	[a](a.md)\n\n1. 項目\n\n   [文書](b.md)\n	a,b	a:1,b:5	番号付きの項目の続きの段落は本文
+prev-list-nested	前のブロック	[a](a.md)\n\n- 親\n  - 子\n\n        [文書](b.md)\n	a	a:1	入れ子の項目の中のコード
+prev-list-tight	前のブロック	[a](a.md)\n\n- 項目\n    [文書](b.md)\n	a,b	a:1,b:4	空行のない字下げは、項目の段落の続き
+prev-list-empty	前のブロック	[a](a.md)\n\n-\n\n    [文書](b.md)\n	a	a:1	空の項目のあとの空行は項目を閉じるので、字下げはコード
+prev-list-closed	前のブロック	[a](a.md)\n\n- 項目\n\n本文\n\n    [文書](b.md)\n	a	a:1	項目を閉じたあとの字下げはコード
+comment-inline	コメント	[a](a.md)\n\n<!-- [文書](b.md) -->\n	a	a:1	コメントの中は読まない
+comment-multi	コメント	[a](a.md)\n\n<!--\n[文書](b.md)\n-->\n	a	a:1	複数行のコメントの中も読まない
+comment-after	コメント	[a](a.md)\n\n<!-- 注 --> [文書](b.md)\n	a,b	a:1,b:3	コメントを閉じたあとの同じ行の本文は読む。CommonMark ではコメントの行の続きだが、既存の検査（コメントのあとの切れたリンクを落とす）を保つ向きに広く取る
+comment-in-code-span	コメント	[a](a.md)\n\n`<!--`\n\n[文書](b.md)\n	a,b	a:1,b:5	コードスパンの中のコメントの始まりは、コメントにならない
+escape-brackets	エスケープ	[a](a.md)\n\n\\[文書\\](b.md)\n	a	a:1	エスケープした [ ] はリンクにならない
+escape-close	エスケープ	[a](a.md)\n\n[文書\\](b.md)\n	a	a:1	閉じの ] をエスケープすると、リンクにならない
+escape-backtick	エスケープ	[a](a.md)\n\n\\`[文書](b.md)\\`\n	a,b	a:1,b:3	エスケープしたバッククォートはコードを開かない。リンクは読む

@@ -109,7 +109,7 @@ index_check() {
 index_deny() {
 	local status=0
 	index_check "$1" || status=$?
-	[ "$status" -eq 1 ] || { echo "FAIL links: 索引にない文書の終了コードが 1 でない: $status ($index_mode)" >&2; cat "$test_dir/err" >&2; exit 1; }
+	[ "$status" -eq 1 ] || { echo "FAIL links: 索引にない文書の終了コードが 1 でない: $status (${index_mode})" >&2; cat "$test_dir/err" >&2; exit 1; }
 	grep -qF "README.md: 索引: $2 が載っていない" "$test_dir/err" || { echo "FAIL links: 載っていない文書の行が違う: $2" >&2; cat "$test_dir/err" >&2; exit 1; }
 }
 index_ok() {
@@ -153,8 +153,41 @@ index_deny '# 索引\n\n[a](a.md) と ![b][]\n\n[b]: b.md\n' 'b.md'
 index_deny '# 索引\n\n[a](a.md) と ![b]\n\n[b]: b.md\n' 'b.md'
 index_ok '# 索引\n\n[a](a.md) と [![画像](sub/c.md)](b.md)\n'
 echo 'PASS links: 画像は数えず、画像を文字にした通常のリンクは数える'
+
+# 表の行ごとに、載っている文書を照合する。表は tests/links-index-table.tsv（入力の種類ごとに 1 行）。
+table_rows=0
+while IFS=$'\t' read -r id kind doc listed check reason; do
+	case "$id" in '#'*|'') continue ;; esac
+	table_rows=$((table_rows + 1))
+	expected=''
+	for name in a b; do
+		case ",$listed," in *",$name,"*) ;; *) expected="$expected $name.md" ;; esac
+	done
+	status=0
+	index_check "$doc" || status=$?
+	actual=$(sed -n 's/^.*README\.md: 索引: \(.*\) が載っていない$/\1/p' "$test_dir/err" | sort | tr '\n' ' ')
+	want=$(printf '%s\n' $expected | sed '/^$/d' | sort | tr '\n' ' ')
+	[ "$actual" = "$want" ] || { echo "FAIL links: 表の行 $id: 載っていない文書が違う（期待 [$want] 実際 [$actual]）(${index_mode})" >&2; cat "$test_dir/err" >&2; exit 1; }
+	if [ -n "$expected" ]; then want_status=1; else want_status=0; fi
+	[ "$status" -eq "$want_status" ] || { echo "FAIL links: 表の行 $id: 終了コードが $want_status でない: $status (${index_mode})" >&2; exit 1; }
+done <"$root/tests/links-index-table.tsv"
+[ "$table_rows" -ge 60 ] || { echo "FAIL links: 表の行を読めていない: $table_rows" >&2; exit 1; }
+echo "PASS links: 索引の掲載判定は、表の $table_rows 行どおり（${index_mode}）"
 echo "PASS links: 索引の確認は $index_mode で通った"
 done
+
+# 同じ表の行で、通常のリンクの確認が切れを見逃さないことを照合する。行き先は、ない名前（x-a.md、x-b.md）に替える。
+while IFS=$'\t' read -r id kind doc listed check reason; do
+	case "$id" in '#'*|'') continue ;; esac
+	doc=${doc//a.md/x-a.md}
+	doc=${doc//b.md/x-b.md}
+	printf '%b' "$doc" >"$test_dir/table.md"
+	check "$test_dir/table.md" >/dev/null 2>"$test_dir/err" || true
+	actual=$(sed -n 's/^.*table\.md:\([0-9]*\): リンク: [<./]*x-\([ab]\)\.md[^ ]* のファイルがない$/\2:\1/p' "$test_dir/err" | sort -u | tr '\n' ' ')
+	want=$(printf '%s\n' ${check//,/ } | sort -u | tr '\n' ' ')
+	[ "$actual" = "$want" ] || { echo "FAIL links: 表の行 $id: 切れを落とす行が違う（期待 [$want] 実際 [$actual]）" >&2; cat "$test_dir/err" >&2; exit 1; }
+done <"$root/tests/links-index-table.tsv"
+echo 'PASS links: 通常のリンクの確認は、表の行どおりに切れを落とし、コードとコメントの中は見ない'
 
 # 索引のファイルがないと、引数の誤りとして終了コード 2 で止まる。
 status=0
