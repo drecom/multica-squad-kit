@@ -196,20 +196,21 @@ extension/
 
 置けるのは、エージェントの持ち主か、ワークスペースのオーナーか管理者である。判定を呼ぶ役ごとに、次の順に行う。
 
-1. 今の環境変数を読み、`custom_env` の中身をファイルに保存する
+1. 今の環境変数を読み、`custom_env` の中身を新しい一時ファイルに保存する
 2. エディタでファイルを開き、鍵のキーを 1 つ足す
 3. ファイルの中身を、エージェントに反映する
 4. ファイルを消す
 
+次のコードブロックを、bash か zsh の 1 つのシェルに 1 行ずつ貼る。2 行目のあとに、`$env_file` のファイルをエディタで開いて鍵を足す。どこかの行が失敗したら、そこから先は最後の行だけを流す。
+
 ```bash
-env_file=$(mktemp)
-trap 'rm -f "$env_file"' EXIT
+env_file=$(mktemp "${TMPDIR:-/tmp}/squad-custom-env.XXXXXX")
 multica agent env get <エージェントの ID> --output json | jq '.custom_env' > "$env_file"
 multica agent env set <エージェントの ID> --custom-env-file "$env_file"
 rm -f "$env_file"
 ```
 
-`mktemp` は、新しいファイルを所有者だけが読める権限で作る。同名のファイルやリンクが残っていても使わず、`trap` が、途中で止まってもシェルを閉じるときにファイルを消す。
+`mktemp` は、新しいファイルを所有者だけが読める権限で作り、前からある同名のファイルやリンクを使わない。最後の行を流すまで、ファイルには鍵が残る。途中でやめたときは、同じシェルで最後の行を流す。シェルを閉じたあとは、`ls "${TMPDIR:-/tmp}"/squad-custom-env.*` で探して消す。
 
 > [!WARNING]
 > `multica agent env set` は、環境変数の全体を置き換える。鍵だけを渡すと、セットアップが置いた値が消える。消したときは、同じプロジェクトでセットアップを流し直す。

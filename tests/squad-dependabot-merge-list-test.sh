@@ -7,10 +7,75 @@ cd "$root"
 
 source "$root/tests/dependabot-merge-test-lib.sh"
 
+reject_list() {
+	local expected=$1 status=0
+	shift
+	bash "$script" example/template project-a list "$@" >"$test_dir/output" 2>"$test_dir/error" || status=$?
+	[[ $status == "$expected" && ! -s $test_dir/output && -s $test_dir/error ]]
+	# 引数の拒否は API の前、照合の失敗は PR の読み取りとすべての書き込みの前に止まる。
+	if [[ $expected == 2 ]]; then
+		jq -se 'length == 0' "$test_dir/calls.jsonl" >/dev/null
+	else
+		jq -se 'all(.[]; .[0] == "--version" or .[0:2] == ["api","repos/example/template"])' "$test_dir/calls.jsonl" >/dev/null
+	fi
+}
+
+reset_fixture
+reject_list 2
+reject_list 2 --base
+reject_list 2 --base main --base main
+reject_list 2 --other main
+reject_list 2 --base main extra
+for base in '' -main 'feature+fix' 'main branch' '日本語'; do
+	reject_list 2 --base "$base"
+done
+echo 'PASS list: --base の欠落・重複・形の違いは API を呼ばず終了 2'
+
+reset_fixture
+jq '.default_branch="develop"' "$test_dir/default-branch.json" >"$test_dir/new.json"
+mv "$test_dir/new.json" "$test_dir/default-branch.json"
+reject_list 1 --base main
+grep -F '対象ブランチ main がデフォルトブランチ develop と一致しません' "$test_dir/error" >/dev/null
+echo 'PASS list: デフォルトブランチとの不一致は両方の名前を返し、PR を読まず終了 1'
+
+for response in '{}' '{"default_branch":null}' '{"default_branch":""}' '{"default_branch":1}' '[]' 'invalid json'; do
+	reset_fixture
+	printf '%s\n' "$response" >"$test_dir/gh-defect.gh-default-branch.json"
+	reject_list 1 --base main
+done
+reset_fixture
+printf 'repos/example/template --jq\n' >"$test_dir/fail"
+reject_list 1 --base main
+grep -F 'CLI mock failure' "$test_dir/error" >/dev/null
+rm "$test_dir/fail"
+echo 'PASS list: default_branch を読めないと PR の読み取りと書き込みの前に終了 1'
+
+reset_fixture
+jq '.default_branch="develop"' "$test_dir/default-branch.json" >"$test_dir/new.json"
+mv "$test_dir/new.json" "$test_dir/default-branch.json"
+jq '.[0].parameters.required_status_checks=[{context:"develop-check",integration_id:15368}]' "$test_dir/rules.json" >"$test_dir/target-rules.json"
+jq '.check_runs[0].name="develop-check"' "$test_dir/checks.json" >"$test_dir/new.json"
+mv "$test_dir/new.json" "$test_dir/checks.json"
+add_pr 1 dependabot/go_modules/api/example "$(metadata patch)"
+jq '.baseRefName="develop"' "$test_dir/pr-1.json" >"$test_dir/new.json"
+mv "$test_dir/new.json" "$test_dir/pr-1.json"
+add_pr 2 dependabot/go_modules/api/other "$(metadata minor)"
+run_list develop
+assert_output '[.[].base] == ["develop","main"] and all(.[]; .ci == "success")'
+jq -se '[.[] | select(.[0] == "api" and (.[1] | contains("/rules/branches/"))) | .[1]] == ["repos/example/template/rules/branches/develop"]' "$test_dir/calls.jsonl" >/dev/null
+echo 'PASS list: develop のルールだけで CI を判定し、main 向けの PR も base を付けて残す'
+
+reset_fixture
+jq '.default_branch="release/1.x"' "$test_dir/default-branch.json" >"$test_dir/new.json"
+mv "$test_dir/new.json" "$test_dir/default-branch.json"
+run_list release/1.x
+assert_output '. == []'
+echo 'PASS list: / と . を含むデフォルトブランチも照合できる'
+
 reset_fixture
 run_list
 assert_output '. == []'
-jq -se 'length == 1' "$test_dir/calls.jsonl" >/dev/null
+jq -se 'length == 2' "$test_dir/calls.jsonl" >/dev/null
 echo 'PASS list: PR なしは空配列、ルールとチェックは取得しない'
 
 # 分類する PR は後のページにも置く。人間・別 bot・閉じた PR は除外。
@@ -24,7 +89,7 @@ printf '[{"id":2,"context":"optional","state":"failure"}]\n' >>"$test_dir/status
 run_list
 assert_output '[.[].number] == [1,2,3] and [.[].update_type] == ["major","minor","patch"]
 	and [.[].ecosystem] == ["npm","github-actions","gomod"]
-	and all(.[]; .ci == "success" and .mergeable == "MERGEABLE" and (.head_sha | length) == 40 and (.title | startswith("Bump #")))'
+	and all(.[]; .base == "main" and .ci == "success" and .mergeable == "MERGEABLE" and (.head_sha | length) == 40 and (.title | startswith("Bump #")))'
 jq -se '[.[] | select(.[0:2] == ["pr","view"]) | .[2]] == ["1","2","3"]' "$test_dir/calls.jsonl" >/dev/null
 echo 'PASS list: 全ページ・作者・状態の絞り込み、番号順、3 種類の更新、必須以外の失敗を無視'
 
@@ -127,7 +192,7 @@ echo 'PASS CI: 必須チェックがないルールでは必須以外を判定�
 
 for endpoint in 'pulls?state' rules/branches commits/ /check-runs /statuses; do
 	printf '%s\n' "$endpoint" >"$test_dir/fail"
-	if bash "$script" example/template project-a list >"$test_dir/output" 2>"$test_dir/error"; then exit 1; fi
+	if bash "$script" example/template project-a list --base main >"$test_dir/output" 2>"$test_dir/error"; then exit 1; fi
 	[[ ! -s $test_dir/output ]]
 	grep -q 'CLI mock failure' "$test_dir/error"
 done
@@ -138,12 +203,12 @@ reset_fixture
 add_pr 1 dependabot/go_modules/api/example "$(metadata patch)"
 add_pr 2 dependabot/go_modules/api/second "$(metadata minor)"
 printf 'commits/%040d\n' 2 >"$test_dir/fail"
-if bash "$script" example/template project-a list >"$test_dir/output" 2>"$test_dir/error"; then exit 1; fi
+if bash "$script" example/template project-a list --base main >"$test_dir/output" 2>"$test_dir/error"; then exit 1; fi
 [[ ! -s $test_dir/output ]]
 grep -q 'CLI mock failure' "$test_dir/error"
 rm "$test_dir/fail"
 printf 'invalid json\n' >"$test_dir/pr-1.json"
-if bash "$script" example/template project-a list >"$test_dir/output" 2>"$test_dir/error"; then exit 1; fi
+if bash "$script" example/template project-a list --base main >"$test_dir/output" 2>"$test_dir/error"; then exit 1; fi
 [[ ! -s $test_dir/output && -s $test_dir/error ]]
 echo 'PASS list: 後続 PR の取得失敗・不正な JSON でも成功した一覧を返さない'
 
@@ -151,15 +216,15 @@ reset_fixture
 add_pr 1 dependabot/docker/debian "$(metadata '')"
 digest_files >"$test_dir/files.json"
 touch "$test_dir/changed-head"
-if bash "$script" example/template project-a list >"$test_dir/output" 2>"$test_dir/error"; then exit 1; fi
+if bash "$script" example/template project-a list --base main >"$test_dir/output" 2>"$test_dir/error"; then exit 1; fi
 [[ ! -s $test_dir/output ]]
 grep -q 'head が変わりました' "$test_dir/error"
 echo 'PASS list: Docker の差分取得中に head が変わればエラー'
 rm -f "$test_dir/changed-head"
 
 reset_fixture
-bash "$script" another/service project-b list >"$test_dir/output" 2>"$test_dir/error"
-jq -se '. == [["api","repos/another/service/pulls?state=open&per_page=100","--paginate"]]' "$test_dir/calls.jsonl" >/dev/null
+bash "$script" another/service project-b list --base main >"$test_dir/output" 2>"$test_dir/error"
+jq -se '. == [["api","repos/another/service","--jq","with_entries(select(.key == \"default_branch\"))"],["api","repos/another/service/pulls?state=open&per_page=100","--paginate"]]' "$test_dir/calls.jsonl" >/dev/null
 [[ ! -s $test_dir/error ]]
 echo 'PASS 引数のリポジトリ: 固定値ではなく、受け取った対象へ問い合わせる'
 

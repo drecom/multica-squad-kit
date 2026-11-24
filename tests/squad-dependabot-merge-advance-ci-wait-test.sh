@@ -34,7 +34,7 @@ echo 'PASS advance: 必須 CI の未登録は締め切りまで、可否が不�
 advance_fixture
 jq '.commit.committer.date = "invalid"' "$test_dir/$reviewed.json" >"$test_dir/edit.json"
 mv "$test_dir/edit.json" "$test_dir/$reviewed.json"
-if bash "$script" example/template project-a advance 1 --reviewed-head "$reviewed" --run-deadline "$run_deadline" >"$test_dir/output" 2>"$test_dir/error"; then exit 1; fi
+if bash "$script" example/template project-a advance 1 --base main --reviewed-head "$reviewed" --run-deadline "$run_deadline" >"$test_dir/output" 2>"$test_dir/error"; then exit 1; fi
 [[ ! -s $test_dir/output && -s $test_dir/error ]]
 no_writes
 echo 'PASS advance: GitHub のコミット時刻が不正な場合は操作せずエラー'

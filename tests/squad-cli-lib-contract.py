@@ -345,6 +345,20 @@ esac
     print('PASS pagination: 全ページの配列と入れ子を検証し、後のページの欠落で部分的な成功を返さない')
 
 if part == 'gh':
+    # デフォルトブランチは空でない文字列だけを受け付ける。欠落と null は上の共通の検査で確認する。
+    entry = entries['gh-default-branch']
+    branch = json.loads((fixtures / 'gh-default-branch.json').read_text())[0]
+    for invalid in ('', False, 1, [], {}):
+        changed = dict(branch, default_branch=invalid)
+        check_case(branch, changed, entry)
+        failure('gh-default-branch', changed, entry['fields'][0])
+    for valid in ('main', 'develop', 'release/1.x'):
+        assert success('gh-default-branch', dict(branch, default_branch=valid)) == {'default_branch': valid}
+    for invalid in ([], 'main', None):
+        result = normalize('gh-default-branch', invalid)
+        assert result.returncode == 1 and result.stdout == '', result
+    print('PASS gh-default-branch: 空文字・文字列以外・オブジェクト以外の応答を拒む')
+
     # 見本なしの Status も、公式スキーマから作った同じケースで全必須欄を消す。
     (work / 'contracts.json').write_text(json.dumps({'entries': entries}))
     status = json.loads(subprocess.check_output(['python3', str(root / 'tests/gh-fixture.py'),
@@ -361,6 +375,7 @@ if part == 'gh':
     gh_bin = work / 'gh-bin'
     gh_bin.mkdir()
     (gh_bin / 'gh').write_text('''#!/bin/sh
+python3 -c 'import json, os, sys; from pathlib import Path; Path(os.environ["CLI_LIB_TEST_DIR"], "gh-call.json").write_text(json.dumps(sys.argv[1:]))' "$@"
 if [ -f "$CLI_LIB_TEST_DIR/not-found" ]; then
   echo '{"message":"Not Found","status":"404"}'
   echo 'gh: Not Found (HTTP 404)' >&2
@@ -376,6 +391,13 @@ cat "$CLI_LIB_TEST_DIR/response.json"
                               capture_output=True, text=True, env=gh_env)
 
     element = json.loads((fixtures / 'gh-file.json').read_text())[0]
+    (work / 'response.json').write_text(json.dumps(branch))
+    result = gh_read('gh-default-branch', 'repos/example/public')
+    assert result.returncode == 0 and json.loads(result.stdout) == branch, result
+    assert json.loads((work / 'gh-call.json').read_text()) == [
+        'api', 'repos/example/public', '--jq', 'with_entries(select(.key == "default_branch"))']
+    assert gh_read('gh-default-branch').returncode == 1
+    print('PASS gh-default-branch: endpoint を位置引数で受け、約束の抽出式で読む')
     (work / 'response.json').write_text(json.dumps(element))
     result = gh_read('gh-file', 'repos/example/public/contents/.agents/review-paths?ref=main')
     assert result.returncode == 0, result.stderr

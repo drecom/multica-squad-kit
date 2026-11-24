@@ -13,6 +13,7 @@ tests/ci-install-test.sh 17
 tests/completion-colors-test.sh 1
 tests/confirmation-test.sh 12
 tests/content-test.sh 1
+tests/default-branch-fetch-test.sh 3
 tests/doc-compare-test.sh 2
 tests/error-marks-test.sh 3
 tests/extensions-test.sh 2
@@ -161,4 +162,4 @@ tests/squad-pr-watch-ci-wait-unreadable-test.sh 20
 tests/clock-test.sh 1
 tests/terminal-test.sh 1
 tests/tty-session-test.sh 4
-tests/extensions-key-file-test.sh 2
+tests/extensions-key-file-test.sh 3

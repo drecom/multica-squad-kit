@@ -18,7 +18,10 @@ def read_only(command):
             flag = remaining.pop(0)
             if flag == "--paginate":
                 continue
-            if flag == "--jq" and remaining and remaining.pop(0) == 'with_entries(select(.key == "login"))':
+            if flag == "--jq" and remaining and remaining.pop(0) in (
+                'with_entries(select(.key == "login"))',
+                'with_entries(select(.key == "default_branch"))',
+            ):
                 continue
             return False
         return True
