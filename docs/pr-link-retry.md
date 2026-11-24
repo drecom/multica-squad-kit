@@ -256,7 +256,7 @@ PR を作った役の引き継ぎにある `紐付けの失敗:` の段落は、
 | `common/monitor/squad-review-next` | `decide` の紐付けの確認で、`<回のコメント>` を `link-check` のきっかけに渡す。人間を呼ぶコメントで、`紐付けの失敗:` の段落と連携の案内を、紐付いていないときだけ書く |
 | `common/skills/squad-handoff/SKILL.md` | 「PR を作る・実装を積む」の、失敗後の紐付けは人間が画面で行うという文を直す。リーダーの確認で試み直し、紐付かなければ人間が画面で行うと書き、新しい metadata の名前はこの節に書かない |
 | `common/skills/squad-handoff/references/leader-pr-checks.md` | 時機の一覧の「PR を受け取ったとき」に、役が push して返したときを含めると書き、`squad-pr-link` を呼び直さない決まりは変えない。`link-check` が試み直すことと、呼び方を `<タスク> <きっかけのコメント>` にし、コメントで起きていない実行ではきっかけを省くことを足す |
-| `docs/review-next-step.md` | `decide` の紐付けの確認の節に、`link-check` が試み直すことを 1 文で足す。判定の表と、人間を呼ぶコメントに添える行の文は変えない |
+| `docs/review-next-step.md` | `decide` の紐付けの確認の節に、`link-check` が試み直すことと、`<回のコメント>` をきっかけに渡すことを足す。判定の表と、人間を呼ぶコメントに添える行の文は変えない |
 | `tests/squad-pr-link-test.sh` | マークの確認を足す（[テスト](#テスト)） |
 | `tests/squad-pr-watch-link-retry-test.sh` | 新しく足す（[テスト](#テスト)） |
 | `tests/squad-review-next-decide-unlinked-test.sh` | 試み直しで紐付いたときと紐付かないときの、マージの依頼の確認を足す |

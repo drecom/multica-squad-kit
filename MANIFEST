@@ -83,13 +83,13 @@ e5662d476f467ec567e9b3214b68559e13edc67af1781f19fa0adc48fdcb2add  ./docs/leader-
 f3e7834c16bb59c09a819b29a92ccea1d2ba7bdbe50505af4e1912167369d653  ./docs/metrics.md
 fc4ec5836bb4c9b565596c63b7e0255ce645fb797e1a9bbb07b3b68e3e1f521b  ./docs/own-review-paths.md
 a6ce83495ac89b59139376a410c8aa2802436d75cbc32bdc9d81b31b13a9e4e2  ./docs/planner-requirements.md
-bb9a2d1a37a82927462b55963e20c1bd01c123ff16559e03cfee810a7a2b2b11  ./docs/pr-link-retry.md
+d93f7e22901370175e8b3f851170d4b3575332fd2680f095a0b1b61a16dc5d96  ./docs/pr-link-retry.md
 cb269eb5a385b50a86711fe2c711acc106545f5416c4d5213570aa19f30ee5b8  ./docs/principal-review.md
 a58a91809ea09df148c193b451ff8955d8b9c9a7b702cace304633e1673c4b43  ./docs/procedure-review.md
 29fe97cb493ffe208a7fd6de93e446bb965f5d5ed881a51196cbd0862ef62525  ./docs/release.md
 831e680a61062b16baeb44eea1decedecfc2618038a723f78d9c3bf6312804d4  ./docs/reread-followups.md
 bd51e478eda6d22c43438ec3112725edfb7818f1075750dd218afebadead3733  ./docs/review-eval.md
-0dc30f047a1667d3ea7087e5c8a0ae0cd0cd2be3e1c214bfedd9922eba7d3c5b  ./docs/review-next-step.md
+8630c5f13328e347a6a2b0c55ef331837c60a64c7377c3e372b00ba25c45adba  ./docs/review-next-step.md
 a19dabe6e06b23a4863cd1c1da37aa61177fd3440f6f4217b3a3fd4949f6a28f  ./docs/review-rework.md
 8cda3744ea961072184c2ebc0ea3ec7d65b888ff708e599a4a9ee72f11a183a5  ./docs/screens.md
 51e212138a351496c5fc7ea6b540b32e7a0a15460e4b476a5a0f7899d30ab0e2  ./docs/setup-completion.md
