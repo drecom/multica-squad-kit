@@ -131,13 +131,15 @@ e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./scripts/styl
 a44fda9e4a5718c6a90537c5f3275733e3958bf9906144b851feab924acc4714  ./setup.sh
 595fd8697be17ce33adec5b6851a97ed974231aad8e48b244aee70c4128f26b7  ./skeleton/.agents/review-paths
 51eb4a7c0fd29e15873a87c8dd06c550af1097bd66324f9bd0dc41f379eb769f  ./skeleton/.agents/rules/code.md
+9af1cb6c7844a8ccabe3f2183600c0f6d7bfb31c8554328cade8900119b7eabc  ./skeleton/.agents/rules/database.md
 813658fb296b853b8b45077b49a4d02defcec11a572638cd0b0246116a47a6a7  ./skeleton/.agents/rules/docs.md
 219c838d6978b8587775d9c98edd8966b3f36cf2c56a71f0866df8e7ab94ba3d  ./skeleton/.agents/rules/tests.md
+79ba57108d97a45716a708ed97055fc938543f1e81cec9e230d7c3c29b3828a8  ./skeleton/.agents/rules/ui.md
 be9a67eb3b8da9a4012424d8ab5a9c61beecba7f11afcae4595541fbb56257de  ./skeleton/.agents/skills/verify/SKILL.md
 39207a2957165826bbf2b79e0973b523f1ffbdcedc1af58e0b40257415f8bf6d  ./skeleton/AGENTS.md
-324399380871711535be2fc592e25dfec61de3fa9a7dd5f37cbb13cd2f7e8568  ./skeleton/README.md
+33fd31cda4e988ef8116996f2d31db8f69fcd6e32cdfa5abc04f70fef3e0bc78  ./skeleton/README.md
 18454e4d0424a4c4e9474140fc9d5b0b3854a1b4f59d10258cd85c9ffb044da6  ./skeleton/project.md
-b9033019a1fe0384a555a447fe064ade71c427af27a9caa4b175868fdd2085ad  ./skeleton/verify-repository.md
+86d88f085a22c1879850188758a47bce16efb46c8ed45507a9bc2056bb09be58  ./skeleton/verify-repository.md
 ec94c1189f1071bf59f9c20765667893b12a24881b6a68739d14f2ecbe0ff678  ./tests/action-advisories-test.sh
 c9ad24a736e10339a08bcbadff89c60c5d4435f2baf18c201d1d8f0671583753  ./tests/agent-templates-test.sh
 2c4dce6d55a2bec00a23cf829eb9939041a27c4bb78891f0aeb0d485ad1713c4  ./tests/ansi-to-png.py
