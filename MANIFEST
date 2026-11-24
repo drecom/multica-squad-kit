@@ -590,7 +590,7 @@ e90a5edb6b1b0b97bcb8cb5e220f789d1148904978bf0b20f8d37e0541f5ef96  ./tests/projec
 caa58464c53d717ee5c0452a3cf122a5a64d748063fc3614972c9635d0585d87  ./tests/project-followup-failure-test.sh
 9c744f7baee9fadd46d3cf103a99df870456ee8ebcbbb038d91f51f462bf0ddf  ./tests/project-followup-repositories-test.sh
 f51b603e07f2a7064b437a1e59f1bf7cbd008376f470f9f472b7ed0ecc735135  ./tests/project-followup-test-lib.sh
-c37d68f08a0c1d9d36d3254ff8b78fbfd78c9c5cfee9e5d03f088d4001d30dc3  ./tests/project-followup-test.sh
+4d995ee22a2196188a32c9f7d4d585ee651b16740d0d46a97f99f2f9b358c430  ./tests/project-followup-test.sh
 e815b1fd39a661877a4306f66feb802d182b19280ea2679afc4827ab25a714db  ./tests/project-followup-webhook-test.sh
 e2c2da5c20cc0a7ef5d2f04015270a5d7beaf188c6b9bfba94ead57341272480  ./tests/project-issues-fixture.py
 29f1e6218e5d1b8809f4f27f3645238ebeea0708ed97aa64482084ae82fa3022  ./tests/project-issues-test.sh
