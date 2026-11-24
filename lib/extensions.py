@@ -3,11 +3,20 @@ import json
 import re
 import shutil
 import sys
+import unicodedata
 from pathlib import Path
 
 
 def fail(message):
     raise ValueError(message)
+
+
+class TargetsError(ValueError):
+    """autopilot-targets.json の誤りを、1 行ずつ全部持つ。"""
+
+    def __init__(self, lines):
+        super().__init__('\n'.join(lines))
+        self.lines = lines
 
 
 def fields(text):
@@ -29,12 +38,129 @@ def key(value):
     return bool(re.fullmatch(r'[a-z]+(?:-[a-z]+)*', value))
 
 
+TARGET_PREFIX = 'autopilot-targets.json: '
+TARGET_USE = re.compile(r'\{\{target\.([A-Za-z0-9_.-]+)\}\}')
+ROLE_MARK = re.compile(r'<!-- (?:IF .*|ELSE|ENDIF) -->')
+REPOSITORY = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9_.-]+')
+
+
+def definitions(text):
+    """lib/autopilots.sh の autopilot_sections と同じ規則で、見出しと範囲と指示の外の文を読む。"""
+    sections, current, code = [], None, False
+    for line in text.split('\n'):
+        if ROLE_MARK.fullmatch(line):
+            continue
+        if code:
+            if line == '```':
+                code = False
+            else:
+                current['instruction'].append(line)
+        elif line.startswith('## '):
+            current = {'title': line[3:], 'scope': None, 'instruction': [], 'outside': [line[3:]]}
+            sections.append(current)
+        elif current is None:
+            continue
+        elif line == '```text':
+            code = True
+        else:
+            match = re.fullmatch(r'- 範囲: `([^`]+)`', line)
+            if match:
+                current['scope'] = match[1]
+            current['outside'].append(line)
+    for section in sections:
+        # 名前は見出しから、空白に続く最初の {{ の前まで。名前の中の空白は残す。
+        section['name'] = section['title'].split(' {{', 1)[0]
+    return sections
+
+
+def target_names(lines):
+    return list(dict.fromkeys(TARGET_USE.findall('\n'.join(lines))))
+
+
+def read_targets(path, errors):
+    duplicates = []
+
+    def pairs(items):
+        keys = [name for name, _ in items]
+        duplicates.extend(name for name in dict.fromkeys(keys) if keys.count(name) > 1)
+        return dict(items)
+
+    try:
+        data = json.loads(path.read_text(), object_pairs_hook=pairs)
+    except json.JSONDecodeError:
+        errors.append('JSON として読めません')
+        return {}
+    errors.extend(f'{name}: キーが重なっています' for name in duplicates)
+    if not isinstance(data, dict):
+        errors.append('定義の名前をキーにしたオブジェクトにしてください')
+        return {}
+    return data
+
+
+def valid_value(value):
+    return (isinstance(value, str) and 1 <= len(value) <= 200 and '`' not in value and '{{' not in value and '}}' not in value
+            and not any(unicodedata.category(char) in ('Cc', 'Zl', 'Zp') for char in value))
+
+
+def check_targets(extension, text, errors):
+    """設定を定義の名前・範囲・値と照らし、正規化した設定を返す。誤りは errors に足す。"""
+    path = extension / 'autopilot-targets.json'
+    configured = read_targets(path, errors) if path.exists() else {}
+    sections = definitions(text)
+    normalized = {}
+    for name, repos in configured.items():
+        matches = [s for s in sections if s['name'] == name and s['scope'] == 'repository']
+        if not matches:
+            errors.append(f'{name}: ' + ('範囲が repository の定義ではありません' if any(s['name'] == name for s in sections) else '定義にない名前です'))
+        elif len(matches) > 1:
+            errors.append(f'{name}: 同じ名前の定義が 2 つ以上あります')
+        if not isinstance(repos, dict) or not repos:
+            errors.append(f'{name}: 対象のリポジトリを 1 つ以上、キーにしたオブジェクトで書いてください')
+            continue
+        used = target_names(matches[0]['instruction']) if len(matches) == 1 else []
+        seen = {}
+        for repo, values in repos.items():
+            where = f'{name} {repo}'
+            if not REPOSITORY.fullmatch(repo) or repo.split('/')[1] in ('.', '..'):
+                errors.append(f'{where}: OWNER/REPO の形にしてください')
+                continue
+            if repo.lower() in seen:
+                errors.append(f'{where}: {seen[repo.lower()]} と同じリポジトリです')
+                continue
+            seen[repo.lower()] = repo
+            if not isinstance(values, dict):
+                errors.append(f'{where}: 値はオブジェクトにしてください')
+                continue
+            for label, value in values.items():
+                if not key_name(label):
+                    errors.append(f'{where}: 値の名前 {label} は英小文字で始め、英小文字・数字・ハイフンだけにしてください')
+                elif not valid_value(value):
+                    errors.append(f'{where}: 値 {label} は 1 文字以上 200 文字以下の 1 行の文字列にし、制御文字・バッククォート・{{{{・}}}} を含めないでください')
+            errors.extend(f'{where}: 値 {label} がありません' for label in used if label not in values)
+            normalized.setdefault(name, {})[repo.lower()] = {f'target.{label}': value for label, value in values.items() if key_name(label) and valid_value(value)}
+    for section in sections:
+        for label in target_names(section['outside']):
+            errors.append(f"{section['name']}: target.{label} は指示の中にだけ書けます")
+        if section['name'] in configured:
+            continue
+        for label in target_names(section['instruction']):
+            if section['scope'] == 'repository':
+                errors.append(f"{section['name']}: target.{label} を使うので、対象のリポジトリと値を書いてください")
+            else:
+                errors.append(f"{section['name']}: 範囲が repository の定義だけが target.{label} を使えます")
+    return normalized
+
+
+def key_name(value):
+    return bool(re.fullmatch(r'[a-z][a-z0-9-]*', value))
+
+
 def materialize(kit, extension, target):
     if any(p.is_symlink() for p in extension.rglob('*')):
         fail('拡張にシンボリックリンクがあります')
     if (extension / 'kit-version').read_text().strip() != (kit / 'VERSION').read_text().strip():
         fail('拡張が求める原本のバージョンと、流しているバージョンが違います')
-    allowed = {'kit-version', 'agents', 'additions.json', 'instructions', 'autopilots.md', 'monitor', 'skills', 'link-repositories.json'}
+    allowed = {'kit-version', 'agents', 'additions.json', 'instructions', 'autopilots.md', 'monitor', 'skills', 'link-repositories.json', 'autopilot-targets.json'}
     if any(p.name not in allowed for p in extension.iterdir()):
         fail('未知の拡張の項目です')
     links_path = extension / 'link-repositories.json'
@@ -120,11 +246,19 @@ def materialize(kit, extension, target):
             shutil.rmtree(destination)
         shutil.copytree(p, destination)
     (target / 'extension-skills').write_text('\n'.join(p.name for p in (extension / 'skills').glob('*')))
+    errors = []
+    targets = check_targets(extension, (target / 'common/autopilots.md').read_text(), errors)
+    if errors:
+        raise TargetsError([TARGET_PREFIX + line for line in errors])
+    (target / 'extension-autopilot-targets.json').write_text(json.dumps(targets, ensure_ascii=False))
 
 
 if __name__ == '__main__':
     try:
         materialize(*(Path(p).resolve() for p in sys.argv[1:]))
+    except TargetsError as error:
+        print('\n'.join(error.lines), file=sys.stderr)
+        sys.exit(1)
     except (OSError, ValueError, TypeError) as error:
         print(f'拡張: {error}', file=sys.stderr)
         sys.exit(1)
