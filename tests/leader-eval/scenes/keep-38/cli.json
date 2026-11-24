@@ -166,7 +166,7 @@
     {
       "command": "multica issue comment add issue-shop-1 --parent c-rev3 --content-file tmp/reply.md",
       "bodies": [
-        "[@Owner](mention://member/member1) 同じ誤りが続いています"
+        "[@Owner](mention://member/member1) 同じ誤りが続いています\n手当ての種類: 機械判定"
       ],
       "kind": "write",
       "exit": 0

@@ -27,14 +27,50 @@ autopilot_sections() {
 		then . else error("オートパイロットの定義が不正") end' "$1"
 }
 
+# 差し込み前の節を保つ。指示のコードブロックの見出しは節を分けない。
+autopilot_templates() {
+	jq -Rs '
+		reduce (split("\n")[]) as $line ({sections:[],current:null,code:false};
+			if .code then
+				.current.lines+=[$line] | if $line=="```" then .code=false else . end
+			elif ($line|startswith("## ")) then
+				if .current!=null then .sections+=[.current] else . end |
+				.current={name:($line|ltrimstr("## ")|split(" {{")[0]),lines:[$line]}
+			elif .current==null then .
+			else .current.lines+=[$line] |
+				if $line=="```text" then .code=true
+				elif ($line|startswith("- 範囲: ")) then .current.scope=($line|capture("^- 範囲: `(?<scope>[^`]+)`$").scope)
+				else . end
+			end) |
+		if .code then error("閉じていない指示のコードブロック") else
+			.sections + (if .current==null then [] else [.current] end) |
+			map(.+{text:(.lines|join("\n"))}|del(.lines))
+		end' "$1"
+}
+
 prepare_autopilots() {
-	local definitions section role title repo first=yes
+	local definitions section role title repo name scope targets='{}' first=yes
 	jq -e 'type=="array" and length>0 and all(.[]; .repository|type=="string" and test("^[a-z0-9][a-z0-9_.-]*/[a-z0-9_.-]+$")) and ([.[].repository]|length==(unique|length))' >/dev/null <<<"$selected_repositories" || die 'オートパイロットのリポジトリの一覧が不正です。'
 	template_filter "$enabled" "$root/common/autopilots.md" >"$project_work/autopilots.filtered" || die 'オートパイロットの役のマークが不正です。'
+	autopilot_templates "$project_work/autopilots.filtered" >"$project_work/autopilots.templates" || die 'オートパイロットの節を読めませんでした。'
+	if [[ -f $root/extension-autopilot-targets.json ]]; then
+		targets=$(cat "$root/extension-autopilot-targets.json") || die 'autopilot-targets.json を読めません。'
+	fi
 	printf '[]\n' >"$project_work/autopilots.json"
 	while IFS= read -r repo; do
-		jq --arg repo "$repo" '.repository=$repo' "$project_work/values.json" >"$project_work/autopilot.values"
-		template_apply "$project_work/autopilot.values" "$project_work/autopilots.filtered" >"$project_work/autopilots.rendered" || die 'オートパイロットを展開できませんでした。'
+		: >"$project_work/autopilots.rendered"
+		while IFS= read -r section; do
+			if [[ $(jq -r '.scope' <<<"$section") == member && $first != yes ]]; then continue; fi
+			name=$(jq -r '.name' <<<"$section")
+			# 絞り込みと値の差し込みは範囲が repository の定義だけに使う。原本の member の定義は設定で外せない。
+			scope=$(jq -r '.scope // ""' <<<"$section")
+			[[ $scope == repository ]] || name=''
+			if [[ -n $name ]] && jq -e --arg name "$name" --arg repo "$repo" 'has($name) and (.[$name]|has($repo)|not)' >/dev/null <<<"$targets"; then continue; fi
+			jq --arg repo "$repo" --arg name "$name" --argjson targets "$targets" '.+{repository:$repo}+(if $name=="" then {} else ($targets[$name][$repo] // {}) end)' "$project_work/values.json" >"$project_work/autopilot.values" || die 'オートパイロットの値を読めませんでした。'
+			jq -jr '.text' <<<"$section" >"$project_work/autopilot.template"
+			template_apply "$project_work/autopilot.values" "$project_work/autopilot.template" >>"$project_work/autopilots.rendered" || die 'オートパイロットを展開できませんでした。'
+			printf '\n' >>"$project_work/autopilots.rendered"
+		done < <(jq -c '.[]' "$project_work/autopilots.templates")
 		autopilot_sections "$project_work/autopilots.rendered" >"$project_work/autopilots.sections" || die 'オートパイロットの定義を読めませんでした。'
 		jq --arg repo "$repo" --arg first "$first" --slurpfile sections "$project_work/autopilots.sections" '.+[$sections[0][] | select(.scope=="repository" or $first=="yes") | .+{repository:(if .scope=="repository" then $repo else null end)}]' "$project_work/autopilots.json" >"$project_work/autopilots.new"
 		mv "$project_work/autopilots.new" "$project_work/autopilots.json"

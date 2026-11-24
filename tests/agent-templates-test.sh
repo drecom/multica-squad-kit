@@ -1038,6 +1038,10 @@ diag_flow_phrases=(
 for phrase in "${diag_flow_phrases[@]}"; do
 	grep -qF -- "$phrase" "$refs/leader-flow.md"
 done
+# 手当ての行の形: 展開した手順に行の形がある。この行の名前と値は、評価の場面 keep-38・keep-68 の [記録] 4 が読む。
+render "$roles" "$test_dir/all-values" "$refs/leader-flow.md" >"$test_dir/remedy-flow.md"
+grep -qF -- '手当ての種類: <禁止 | 機械判定 | 動作確認 | 文>' "$test_dir/remedy-flow.md"
+echo 'PASS templates: 展開した手順に手当ての種類の行の形がある'
 # 診断に入る条件が、同じ誤りの N の表より先にある。条件を満たさないリーダーは、今の手順のまま数える。
 flow_entry_line=$(grep -nxF -- '#### 診断に入る条件' "$refs/leader-flow.md" | cut -d: -f1)
 flow_steps_line=$(grep -nxF -- '#### 同じ誤りが続くとき' "$refs/leader-flow.md" | cut -d: -f1)
