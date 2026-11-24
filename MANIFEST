@@ -72,7 +72,7 @@ c380ac8fd57091fa1d1ad80ff9724cba6667a7199b440a40b4be9b0e25f83623  ./docs/agent-p
 8f528132703a8bdc7d6758547d25f7e7441e65878463412313f9f7adffbea231  ./docs/decide-record-read.md
 dbd67dd7af91229c1a2ef29087a0fe24f4a571bcccbab9e30eda3556b64f8ee5  ./docs/dependency-audit.md
 59c5e3e26eae406bca7d9a93f743a6a27b2bd71882403d633013040cb63d2ea4  ./docs/doc-style.md
-2995efd80cffde47eae2a5996840cc96566f2538a912341448fbae6597f317a1  ./docs/flow-and-index.md
+81655d77332a15a234f8e6fb4b2f06356cae46656b5ffd6c706a7c93d377bee9  ./docs/flow-and-index.md
 ce01904b58b09ea957686673d8f9883b1e59f5e84dbdb74bd7ab30759d1a1797  ./docs/host-start-daemon.md
 69c64f94fb80736ebc4f659805510155715a0d8b78510aa9ab40aeb284d87a12  ./docs/install.md
 ea7ebff44ce2dfa5cf4c68c764dde731c5c34514ea14fe1009369476511df8b0  ./docs/instruction-reread.md
@@ -118,7 +118,6 @@ f57a7a829cf4cac51462f7a2dc04912b57a99927b8541727faf70f7e4fa701a4  ./lib/version.
 a64df13c7b0a218ac7f5e837b144f17ed71b41f6875a4ec36e6c79739a5a8d39  ./lib/webhooks.sh
 50c2bfd06e66458d38fe423d6f4c2bf3223efe098dde74b561e21105c807af40  ./lib/workspace.sh
 781551f779b3fdf3494f309bc36170141d928869f1abfb41ce4d10f333dfa916  ./manual.md
-157294da2528dd068486431e301e987eb6d0359791d197ef4c19f574ef90baef  ./scripts/__pycache__/check-links.cpython-314.pyc
 633f1030aafe88149effa1a7c3d64247fd6100f682ffbaae2c212d44b443a538  ./scripts/build-assets.sh
 782353fdae5c14d4de44ecf778a09efea8057720c9c33b9634b6c279ef20cd24  ./scripts/check-links.py
 44f95ffd36dfaf4829e3ea7a6c81dd60c6569595754aff1e8285e6d654c45eb1  ./scripts/check-style.py
