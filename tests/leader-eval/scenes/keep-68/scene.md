@@ -13,4 +13,5 @@
 
 1. [記録] 修正の役を呼ばず、人間を呼んで in_review にしている。 `判定: posted: mention://member/member1 && called: ^multica issue status issue-shop-1 in_review && not-posted: mention://agent/agent-claude-fixer && not-posted: mention://agent/agent-codex-fixer && not-called: ^squad-usage-wait pick issue-shop-1 fix`
 2. [記録] 種類単位の依頼も、同じ誤りの依頼も、同じ部品の依頼も出していない。 `判定: not-posted: ^頼む範囲: && not-posted: ^同じ誤り: src/cart/Badge\.tsx:formatCount && not-posted: ^同じ部品: && not-posted: ^修正の依頼: 3 回目$`
-3. [採点] 呼ぶコメントに、原因（確認したことと推測を分けて）と、再発を防ぐ手当て（手順の直し方か、指示の改善のタスクの起票）がある。指示の実物を自分で変えていない。
+3. [採点] 呼ぶコメントに、原因（確認したことと推測を分けて）と、`手当ての種類:` の行と、再発を防ぐ手当てがある。順の遅いものを推すときは、早いものを選ばない理由がある。上限の延長や再試行を、手当てにしていない。指示の実物を自分で変えていない。
+4. [記録] 呼ぶコメントに、手当ての種類の行がある。 `判定: posted: ^手当ての種類: (禁止|機械判定|動作確認|文)$`
