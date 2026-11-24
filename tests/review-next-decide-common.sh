@@ -212,9 +212,10 @@ review_round() { # 回の ID コミット 役...
 	shift 2
 	add "$id" orchestrator "確認するコミット: ${commit}"$'\n'"返事を待つ役: $(mentions "$@")"$'\n'"観点: $*（テスト）"$'\n'"対象の PR: ${pr_url}"
 }
-result() { # 回の ID 役 マーク コミット 設計への指摘 [本文]
-	# 役の指示どおりの順: report が足す /note と返事の回、確認したコミット、マークの行、設計への指摘
-	add "res-$2-$n" "$2" $'/note\n返事の回: '"$1"$'\n確認したコミット: '"$4"$'\n'"$3 demo-$2-test: ${6-結果}"$'\n設計への指摘: '"$5"
+nl=$'\n'
+result() { # 回の ID 役 マーク コミット 設計への指摘 [マークの行の結論] [指摘の一覧などの続きの行]
+	# 役の指示どおりの順: report が足す /note と返事の回、確認したコミット、マークの行、設計への指摘、指摘の一覧
+	add "res-$2-$n" "$2" $'/note\n返事の回: '"$1"$'\n確認したコミット: '"$4"$'\n'"$3 demo-$2-test: ${6-結果}"$'\n設計への指摘: '"$5${7:+$nl$7}"
 }
 all_ok() { # 回の ID コミット 役...
 	local round=$1 commit=$2 role
@@ -254,6 +255,9 @@ reset() {
 	printf 'CI %s: 成功\n' "$sha" >"$test_dir/ciwait-out"
 	printf '{"headRefOid": "%s"}\n' "$sha" >"$test_dir/head.json"
 	merge_note='マージの前に人間がすること: なし'
+	merge_depth='読む深さ: このコメントだけ（重要でない。注意なし、残した指摘 0 件、前からある不具合 0 件）'
+	merge_findings='直さずに残した指摘: 0 件'
+	merge_pre='前からある不具合: 0 件'
 	set_pr_body $'## 概要\n\n変更。\n\n## 注意\n\nなし\n\n## 確認\n\n確認した。'
 	printf '{"id": "rule-1"}\n見張り: 1 時間おき、2026-11-17 まで\n' >"$test_dir/unlinked-out"
 	printf '役: claude-fixer\n振り分け: Claude で足りる。工程: fix\n' >"$test_dir/pick-out"
@@ -343,8 +347,12 @@ final_request_body() { # 範囲 [役]
 # PR の本文を決める。gh pr view --json body の応答の body になる。
 set_pr_body() { jq -n --arg body "$1" '{body: $body}' >"$test_dir/body.json"; }
 # マージの依頼の本文の見本。行 3 以降（確認の行）は、引数で渡す。
-# マージの前に人間がすること（merge_note。複数の行は改行で続ける）は、コンフリクトと CI の行のあと、最初の結果の行（✅・⚠️・❌）の前に置く。
+# 読む深さ（merge_depth）は、コンフリクトと CI の行のあとに置く。続けて、マージの前に人間がすること（merge_note。複数の行は改行で続ける）、直さずに残した指摘（merge_findings。複数の行は改行で続ける）、
+# 前からある不具合（merge_pre）を、最初の結果の行（✅・⚠️・❌）の前に置く。
 merge_note='マージの前に人間がすること: なし'
+merge_depth='読む深さ: このコメントだけ（重要でない。注意なし、残した指摘 0 件、前からある不具合 0 件）'
+merge_findings='直さずに残した指摘: 0 件'
+merge_pre='前からある不具合: 0 件'
 merge_body() { # 前の回 head 行...
 	local round=$1 head=$2 line placed=false
 	shift 2
@@ -353,7 +361,7 @@ merge_body() { # 前の回 head 行...
 		case $line in
 		'✅ '* | '⚠️ '* | '❌ '*)
 			if [[ $placed == false ]]; then
-				printf '%s\n' "$merge_note"
+				printf '%s\n%s\n%s\n%s\n' "$merge_depth" "$merge_note" "$merge_findings" "$merge_pre"
 				placed=true
 			fi
 			;;

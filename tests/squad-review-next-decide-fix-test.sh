@@ -17,6 +17,18 @@ run round-1
 expect_posted 修正 "$(fix_body claude-fixer 1 'code-reviewer、qa')"
 expect_calls pick-calls 'pick test-issue fix --round round-1'
 expect_no_calls watch-calls
+# 2-1: ✅ の結果に前からある不具合の件数だけがあるときは、修正の依頼を書かず、マージの依頼へ進む。
+reset
+set_roster orchestrator code-reviewer qa
+base_round
+result round-1 code-reviewer ✅ "$sha" なし '前からある不具合 2 件'
+result round-1 qa ✅ "$sha" なし
+merge_depth='読む深さ: このコメントと PR の注意（重要でない。注意なし、残した指摘 0 件、前からある不具合 2 件）'
+merge_pre='前からある不具合: 2 件（demo-code-reviewer-test 2 件）'
+run round-1
+expect_merge_posted "$(merge_body round-1 "$sha" "コンフリクト: MERGEABLE head: $sha" '✅ demo-code-reviewer-test: 前からある不具合 2 件' '✅ demo-qa-test: 結果')"
+expect_no_calls pick-calls
+echo 'PASS review-next-decide: ✅ で前からある不具合の件数だけの結果は、修正の依頼を書かずマージの依頼へ進む'
 # 自動で書くのは、タスクに 修正の依頼: の行がないときの 1 回目だけ。1 つ以上あれば、2 回目からとして書かずにリーダーを起こす。
 second_reason='修正の依頼が 2 回目から（同じ誤りと同じ部品はリーダーが判断する）'
 reset
