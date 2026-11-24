@@ -62,14 +62,24 @@ ref: refs/heads/<ブランチ名><タブ>HEAD
 取得したブランチは、次の 3 つのコマンドで手元に用意する。
 
 ```bash
-git fetch origin refs/heads/<ブランチ名>
-git checkout --detach FETCH_HEAD
+git fetch origin +refs/heads/<ブランチ名>:refs/remotes/origin/<ブランチ名>
+git checkout --detach refs/remotes/origin/<ブランチ名>
 git rev-parse HEAD
 ```
 
-`origin/<ブランチ名>` ではなく `FETCH_HEAD` を使う。clone の refspec が一部のブランチに絞られていても、取得したブランチを読めるためである。`git rev-parse HEAD` の 40 桁の SHA を、確認したコミットとして結果に書く。
+`git rev-parse HEAD` の 40 桁の SHA を、確認したコミットとして結果に書く。
 
 `git fetch` の前に、手元がクリーンかを見る。`git status --porcelain` の出力があるときは、未コミットの作業があるので止まる。HEAD のコミットがリモートのどのブランチにも含まれないとき（`git branch -r --contains HEAD` の出力がない）も、未 push の作業とみなして止まる。この 2 つのどちらでもなければ、HEAD を外しても作業は消えない。
+
+### 追跡の ref を更新する
+
+fetch には、取り先と置き先の両方を書いた refspec を渡す。取得したコミットを、追跡の ref `refs/remotes/origin/<ブランチ名>` にも置くためである。clone の refspec が一部のブランチに絞られていても、この形なら追跡の ref ができる。手元の refspec の設定は変えない。
+
+追跡の ref を置くのは、次の実行の未 push の判定が、追跡の ref を読むためである。`FETCH_HEAD` だけに取得すると、絞られた refspec の手元では追跡の ref ができない。次の実行では HEAD を含むリモートのブランチがなく、公開済みのコミットを未 push と取り違えて止まる。checkout も追跡の ref から行い、判定が読む ref と HEAD を同じものにする。
+
+先頭の `+` は、デフォルトブランチが force push で書き換わっても、fetch を通すためである。clone の既定の refspec と同じ扱いである。手元の判定は fetch の前に流すので、書き換えの前のコミットにいる HEAD も、まだ更新していない追跡の ref に含まれる。
+
+ほかの fetch が先に追跡の ref を進めていたときは、未 push として止まる。止まる側に倒れるので、作業は消えない。
 
 手元のリポジトリがないときは、`--ref` を付けずに `multica repo checkout https://github.com/{{repository}}` で用意してから、取得を流す。
 
@@ -226,7 +236,7 @@ GitHub のガードは変えない。ガードは Dependabot の PR のマージ
 
 ## 足す手順と防ぐ失敗
 
-足す手順は、デフォルトブランチの取得と、`--base` の照合の 2 つである。防ぐ失敗は、デフォルトブランチが `main` でないリポジトリで、週次の監査が `main` を読んで止まった失敗である。この手順は、合意された要件にもとづく。
+足す手順は、デフォルトブランチの取得と、`--base` の照合の 2 つである。防ぐ失敗の 1 つは、`main` がデフォルトでないリポジトリで、週次の監査が `main` を読んで止まった失敗である。あわせて、refspec を絞った手元で、取得済みのコミットを未 push と取り違えて止まる失敗も防ぐ。この手順は、合意された要件にもとづく。
 
 働いた跡は、次のテストに残す。
 
@@ -234,10 +244,13 @@ GitHub のガードは変えない。ガードは Dependabot の PR のマージ
 - 展開した Dependabot の役の指示の結果の出し方が、`対象ブランチ:` の行を 1 行目にすることを、同じテストで見る
 - デフォルトブランチが `develop` のスタブで、`list` が `develop` のルールを読み、`advance` が `main` 向けの PR を進めないことを、`squad-dependabot-merge` のテストで見る
 - セットアップを 2 回流したあとの登録の指示に、上の行が残ることを、`tests/project-followup-test.sh` で見る
+- refspec を `main` に絞った clone とデフォルトの `develop` で手順を 2 回続けて流し、2 回目も判定を通ることを、`tests/default-branch-fetch-test.sh` で見る
+- 同じテストで、未コミットの変更と未 push のコミットがあると判定で止まり、どちらも手元に残ることを見る
+- このテストは、原本の 2 つの指示に同じ fetch と checkout の文字列があることを確認してから、`<ブランチ名>` を置き換えて流す。リモートのコミットは push で作らず、bare のリポジトリの中で作る
 
 ## 検討した案
 
-対象のブランチを決める場所、対象外の PR の扱い、手元の値を使うかの 3 つを比べた。
+対象のブランチを決める場所、対象外の PR の扱い、手元の値を使うか、取得したコミットの置き場所の 4 つを比べた。
 
 ### 対象のブランチをどこで決めるか
 
@@ -256,3 +269,14 @@ GitHub のガードは変えない。ガードは Dependabot の PR のマージ
 ### 手元の origin/HEAD を使うか
 
 使わない。`origin/HEAD` は clone の時点の値で、リポジトリの設定を変えても手元は変わらない。毎回 `git ls-remote` で読めば、設定の変更が次の実行から効く。
+
+### 取得したコミットをどこに置くか
+
+追跡の ref にも置く案にした。次の実行の未 push の判定を変えずに、取得済みのコミットを公開済みと読めるためである。
+
+| 案 | 良い点 | 悪い点 |
+| --- | --- | --- |
+| 追跡の ref にも置く（選んだ案） | 判定はそのままで、refspec の設定も変えない | 手元に追跡の ref が 1 つ増える |
+| `FETCH_HEAD` だけに置く（前の設計） | 追跡の ref を増やさない | 絞られた refspec の手元で、次の実行が公開済みのコミットを未 push と取り違えて止まる |
+| 判定で `FETCH_HEAD` も見る | fetch の形を変えない | `FETCH_HEAD` はほかの fetch でも上書きされ、次の実行まで残る保証がない |
+| `git remote set-branches --add` で refspec の設定を足す | 以降の fetch がすべて追跡の ref を更新する | 共有されうる手元の設定を書き換え、定期の処理の外にも効く |
