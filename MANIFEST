@@ -162,6 +162,7 @@ b85e2ae36ecab43ad314896287afa00bb3904fa0c0b2a79470f4fbe0fd31ee6c  ./tests/comman
 621ef758d32c4ae3a91e66302cc8b26311be21708d74342e67faf8c54225f853  ./tests/completion-colors-test.sh
 78f1d9f0f5663ca46bd9035f90c31a70cec5f169c970d16601ef322f46ea508b  ./tests/confirmation-test.sh
 1367bc9ede3d94529b4197cd1afd31ab20a93ba37522cf4c544369691f2cc223  ./tests/content-test.sh
+9f567f9586a41fd2daf0b7083dbb04c16b7c970cb7ca24c0ec22f02f6a3470f4  ./tests/default-branch-fetch-test.sh
 472c2ead9ea4f6c805850a66daabd44f006fb113ca912d9c4b4f9044801c989c  ./tests/dependabot-merge-advance-test-lib.sh
 1ca031059ebd3ccb087611cc853dfd6d7f5a6e4d11d2a0c49bb2bfcf776c6781  ./tests/dependabot-merge-escalate-test-lib.sh
 a49b3cae1451eade8ea1f8d3a5243e4e8cd1da7d4c72c194ca917df001504138  ./tests/dependabot-merge-test-lib.sh
@@ -727,7 +728,7 @@ c98729878e6706f5780a10fbbdd9246ef49a12182fb27d46624296d335659336  ./tests/termin
 c0509d732b2b3fa99f882283848bc2ba1c82ed3a6d0a90ac8263045dfee07010  ./tests/terminal-test.sh
 bb7b764515248a871ceb26e80ed0d7a543675fe39a1813d3355767cb94475dc7  ./tests/terms-test.sh
 70b930e2847c9b0174993617f714cab72a321fa0483e64d0c73b4ead24e3a97c  ./tests/test-runner-test.sh
-d6eac74cb899c04553cf86f96eb3264f9401d354ebad97c06494d8e1bc72d9f0  ./tests/test-weights
+c9508648c9f3e81b92022efc2da947bca37c45a9c8517a1d78113cba92d3e477  ./tests/test-weights
 26c5ee5af12334788f56bf13d7912c59770691d19efffeef2c59ad5be01d7bc9  ./tests/tty-session-cases.py
 a0e2424125413c1c5bc44b0dba0b9c391785e81466da212529b51a8fbfe10013  ./tests/tty-session-test.sh
 a75552e9ce73a6a9face4c56e1a318d10150c76383b5c88d4f0de705dc9cde2f  ./tests/tty-session.py

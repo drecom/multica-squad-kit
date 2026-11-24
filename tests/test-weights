@@ -13,6 +13,7 @@ tests/ci-install-test.sh 17
 tests/completion-colors-test.sh 1
 tests/confirmation-test.sh 12
 tests/content-test.sh 1
+tests/default-branch-fetch-test.sh 3
 tests/doc-compare-test.sh 2
 tests/error-marks-test.sh 3
 tests/extensions-test.sh 2
