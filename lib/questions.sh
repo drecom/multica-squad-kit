@@ -347,6 +347,15 @@ autopilot_title() {
 	esac
 }
 
+# 原本のリポジトリ単位の定期確認が、設定の対象に含まれるかを見る。
+autopilot_repository_targeted() {
+	local title name
+	[[ -n ${root:-} && -f $root/extension-autopilot-targets.json ]] || return 0
+	title=$(autopilot_title "$1" "$2")
+	name=${title%" $project_key $2"}
+	jq -e --arg name "$name" --arg repo "$2" 'if has($name) then .[$name]|has($repo) else true end' "$root/extension-autopilot-targets.json" >/dev/null
+}
+
 # 外せる項目と、その項目に含まれる役の対応。リーダーは含めない。
 # roles はエージェントの役、autopilots は一緒に外れるオートパイロットの種類、watch はオートパイロットではない見張りである。
 role_choices='[
@@ -376,7 +385,10 @@ role_choice_text() {
 		if [[ $kind == usage-monitor ]]; then
 			names=${names:+${names}、}$(autopilot_title "$kind")
 		else
-			while IFS= read -r repo; do names=${names:+${names}、}$(autopilot_title "$kind" "$repo"); done < <(jq -r '.[].repository' <<<"$repositories")
+			while IFS= read -r repo; do
+				autopilot_repository_targeted "$kind" "$repo" || continue
+				names=${names:+${names}、}$(autopilot_title "$kind" "$repo")
+			done < <(jq -r '.[].repository' <<<"$repositories")
 		fi
 	done
 	[[ -z $names ]] || printf '\n%sオートパイロット: %s' "$indent" "$names"
@@ -617,6 +629,7 @@ confirmation_plan() {
 		plan_item リポジトリ "$action" "$repo" || return 1
 		for role in security-reviewer dependabot-merger; do
 			jq -e --arg role "$role" 'index($role)!=null' >/dev/null <<<"$excluded_roles" && continue
+			autopilot_repository_targeted "$role" "$repo" || continue
 			title=$(autopilot_title "$role" "$repo")
 			action=$(plan_autopilot_action "$autopilots" "$agents" "$title") || return 1
 			auto_plan=$(jq -c --arg title "$title" --arg action "$action" '.+[{title:$title,action:$action}]' <<<"$auto_plan") || return 1
@@ -657,7 +670,12 @@ confirmation_plan() {
 		for role in $(jq -r '.roles[]' <<<"$choice"); do value+=${value:+  }$project_key-$role-$member_key; done
 		for kind in $(jq -r '.autopilots[]?' <<<"$choice"); do
 			if [[ $kind == usage-monitor ]]; then value+="  $(autopilot_title "$kind")"
-			else while IFS= read -r repo; do value+="  $(autopilot_title "$kind" "$repo")"; done < <(jq -r '.[].repository' <<<"$repositories"); fi
+			else
+				while IFS= read -r repo; do
+					autopilot_repository_targeted "$kind" "$repo" || continue
+					value+="  $(autopilot_title "$kind" "$repo")"
+				done < <(jq -r '.[].repository' <<<"$repositories")
+			fi
 		done
 		watch=$(jq -r '.watch // empty' <<<"$choice"); changes=$(jq -r '.changes // empty' <<<"$choice"); note=$(role_choice_note "$name")
 		value+=${watch:+  $watch}${changes:+  $changes}$note

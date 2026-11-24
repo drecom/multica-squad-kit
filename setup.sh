@@ -90,6 +90,7 @@ source "$root/lib/installation.sh"
 source "$root/lib/squad.sh"
 source "$root/lib/autopilots.sh"
 source "$root/lib/extensions.sh"
+source "$root/lib/autopilot-targets.sh"
 source "$root/lib/version.sh"
 setup_cleanup_enabled=yes
 setup_cleanup() {
@@ -109,6 +110,7 @@ check_login
 check_update
 ask_questions
 resolve_link_repositories
+check_autopilot_targets
 load_extension_inventory
 confirm_answers
 save_answers
