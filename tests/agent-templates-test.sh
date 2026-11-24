@@ -745,6 +745,27 @@ for dir in "$test_dir/"*/; do
 done
 echo 'PASS templates: 両系統の実装・修正の役が設計との差の行と git の形を保ち、設計の役が設計との差の扱いの行を返す'
 
+# バグの再現のテスト: 実装の役 2 つの節が、見出し・置き場所・記録の行の形・同じバイト列を保ち、対象外の役に無い。節の説明の文は固定の文字列で確認しない。
+# 記録の行の頭 `再現のテスト:` は、docs/bug-repro-test.md の「働いた跡」の pattern `(?m)^- 再現のテスト:` が読む側である。
+repro_heading='## バグの再現のテスト'
+for role in claude-implementer codex-implementer; do
+	file=$root/common/agents/$role.md
+	[[ $(grep -cx -- "$repro_heading" "$file") == 1 ]]
+	awk -v h="$repro_heading" '$0 == h {inside=1; print; next} inside && /^## / {exit} inside {print}' "$file" >"$test_dir/repro-$role"
+	for line in '再現のテスト: `<コマンド>`。直す前: 落ちた（終了コード <数>、<落ちた出力の要点>）。直した後: 通った（終了コード <数>）' '再現のテスト: 書けない（<理由>）。代わりに確認したこと: <再現手順での確認と結果>'; do
+		[[ $(grep -cxF -- "$line" "$test_dir/repro-$role") == 1 ]]
+	done
+	keep_line=$(grep -nx -- '## 変えてよいもの' "$file" | cut -d: -f1)
+	repro_line=$(grep -nx -- "$repro_heading" "$file" | cut -d: -f1)
+	review_line=$(grep -nx -- '## push の前の照合' "$file" | cut -d: -f1)
+	((keep_line < repro_line && repro_line < review_line))
+done
+cmp -s "$test_dir/repro-claude-implementer" "$test_dir/repro-codex-implementer"
+for role in claude-fixer codex-fixer code-reviewer designer; do
+	absent -F -- '再現のテスト:' "$root/common/agents/$role.md"
+done
+echo 'PASS templates: 実装の役 2 つのバグの再現のテストの節は、置き場所・記録の 2 つの行の形・同じバイト列を保ち、修正・コードレビュー・設計の役には無い'
+
 # 再確認での列挙: 前に ❌ を出した部品と依頼の行の部品を列挙し、結果に範囲の行を置く。展開後も 12KB 以内に収める。
 for role in code-reviewer ux-reviewer performance-reviewer; do
 	for dir in "$test_dir/"*/; do
