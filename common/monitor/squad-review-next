@@ -605,7 +605,7 @@ def finding_list(reply):
         text = tidy(row[2:])
         if fence is not None:
             dropped += 1
-            if re.fullmatch(re.escape(fence[0]) + "{3,}[ ]*", text):
+            if re.fullmatch(re.escape(fence[0]) + "{" + str(len(fence)) + ",}[ ]*", text):
                 fence = None
             continue
         opened = FENCE.match(text)
@@ -722,18 +722,36 @@ FENCE = re.compile(r"(`{3,}|~{3,})")
 DROPPED = "（コードの囲みや HTML は PR の本文の注意を読む）"
 
 
+def fence_closes(line, fence):
+    """開いた囲みを閉じる行か。開きと同じ文字が、開きの長さ以上で並び、あとは空白だけ。"""
+    return re.fullmatch(re.escape(fence[0]) + "{" + str(len(fence)) + ",}[ ]*", line) is not None
+
+
 def section(body):
-    """見出しの行から次の `##` の見出しの前まで。見出しがなければ None。"""
+    """見出しの行から次の `##` の見出しの前まで。見出しがなければ None。
+    コードの囲みは本文の先頭から追い、囲みの外の見出しだけを節の開始と終了に使う。"""
     found = None
     result = []
+    fence = None
     for line in body.splitlines():
+        text = strip_marks(CONTROL.sub("", line.replace("\t", " ")))
+        if fence is not None:
+            if found:
+                result.append(line)
+            if fence_closes(text, fence):
+                fence = None
+            continue
         if found is None:
             if re.fullmatch(r"##[ \t]+注意[ \t]*", line):
                 found = True
+                continue
         elif re.match(r"##(?:[ \t]|\Z)", line):
             break
-        else:
+        if found:
             result.append(line)
+        opened = FENCE.match(text)
+        if opened:
+            fence = opened.group(1)
     return result if found else None
 
 
@@ -759,7 +777,7 @@ def shape(raw_lines):
         line = strip_marks(CONTROL.sub("", raw.replace("\t", " ")))
         if fence is not None:
             dropped = True
-            if re.fullmatch(re.escape(fence[0]) + "{3,}[ ]*", line):
+            if fence_closes(line, fence):
                 fence = None
             continue
         if line == "":

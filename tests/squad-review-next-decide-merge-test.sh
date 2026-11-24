@@ -320,6 +320,37 @@ note_case $'## 注意\n\n評価を流し直す\n```bash\nmake eval\n```\n<detail
 - 手でする
 - （コードの囲みや HTML は PR の本文の注意を読む）"
 note_case $'## 注意\n\n```\nだけ' "${N}: （コードの囲みや HTML は PR の本文の注意を読む）"
+# 囲みは本文の先頭から追い、囲みの外の見出しだけを節の開始と終了に使う。注意より前の囲みの中の偽の `## 注意` は拾わず、注意の中のコード例の見出しで節を終えない。
+drop='- （コードの囲みや HTML は PR の本文の注意を読む）'
+note_case $'## 概要\n```md\n## 注意\n- 偽の作業\n```\n## 注意\n- 本物の作業' "${N}: 本物の作業"
+note_case $'## 概要\n~~~md\n## 注意\n- 偽の作業\n~~~\n## 注意\n- 本物の作業' "${N}: 本物の作業"
+note_case $'## 概要\n```md\n## 注意\n- 偽の作業\n```' "${N}: 読めない（PR の本文に注意の見出しがない）"
+note_case $'## 注意\n```\n## サンプル\n```\n- マージの前に評価を流し直す' "${N}: PR の注意の 2 行
+- マージの前に評価を流し直す
+$drop"
+note_case $'## 注意\n~~~\n## サンプル\n~~~\n- マージの前に評価を流し直す' "${N}: PR の注意の 2 行
+- マージの前に評価を流し直す
+$drop"
+note_case $'## 注意\n```\n## サンプル\n- 例\n```\n- 作業\n## 確認\n- 確認' "${N}: PR の注意の 2 行
+- 作業
+$drop"
+# 囲みの閉じは、同じ文字で、開きの長さ以上のときだけ。短い・同じ長さ・長い・文字が違う。
+note_case $'## 注意\n````markdown\n```bash\n- 例\n```\nこのコードは例です\n````\n- 評価を流し直す' "${N}: PR の注意の 2 行
+- 評価を流し直す
+$drop"
+note_case $'## 注意\n~~~~\n~~~\n- 例\n~~~\nこのコードは例です\n~~~~\n- 評価を流し直す' "${N}: PR の注意の 2 行
+- 評価を流し直す
+$drop"
+note_case $'## 注意\n````\n- 例\n````\n- 評価を流し直す' "${N}: PR の注意の 2 行
+- 評価を流し直す
+$drop"
+note_case $'## 注意\n```\n- 例\n`````\n- 評価を流し直す' "${N}: PR の注意の 2 行
+- 評価を流し直す
+$drop"
+note_case $'## 注意\n```\n~~~\n- 例\n- 中\n```\n- 評価を流し直す' "${N}: PR の注意の 2 行
+- 評価を流し直す
+$drop"
+note_case $'## 注意\n````\n- 例\n```\n## 確認\n- 中' "${N}: （コードの囲みや HTML は PR の本文の注意を読む）"
 note_case $'## 注意\n\n@する人 [@Agent](mention://agent/agent-9) に聞く\nmention://agent/agent-9 は残る' "${N}: PR の注意の 2 行
 - @する人 @Agent に聞く
 - mention: //agent/agent-9 は残る"
@@ -508,3 +539,13 @@ merge_findings=$'直さずに残した指摘: 5 件\n- demo-code-reviewer-test 1
 run round-1
 expect_merge_posted "$(merge_body round-1 "$sha" "$conf_line" '⚠️ demo-code-reviewer-test: 結果' '✅ demo-qa-test: 結果')"
 echo 'PASS review-next-decide: 写した指摘のコードの囲みと HTML の項目は捨て、1 行の注意を 1 回だけ足し、件数は捨てた項目も数える'
+
+# 指摘の項目の囲みも、開きと同じ文字で、開きの長さ以上のときだけ閉じる。4 文字の囲みの中の 3 文字は閉じず、閉じのあとの項目は残る。
+two_roles_round
+result round-1 code-reviewer ⚠️ "$sha" なし 結果 $'指摘の一覧: 5 件\n- ````\n- ```\n- 例です\n- ````\n- 1. 推奨: a.js:3。影響: 値がずれる'
+result round-1 qa ✅ "$sha" なし
+merge_depth=$(depth_line 'このコメントと PR の注意' 重要でない 注意なし 5 0)
+merge_findings=$'直さずに残した指摘: 5 件\n- demo-code-reviewer-test 1. 推奨: a.js:3。影響: 値がずれる\n- （コードの囲みや HTML は PR の本文の注意を読む）'
+run round-1
+expect_merge_posted "$(merge_body round-1 "$sha" "$conf_line" '⚠️ demo-code-reviewer-test: 結果' '✅ demo-qa-test: 結果')"
+echo 'PASS review-next-decide: 写した指摘の囲みは、開きと同じ文字で開きの長さ以上のときだけ閉じる'
