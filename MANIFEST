@@ -46,8 +46,8 @@ df2acf34199ccb21f6db596a8491bf8e11b59096b82a75b0851f2547cee09549  ./common/guard
 133d2dc2c1385525ba528a2fc2fb6b37573b393e920f871efb0b859d6d3245c5  ./common/monitor/squad-cli-lib
 c9f338dd47ba2cb8aa8e4d2ee2208700faf9f1aa05c5e7407b3bdc9e31d8f14c  ./common/monitor/squad-dependabot-merge
 8f187cb0ff2e26d5e2f4d4acab7c8314f6107908c3c9af15366ab601c4ea52a8  ./common/monitor/squad-dispatch-pick
-b4fc8a780ef9d07e32c96b58d698767276b2772ab8561be5c3a6179f7d7f4da6  ./common/monitor/squad-pr-link
-33de9251e13aa5d0c61f7562bccd46e34b8e9ef04eb4314ec2b8fcfd957b81fb  ./common/monitor/squad-pr-link-lib
+f54cec61b627324eecf0230f68db70da92c0862f83104b0c71f62e929483b63e  ./common/monitor/squad-pr-link
+409375f4941ebc072133b6829b346ab0c805345aa8022ab04386b1da73bf9356  ./common/monitor/squad-pr-link-lib
 50924a746ed9a14815e15ef08bd0a40c7fc1f0aa2352b8f0af13613d5908ca6d  ./common/monitor/squad-pr-watch
 4a9a177b8376df2883dc055bb74699ef93bdd0af7ab061fd0060e043b2b9358d  ./common/monitor/squad-preflight
 56a0eede2db518749713fe1ea2d24e712e97aef4f207df2f68d5cd060f368a5f  ./common/monitor/squad-review-next
@@ -682,7 +682,7 @@ c35bc84c42124a133e73a3e1be31e554b01473d4a31b0e0024b90f4835e81386  ./tests/squad-
 4cedf721c42a43f4e41bbe932fab2951600face826d90f25af4539023bb9605e  ./tests/squad-dependabot-merge-escalate-test.sh
 3a56f62baad6750f5d2cafae696094c480b427740f69687447b50c662ba304f6  ./tests/squad-dependabot-merge-list-test.sh
 4f5228f743f7720ec896fadef88c126ffd796abbf2e60a08b947322bc50c6cc7  ./tests/squad-dispatch-pick-test.sh
-0cad5d7aca5b898b55ea836b5d528f36220202ac04fdc11238cf4589c85cc6a8  ./tests/squad-pr-link-test.sh
+9704194047bca36c1f14cea0213be252495eac32c920e32e123aedcae6ee98fd  ./tests/squad-pr-link-test.sh
 75fed61082c5d12f12594a5ea65266746f618777a668a57cc877ab4f830f4405  ./tests/squad-pr-watch-ci-arg-limit-test.sh
 9b7320ffbf504c3ce1da3565bf6785e7ea225ff456995b365a16bb3ce02cf0e3  ./tests/squad-pr-watch-ci-handoff-test.sh
 a53926705482f308ff7c6cf87e9082f118b9f8db888936ae852164ebd1e2b9f7  ./tests/squad-pr-watch-ci-now-test.sh

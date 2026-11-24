@@ -42,6 +42,14 @@ identifier=$(jq -r '.identifier' <<<"$issue")
 metadata=$(jq -c '.metadata' <<<"$issue")
 if ! pr_link_pull_request "$id" "$url" "$metadata"; then
 	warn "$PR_LINK_REASON"
+	# あとの区切りで試み直せるよう、マークを残す。作業先が PR のリポジトリと同じと分かるときだけ書く。
+	# 違うときは試み直しても断り、作業先がないときは同じと言えない。書けなくても、出力と終了コードは変えない。
+	repository=$(jq -r '.repository | select(. != null)' <<<"$metadata" | tr '[:upper:]' '[:lower:]')
+	url_repository=${url#https://github.com/}
+	url_repository=$(printf '%s' "${url_repository%/pull/*}" | tr '[:upper:]' '[:lower:]')
+	if [[ -n $repository && $repository == "$url_repository" ]]; then
+		multica issue metadata set "$id" --key pr_link_pending --value "$url" --type string >/dev/null 2>&1 || true
+	fi
 	if [[ ${PR_LINK_NOT_FOUND:-0} == 1 ]]; then warn_not_found; fi
 	exit 1
 fi
