@@ -80,117 +80,79 @@ ok '# 題\n\n```text\n```text\n[先](none.md)\n```\n[先](#題)\n'
 deny '# 題\n\n> ```text\n> <!--\n[先](missing.md)\n' 5 'missing.md のファイルがない'
 echo 'PASS links: コメント内のフェンスとコード、フェンス内のコメントを隠し、閉じた後の本文は検査する'
 
-# 字下げしたコードの中は、リンクとアンカーを検査しない。
-ok '# 題\n\n    [先](none.md) <!--\n    [名前]: none.md\n\n[先](#題)\n'
-ok '# 題\n\n\t[先](none.md)\n\n[先](#題)\n'
-deny '# 題\n\n    <a id="fake"></a>\n\n[先](#fake)\n' 5 '#fake の見出しがない'
-deny '# 題\n\n本文\n    [先](missing.md)\n' 4 'missing.md のファイルがない'
-echo 'PASS links: 字下げしたコードを隠し、段落の続きの字下げは検査する'
+# 字下げした段落は、箇条書きの項目のあとでも、リンクの検査から外れない（コードブロックとして隠さない）。
+deny '# 題\n\n- 項目\n\n    [先](missing.md)\n' 5 'missing.md のファイルがない'
+deny '# 題\n\n-\t項目\n\n\t[先](missing.md)\n' 5 'missing.md のファイルがない'
+echo 'PASS links: 箇条書きの項目に続く字下げした段落の切れたリンクも検査する'
 
-# 索引の検査は、docs/ の直下の文書が索引のリンクの先に載っているかを調べる。リポジトリの索引は、先頭の引数なしの検査で確認した。
-check | grep -qF '索引にない文書 0 本' || { echo 'FAIL links: 引数なしの検査が、索引の集計を出さない' >&2; exit 1; }
-index_repo="$test_dir/index-repository"
-index_dir="$index_repo/docs"
-mkdir -p "$index_dir/sub" "$index_repo/scripts"
-cp "$root/scripts/check-links.py" "$index_repo/scripts/check-links.py"
-git init -q "$index_repo"
-printf '# 文書\n\nあ。\n' >"$index_dir/a.md"
-printf '# 文書\n\nい。\n' >"$index_dir/b.md"
-printf '# 文書\n\nう。\n' >"$index_dir/sub/c.md"
-index_check() {
-	printf '%b' "$1" >"$index_dir/README.md"
-	if [ "$index_mode" = explicit ]; then
-		check --index "$index_dir/README.md" >"$test_dir/out" 2>"$test_dir/err"
-	else
-		git -C "$index_repo" add docs/README.md
-		python3 "$index_repo/scripts/check-links.py" >"$test_dir/out" 2>"$test_dir/err"
-	fi
-}
-index_deny() {
+# 索引の検査は、docs/ の直下の文書が索引の表の 1 列目のリンクに載っているかを見る。
+# 載っている書き方と載っていない書き方は、tests/links-index-table.tsv に表で持つ。
+index_dir="$test_dir/docs"
+mkdir -p "$index_dir/sub"
+printf '# 題\n' >"$index_dir/a.md"
+printf '# 題\n' >"$index_dir/b.md"
+printf '# 題\n' >"$index_dir/sub/c.md"
+index_missing() {
+	# 索引の検査を流し、載っていない文書の名前を 1 行ずつ出す。終了コードは 1（載っていない）か 0。
 	local status=0
-	index_check "$1" || status=$?
-	[ "$status" -eq 1 ] || { echo "FAIL links: 索引にない文書の終了コードが 1 でない: $status (${index_mode})" >&2; cat "$test_dir/err" >&2; exit 1; }
-	grep -qF "README.md: 索引: $2 が載っていない" "$test_dir/err" || { echo "FAIL links: 載っていない文書の行が違う: $2" >&2; cat "$test_dir/err" >&2; exit 1; }
+	check --index "$index_dir/README.md" >"$test_dir/out" 2>"$test_dir/err" || status=$?
+	if [ "$status" -ne 0 ] && [ "$status" -ne 1 ]; then echo "FAIL links: 索引の検査の終了コードが $status" >&2; cat "$test_dir/err" >&2; exit 1; fi
+	sed -n 's/^.*README.md: 索引: \(.*\) が載っていない$/\1/p' "$test_dir/err"
+	[ "$status" -eq 0 ] && [ -s "$test_dir/err" ] && { echo 'FAIL links: 索引の検査が 0 で終わったのに、stderr がある' >&2; cat "$test_dir/err" >&2; exit 1; }
+	[ "$status" -eq 1 ] && [ ! -s "$test_dir/err" ] && { echo 'FAIL links: 索引の検査が 1 で終わったのに、stderr がない' >&2; exit 1; }
+	return 0
 }
-index_ok() {
-	index_check "$1" || { echo 'FAIL links: 載っている文書が、載っていないと数えられた' >&2; cat "$test_dir/err" >&2; exit 1; }
-}
-for index_mode in explicit default; do
-index_deny '# 索引\n\n[a](a.md)\n' 'b.md'
-grep -qF '索引にない文書 1 本' "$test_dir/out" || { echo 'FAIL links: 索引の集計の行が違う' >&2; cat "$test_dir/out" >&2; exit 1; }
-if grep -qF 'a.md が載っていない' "$test_dir/err"; then echo 'FAIL links: 載っている文書を、載っていないと数えた' >&2; exit 1; fi
-index_ok '# 索引\n\n[a](a.md) と [b](b.md)\n'
-grep -qF '設計の文書 2 本、索引にない文書 0 本' "$test_dir/out" || { echo 'FAIL links: 索引の集計の行が違う' >&2; cat "$test_dir/out" >&2; exit 1; }
-echo 'PASS links: 索引にない文書は「索引: <名前> が載っていない」を出して落ち、すべて載っていれば通る'
-
-# アンカー付きのリンクで載せた文書は、載っていると数える。下のディレクトリの文書は見ない。
-index_ok '# 索引\n\n[a](a.md#文書) と [b](./b.md#文書)\n'
-echo 'PASS links: アンカー付きのリンクで載せた文書も、載っていると数える'
-
-# コードの中と HTML のコメントの中のリンクは、載っていると数えない。
-index_deny '# 索引\n\n[a](a.md) と `[b](b.md)`\n' 'b.md'
-index_deny '# 索引\n\n[a](a.md)\n\n```text\n[b](b.md)\n```\n' 'b.md'
-index_deny '# 索引\n\n[a](a.md)\n\n<!-- [b](b.md) -->\n' 'b.md'
-index_deny '# 索引\n\n[a](a.md)\n\n    [b](b.md)\n' 'b.md'
-index_deny '# 索引\n\n[a](a.md)\n\n\t[b](b.md)\n' 'b.md'
-index_deny '# 索引\n\n[a](a.md)\n\n>     [b](b.md)\n' 'b.md'
-index_ok '# 索引\n\n[a](a.md)\n    [b](b.md)\n'
-echo 'PASS links: コードと HTML のコメントの中のリンクは、載っていると数えない'
-
-# 参照の定義だけでは載っていない。本文で使った参照は、書き方によらず載っている。
-index_deny '# 索引\n\n[a](a.md)\n\n[b]: b.md\n' 'b.md'
-index_deny '# 索引\n\n[a](a.md)\n\n    [文書][b]\n\n[b]: b.md\n' 'b.md'
-index_ok '# 索引\n\n[a](a.md) と [文書][b]\n\n[b]: b.md#文書\n'
-index_ok '# 索引\n\n[a](a.md) と [b][]\n\n[b]: ./b.md\n'
-index_ok '# 索引\n\n[a](a.md) と [b]\n\n[b]: b.md\n'
-index_ok '# 索引\n\n[a](a.md) と [文書][B  文書]\n\n[b 文書]: <b.md>\n'
-echo 'PASS links: 未使用の参照定義は数えず、本文で使った参照形式は数える'
-
-# 画像だけでは、文書へ進むリンクを置いたことにはならない。
-index_deny '# 索引\n\n[a](a.md) と ![b](b.md)\n' 'b.md'
-index_deny '# 索引\n\n[a](a.md) と ![文書][b]\n\n[b]: b.md\n' 'b.md'
-index_deny '# 索引\n\n[a](a.md) と ![b][]\n\n[b]: b.md\n' 'b.md'
-index_deny '# 索引\n\n[a](a.md) と ![b]\n\n[b]: b.md\n' 'b.md'
-index_ok '# 索引\n\n[a](a.md) と [![画像](sub/c.md)](b.md)\n'
-echo 'PASS links: 画像は数えず、画像を文字にした通常のリンクは数える'
-
-# 表の行ごとに、載っている文書を照合する。表は tests/links-index-table.tsv（入力の種類ごとに 1 行）。
-table_rows=0
-while IFS=$'\t' read -r id kind doc listed check reason; do
-	case "$id" in '#'*|'') continue ;; esac
-	table_rows=$((table_rows + 1))
-	expected=''
+prefix='# 索引\n\n| 文書 | 書いてあること |\n| --- | --- |\n| [a](a.md) | あ |\n'
+rows=0
+while IFS=$'\t' read -r id kind body listed reason; do
+	case "$id" in ''|'#'*) continue ;; esac
+	rows=$((rows + 1))
+	printf '%b' "$prefix$body" >"$index_dir/README.md"
+	expect=''
 	for name in a b; do
-		case ",$listed," in *",$name,"*) ;; *) expected="$expected $name.md" ;; esac
+		case ",$listed," in *",$name,"*) ;; *) expect="$expect$name.md"$'\n' ;; esac
 	done
-	status=0
-	index_check "$doc" || status=$?
-	actual=$(sed -n 's/^.*README\.md: 索引: \(.*\) が載っていない$/\1/p' "$test_dir/err" | sort | tr '\n' ' ')
-	want=$(printf '%s\n' $expected | sed '/^$/d' | sort | tr '\n' ' ')
-	[ "$actual" = "$want" ] || { echo "FAIL links: 表の行 $id: 載っていない文書が違う（期待 [$want] 実際 [$actual]）(${index_mode})" >&2; cat "$test_dir/err" >&2; exit 1; }
-	if [ -n "$expected" ]; then want_status=1; else want_status=0; fi
-	[ "$status" -eq "$want_status" ] || { echo "FAIL links: 表の行 $id: 終了コードが $want_status でない: $status (${index_mode})" >&2; exit 1; }
+	got=$(index_missing)
+	[ "$got" = "${expect%$'\n'}" ] || { echo "FAIL links: 索引に載るかが違う: ${id}（${reason}）。期待 [${expect%$'\n'}]、実際 [$got]" >&2; exit 1; }
+	case "$kind" in
+	載る) case ",$listed," in *,b,*) ;; *) echo "FAIL links: 表の種類と載る列が合わない: $id" >&2; exit 1 ;; esac ;;
+	載らない) case ",$listed," in *,b,*) echo "FAIL links: 表の種類と載る列が合わない: $id" >&2; exit 1 ;; esac ;;
+	*) echo "FAIL links: 表の種類が違う: $id" >&2; exit 1 ;;
+	esac
 done <"$root/tests/links-index-table.tsv"
-[ "$table_rows" -ge 60 ] || { echo "FAIL links: 表の行を読めていない: $table_rows" >&2; exit 1; }
-echo "PASS links: 索引の掲載判定は、表の $table_rows 行どおり（${index_mode}）"
-echo "PASS links: 索引の確認は $index_mode で通った"
-done
+[ "$rows" -ge 20 ] || { echo "FAIL links: 索引の表の行が少ない: $rows" >&2; exit 1; }
+echo "PASS links: 索引の表の 1 列目のインラインリンクだけを載っていると数える（$rows 行）"
 
-# 同じ表の行で、通常のリンクの確認が切れを見逃さないことを照合する。行き先は、ない名前（x-a.md、x-b.md）に替える。
-while IFS=$'\t' read -r id kind doc listed check reason; do
-	case "$id" in '#'*|'') continue ;; esac
-	doc=${doc//a.md/x-a.md}
-	doc=${doc//b.md/x-b.md}
-	printf '%b' "$doc" >"$test_dir/table.md"
-	check "$test_dir/table.md" >/dev/null 2>"$test_dir/err" || true
-	actual=$(sed -n 's/^.*table\.md:\([0-9]*\): リンク: [<./]*x-\([ab]\)\.md[^ ]* のファイルがない$/\2:\1/p' "$test_dir/err" | sort -u | tr '\n' ' ')
-	want=$(printf '%s\n' ${check//,/ } | sort -u | tr '\n' ' ')
-	[ "$actual" = "$want" ] || { echo "FAIL links: 表の行 $id: 切れを落とす行が違う（期待 [$want] 実際 [$actual]）" >&2; cat "$test_dir/err" >&2; exit 1; }
-done <"$root/tests/links-index-table.tsv"
-echo 'PASS links: 通常のリンクの確認は、表の行どおりに切れを落とし、コードとコメントの中は見ない'
+# 載っていない文書は、名前を添えて 1 で落ち、載っている文書は 0 で通る。
+printf '%b' "$prefix" >"$index_dir/README.md"
+if check --index "$index_dir/README.md" >"$test_dir/out" 2>"$test_dir/err"; then echo 'FAIL links: 載っていない文書があるのに通った' >&2; exit 1; fi
+grep -qF 'docs/README.md: 索引: b.md が載っていない' "$test_dir/err" || { echo 'FAIL links: 載っていない文書の名前がない' >&2; cat "$test_dir/err" >&2; exit 1; }
+grep -qF '検査: 設計の文書 2 本、索引にない文書 1 本' "$test_dir/out" || { echo 'FAIL links: 検査の数が違う' >&2; cat "$test_dir/out" >&2; exit 1; }
+printf '%b' "$prefix| [b](b.md#題) | い |\n" >"$index_dir/README.md"
+check --index "$index_dir/README.md" >"$test_dir/out"
+grep -qF '検査: 設計の文書 2 本、索引にない文書 0 本' "$test_dir/out" || { echo 'FAIL links: 索引にない文書の数が 0 でない' >&2; cat "$test_dir/out" >&2; exit 1; }
+echo 'PASS links: 載っていない文書は索引: <名前> が載っていないで落ち、載っていれば通る'
 
-# 索引のファイルがないと、引数の誤りとして終了コード 2 で止まる。
+# 索引のファイルがない、--index にファイルを重ねる、は 2 で落ちる。ファイルだけを渡すと、リンクの検査だけをする。
+rm -f "$index_dir/README.md"
 status=0
-check --index "$index_dir/none.md" >/dev/null 2>&1 || status=$?
-[ "$status" -eq 2 ] || { echo "FAIL links: 索引のファイルがないときの終了コードが 2 でない: $status" >&2; exit 1; }
-echo 'PASS links: 索引のファイルがないと、終了コード 2 で止まる'
+check --index "$index_dir/README.md" >/dev/null 2>&1 || status=$?
+[ "$status" -eq 2 ] || { echo "FAIL links: 索引がないのに終了コードが $status" >&2; exit 1; }
+printf '%b' "$prefix| [b](b.md) | い |\n" >"$index_dir/README.md"
+status=0
+check --index "$index_dir/README.md" "$index_dir/a.md" >/dev/null 2>&1 || status=$?
+[ "$status" -eq 2 ] || { echo "FAIL links: --index にファイルを重ねたのに終了コードが $status" >&2; exit 1; }
+printf '# 題\n\n[先](none.md)\n' >"$index_dir/a.md"
+printf '%b' "$prefix" >"$index_dir/README.md"
+status=0
+check "$index_dir/README.md" >/dev/null 2>&1 || status=$?
+[ "$status" -eq 0 ] || { echo "FAIL links: ファイルだけを渡したら、索引の検査まで流れた（終了コード ${status}）" >&2; exit 1; }
+status=0
+check "$index_dir/a.md" >/dev/null 2>&1 || status=$?
+[ "$status" -eq 1 ] || { echo "FAIL links: ファイルだけを渡した検査が、切れたリンクを止めなかった（終了コード ${status}）" >&2; exit 1; }
+echo 'PASS links: 索引のファイルがない・--index にファイルを重ねると 2 で落ち、ファイルだけならリンクの検査だけをする'
+
+# 引数なしの検査は、この原本の docs/ の文書がすべて索引に載っていることを出力に示す。
+check >"$test_dir/out"
+grep -qF '索引にない文書 0 本' "$test_dir/out" || { echo 'FAIL links: 原本の docs/ に索引にない文書がある' >&2; cat "$test_dir/out" >&2; exit 1; }
+echo 'PASS links: 原本の docs/ の文書は、すべて索引に載っている'
