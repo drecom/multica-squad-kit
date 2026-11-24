@@ -82,7 +82,7 @@
 
 | 時機 | 処理 | 見る誤り |
 | --- | --- | --- |
-| 拡張の確認（`choose_extension`） | `lib/extensions.py` | 形と名前と値の決まりに合わないもの。定義にない名前・範囲が `member` の名前・同じ名前の定義の重なり・足りない値・指示の外の `{{target.*}}` |
+| 拡張の確認（`choose_extension`） | `lib/extensions.py` | 形と名前と値の決まりに合わないもの（JSON として読めない、キーの重なりを含む）。定義にない名前・範囲が `member` の名前・同じ名前の定義の重なり・足りない値・指示の外の `{{target.*}}`・設定に書いていない定義の `{{target.*}}` |
 | 質問のあと（`check_autopilot_targets`） | `lib/autopilot-targets.sh` | セットアップで選んでいないリポジトリ。紐付けだけのリポジトリも選んでいないものとして扱う |
 
 足りない値は、書いた定義とリポジトリの組ごとに、その定義の節が使う `{{target.*}}` がすべてあるかで見る。設定に書いていない定義が `{{target.*}}` を使うときも、値がないので誤りにする。使わない値があっても誤りにしない。
@@ -240,6 +240,7 @@ Webhook の URL と署名の秘密は、この設計では読まない。外し�
 | 設定がないとき、`autopilots.json` が今と同じ | `tests/autopilot-targets-test.sh` と既存の `tests/project-followup-repositories-test.sh` |
 | 拡張・確認の表示・導入の確認・Webhook・起票の今の動き | 既存の `tests/extensions-test.sh` `tests/setup-extension-test.sh` `tests/confirmation-test.sh` `tests/installation-test.sh` `tests/webhooks-test.sh` `tests/project-followup-webhook-test.sh` `tests/project-changes-test.sh` |
 | 文書のリンクと語 | `tests/manual-test.sh`、`tests/links-test.sh`、`tests/terms-test.sh` |
+| 新しいテストの並列の重み（`CONTRIBUTING.md` の決まり） | `tests/test-weights` に `tests/autopilot-targets-test.sh` の行を足す |
 
 設定がないときの同一性は、変更前の展開で作った `autopilots.json` を期待値に置き、比べて確認する。
 
