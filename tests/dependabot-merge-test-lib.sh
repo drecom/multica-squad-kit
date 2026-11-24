@@ -48,11 +48,13 @@ if [[ $1 == api ]]; then
 	*'/comments?per_page=100') [[ ${3:-} == --paginate ]]; emit gh-pr-comments "$dir/comments.json" ;;
 	*'pulls?state=open&per_page=100') [[ ${3:-} == --paginate ]]; emit gh-dependabot-pulls "$dir/pulls.json" ;;
 	*/rules/branches/main) [[ ${3:-} == --paginate ]]; emit gh-branch-rules "$dir/rules.json" ;;
+	*/rules/branches/*) [[ ${3:-} == --paginate ]]; emit gh-branch-rules "$dir/target-rules.json" ;;
 	*'/check-runs?filter=latest&per_page=100') [[ ${3:-} == --paginate ]]; emit gh-check-runs "$dir/checks.json" ;;
 	*'/statuses?per_page=100') [[ ${3:-} == --paginate ]]; emit gh-statuses "$dir/statuses.json" ;;
 	*'/files?per_page=100') [[ ${3:-} == --paginate ]]; emit gh-pr-files "$dir/files.json" ;;
 	*/pulls/[0-9]*) [[ $3 == -H && $4 == 'Accept: application/vnd.github.diff' ]]; cat "$dir/pr.diff" ;;
 	*/commits/*) emit gh-commit "$dir/${endpoint##*/}.json" ;;
+	repos/*/*) [[ $endpoint =~ ^repos/[^/]+/[^/]+$ && ${3:-} == --jq && ${4:-} == 'with_entries(select(.key == "default_branch"))' ]]; emit gh-default-branch "$dir/default-branch.json" ;;
 	*) echo "Unexpected endpoint: $*" >&2; exit 1 ;;
 	esac
 elif [[ $1 == pr && $2 == comment ]]; then
@@ -83,6 +85,8 @@ chmod +x "$test_dir/bin/gh"
 reset_fixture() {
 	rm -f "$test_dir"/gh-defect.*.json
 	gh_fixture gh-viewer | jq '.login="test-user"' >"$test_dir/viewer.json"
+	gh_fixture gh-default-branch | jq '.default_branch="main"' >"$test_dir/default-branch.json"
+	printf '[]\n' >"$test_dir/target-rules.json"
 	printf '[]\n' >"$test_dir/pulls.json"
 	printf '[]\n' >"$test_dir/files.json"
 	printf '[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"lint","integration_id":15368},{"context":"external","integration_id":null}]}}]\n' >"$test_dir/rules.json"
@@ -112,7 +116,7 @@ add_pr() {
 }
 
 run_list() {
-	if bash "$script" example/template project-a list >"$test_dir/output" 2>"$test_dir/error"; then
+	if bash "$script" example/template project-a list --base "${1-main}" >"$test_dir/output" 2>"$test_dir/error"; then
 		:
 	else
 		cat "$test_dir/error" >&2
