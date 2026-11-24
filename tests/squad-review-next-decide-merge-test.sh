@@ -351,6 +351,16 @@ note_case $'## 注意\n```\n~~~\n- 例\n- 中\n```\n- 評価を流し直す' "${
 - 評価を流し直す
 $drop"
 note_case $'## 注意\n````\n- 例\n```\n## 確認\n- 中' "${N}: （コードの囲みや HTML は PR の本文の注意を読む）"
+# HTML コメント。コメントの中の見出しは、節の始まりにも終わりにも使わない（表: docs/merge-request-reading.md の「注意の入力の種類と写し方」。全行は tests/review-note-table-test.sh）。
+note_case $'## 概要\n<!--\n## 注意\nなし\n## 記入例はここまで -->\n## 注意\n- マージの前にバックアップする' "${N}: マージの前にバックアップする"
+note_case $'## 注意\n<!--\n## 記入例\n-->\n- マージの前にバックアップする\n- 評価を流し直す' "${N}: PR の注意の 3 行
+- マージの前にバックアップする
+- 評価を流し直す
+$drop"
+note_case $'## 注意\n- 作業\n<!--\n## 確認\n- 例' "${N}: PR の注意の 2 行
+- 作業
+$drop"
+note_case $'## 注意\n<!-- なし -->' "${N}: （コードの囲みや HTML は PR の本文の注意を読む）"
 note_case $'## 注意\n\n@する人 [@Agent](mention://agent/agent-9) に聞く\nmention://agent/agent-9 は残る' "${N}: PR の注意の 2 行
 - @する人 @Agent に聞く
 - mention: //agent/agent-9 は残る"

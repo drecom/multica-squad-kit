@@ -206,6 +206,61 @@ total = project_count + default_count
 result("select", roles, f"変えたファイル {total} 件が対応に当たった（プロジェクト {project_count} 件・既定 {default_count} 件）")
 MATCHPY
 
+# マージの依頼に写す文（PR の本文の注意と、役の返事の指摘の一覧）から、コードの囲みと HTML コメントを見分ける部品。
+# docs/merge-request-reading.md の「注意の入力の種類と写し方」の表の規則を持つ。DECIDE_PY と NOTE_PY の先頭に足して使う。
+read -r -d '' MARKUP_PY <<'MARKUPPY' || true
+import re
+
+FENCE = re.compile(r"(`{3,}|~{3,})")
+DROPPED = "（コードの囲みや HTML は PR の本文の注意を読む）"
+
+
+def fence_closes(line, fence):
+    """開いた囲みを閉じる行か。開きと同じ文字が、開きの長さ以上で並び、あとは空白だけ。"""
+    return re.fullmatch(re.escape(fence[0]) + "{" + str(len(fence)) + ",}[ ]*", line) is not None
+
+
+def comment_start(text, pos):
+    """pos 以降で、コードスパンとバックスラッシュの外にある最初の `<!--` の位置。なければ -1。"""
+    while pos < len(text):
+        if text[pos] == "\\":
+            pos += 2
+        elif text[pos] == "`":
+            run = re.match("`+", text[pos:]).group(0)
+            close = re.search("(?<!`)" + run + "(?!`)", text[pos + len(run):])
+            pos += len(run) + (close.end() if close else 0)
+        elif text.startswith("<!--", pos):
+            return pos
+        else:
+            pos += 1
+    return -1
+
+
+def markup_step(text, state):
+    """整えた 1 行を、状態 state から読む。(囲みやコメントに触れた行か, 次の状態) を返す。
+    state は、囲みやコメントの外なら None、コメントの中なら "comment"、囲みの中なら開きの記号（``` や ~~~）。
+    触れた行は、開く行・中の行・閉じる行・同じ行で開いて閉じる行で、見える文字が残っていても捨てる行にする。
+    囲みの中ではコメントの記号を、コメントの中では囲みの記号を見ない。"""
+    if state not in (None, "comment"):
+        return True, (None if fence_closes(text, state) else state)
+    if state is None:
+        opened = FENCE.match(text)
+        if opened:
+            return True, opened.group(1)
+    touched, pos = state == "comment", 0
+    while True:
+        if state == "comment":
+            end = text.find("-->", pos)
+            if end < 0:
+                return True, "comment"
+            pos, state = end + 3, None
+        else:
+            start = comment_start(text, pos)
+            if start < 0:
+                return touched, None
+            touched, pos, state = True, start + 2, "comment"
+MARKUPPY
+
 # decide の判定の中核。標準出力に JSON を 1 行だけ出す。
 #   python3 -I -c "$DECIDE_PY" lineage <ディレクトリ>   実装した系統: {"lineage": "Claude"|"Codex"|null}
 #   python3 -I -c "$DECIDE_PY" analyze <ディレクトリ>   行き先: {"action": leader|retry|fix|final|merge, ...}
@@ -560,13 +615,12 @@ LEAD = re.compile(r"(?:[-*+]|[0-9]{1,9}\))(?=\s|\Z)")
 MENTION = re.compile(r"\[([^\]]*)\]\(mention://[^)]*\)", re.IGNORECASE)
 PRE_COUNT = re.compile(r"前からある不具合 ([0-9]+) 件")
 LIST_HEAD = re.compile(r"指摘の一覧:[ \t]*([0-9]+)[ \t]*件")
-FENCE = re.compile(r"(`{3,}|~{3,})")
-DROPPED = "（コードの囲みや HTML は PR の本文の注意を読む）"
 MAX_ITEMS, MAX_ITEM_CHARS = 10, 200
 
 
-def tidy(text):
-    """写す文を整える。docs/merge-request-reading.md の「写す文の整え方」の 1・2・5。指摘の行の `<番号>.` は残す。4 は行の並びを見る finding_list が行う。"""
+def tidy(text, mentions=True):
+    """写す文を整える。docs/merge-request-reading.md の「写す文の整え方」の 1・2・5。指摘の行の `<番号>.` は残す。4 は行の並びを見る finding_list が行う。
+    mentions を False にすると、5（メンションのリンクの置き換え）をしない。囲みとコメントを見分けるときは、置き換える前の文を読む。"""
     text = CONTROL.sub("", text.replace("\t", " "))
     while True:
         before = text
@@ -579,6 +633,8 @@ def tidy(text):
                 text = text[found.end():]
         if text == before:
             break
+    if not mentions:
+        return text.strip()
     text = MENTION.sub(lambda found: found.group(1), text.strip())
     return text.replace("mention://", "mention: //")
 
@@ -598,20 +654,15 @@ def finding_list(reply):
     found = LIST_HEAD.fullmatch(rows[heads[0]])
     if not found or int(found.group(1)) == 0:
         return None
-    items, dropped, fence = [], 0, None
+    items, dropped, state = [], 0, None
     for row in rows[heads[0] + 1:]:
         if not re.match(r"-[ \t]", row):
             break
-        text = tidy(row[2:])
-        if fence is not None:
+        touched, state = markup_step(tidy(row[2:], False), state)
+        if touched:
             dropped += 1
-            if re.fullmatch(re.escape(fence[0]) + "{" + str(len(fence)) + ",}[ ]*", text):
-                fence = None
             continue
-        opened = FENCE.match(text)
-        if opened:
-            dropped, fence = dropped + 1, opened.group(1)
-            continue
+        text = tidy(row[2:])
         if text.startswith("<"):
             dropped += 1
             continue
@@ -718,40 +769,25 @@ MAX_LINES, MAX_CHARS = 10, 800
 CONTROL = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f]")
 BULLET = re.compile(r"(?:[-*+]|[0-9]{1,9}[.)])(?=\s|\Z)")
 MENTION = re.compile(r"\[([^\]]*)\]\(mention://[^)]*\)", re.IGNORECASE)
-FENCE = re.compile(r"(`{3,}|~{3,})")
-DROPPED = "（コードの囲みや HTML は PR の本文の注意を読む）"
-
-
-def fence_closes(line, fence):
-    """開いた囲みを閉じる行か。開きと同じ文字が、開きの長さ以上で並び、あとは空白だけ。"""
-    return re.fullmatch(re.escape(fence[0]) + "{" + str(len(fence)) + ",}[ ]*", line) is not None
 
 
 def section(body):
     """見出しの行から次の `##` の見出しの前まで。見出しがなければ None。
-    コードの囲みは本文の先頭から追い、囲みの外の見出しだけを節の開始と終了に使う。"""
+    コードの囲みと HTML コメントを本文の先頭から追い、どちらにも入っていない行の見出しだけを節の開始と終了に使う。"""
     found = None
     result = []
-    fence = None
+    state = None
     for line in body.splitlines():
-        text = strip_marks(CONTROL.sub("", line.replace("\t", " ")))
-        if fence is not None:
-            if found:
-                result.append(line)
-            if fence_closes(text, fence):
-                fence = None
-            continue
-        if found is None:
-            if re.fullmatch(r"##[ \t]+注意[ \t]*", line):
-                found = True
-                continue
-        elif re.match(r"##(?:[ \t]|\Z)", line):
-            break
+        if state is None:
+            if found is None:
+                if re.fullmatch(r"##[ \t]+注意[ \t]*", line):
+                    found = True
+                    continue
+            elif re.match(r"##(?:[ \t]|\Z)", line):
+                break
         if found:
             result.append(line)
-        opened = FENCE.match(text)
-        if opened:
-            fence = opened.group(1)
+        _, state = markup_step(strip_marks(CONTROL.sub("", line.replace("\t", " "))), state)
     return result if found else None
 
 
@@ -772,19 +808,14 @@ def strip_marks(line):
 
 def shape(raw_lines):
     """整えた行の並びと、捨てた行があったかを返す。"""
-    kept, dropped, fence = [], False, None
+    kept, dropped, state = [], False, None
     for raw in raw_lines:
         line = strip_marks(CONTROL.sub("", raw.replace("\t", " ")))
-        if fence is not None:
+        touched, state = markup_step(line, state)
+        if touched:
             dropped = True
-            if fence_closes(line, fence):
-                fence = None
             continue
         if line == "":
-            continue
-        opened = FENCE.match(line)
-        if opened:
-            dropped, fence = True, opened.group(1)
             continue
         if line.startswith("<"):
             dropped = True
@@ -823,6 +854,10 @@ else:
         if len(shown) < len(lines):
             print(f"- 続きは PR の本文の注意を読む（残り {len(lines) - len(shown)} 行）")
 NOTEPY
+
+# 囲みとコメントを見分ける部品を、2 つの処理の先頭に足す。
+DECIDE_PY="${MARKUP_PY}"$'\n'"${DECIDE_PY}"
+NOTE_PY="${MARKUP_PY}"$'\n'"${NOTE_PY}"
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/squad-cli-lib"
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
