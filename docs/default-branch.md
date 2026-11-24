@@ -67,7 +67,7 @@ git checkout --detach refs/remotes/origin/<ブランチ名>
 git rev-parse HEAD
 ```
 
-`git rev-parse HEAD` の 40 桁の SHA を、確認したコミットとして結果に書く。
+`git rev-parse HEAD` の 40 桁の SHA を、確認したコミットとして結果に書く。`git checkout` の失敗も、`git fetch` の失敗と同じに扱って止まる。
 
 `git fetch` の前に、手元がクリーンかを見る。`git status --porcelain` の出力があるときは、未コミットの作業があるので止まる。HEAD のコミットがリモートのどのブランチにも含まれないとき（`git branch -r --contains HEAD` の出力がない）も、未 push の作業とみなして止まる。この 2 つのどちらでもなければ、HEAD を外しても作業は消えない。
 
@@ -107,6 +107,8 @@ fetch には、取り先と置き先の両方を書いた refspec を渡す。�
 ## Dependabot の PR の週次の確認
 
 Dependabot の指示も、手順 1 で同じ取得と最新のコミットにする手順を流す。取得したブランチを、この文書では対象ブランチと呼ぶ。指示の冒頭の「main に追従させて」を「対象ブランチに追従させて」に替える。
+
+冒頭の「開いている Dependabot の PR をすべて確認する」も、すべてを一覧にして、対象ブランチ向けの PR を確認する文に替える。[対象ブランチ向けでない PR](#対象ブランチ向けでない-pr) の決まりを、冒頭の文にもそろえるためである。
 
 ### 取得に失敗したとき
 
