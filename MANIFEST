@@ -67,9 +67,10 @@ f1cc2eac32869c0fab5879732c833fe9d56c3d3cf72502be3fc4ab12f789e1dc  ./common/skill
 57693434623b5b8b4947ab836b372bfbfb50b910abfd296af162641a898f1a6b  ./common/skills/squad-handoff/references/leader-review-wait.md
 dae32cbf310396b22441c31b4924b9135eaefaeb0a8c71ea6119085a8e117aac  ./common/skills/squad-handoff/references/leader-run-status.md
 1caa0a53bbaafea6d15e8105f94b22e1cd5b487b9891529111085f838bd88681  ./common/squad.md
-599ce1ee7c1d8cf41f9c87f988120a88fe61f5a2cbba762c2bc2b98effdf9be0  ./docs/README.md
+c53efe6f952569b91c05f1ed9e9226b60c33f2e1e21f407d78fa332ae1ec78f0  ./docs/README.md
 c380ac8fd57091fa1d1ad80ff9724cba6667a7199b440a40b4be9b0e25f83623  ./docs/agent-path.md
 3ca4ffccd35ce4ddcb26bc3c40ef34d2d2295eb27b8b0e08ea0522827b8bbb9c  ./docs/bug-repro-test.md
+7191080efee6c6f731dd72292bfd8ff56fe8ae1064b155cf7b66ce2edef96e54  ./docs/codex-models.md
 8f528132703a8bdc7d6758547d25f7e7441e65878463412313f9f7adffbea231  ./docs/decide-record-read.md
 f0e5f01295e7cf698c436e9e5bbd7ca55a237a55b50964859cd918ac22c66a82  ./docs/default-branch.md
 9bbc0396d019384ee98310a56767e2c6f42338839483d831b37611c5b31e9db9  ./docs/dependency-audit.md
