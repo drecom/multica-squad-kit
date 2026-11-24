@@ -2,9 +2,11 @@
 """Markdown のリンクの行き先（ファイルと見出し）があることを検査する。
 
 決まりは docs/doc-style.md の「リンクの検査」に従う。
-引数がなければ、Git が追う Markdown のファイルをすべて検査する。
-ファイルを引数に渡すと、そのファイルだけを検査する。
-終了コードは、切れたリンクがなければ 0、あれば 1、引数や Git の誤りは 2 とする。
+引数がなければ、Git が追う Markdown のファイルをすべて検査し、
+そのあとで docs/ の直下の文書がすべて索引の docs/README.md の表に載っているかを検査する。
+ファイルを引数に渡すと、そのファイルのリンクだけを検査する。
+--index <ファイル> を渡すと、そのファイルを索引として、同じディレクトリの直下の文書だけを検査する。
+終了コードは、切れたリンクや索引にない文書がなければ 0、あれば 1、引数や Git の誤りは 2 とする。
 """
 from bisect import bisect_right
 import os
@@ -185,29 +187,71 @@ def link_targets(path):
             yield number, definition.group(1)
 
 
+def resolve(path, written):
+    """リンクの先を、書いたファイルから解く。検査しない先は None を返す。"""
+    target = written[1:-1] if written.startswith('<') else written
+    if not target or target.lower().startswith(SKIPPED_SCHEMES):
+        return None
+    location, _, anchor = target.partition('#')
+    location = unquote(location.partition('?')[0])
+    if location.startswith('/'):
+        resolved = ROOT / location.lstrip('/')
+    elif location:
+        resolved = path.parent / location
+    else:
+        resolved = path
+    return Path(os.path.normpath(resolved)), anchor
+
+
 def check_file(path):
     problems = []
     count = 0
     for number, written in link_targets(path):
-        target = written[1:-1] if written.startswith('<') else written
-        if not target or target.lower().startswith(SKIPPED_SCHEMES):
+        found = resolve(path, written)
+        if found is None:
             continue
+        resolved, anchor = found
         count += 1
-        location, _, anchor = target.partition('#')
-        location = unquote(location.partition('?')[0])
-        if location.startswith('/'):
-            resolved = ROOT / location.lstrip('/')
-        elif location:
-            resolved = path.parent / location
-        else:
-            resolved = path
-        resolved = Path(os.path.normpath(resolved))
         if not exists_exact(resolved):
             problems.append((number, written, 'のファイルがない'))
         elif anchor and resolved.is_file() and resolved.suffix.lower() == '.md':
             if unquote(anchor).lower() not in anchors_of(resolved):
                 problems.append((number, written, 'の見出しがない'))
     return count, problems
+
+
+def check_index(index):
+    """索引に載っていない文書の名前と、検査した文書の数を返す。
+
+    載っている文書は、表の行の 1 列目のセルが、インラインリンク 1 つだけのものである。
+    ほかの書き方は、載っていないと数える。コードやコメントの中かは見分けない。
+    """
+    listed = set()
+    for line in index.read_text(encoding='utf-8', errors='replace').splitlines():
+        line = line.strip()
+        if not line.startswith('|'):
+            continue
+        cell = line[1:].split('|', 1)[0].strip()
+        if not LINK_RE.fullmatch(cell):
+            continue
+        found = resolve(index, LINK_RE.match(cell).group(1))
+        if found and found[0].parent == index.parent:
+            listed.add(found[0].name)
+    documents = sorted(p.name for p in index.parent.glob('*.md')
+                       if p.is_file() and p.name != 'README.md')
+    return [name for name in documents if name not in listed], len(documents)
+
+
+def report_index(index):
+    """索引を検査し、結果を出して、見つけた数を返す。"""
+    if not index.is_file():
+        print(f'{show(index)}: 索引: ファイルがない', file=sys.stderr)
+        return 1
+    missing, total = check_index(index)
+    for name in missing:
+        print(f'{show(index)}: 索引: {name} が載っていない', file=sys.stderr)
+    print(f'検査: 設計の文書 {total} 本、索引にない文書 {len(missing)} 本')
+    return len(missing)
 
 
 def tracked_markdown():
@@ -229,6 +273,17 @@ def show(path):
 
 
 def main(argv):
+    index = None
+    if '--index' in argv:
+        position = argv.index('--index')
+        if len(argv) != position + 2 or position != 0:
+            print('--index は、索引のファイルを 1 つだけ渡す', file=sys.stderr)
+            return 2
+        index = Path(argv[1])
+        if not index.is_file():
+            print(f'{argv[1]}: ファイルがない', file=sys.stderr)
+            return 2
+        return 1 if report_index(index.resolve()) else 0
     files = []
     for arg in argv:
         path = Path(arg)
@@ -247,6 +302,8 @@ def main(argv):
             print(f'{show(path)}:{number}: リンク: {written} {reason}', file=sys.stderr)
         broken += len(problems)
     print(f'検査: {len(files)} ファイル、リンク {total} 件、切れ {broken} 件')
+    if not argv:
+        broken += report_index(ROOT / 'docs' / 'README.md')
     return 1 if broken else 0
 
 

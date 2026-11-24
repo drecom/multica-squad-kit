@@ -79,3 +79,80 @@ ok '# 題\n\n````text\n```\n~~~\n<!--\n[先](none.md)\n````\n[先](#題)\n'
 ok '# 題\n\n```text\n```text\n[先](none.md)\n```\n[先](#題)\n'
 deny '# 題\n\n> ```text\n> <!--\n[先](missing.md)\n' 5 'missing.md のファイルがない'
 echo 'PASS links: コメント内のフェンスとコード、フェンス内のコメントを隠し、閉じた後の本文は検査する'
+
+# 字下げした段落は、箇条書きの項目のあとでも、リンクの検査から外れない（コードブロックとして隠さない）。
+deny '# 題\n\n- 項目\n\n    [先](missing.md)\n' 5 'missing.md のファイルがない'
+deny '# 題\n\n-\t項目\n\n\t[先](missing.md)\n' 5 'missing.md のファイルがない'
+echo 'PASS links: 箇条書きの項目に続く字下げした段落の切れたリンクも検査する'
+
+# 索引の検査は、docs/ の直下の文書が索引の表の 1 列目のリンクに載っているかを見る。
+# 載っている書き方と載っていない書き方は、tests/links-index-table.tsv に表で持つ。
+index_dir="$test_dir/docs"
+mkdir -p "$index_dir/sub"
+printf '# 題\n' >"$index_dir/a.md"
+printf '# 題\n' >"$index_dir/b.md"
+printf '# 題\n' >"$index_dir/sub/c.md"
+index_missing() {
+	# 索引の検査を流し、載っていない文書の名前を 1 行ずつ出す。終了コードは 1（載っていない）か 0。
+	local status=0
+	check --index "$index_dir/README.md" >"$test_dir/out" 2>"$test_dir/err" || status=$?
+	if [ "$status" -ne 0 ] && [ "$status" -ne 1 ]; then echo "FAIL links: 索引の検査の終了コードが $status" >&2; cat "$test_dir/err" >&2; exit 1; fi
+	sed -n 's/^.*README.md: 索引: \(.*\) が載っていない$/\1/p' "$test_dir/err"
+	[ "$status" -eq 0 ] && [ -s "$test_dir/err" ] && { echo 'FAIL links: 索引の検査が 0 で終わったのに、stderr がある' >&2; cat "$test_dir/err" >&2; exit 1; }
+	[ "$status" -eq 1 ] && [ ! -s "$test_dir/err" ] && { echo 'FAIL links: 索引の検査が 1 で終わったのに、stderr がない' >&2; exit 1; }
+	return 0
+}
+prefix='# 索引\n\n| 文書 | 書いてあること |\n| --- | --- |\n| [a](a.md) | あ |\n'
+rows=0
+while IFS=$'\t' read -r id kind body listed reason; do
+	case "$id" in ''|'#'*) continue ;; esac
+	rows=$((rows + 1))
+	printf '%b' "$prefix$body" >"$index_dir/README.md"
+	expect=''
+	for name in a b; do
+		case ",$listed," in *",$name,"*) ;; *) expect="$expect$name.md"$'\n' ;; esac
+	done
+	got=$(index_missing)
+	[ "$got" = "${expect%$'\n'}" ] || { echo "FAIL links: 索引に載るかが違う: ${id}（${reason}）。期待 [${expect%$'\n'}]、実際 [$got]" >&2; exit 1; }
+	case "$kind" in
+	載る) case ",$listed," in *,b,*) ;; *) echo "FAIL links: 表の種類と載る列が合わない: $id" >&2; exit 1 ;; esac ;;
+	載らない) case ",$listed," in *,b,*) echo "FAIL links: 表の種類と載る列が合わない: $id" >&2; exit 1 ;; esac ;;
+	*) echo "FAIL links: 表の種類が違う: $id" >&2; exit 1 ;;
+	esac
+done <"$root/tests/links-index-table.tsv"
+[ "$rows" -ge 20 ] || { echo "FAIL links: 索引の表の行が少ない: $rows" >&2; exit 1; }
+echo "PASS links: 索引の表の 1 列目のインラインリンクだけを載っていると数える（$rows 行）"
+
+# 載っていない文書は、名前を添えて 1 で落ち、載っている文書は 0 で通る。
+printf '%b' "$prefix" >"$index_dir/README.md"
+if check --index "$index_dir/README.md" >"$test_dir/out" 2>"$test_dir/err"; then echo 'FAIL links: 載っていない文書があるのに通った' >&2; exit 1; fi
+grep -qF 'docs/README.md: 索引: b.md が載っていない' "$test_dir/err" || { echo 'FAIL links: 載っていない文書の名前がない' >&2; cat "$test_dir/err" >&2; exit 1; }
+grep -qF '検査: 設計の文書 2 本、索引にない文書 1 本' "$test_dir/out" || { echo 'FAIL links: 検査の数が違う' >&2; cat "$test_dir/out" >&2; exit 1; }
+printf '%b' "$prefix| [b](b.md#題) | い |\n" >"$index_dir/README.md"
+check --index "$index_dir/README.md" >"$test_dir/out"
+grep -qF '検査: 設計の文書 2 本、索引にない文書 0 本' "$test_dir/out" || { echo 'FAIL links: 索引にない文書の数が 0 でない' >&2; cat "$test_dir/out" >&2; exit 1; }
+echo 'PASS links: 載っていない文書は索引: <名前> が載っていないで落ち、載っていれば通る'
+
+# 索引のファイルがない、--index にファイルを重ねる、は 2 で落ちる。ファイルだけを渡すと、リンクの検査だけをする。
+rm -f "$index_dir/README.md"
+status=0
+check --index "$index_dir/README.md" >/dev/null 2>&1 || status=$?
+[ "$status" -eq 2 ] || { echo "FAIL links: 索引がないのに終了コードが $status" >&2; exit 1; }
+printf '%b' "$prefix| [b](b.md) | い |\n" >"$index_dir/README.md"
+status=0
+check --index "$index_dir/README.md" "$index_dir/a.md" >/dev/null 2>&1 || status=$?
+[ "$status" -eq 2 ] || { echo "FAIL links: --index にファイルを重ねたのに終了コードが $status" >&2; exit 1; }
+printf '# 題\n\n[先](none.md)\n' >"$index_dir/a.md"
+printf '%b' "$prefix" >"$index_dir/README.md"
+status=0
+check "$index_dir/README.md" >/dev/null 2>&1 || status=$?
+[ "$status" -eq 0 ] || { echo "FAIL links: ファイルだけを渡したら、索引の検査まで流れた（終了コード ${status}）" >&2; exit 1; }
+status=0
+check "$index_dir/a.md" >/dev/null 2>&1 || status=$?
+[ "$status" -eq 1 ] || { echo "FAIL links: ファイルだけを渡した検査が、切れたリンクを止めなかった（終了コード ${status}）" >&2; exit 1; }
+echo 'PASS links: 索引のファイルがない・--index にファイルを重ねると 2 で落ち、ファイルだけならリンクの検査だけをする'
+
+# 引数なしの検査は、この原本の docs/ の文書がすべて索引に載っていることを出力に示す。
+check >"$test_dir/out"
+grep -qF '索引にない文書 0 本' "$test_dir/out" || { echo 'FAIL links: 原本の docs/ に索引にない文書がある' >&2; cat "$test_dir/out" >&2; exit 1; }
+echo 'PASS links: 原本の docs/ の文書は、すべて索引に載っている'
