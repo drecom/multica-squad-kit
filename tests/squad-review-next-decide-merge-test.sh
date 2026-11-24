@@ -254,3 +254,85 @@ run final-1
 expect_failure 'コメントの投稿に失敗した'
 expect_no_calls status-calls
 echo 'PASS review-next-decide: 書けないときはタスクの状態を変えない'
+
+# ---- マージの前に人間がすること。PR の本文の `## 注意` を 1 回だけ読み、整えて、コンフリクトと CI の行のあと、各役の結論の前に置く。
+plain_lines=('✅ demo-code-reviewer-test: 結果' '✅ demo-qa-test: 結果')
+note_case() { # PR の本文 期待する行（複数の行は改行で続ける）
+	reset
+	set_roster orchestrator code-reviewer qa
+	ok_round
+	set_pr_body "$1"
+	merge_note=$2
+	run round-1
+	expect_merge_posted "$(merge_body round-1 "$sha" "$conf_line" "${plain_lines[@]}")"
+	expect_calls body-calls 'pr view 7 --repo demo/project --json body'
+}
+N=マージの前に人間がすること
+note_case $'## 注意\n\nなし' "${N}: なし"
+note_case $'## 注意\nなし。\n## 確認\n確認した' "${N}: なし"
+note_case $'## 概要\n変更\n## 注意\n\n- マージの前に評価を流し直す\n\n## 確認\nOK' "${N}: マージの前に評価を流し直す"
+note_case $'## 注意\n\n1. 評価を流し直す\n2. 一覧で混入を検査する' "${N}: PR の注意の 2 行
+- 評価を流し直す
+- 一覧で混入を検査する"
+note_case $'## 注意\r\nなし\r\n' "${N}: なし"
+note_case $'## 概要\nだけ\n' "${N}: 読めない（PR の本文に注意の見出しがない）"
+note_case $'## 注意\n\n## 確認\n確認した' "${N}: 読めない（PR の本文の注意が空）"
+note_case '' "${N}: 読めない（PR の本文に注意の見出しがない）"
+# 長い注意は、10 行か 800 字のどちらかに届く手前の行で切り、残りの行の数を示す。10 行までと 800 字までは、そのまま載せる。
+ten=$(printf '手順 %s\n' 1 2 3 4 5 6 7 8 9 10)
+note_case "## 注意"$'\n'"$ten" "${N}: PR の注意の 10 行
+$(printf -- '- 手順 %s\n' 1 2 3 4 5 6 7 8 9 10 | sed '$d')
+- 手順 10"
+eleven=$(printf '手順 %s\n' 1 2 3 4 5 6 7 8 9 10 11)
+note_case "## 注意"$'\n'"$eleven" "${N}: PR の注意の 11 行
+$(printf -- '- 手順 %s\n' 1 2 3 4 5 6 7 8 9 10)
+- 続きは PR の本文の注意を読む（残り 1 行）"
+a300=$(printf 'あ%.0s' $(seq 300))
+note_case "## 注意"$'\n'"$a300"$'\n'"$a300"$'\n'"$a300" "${N}: PR の注意の 3 行
+- $a300
+- $a300
+- 続きは PR の本文の注意を読む（残り 1 行）"
+a800=$(printf 'あ%.0s' $(seq 800))
+note_case "## 注意"$'\n'"$a800" "${N}: $a800"
+note_case "## 注意"$'\n'"${a800}あ" "${N}: ${a800:0:799}…"
+echo 'PASS review-next-decide: マージの前に人間がすることは、PR の本文の注意から、なし・1 行・2 行以上・長い注意・見出しなし・空の形で、各役の結論の前に書く'
+
+# 整える。字下げ・引用・箇条書きの記号を外し、コードの囲みと HTML の行を捨てて旨を 1 行足し、メンションのリンクは文字だけにする。
+note_case $'## 注意\n\n  > - 評価を流し直す\n\t* 一覧で検査する' "${N}: PR の注意の 2 行
+- 評価を流し直す
+- 一覧で検査する"
+note_case $'## 注意\n\n評価を流し直す\n```bash\nmake eval\n```\n<details>\n~~~\n- x\n~~~\n- 手でする' "${N}: PR の注意の 3 行
+- 評価を流し直す
+- 手でする
+- （コードの囲みや HTML は PR の本文の注意を読む）"
+note_case $'## 注意\n\n```\nだけ' "${N}: （コードの囲みや HTML は PR の本文の注意を読む）"
+note_case $'## 注意\n\n@する人 [@Agent](mention://agent/agent-9) に聞く\nmention://agent/agent-9 は残る' "${N}: PR の注意の 2 行
+- @する人 @Agent に聞く
+- mention: //agent/agent-9 は残る"
+# 6-2: 写しても、エージェントへのメンションが生まれない。呼ぶ人間のリンクだけが残る。
+[[ $(grep -o 'mention://' <<<"$(posted_body)" | wc -l | tr -d ' ') == 1 ]] || fail "mention:// が 1 つでない: $(posted_body)"
+[[ $(posted_body) != *'mention://agent/'* ]] || fail "エージェントへのメンションがある: $(posted_body)"
+echo 'PASS review-next-decide: 注意の字下げ・引用・記号・コードの囲み・HTML・メンションのリンクを整え、写した本文にも mention:// が呼ぶ人間の 1 つだけ残る'
+
+# 整えたあとも本文が読めなくなったときは、注意の行を読めない旨に替えて 1 回だけ確認し直す。
+note_case $'## 注意\n\n[>](mention://agent/agent-9) 確認\n評価を流し直す' "${N}: 読めない（写すと読めない本文になる）"
+echo 'PASS review-next-decide: 写すと本文が読めなくなるときは、注意の行を読めない旨に替えて書く'
+
+# PR の本文を読めないときも、依頼は書く。
+reset
+set_roster orchestrator code-reviewer qa
+ok_round
+touch "$test_dir/body-fail"
+merge_note="${N}: 読めない（PR の本文を読めなかった）"
+run round-1
+expect_merge_posted "$(merge_body round-1 "$sha" "$conf_line" "${plain_lines[@]}")"
+echo 'PASS review-next-decide: PR の本文を読めないときも、読めない旨の行を添えてマージの依頼を書く'
+
+# PR の本文は、確認がすべて通ったあとに読む。止まるときは読まない。
+reset
+final_ok
+printf 'コンフリクト: CONFLICTING head: %s\n' "$sha" >"$test_dir/conf-out"
+run final-1
+expect_leader 'コンフリクト: CONFLICTING'
+expect_no_calls body-calls
+echo 'PASS review-next-decide: 確認で止まるときは、PR の本文を読まない'

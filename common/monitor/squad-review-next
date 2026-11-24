@@ -604,6 +604,105 @@ if latest is not None:
 emit({"action": "final", "commit": commit, "previous": previous_commit})
 DECIDEPY
 
+# マージの依頼の `マージの前に人間がすること:` の行を、PR の本文（標準入力）の `## 注意` の節から作る。
+# docs/merge-request-reading.md の「マージの前に人間がすること」と「写す文の整え方」。標準出力に、書く行をそのまま出す（1 行目が見出しの行）。
+read -r -d '' NOTE_PY <<'NOTEPY' || true
+import re
+import sys
+
+HEAD = "マージの前に人間がすること: "
+MAX_LINES, MAX_CHARS = 10, 800
+CONTROL = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+BULLET = re.compile(r"(?:[-*+]|[0-9]{1,9}[.)])(?=\s|\Z)")
+MENTION = re.compile(r"\[([^\]]*)\]\(mention://[^)]*\)", re.IGNORECASE)
+FENCE = re.compile(r"(`{3,}|~{3,})")
+DROPPED = "（コードの囲みや HTML は PR の本文の注意を読む）"
+
+
+def section(body):
+    """見出しの行から次の `##` の見出しの前まで。見出しがなければ None。"""
+    found = None
+    result = []
+    for line in body.splitlines():
+        if found is None:
+            if re.fullmatch(r"##[ \t]+注意[ \t]*", line):
+                found = True
+        elif re.match(r"##(?:[ \t]|\Z)", line):
+            break
+        else:
+            result.append(line)
+    return result if found else None
+
+
+def strip_marks(line):
+    """行頭の空白、`>`、箇条書きの記号を、なくなるまで外す。"""
+    while True:
+        before = line
+        line = line.lstrip()
+        if line.startswith(">"):
+            line = line[1:]
+        else:
+            found = BULLET.match(line)
+            if found:
+                line = line[found.end():]
+        if line == before:
+            return line.strip()
+
+
+def shape(raw_lines):
+    """整えた行の並びと、捨てた行があったかを返す。"""
+    kept, dropped, fence = [], False, None
+    for raw in raw_lines:
+        line = strip_marks(CONTROL.sub("", raw.replace("\t", " ")))
+        if fence is not None:
+            dropped = True
+            if re.fullmatch(re.escape(fence[0]) + "{3,}[ ]*", line):
+                fence = None
+            continue
+        if line == "":
+            continue
+        opened = FENCE.match(line)
+        if opened:
+            dropped, fence = True, opened.group(1)
+            continue
+        if line.startswith("<"):
+            dropped = True
+            continue
+        line = MENTION.sub(lambda found: found.group(1), line)
+        kept.append(line.replace("mention://", "mention: //"))
+    if dropped:
+        kept.append(DROPPED)
+    return kept
+
+
+raw = section(sys.stdin.read())
+if raw is None:
+    print(HEAD + "読めない（PR の本文に注意の見出しがない）")
+    sys.exit(0)
+lines = shape(raw)
+if not lines:
+    print(HEAD + "読めない（PR の本文の注意が空）")
+elif lines in (["なし"], ["なし。"]):
+    print(HEAD + "なし")
+else:
+    shown, chars = [], 0
+    for line in lines:
+        if len(shown) >= MAX_LINES or chars + len(line) > MAX_CHARS:
+            break
+        shown.append(line)
+        chars += len(line)
+    if not shown:
+        shown = [lines[0][:MAX_CHARS - 1] + "…"]
+    if len(lines) == 1:
+        print(HEAD + shown[0])
+    else:
+        print(f"{HEAD}PR の注意の {len(lines)} 行")
+        for line in shown:
+            print("- " + line)
+        if len(shown) < len(lines):
+            print(f"- 続きは PR の本文の注意を読む（残り {len(lines) - len(shown)} 行）")
+NOTEPY
+
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/squad-cli-lib"
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
@@ -1055,18 +1154,29 @@ print_linkfail() {
 	fi
 }
 
-# マージを頼むコメントを書き、タスクを in_review にする。
-merge_request() {
-	local issue=$1 round=$2 res=$3 work=$4 body id
-	human_of_squad
-	mkdir -p tmp
-	body=$(mktemp tmp/squad-review-merge.XXXXXX) || dfail '本文のファイルを作れない'
+# PR の本文を 1 回だけ読み、マージの前に人間がすることの行（1 行目が見出しの行）を出す。読めないときは、読めない旨の行にする。
+# PR は、マージの依頼の確認の 2 で head を読んだのと同じ正規形の PR にする。
+pr_note() {
+	local repo number pr text
+	[[ $PR_URL =~ ^https://github\.com/([^/]+/[^/]+)/pull/([0-9]+)$ ]] || dfail "PR の正規形を読めない: ${PR_URL}"
+	repo=${BASH_REMATCH[1]} number=${BASH_REMATCH[2]}
+	if pr=$(squad_cli_read gh-pr-body "$number" "$repo" 2>/dev/null) && text=$(jq -er '.body | select(type == "string")' <<<"$pr" 2>/dev/null); then
+		printf '%s\n' "$text" | python3 -I -c "$NOTE_PY" || dfail 'PR の本文の注意を整えられない'
+	else
+		printf 'マージの前に人間がすること: 読めない（PR の本文を読めなかった）\n'
+	fi
+}
+
+# マージを頼むコメントの本文を、ファイルに書く。引数は、本文のファイル、前の回、結果、作業のディレクトリ、マージの前に人間がすることの行。
+write_merge_body() {
+	local body=$1 round=$2 res=$3 work=$4 note=$5
 	{
 		printf '[@%s](mention://member/%s) レビューと確認が済みました。PR のマージを判断してください。\n' "$HUMAN_NAME" "$HUMAN_ID"
 		printf 'マージの依頼: %s\n' "$MERGE_HEAD"
 		printf '前の回: %s\n' "$round"
 		printf '%s\n' "$CONF_LINE"
 		[[ -z $CI_LINES ]] || printf '%s\n' "$CI_LINES"
+		printf '%s\n' "$note"
 		jq -r '.lines[]' <<<"$res"
 		if [[ $LINKED == false ]]; then
 			printf '紐付いていないので、マージのあとにタスクを `done` にしてほしい（または先に紐付けてほしい）。PR: `%s`\n' "$PR_URL"
@@ -1078,6 +1188,21 @@ merge_request() {
 			print_linkfail "$work"
 		fi
 	} >"$body"
+}
+
+# マージを頼むコメントを書き、タスクを in_review にする。
+merge_request() {
+	local issue=$1 round=$2 res=$3 work=$4 body id note read_why
+	human_of_squad
+	note=$(pr_note) || exit
+	mkdir -p tmp
+	body=$(mktemp tmp/squad-review-merge.XXXXXX) || dfail '本文のファイルを作れない'
+	write_merge_body "$body" "$round" "$res" "$work" "$note"
+	# 写した行で本文が読めなくなったときは、注意の行を読めない旨に替えて、1 回だけ確認し直す。確認は post_request が流し、読めなければ何も書かない。
+	read_why=$(squad_cli_control body '[]' '[]' null "$(<"$body")") || dfail '書く本文を確認できない'
+	if [[ $read_why != ok ]]; then
+		write_merge_body "$body" "$round" "$res" "$work" 'マージの前に人間がすること: 読めない（写すと読めない本文になる）'
+	fi
 	id=$(post_request "$issue" "$round" "$body")
 	multica issue status "$issue" in_review >/dev/null || dfail 'タスクを in_review にできない（コメントは書いた）'
 	printf '次の依頼: マージの依頼\n依頼: %s\n' "$id"

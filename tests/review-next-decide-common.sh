@@ -148,6 +148,10 @@ elif [[ ${1-} == pr && ${2-} == view && ${3-} == 7 && ${4-} == --repo && ${5-} =
 	echo "$*" >>"$dir/head-calls"
 	[[ ! -f $dir/head-fail ]] || { echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }
 	stub emit gh-pr-head "$dir/head.json"
+elif [[ ${1-} == pr && ${2-} == view && ${3-} == 7 && ${4-} == --repo && ${5-} == demo/project && ${*: -1} == body ]]; then
+	echo "$*" >>"$dir/body-calls"
+	[[ ! -f $dir/body-fail ]] || { echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }
+	stub emit gh-pr-body "$dir/body.json"
 else
 	echo "Unexpected mock call (書き込みは禁止): $*" >&2
 	exit 1
@@ -236,8 +240,9 @@ reset() {
 	: >"$test_dir/status-calls"
 	: >"$test_dir/compare-calls"
 	: >"$test_dir/head-calls"
+	: >"$test_dir/body-calls"
 	rm -f "${test_dir:?}/comments.later.json" "${test_dir:?}/comment-reads" "${test_dir:?}/report-author"
-	rm -f "${test_dir:?}/post-fail" "${test_dir:?}/comments-fail" "${test_dir:?}/runs-fail" "${test_dir:?}/compare-fail" "${test_dir:?}/head-fail"
+	rm -f "${test_dir:?}/post-fail" "${test_dir:?}/comments-fail" "${test_dir:?}/runs-fail" "${test_dir:?}/compare-fail" "${test_dir:?}/head-fail" "${test_dir:?}/body-fail"
 	: >"$test_dir/files-fail"
 	rm -f "${test_dir:?}"/conflicts-out* "${test_dir:?}"/conflicts-status* "${test_dir:?}"/unlinked-out* "${test_dir:?}"/unlinked-status*
 	rm -f "${test_dir:?}"/link-out* "${test_dir:?}"/link-status* "${test_dir:?}"/held-out* "${test_dir:?}"/held-status* "${test_dir:?}"/ci-status*
@@ -248,6 +253,8 @@ reset() {
 	printf 'コンフリクト: MERGEABLE head: %s\n' "$sha" >"$test_dir/conf-out"
 	printf 'CI %s: 成功\n' "$sha" >"$test_dir/ciwait-out"
 	printf '{"headRefOid": "%s"}\n' "$sha" >"$test_dir/head.json"
+	merge_note='マージの前に人間がすること: なし'
+	set_pr_body $'## 概要\n\n変更。\n\n## 注意\n\nなし\n\n## 確認\n\n確認した。'
 	printf '{"id": "rule-1"}\n見張り: 1 時間おき、2026-11-17 まで\n' >"$test_dir/unlinked-out"
 	printf '役: claude-fixer\n振り分け: Claude で足りる。工程: fix\n' >"$test_dir/pick-out"
 	echo 0 >"$test_dir/pick-status"
@@ -333,12 +340,26 @@ ok_round() { # 回 round-1 に、全員が ✅ で返る。最上位の役の選
 final_request_body() { # 範囲 [役]
 	printf '見直しの種類: 最終レビュー\n確認するコミット: %s\n見る範囲: %s\n返事を待つ役: %s\n%s\n前の回: round-1\n対象の PR: %s' "$sha" "$1" "$(mention "${2-claude-principal}")" "$principal_line" "$pr_url"
 }
+# PR の本文を決める。gh pr view --json body の応答の body になる。
+set_pr_body() { jq -n --arg body "$1" '{body: $body}' >"$test_dir/body.json"; }
 # マージの依頼の本文の見本。行 3 以降（確認の行）は、引数で渡す。
+# マージの前に人間がすること（merge_note。複数の行は改行で続ける）は、コンフリクトと CI の行のあと、最初の結果の行（✅・⚠️・❌）の前に置く。
+merge_note='マージの前に人間がすること: なし'
 merge_body() { # 前の回 head 行...
-	local round=$1 head=$2
+	local round=$1 head=$2 line placed=false
 	shift 2
 	printf '[@Owner](mention://member/human-1) レビューと確認が済みました。PR のマージを判断してください。\nマージの依頼: %s\n前の回: %s\n' "$head" "$round"
-	printf '%s\n' "$@"
+	for line in "$@"; do
+		case $line in
+		'✅ '* | '⚠️ '* | '❌ '*)
+			if [[ $placed == false ]]; then
+				printf '%s\n' "$merge_note"
+				placed=true
+			fi
+			;;
+		esac
+		printf '%s\n' "$line"
+	done
 }
 # マージの依頼を書き、タスクを in_review にした。
 expect_merge_posted() { # 本文 [返信先]
