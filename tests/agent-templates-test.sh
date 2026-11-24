@@ -1124,13 +1124,14 @@ for scenario in all no-planner no-designer no-planning claude-only codex-only no
 		pilot=$test_dir/default-branch-pilot
 		[[ -s $pilot ]]
 		for command in 'git ls-remote --symref origin HEAD' 'git status --porcelain' 'git branch -r --contains HEAD' \
-			'git fetch origin refs/heads/<ブランチ名>' 'git checkout --detach FETCH_HEAD' 'git rev-parse HEAD'; do
+			'git fetch origin +refs/heads/<ブランチ名>:refs/remotes/origin/<ブランチ名>' \
+			'git checkout --detach refs/remotes/origin/<ブランチ名>' 'git rev-parse HEAD'; do
 			grep -qF -- "$command" "$pilot"
 		done
 		for token in 'ref: refs/heads/<ブランチ名><タブ>HEAD' 'コマンドの失敗' 'ref: の行がない' 'ref: の行が 2 行以上'; do
 			grep -qF -- "$token" "$pilot"
 		done
-		absent -qE 'main の最新|--ref main|git fetch origin main|git checkout --detach origin/main|「なし」とだけ返' "$pilot"
+		absent -qE 'main の最新|--ref main|git fetch origin main|git checkout --detach origin/main|FETCH_HEAD|「なし」とだけ返' "$pilot"
 		if [[ $role == security-reviewer ]]; then
 			grep -qF '依存を監査せず、チェックを done にしない' "$pilot"
 			grep -qF '対象ブランチ: <ブランチ名>' "$pilot"

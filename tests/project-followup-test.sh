@@ -14,7 +14,9 @@ for role in security-reviewer dependabot-merger; do
 		| select(type=="string" and length>0)' "$TEST_DB/autopilots.json" >"$test_dir/registered-$role"
 	grep -qF 'git ls-remote --symref origin HEAD' "$test_dir/registered-$role"
 	grep -qF '対象ブランチ:' "$test_dir/registered-$role"
-	if grep -Eq 'main の最新|--ref main|git fetch origin main|git checkout --detach origin/main' "$test_dir/registered-$role"; then
+	grep -qF 'git fetch origin +refs/heads/<ブランチ名>:refs/remotes/origin/<ブランチ名>' "$test_dir/registered-$role"
+	grep -qF 'git checkout --detach refs/remotes/origin/<ブランチ名>' "$test_dir/registered-$role"
+	if grep -Eq 'main の最新|--ref main|git fetch origin main|git checkout --detach origin/main|FETCH_HEAD' "$test_dir/registered-$role"; then
 		echo "登録に main の固定が残っています: $role" >&2
 		exit 1
 	fi

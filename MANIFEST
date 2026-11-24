@@ -36,7 +36,7 @@ effc3ed9c91e0e6047838939189d09b391e3ec504406c5cc828ec3dd42983e73  ./common/agent
 491016ed034e28c499f61b638dee6347238d8b058c1baec75b0e91a47c774156  ./common/agents/security-reviewer.md
 45daf52092d4e2035794857cd31398c3b13728606be7aa07969738701edbd88a  ./common/agents/usage-monitor.md
 60b5f708811dfd50da90df958264a20a552b57257bfda46dd9ef21a6a6d8d4d0  ./common/agents/ux-reviewer.md
-36d2b2ecd98acc7f515dedfaa020b6701f6a5cedf4bf86598a6b69c15fb61245  ./common/autopilots.md
+e6a1b205cfd45d75c615015ec6734ee3f4e018655a4a6f46877acfdc63d9a5c0  ./common/autopilots.md
 23be73f1ce7f4622de6a2c0a316e73720e9e6a603fc97f73ab4daa62b84e17a4  ./common/codex/config.toml
 df2acf34199ccb21f6db596a8491bf8e11b59096b82a75b0851f2547cee09549  ./common/guard/gh
 15799b1ff7222641e44809664065d2b1b583d3d066db424d6a73f0cf67005106  ./common/guard/pre-push
@@ -137,7 +137,7 @@ be9a67eb3b8da9a4012424d8ab5a9c61beecba7f11afcae4595541fbb56257de  ./skeleton/.ag
 18454e4d0424a4c4e9474140fc9d5b0b3854a1b4f59d10258cd85c9ffb044da6  ./skeleton/project.md
 b9033019a1fe0384a555a447fe064ade71c427af27a9caa4b175868fdd2085ad  ./skeleton/verify-repository.md
 ec94c1189f1071bf59f9c20765667893b12a24881b6a68739d14f2ecbe0ff678  ./tests/action-advisories-test.sh
-31b74ca2e2f7b9f4af85f901c84833b3661375cf0dc9ce90f3759b0229c99ead  ./tests/agent-templates-test.sh
+6b61b64e0afd88b71bec8fd429d5f0daf8190f0ba8ac20d40a463e0840f731d5  ./tests/agent-templates-test.sh
 2c4dce6d55a2bec00a23cf829eb9939041a27c4bb78891f0aeb0d485ad1713c4  ./tests/ansi-to-png.py
 dfbb19bc0056d40e3259c72c68024a744c89987fbb8a18fdd593f6bbd9b8391b  ./tests/arg-limit-lib.sh
 4effb137e0876ad6cf25ccf0a3858c17e80fff848d6e5deb1b70405f7b2d3b8a  ./tests/audit-targets-test.sh
@@ -590,7 +590,7 @@ e90a5edb6b1b0b97bcb8cb5e220f789d1148904978bf0b20f8d37e0541f5ef96  ./tests/projec
 caa58464c53d717ee5c0452a3cf122a5a64d748063fc3614972c9635d0585d87  ./tests/project-followup-failure-test.sh
 9c744f7baee9fadd46d3cf103a99df870456ee8ebcbbb038d91f51f462bf0ddf  ./tests/project-followup-repositories-test.sh
 f51b603e07f2a7064b437a1e59f1bf7cbd008376f470f9f472b7ed0ecc735135  ./tests/project-followup-test-lib.sh
-4d995ee22a2196188a32c9f7d4d585ee651b16740d0d46a97f99f2f9b358c430  ./tests/project-followup-test.sh
+c1b18436ab5c0e6e69767b748154794e763b11025aba81fd62389cafa1f831a7  ./tests/project-followup-test.sh
 e815b1fd39a661877a4306f66feb802d182b19280ea2679afc4827ab25a714db  ./tests/project-followup-webhook-test.sh
 e2c2da5c20cc0a7ef5d2f04015270a5d7beaf188c6b9bfba94ead57341272480  ./tests/project-issues-fixture.py
 29f1e6218e5d1b8809f4f27f3645238ebeea0708ed97aa64482084ae82fa3022  ./tests/project-issues-test.sh
