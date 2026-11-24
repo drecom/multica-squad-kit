@@ -50,6 +50,12 @@ WRITE_PREFIXES = [
 ]
 FILE_FLAGS = ("--content-file", "--description-file")
 VALUE_FLAGS = ("--content", "--description")
+# code-reviewer の評価だけで、PR へのコメントを投稿として記録する（docs/review-eval.md の「作業ディレクトリと道具」の 3）。
+# リーダーの評価では、見本にない gh pr comment が失敗を返す今の動作を変えない
+REVIEWER_ROLE = "code-reviewer"
+REVIEWER_WRITE_PREFIXES = ["gh pr comment", "gh pr review"]
+REVIEWER_FILE_FLAGS = ("--body-file",)
+REVIEWER_VALUE_FLAGS = ("--body",)
 
 
 class SceneError(Exception):
@@ -357,16 +363,20 @@ def stub(name, argv):
         while len(argv) >= 2 and argv[0] == "-C":
             argv = argv[2:]
     line = command_line(name, argv)
+    reviewer = os.environ.get("LEADER_EVAL_ROLE") == REVIEWER_ROLE
+    write_prefixes = WRITE_PREFIXES + (REVIEWER_WRITE_PREFIXES if reviewer else [])
+    file_flags = FILE_FLAGS + (REVIEWER_FILE_FLAGS if reviewer else ())
+    value_flags = VALUE_FLAGS + (REVIEWER_VALUE_FLAGS if reviewer else ())
     bodies = []
     i = 0
     while i < len(argv):
         a = argv[i]
-        if a in FILE_FLAGS and i + 1 < len(argv):
+        if a in file_flags and i + 1 < len(argv):
             p = Path(argv[i + 1])
             bodies.append(p.read_text(encoding="utf-8") if p.is_file() else "")
             i += 2
             continue
-        if a in VALUE_FLAGS and i + 1 < len(argv):
+        if a in value_flags and i + 1 < len(argv):
             bodies.append(argv[i + 1])
             i += 2
             continue
@@ -382,9 +392,9 @@ def stub(name, argv):
         err = entry.get("stderr", "")
         if not isinstance(out, str):
             out = json.dumps(out, ensure_ascii=False, indent=2)
-        if any(line == p or line.startswith(p + " ") for p in WRITE_PREFIXES):
+        if any(line == p or line.startswith(p + " ") for p in write_prefixes):
             kind = "write"
-    elif any(line == p or line.startswith(p + " ") for p in WRITE_PREFIXES):
+    elif any(line == p or line.startswith(p + " ") for p in write_prefixes):
         kind, code, err = "write", 0, ""
         out = json.dumps({"id": "comment-new"}) if "--output json" in line else "ok"
     else:
@@ -420,6 +430,8 @@ ALLOWED_TOOLS = ["Bash(multica *)", "Bash(gh *)", "Bash(squad-*)", "Bash(rm *.md
 # 最上位の役は、指定のコミットを手元に用意して HEAD を照合する。外へ接続しないよう、git もスタブにして、
 # 見本のある呼び出しだけを通す。cd は `cd <dir> && git ...` のため。場面の CLI 見本の "git": true のときだけ許可する
 GIT_TOOLS = ["Bash(git *)", "Bash(cd *)"]
+# code-reviewer の指示は verify のスキルを読む。場面の files に置いた架空のプロジェクトの手順だけを読ませるので、これだけ足す
+REVIEWER_TOOLS = ["Skill(verify)"]
 BUILTIN_TOOLS = "Bash Read Write Edit Skill"
 
 
@@ -535,7 +547,8 @@ def agent_command(runtime, model, thinking, prompt, executable=None, extra_tools
 
 
 def posted_comments(calls):
-    posts = ("multica issue comment add", "squad-review-wait report")
+    # gh pr comment と gh pr review の本文は、code-reviewer の評価だけで記録される（stub の REVIEWER_*）
+    posts = ("multica issue comment add", "squad-review-wait report", "gh pr comment", "gh pr review")
     return [b for c in calls if c["command"].startswith(posts) for b in c.get("bodies", [])]
 
 
@@ -639,6 +652,8 @@ def run_one(args):
     env["LEADER_EVAL_CLI"] = str(Path(args["scenes"]) / args["scene"] / "cli.json")
     env["LEADER_EVAL_CALLS"] = str(calls_path)
     env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
+    role = args.get("role", "")
+    env["LEADER_EVAL_ROLE"] = role
     timeout = int(args["timeout"])
     result = {"scene": scene["id"], "type": scene["type"], "which": args["which"], "n": int(args["n"]), "runtime": args["runtime"],
               "model": meta["model"], "thinking_level": meta["thinking_level"]}
@@ -649,7 +664,8 @@ def run_one(args):
         raise ValueError("評価のコマンドは絶対パスで渡してください")
     code, out, err = run_command(
         agent_command(args["runtime"], meta["model"], meta["thinking_level"], scene["input"], agent_path,
-                      GIT_TOOLS if settings.get("git") is True else ()),
+                      [*(GIT_TOOLS if settings.get("git") is True else ()),
+                       *(REVIEWER_TOOLS if role == REVIEWER_ROLE else ())]),
         work, env, timeout)
     result.update({"exit_code": code, "duration_ms": round((time.monotonic() - started) * 1000),
                    "usage": parse_usage(args["runtime"], out, err)})
@@ -698,13 +714,16 @@ def run_one(args):
 
 # ---- 集計 ----
 
-def summary(runs_path, out_path):
+def summary(runs_path, out_path, role=""):
+    reviewer = role == REVIEWER_ROLE
     runs = [json.loads(l) for l in Path(runs_path).read_text(encoding="utf-8").splitlines() if l.strip()]
     scenes = {}
     for r in runs:
         s = scenes.setdefault(r["scene"], {"type": r.get("type", ""), "old": [], "new": []})
         s[r["which"]].append(r)
-    rows = ["| 場面 | 型 | 今のリーダー | 新しいリーダー | 落ちた基準 |", "| --- | --- | --- | --- | --- |"]
+    # 表の列は、リーダーの評価と同じにし、役の名前だけを替える
+    old_name, new_name = ("今の指示", "新しい指示") if reviewer else ("今のリーダー", "新しいリーダー")
+    rows = [f"| 場面 | 型 | {old_name} | {new_name} | 落ちた基準 |", "| --- | --- | --- | --- | --- |"]
 
     def cell(items):
         return f"{sum(1 for r in items if r['pass'])}/{len(items)}" if items else "-"
@@ -715,6 +734,11 @@ def summary(runs_path, out_path):
         failed = sorted({g["n"] for r in (s["new"] or s["old"]) for g in r["criteria"] if not g["pass"]})
         rows.append(f"| {sid} | {s['type']} | {cell(s['old'])} | {cell(s['new'])} | "
                     f"{', '.join(map(str, failed)) if failed else '-'} |")
+    if reviewer:
+        # 今の指示も全回で通る場面は、指示の変更が効いたことを示さない。場面は消さず、表の下に挙げる
+        unchanged = [sid for sid in sorted(scenes) if scenes[sid]["old"] and all(r["pass"] for r in scenes[sid]["old"])]
+        if unchanged:
+            rows += ["", f"今の指示でも通る場面: {', '.join(unchanged)}"]
     Path(out_path).write_text("\n".join(rows) + "\n", encoding="utf-8")
 
 
@@ -806,7 +830,7 @@ def main(argv):
     if cmd == "run-all":
         return run_all(parse_options(argv[1:]))
     if cmd == "summary":
-        summary(argv[1], argv[2])
+        summary(argv[1], argv[2], argv[3] if len(argv) > 3 else "")
         return 0
     if cmd == "usage-table":
         usage_table(argv[1], argv[2])

@@ -2544,3 +2544,100 @@ grep -q 'docs/review-eval.md の「流す回数の上限」' <<<"$help_out" || {
 grep -q -- '--over-limit ID' <<<"$help_out" || { echo "--help に --over-limit がありません" >&2; exit 1; }
 grep -q 'code-reviewer' <<<"$help_out" || { echo "--help に --role code-reviewer がありません" >&2; exit 1; }
 echo "PASS leader-eval: --help に、上限 18 回の行と、docs/review-eval.md の節への案内が出る"
+
+# --- コードレビュアーの評価: PR へのコメントの記録と Skill(verify) ---
+# 流す役が gh pr comment と gh pr review を呼ぶスタブ。許可の引数も記録する
+pr_bin="$test_dir/reviewer-pr-bin"
+mkdir -p "$pr_bin"
+cat >"$pr_bin/claude" <<'EOF2'
+#!/usr/bin/env bash
+# LEADER_EVAL_STUB_AGENT
+case "$*" in
+*"[leader-eval-scorer]"*)
+	if [[ $* == *"PR のレビュー本文の印（--body-file）"* ]]; then echo "scorer-saw-pr-comment" >>"$STUB_LOG"; else echo "scorer-missed-pr-comment" >>"$STUB_LOG"; fi
+	echo '{"pass": true, "reason": "ok"}'; exit 0 ;;
+esac
+if [[ $* == *"Skill(verify)"* ]]; then echo "verify-allowed" >>"$STUB_LOG"; else echo "verify-not-allowed" >>"$STUB_LOG"; fi
+printf 'PR のレビュー本文の印（--body-file）\n' >tmp/review.md
+code=0
+gh pr comment 15 --body-file tmp/review.md >/dev/null 2>&1 || code=$?
+echo "gh-pr-comment exit=$code" >>"$STUB_LOG"
+code=0
+gh pr review 15 --comment --body 'PR のレビュー本文の印（--body）' >/dev/null 2>&1 || code=$?
+echo "gh-pr-review exit=$code" >>"$STUB_LOG"
+echo '{"type":"result","result":"done","is_error":false,"permission_denials":[]}'
+EOF2
+chmod +x "$pr_bin/claude"
+rr_pr() { # 引数は run.sh へ渡す
+	PATH="$pr_bin:$PATH" bash "$rr/tests/leader-eval/run.sh" --baseline HEAD "$@"
+}
+: >"$STUB_LOG"
+rr_pr --role code-reviewer --scenes t1 --only new --runs 1 --out "$test_dir/reviewer-pr" >"$test_dir/reviewer-pr.out" 2>"$test_dir/reviewer-pr.err" ||
+	{ cat "$test_dir/reviewer-pr.err" >&2; exit 1; }
+grep -qx 'verify-allowed' "$STUB_LOG" || { echo "code-reviewer の実行で Skill(verify) が許可されていません" >&2; exit 1; }
+grep -qx 'gh-pr-comment exit=0' "$STUB_LOG" || { echo "gh pr comment が成功を返していません" >&2; exit 1; }
+grep -qx 'gh-pr-review exit=0' "$STUB_LOG" || { echo "gh pr review が成功を返していません" >&2; exit 1; }
+grep -qx 'scorer-saw-pr-comment' "$STUB_LOG" || { echo "PR へのコメントの本文が採点の役に渡っていません" >&2; exit 1; }
+pr_result="$test_dir/reviewer-pr/runs/t1/new-1/result.json"
+jq -e '(.comments | length) == 2
+	and (.comments[0] | contains("PR のレビュー本文の印（--body-file）"))
+	and (.comments[1] | contains("PR のレビュー本文の印（--body）"))' "$pr_result" >/dev/null ||
+	{ echo "PR へのコメントの本文が投稿として記録されていません" >&2; exit 1; }
+jq -e '[.calls[] | select(.command | startswith("gh pr")) | .kind] == ["write", "write"]' "$pr_result" >/dev/null ||
+	{ echo "gh pr comment と gh pr review が書き込みとして記録されていません" >&2; exit 1; }
+echo "PASS leader-eval: --role code-reviewer は gh pr comment と gh pr review の本文を投稿として記録して採点の役に渡し、Skill(verify) を許可する"
+
+# リーダーの評価では、見本にない gh pr comment は今のとおり失敗を返し、投稿として記録せず、Skill(verify) も許可しない
+mkdir -p "$rr/tests/leader-eval/scenes"
+cp -R "$rr/tests/leader-eval/reviewer-scenes/t1" "$rr/tests/leader-eval/scenes/t1"
+: >"$STUB_LOG"
+rr_pr --scenes t1 --only new --runs 1 --out "$test_dir/leader-pr" >"$test_dir/leader-pr.out" 2>"$test_dir/leader-pr.err" ||
+	{ cat "$test_dir/leader-pr.err" >&2; exit 1; }
+grep -qx 'verify-not-allowed' "$STUB_LOG" || { echo "リーダーの評価で Skill(verify) が許可されています" >&2; exit 1; }
+grep -qx 'gh-pr-comment exit=1' "$STUB_LOG" || { echo "リーダーの評価で gh pr comment が失敗を返していません" >&2; exit 1; }
+grep -qx 'gh-pr-review exit=1' "$STUB_LOG" || { echo "リーダーの評価で gh pr review が失敗を返していません" >&2; exit 1; }
+grep -qx 'scorer-missed-pr-comment' "$STUB_LOG" || { echo "リーダーの評価で PR へのコメントが採点の役に渡っています" >&2; exit 1; }
+jq -e '(.comments | length) == 0 and ([.calls[] | select(.command | startswith("gh pr")) | .kind] == ["unmatched", "unmatched"])' \
+	"$test_dir/leader-pr/runs/t1/new-1/result.json" >/dev/null ||
+	{ echo "リーダーの評価の gh pr comment の扱いが変わっています" >&2; exit 1; }
+echo "PASS leader-eval: リーダーの評価では、見本にない gh pr comment は失敗を返し、投稿として記録せず、Skill(verify) も許可しない"
+
+# --- コードレビュアーの評価: 要約の見出しと「今の指示でも通る場面」---
+cat >"$test_dir/summary-runs.jsonl" <<'EOF_RUNS'
+{"scene": "r-a", "type": "見逃し", "which": "old", "pass": true, "criteria": [{"n": 1, "pass": true}]}
+{"scene": "r-a", "type": "見逃し", "which": "old", "pass": true, "criteria": [{"n": 1, "pass": true}]}
+{"scene": "r-a", "type": "見逃し", "which": "new", "pass": true, "criteria": [{"n": 1, "pass": true}]}
+{"scene": "r-a", "type": "見逃し", "which": "new", "pass": true, "criteria": [{"n": 1, "pass": true}]}
+{"scene": "r-b", "type": "見逃し", "which": "old", "pass": false, "criteria": [{"n": 1, "pass": false}]}
+{"scene": "r-b", "type": "見逃し", "which": "old", "pass": true, "criteria": [{"n": 1, "pass": true}]}
+{"scene": "r-b", "type": "見逃し", "which": "new", "pass": true, "criteria": [{"n": 1, "pass": true}]}
+{"scene": "r-b", "type": "見逃し", "which": "new", "pass": true, "criteria": [{"n": 1, "pass": true}]}
+{"scene": "r-c", "type": "見逃し", "which": "new", "pass": true, "criteria": [{"n": 1, "pass": true}]}
+EOF_RUNS
+"${helper[@]}" summary "$test_dir/summary-runs.jsonl" "$test_dir/summary-reviewer.md" code-reviewer
+"${helper[@]}" summary "$test_dir/summary-runs.jsonl" "$test_dir/summary-leader.md"
+"${helper[@]}" summary "$test_dir/summary-runs.jsonl" "$test_dir/summary-principal.md" orchestrator
+{
+	echo '| 場面 | 型 | 今の指示 | 新しい指示 | 落ちた基準 |'
+	echo '| --- | --- | --- | --- | --- |'
+	echo '| r-a | 見逃し | 2/2 | 2/2 | - |'
+	echo '| r-b | 見逃し | 1/2 | 2/2 | - |'
+	echo '| r-c | 見逃し | - | 1/1 | - |'
+	echo
+	echo '今の指示でも通る場面: r-a'
+} >"$test_dir/summary-reviewer.expected"
+diff "$test_dir/summary-reviewer.expected" "$test_dir/summary-reviewer.md" ||
+	{ echo "code-reviewer の summary.md が、見出しと「今の指示でも通る場面」の決まりと違います" >&2; exit 1; }
+for leader_summary in "$test_dir/summary-leader.md" "$test_dir/summary-principal.md"; do
+	grep -qx '| 場面 | 型 | 今のリーダー | 新しいリーダー | 落ちた基準 |' "$leader_summary" ||
+		{ echo "リーダーの評価の summary.md の見出しが変わっています" >&2; exit 1; }
+	! grep -q '今の指示' "$leader_summary" || { echo "リーダーの評価の summary.md に、新旧の指示の語が入っています" >&2; exit 1; }
+	(( $(wc -l <"$leader_summary") == 5 )) || { echo "リーダーの評価の summary.md に行が増えています" >&2; exit 1; }
+done
+# 今の指示を流していない（--only new）記録だけのときは、この節を出さない
+grep -v '"which": "old"' "$test_dir/summary-runs.jsonl" >"$test_dir/summary-new-only.jsonl"
+"${helper[@]}" summary "$test_dir/summary-new-only.jsonl" "$test_dir/summary-new-only.md" code-reviewer
+! grep -q '今の指示でも通る場面' "$test_dir/summary-new-only.md" || { echo "今の指示を流していないのに、通る場面を挙げています" >&2; exit 1; }
+# run.sh から流した code-reviewer の summary.md にも、同じ決まりで出る（t1 は新旧とも合格）
+grep -qx '今の指示でも通る場面: t1' "$test_dir/reviewer-out/summary.md" || { echo "run.sh の summary.md に、今の指示でも通る場面がありません" >&2; exit 1; }
+echo "PASS leader-eval: code-reviewer の summary.md は、見出しを役の名前に替え、今の指示も全回で合格した場面を表の下に挙げる。リーダーの評価の summary.md は今のまま"

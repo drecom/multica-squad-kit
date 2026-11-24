@@ -298,13 +298,8 @@ ids=$(IFS=,; echo "${scene_list[*]}")
 versions_csv=$(IFS=,; echo "${versions[*]}")
 "${helper[@]}" run-all --out "$out" --scene-ids "$ids" --versions "$versions_csv" --runs "$runs" --jobs "$jobs" \
 	--scenes "$out/scene-dirs" --instructions "$out/instructions" --runtime "$runtime" --timeout "$timeout" \
-	--agent-path "$agent_path" --scorer-path "$scorer_path"
-"${helper[@]}" summary "$out/runs.jsonl" "$out/summary.md"
-if [[ $eval_role == code-reviewer ]]; then
-	# 表の列の見出しは、リーダーの評価の「今のリーダー」「新しいリーダー」を、流した役の指示に替える
-	sed -e 's/^| 場面 | 型 | 今のリーダー | 新しいリーダー | /| 場面 | 型 | 今の指示 | 新しい指示 | /' "$out/summary.md" >"$out/summary.reviewer.md"
-	mv "$out/summary.reviewer.md" "$out/summary.md"
-fi
+	--agent-path "$agent_path" --scorer-path "$scorer_path" --role "$eval_role"
+"${helper[@]}" summary "$out/runs.jsonl" "$out/summary.md" "$eval_role"
 if [[ -n $over_limit && $run_count -gt $run_limit ]]; then
 	# 上限を超えて流したことを、結果の先頭に残す
 	{
