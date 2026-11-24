@@ -122,13 +122,13 @@ claude_roles = {'orchestrator', 'planner', 'designer', 'qa', 'claude-implementer
 medium = {'qa', 'ux-reviewer', 'performance-reviewer'}
 for role, agent in agents.items():
     provider = runtimes[0] if len(runtimes) == 1 else ('claude' if role in claude_roles else 'codex')
-    model = 'gpt-6.1-sol'
+    model = 'gpt-6.2-sol'
     if provider == 'claude':
         model = 'claude-sonnet-5-5'
     if role == 'planner' or role.endswith('-principal'):
-        model = 'claude-fable-5-2' if provider == 'claude' else 'gpt-6-astra'
+        model = 'claude-fable-5-2' if provider == 'claude' else 'gpt-6.2-astra'
     if role == 'designer':
-        model = 'claude-opus-5-5' if provider == 'claude' else 'gpt-6.1-sol'
+        model = 'claude-opus-5-5' if provider == 'claude' else 'gpt-6.2-sol'
     assert agent['model'] == model and agent['runtime_id'] == 'runtime-' + provider, role
     assert agent['thinking_level'] == ('low' if role in {'ci-monitor', 'usage-monitor'} else 'medium' if role in medium else 'xhigh' if role.endswith('-principal') else 'high'), role
     assert agent['max_concurrent_tasks'] == (1 if role in monitors else 6), role

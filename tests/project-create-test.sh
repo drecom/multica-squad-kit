@@ -22,7 +22,7 @@ printf 'example/project\nexample/second\nexample/third\n' >"$test_dir/expected-r
 cmp "$test_dir/expected-repos" "$TEMPLATE_AGENT_HOME/allowed-repos.d/project-a"
 jq -e 'length==3 and .[1].resource_ref.url=="git@github.com:EXAMPLE/SECOND.git" and .[2].resource_ref.url=="https://github.com/example/third"' "$TEST_DB/resources.json" >/dev/null
 [[ $(jq -s '[.[]|select(.[0:3]==["project","resource","add"])]|length' "$TEST_DB/calls") == 2 ]]
-jq -e '.model=="gpt-6.1-sol" and .max_concurrent_tasks==1' "$TEST_DB/agents/agent-demo-usage-monitor-owner.json" >/dev/null
+jq -e '.model=="gpt-6.2-sol" and .max_concurrent_tasks==1' "$TEST_DB/agents/agent-demo-usage-monitor-owner.json" >/dev/null
 jq -e '.CLAUDE_CONFIG_DIR!=null and .CLAUDE_CODE_SHELL==null and .CLAUDE_ENV_FILE==null' "$TEST_DB/env/agent-demo-usage-monitor-owner.json" >/dev/null
 jq -e --arg env "$TEMPLATE_AGENT_HOME/template/shell/project-a/env.sh" '.CLAUDE_CODE_SHELL=="/bin/zsh" and .ENABLE_CLAUDEAI_MCP_SERVERS=="false" and .CLAUDE_ENV_FILE==$env' "$TEST_DB/env/agent-demo-orchestrator-owner.json" >/dev/null
 jq -e '.SQUAD_KIT_GH_DEPENDABOT_MERGE=="1"' "$TEST_DB/env/agent-demo-dependabot-merger-owner.json" >/dev/null
@@ -106,7 +106,7 @@ jq '.model="old" | .instructions="old"' "$TEST_DB/agents/agent-demo-codex-implem
 jq '.ZDOTDIR="old" | .CLAUDE_ENV_FILE="old"' "$TEST_DB/env/agent-demo-codex-implementer-owner.json" >"$TEST_DB/new"; mv "$TEST_DB/new" "$TEST_DB/env/agent-demo-codex-implementer-owner.json"
 jq '.CLAUDE_ENV_FILE="old" | .EXTRA="keep"' "$TEST_DB/env/agent-demo-orchestrator-owner.json" >"$TEST_DB/new"; mv "$TEST_DB/new" "$TEST_DB/env/agent-demo-orchestrator-owner.json"
 run
-jq -e '.model=="gpt-6.1-sol" and (.instructions|contains("このプロジェクトの値"))' "$TEST_DB/agents/agent-demo-codex-implementer-owner.json" >/dev/null
+jq -e '.model=="gpt-6.2-sol" and (.instructions|contains("このプロジェクトの値"))' "$TEST_DB/agents/agent-demo-codex-implementer-owner.json" >/dev/null
 jq -e '.EXTRA=="keep" and (.ZDOTDIR|endswith("/project-a")) and .CLAUDE_ENV_FILE==null' "$TEST_DB/env/agent-demo-codex-implementer-owner.json" >/dev/null
 jq -e --arg env "$TEMPLATE_AGENT_HOME/template/shell/project-a/env.sh" '.EXTRA=="keep" and .CLAUDE_ENV_FILE==$env' "$TEST_DB/env/agent-demo-orchestrator-owner.json" >/dev/null
 echo 'PASS project: 既存のエージェントの本指示・モデル・環境を ID を変えずに合わせる'

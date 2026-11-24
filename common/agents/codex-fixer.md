@@ -2,7 +2,7 @@
 name: "{{project_key}}-codex-fixer-{{member_key}}"
 description: レビューの指摘、main とのコンフリクト、CI の失敗を直す
 role: 修正（Codex）。レビューの指摘、main とのコンフリクト、CI の失敗を受ける
-model: gpt-6.1-sol
+model: gpt-6.2-sol
 thinking_level: high
 skills: squad-handoff, verify
 ---

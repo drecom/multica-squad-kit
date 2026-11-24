@@ -2,7 +2,7 @@
 name: "{{project_key}}-codex-implementer-{{member_key}}"
 description: 承認された設計の実装のフェーズを実装・テストし、バグを直す
 role: 実装とテスト（Codex）。承認済みの設計の実装のフェーズと、バグのタスクを受ける
-model: gpt-6.1-sol
+model: gpt-6.2-sol
 thinking_level: high
 skills: squad-handoff, verify
 ---

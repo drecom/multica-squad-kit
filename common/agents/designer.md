@@ -5,7 +5,7 @@ role: 設計。要件が合意されたタスクを受け、docs/ の変更を d
 <!-- IF runtime-claude -->
 model: claude-opus-5-5
 <!-- ELSE -->
-model: gpt-6.1-sol
+model: gpt-6.2-sol
 <!-- ENDIF -->
 thinking_level: high
 skills: squad-handoff

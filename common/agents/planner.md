@@ -5,7 +5,7 @@ role: 要件定義とタスク分割。新しい要望は最初にここへ回�
 <!-- IF runtime-claude -->
 model: claude-fable-5-2
 <!-- ELSE -->
-model: gpt-6-astra
+model: gpt-6.2-astra
 <!-- ENDIF -->
 thinking_level: high
 skills: squad-handoff

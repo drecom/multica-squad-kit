@@ -12,7 +12,7 @@ records, agents, roster = {}, [], []
 for role, description in [('orchestrator', 'leader'), ('codex-implementer', '実装'),
                           ('ci-monitor', ''), ('dependabot-merger', '')]:
     id_ = 'agent-' + role
-    record = dict(id=id_, name=f'demo-{role}-owner', model='gpt-6.1-sol',
+    record = dict(id=id_, name=f'demo-{role}-owner', model='gpt-6.2-sol',
                   thinking_level='high', runtime_id='runtime-codex', max_concurrent_tasks=6)
     records[role] = record
     skill_ids = ['handoff', 'verify'] if description else []
