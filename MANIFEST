@@ -1,3 +1,4 @@
+44a12a20d8a83c531f23d52a0446a9da1dde647a7709c2973389b5f0ffb39a17  ./.agents/review-paths
 873d19b49d040b07fbf5040892f085a1ab2bbb5cfeafa5b2d0b41f0db410bb67  ./.agents/rules/code.md
 b744bd86adc72feddaeabcf60253c8ce1c24abf84696c5a13cda8481be8ca0b8  ./.agents/rules/docs.md
 b170d0849848678c979565ebdc32fad5a3764d765bc307280f0e188b856ee754  ./.agents/rules/procedures.md
@@ -574,6 +575,7 @@ ba0be47c5fd291d15c3bf07604c4cd59bf02519cc45a8f986ce391472c0a31c3  ./tests/metric
 1f77121dd2786a48ac991480f3089baa1c12979fc575721e979506abcda1952f  ./tests/metrics-test.sh
 d05d5cb2d1e4df4cfe808af12a97c1b7bd638eed6acf0530b11e91c456cfabca  ./tests/metrics-traces-check.py
 f8014ad9d68401e6a9ac46ce260a7e721f76aab2f659f97db355b4b191667d07  ./tests/multica-fixture.py
+c814b4291af3be09bf1adfe01b9e5778dadcf4b2d70e268b2ca840fbdb067567  ./tests/own-review-paths-test.sh
 412b988313f6914deca820aa22ac45bda447e68eb06963d568b3d0627642b2f7  ./tests/pr-link-procedure-check.py
 4acd5121695a2c9905a32050f963097846bb5b5c0ff74a0a94822af4fe457be4  ./tests/pr-link-procedure-table.tsv
 dc25895fd5677a8e06601ee32d44ccb93025e9097869f3b44f9d27f9ac95aa14  ./tests/pr-watch-ci-wait-lib.sh
@@ -726,7 +728,7 @@ c98729878e6706f5780a10fbbdd9246ef49a12182fb27d46624296d335659336  ./tests/termin
 c0509d732b2b3fa99f882283848bc2ba1c82ed3a6d0a90ac8263045dfee07010  ./tests/terminal-test.sh
 bb7b764515248a871ceb26e80ed0d7a543675fe39a1813d3355767cb94475dc7  ./tests/terms-test.sh
 70b930e2847c9b0174993617f714cab72a321fa0483e64d0c73b4ead24e3a97c  ./tests/test-runner-test.sh
-d6eac74cb899c04553cf86f96eb3264f9401d354ebad97c06494d8e1bc72d9f0  ./tests/test-weights
+cadb19fe91999aac507f91ff1ad7e30fe23ebcb2b07ff3d9b0aa9a6f5453dbef  ./tests/test-weights
 26c5ee5af12334788f56bf13d7912c59770691d19efffeef2c59ad5be01d7bc9  ./tests/tty-session-cases.py
 a0e2424125413c1c5bc44b0dba0b9c391785e81466da212529b51a8fbfe10013  ./tests/tty-session-test.sh
 a75552e9ce73a6a9face4c56e1a318d10150c76383b5c88d4f0de705dc9cde2f  ./tests/tty-session.py
