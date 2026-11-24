@@ -79,3 +79,44 @@ ok '# 題\n\n````text\n```\n~~~\n<!--\n[先](none.md)\n````\n[先](#題)\n'
 ok '# 題\n\n```text\n```text\n[先](none.md)\n```\n[先](#題)\n'
 deny '# 題\n\n> ```text\n> <!--\n[先](missing.md)\n' 5 'missing.md のファイルがない'
 echo 'PASS links: コメント内のフェンスとコード、フェンス内のコメントを隠し、閉じた後の本文は検査する'
+
+# 索引の検査は、docs/ の直下の文書が索引のリンクの先に載っているかを調べる。リポジトリの索引は、先頭の引数なしの検査で確認した。
+check | grep -qF '索引にない文書 0 本' || { echo 'FAIL links: 引数なしの検査が、索引の集計を出さない' >&2; exit 1; }
+index_dir="$test_dir/index"
+mkdir -p "$index_dir/sub"
+printf '# 文書\n\nあ。\n' >"$index_dir/a.md"
+printf '# 文書\n\nい。\n' >"$index_dir/b.md"
+printf '# 文書\n\nう。\n' >"$index_dir/sub/c.md"
+index_check() {
+	printf '%b' "$1" >"$index_dir/README.md"
+	check --index "$index_dir/README.md" >"$test_dir/out" 2>"$test_dir/err"
+}
+index_deny() {
+	if index_check "$1"; then echo "FAIL links: 索引にない文書があるのに通ってしまった: $2" >&2; exit 1; fi
+	grep -qF "README.md: 索引: $2 が載っていない" "$test_dir/err" || { echo "FAIL links: 載っていない文書の行が違う: $2" >&2; cat "$test_dir/err" >&2; exit 1; }
+}
+index_ok() {
+	index_check "$1" || { echo 'FAIL links: 載っている文書が、載っていないと数えられた' >&2; cat "$test_dir/err" >&2; exit 1; }
+}
+index_deny '# 索引\n\n[a](a.md)\n' 'b.md'
+grep -qF '索引にない文書 1 本' "$test_dir/out" || { echo 'FAIL links: 索引の集計の行が違う' >&2; cat "$test_dir/out" >&2; exit 1; }
+if grep -qF 'a.md が載っていない' "$test_dir/err"; then echo 'FAIL links: 載っている文書を、載っていないと数えた' >&2; exit 1; fi
+index_ok '# 索引\n\n[a](a.md) と [b](b.md)\n'
+grep -qF '設計の文書 2 本、索引にない文書 0 本' "$test_dir/out" || { echo 'FAIL links: 索引の集計の行が違う' >&2; cat "$test_dir/out" >&2; exit 1; }
+echo 'PASS links: 索引にない文書は「索引: <名前> が載っていない」を出して落ち、すべて載っていれば通る'
+
+# アンカー付きのリンクで載せた文書は、載っていると数える。下のディレクトリの文書は見ない。
+index_ok '# 索引\n\n[a](a.md#文書) と [b](./b.md#文書)\n'
+echo 'PASS links: アンカー付きのリンクで載せた文書も、載っていると数える'
+
+# コードの中と HTML のコメントの中のリンクは、載っていると数えない。
+index_deny '# 索引\n\n[a](a.md) と `[b](b.md)`\n' 'b.md'
+index_deny '# 索引\n\n[a](a.md)\n\n```text\n[b](b.md)\n```\n' 'b.md'
+index_deny '# 索引\n\n[a](a.md)\n\n<!-- [b](b.md) -->\n' 'b.md'
+echo 'PASS links: コードと HTML のコメントの中のリンクは、載っていると数えない'
+
+# 索引のファイルがないと、引数の誤りとして終了コード 2 で止まる。
+status=0
+check --index "$index_dir/none.md" >/dev/null 2>&1 || status=$?
+[ "$status" -eq 2 ] || { echo "FAIL links: 索引のファイルがないときの終了コードが 2 でない: $status" >&2; exit 1; }
+echo 'PASS links: 索引のファイルがないと、終了コード 2 で止まる'
