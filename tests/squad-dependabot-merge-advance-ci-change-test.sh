@@ -97,7 +97,7 @@ for failure in rules/branches /check-runs /statuses 'pr comment' /comments; do
 	advance_fixture
 	if [[ $failure == 'pr comment' || $failure == /comments ]]; then edit_pr '.mergeStateStatus = "BEHIND"'; fi
 	printf '%s\n' "$failure" >"$test_dir/fail"
-	if bash "$script" example/template project-a advance 1 --reviewed-head "$reviewed" --run-deadline "$run_deadline" >"$test_dir/output" 2>"$test_dir/error"; then exit 1; fi
+	if bash "$script" example/template project-a advance 1 --base main --reviewed-head "$reviewed" --run-deadline "$run_deadline" >"$test_dir/output" 2>"$test_dir/error"; then exit 1; fi
 	[[ ! -s $test_dir/output && -s $test_dir/error ]]
 	if [[ $failure != 'pr comment' ]]; then no_writes; fi
 	while IFS= read -r file; do [[ ! -e $file ]]; done <"$test_dir/body-files"

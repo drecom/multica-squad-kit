@@ -2,7 +2,7 @@
 # multica-squad-kit-managed
 # Dependabot の週次の確認で、判断の要らない処理を行う。
 #   squad-dependabot-merge <OWNER/REPO> <プロジェクト ID> list --base <ブランチ名> — 開いている PR の更新の種類と必須 CI を JSON で返す。
-#   squad-dependabot-merge <OWNER/REPO> <プロジェクト ID> advance <PR> --reviewed-head <SHA> --run-deadline <epoch> [--retry]
+#   squad-dependabot-merge <OWNER/REPO> <プロジェクト ID> advance <PR> --base <ブランチ名> --reviewed-head <SHA> --run-deadline <epoch> [--retry]
 #   squad-dependabot-merge <OWNER/REPO> <プロジェクト ID> escalate <PR> <本文のファイル> --assignee <名前>
 # macOS の bash 3.2 でも動くよう、連想配列は使わない。
 set -euo pipefail
@@ -12,7 +12,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/squad-cli-lib"
 RUN_SECONDS=14400
 
 usage() {
-	echo '使い方: squad-dependabot-merge <OWNER/REPO> <プロジェクト ID> list --base <ブランチ名> | advance <PR> --reviewed-head <SHA> --run-deadline <epoch> [--retry] | escalate <PR> <本文のファイル> --assignee <名前>' >&2
+	echo '使い方: squad-dependabot-merge <OWNER/REPO> <プロジェクト ID> list --base <ブランチ名> | advance <PR> --base <ブランチ名> --reviewed-head <SHA> --run-deadline <epoch> [--retry] | escalate <PR> <本文のファイル> --assignee <名前>' >&2
 	exit 2
 }
 
@@ -211,6 +211,7 @@ read_requests() {
 # この関数自体は case から直接呼ぶ。
 advance() {
 	local number=${1:-} reviewed='' run_deadline='' retry=false arg now deadline call_deadline run_start ci_start
+	local BASE='' base_seen=false
 	local pr head ecosystem commit message files kind required checks statuses ci mergeable merge_state
 	local requests request requested_head requested_at request_count retry_used retry_request body result pause reviewed_hash diff_hash diff_status current_head
 	[[ $number =~ ^[1-9][0-9]*$ ]] || usage
@@ -218,6 +219,7 @@ advance() {
 	while (($#)); do
 		arg=$1
 		case $arg in
+		--base) (($# >= 2)) && [[ $base_seen == false ]] || usage; BASE=$2; base_seen=true; shift 2 ;;
 		--reviewed-head) (($# >= 2)) && [[ -z $reviewed ]] || usage; reviewed=$2; shift 2 ;;
 		--run-deadline) (($# >= 2)) && [[ -z $run_deadline ]] || usage; run_deadline=$2; shift 2 ;;
 		--retry) [[ $retry == false ]] || usage; retry=true; shift ;;
@@ -225,15 +227,17 @@ advance() {
 		esac
 	done
 	[[ $reviewed =~ ^[a-fA-F0-9]{40}$ && $run_deadline =~ ^[1-9][0-9]{0,9}$ ]] || usage
+	[[ $BASE =~ ^[A-Za-z0-9._/-]+$ && $BASE != -* ]] || usage
+	check_base
 	run_start=$((run_deadline - RUN_SECONDS))
 	now=$(date +%s)
 	call_deadline=$((now + 300))
 	while :; do
 		requests=''
 		pr=$(squad_cli_read gh-dependabot-pr "$number" "$REPO")
-		if [[ $(jq -r '.state == "OPEN" and .author.is_bot == true and .author.login == "app/dependabot"
-			and .baseRefName == "main" and .isDraft == false' <<<"$pr") != true ]]; then
-			echo 'main 向けの、開いている Dependabot の通常の PR だけを進められます。' >&2
+		if [[ $(jq -r --arg base "$BASE" '.state == "OPEN" and .author.is_bot == true and .author.login == "app/dependabot"
+			and .baseRefName == $base and .isDraft == false' <<<"$pr") != true ]]; then
+			printf '%s 向けの、開いている Dependabot の通常の PR だけを進められます。\n' "$BASE" >&2
 			return 1
 		fi
 		head=$(jq -er '.headRefOid | select(test("^[a-fA-F0-9]{40}$"))' <<<"$pr")
@@ -274,7 +278,7 @@ advance() {
 		fi
 		mergeable=$(jq -r .mergeable <<<"$pr")
 		merge_state=$(jq -r .mergeStateStatus <<<"$pr")
-		required=$(required_checks main)
+		required=$(required_checks "$BASE")
 		checks=$(squad_cli_read gh-check-runs "repos/$REPO/commits/$head/check-runs?filter=latest&per_page=100" | jq .check_runs)
 		statuses=$(squad_cli_read gh-statuses "repos/$REPO/commits/$head/statuses?per_page=100")
 		ci=$(required_ci "$required" "$checks" "$statuses")
@@ -316,7 +320,7 @@ advance() {
 					return
 				fi
 			fi
-			if ((request_count >= 3)); then outcome behind-limit 'この実行で 3 回依頼しても main に追いつけませんでした。'; return; fi
+			if ((request_count >= 3)); then outcome behind-limit "この実行で 3 回依頼しても対象ブランチ ${BASE} に追いつけませんでした。"; return; fi
 			if ((now >= run_deadline)); then outcome run-timeout '実行全体の締め切りに達しました。'; return; fi
 			# head が安定したまま比べられない差分は、ハッシュなしで依頼する。反映後は必ず確認し直す。
 			if diff_hash=$(pr_diff_hash "$number" "$head"); then diff_status=0; else diff_status=$?; fi

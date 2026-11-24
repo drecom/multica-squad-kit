@@ -26,7 +26,7 @@ for defect in pulls-number rule-context pr-author commit-message check-app statu
   else reading=gh-pr-files; field=additions; filter='[del(.additions)]'; fi ;;
  comments-body|viewer-login)
   action=advance
-  args=(1 --reviewed-head "$reviewed" --run-deadline "$run_deadline")
+  args=(1 --base main --reviewed-head "$reviewed" --run-deadline "$run_deadline")
   edit_pr '.mergeStateStatus="BEHIND"'
   if [[ $defect == comments-body ]]; then reading=gh-pr-comments; field=body; filter='[del(.body)]'
   else reading=gh-viewer; field=login; filter='del(.login)'; fi ;;
@@ -45,7 +45,7 @@ done
 advance_fixture
 edit_pr '.mergeStateStatus="BEHIND"'
 gh_fixture gh-pr-head | jq 'del(.headRefOid)' >"$test_dir/gh-defect.gh-pr-head.json"
-if bash "$script" example/template project-a advance 1 --reviewed-head "$reviewed" --run-deadline "$run_deadline" >"$test_dir/output" 2>"$test_dir/error"; then exit 1; fi
+if bash "$script" example/template project-a advance 1 --base main --reviewed-head "$reviewed" --run-deadline "$run_deadline" >"$test_dir/output" 2>"$test_dir/error"; then exit 1; fi
 [[ ! -s $test_dir/output ]]
 grep -F 'gh-pr-head の headRefOid' "$test_dir/error" >/dev/null
 no_writes
