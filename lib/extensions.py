@@ -40,6 +40,8 @@ def key(value):
 
 TARGET_PREFIX = 'autopilot-targets.json: '
 TARGET_USE = re.compile(r'\{\{target\.([A-Za-z0-9_.-]+)\}\}')
+# {{target. で始まる参照の候補。閉じていないものも拾い、書式の誤りを登録の前に見つける。
+TARGET_CANDIDATE = re.compile(r'\{\{target\.[^{}\n]*(?:\}\})?')
 ROLE_MARK = re.compile(r'<!-- (?:IF .*|ELSE|ENDIF) -->')
 REPOSITORY = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9_.-]+')
 
@@ -77,6 +79,11 @@ def target_names(lines):
     return list(dict.fromkeys(TARGET_USE.findall('\n'.join(lines))))
 
 
+def target_malformed(lines):
+    """{{target.<値の名前>}} の書式に合わない参照を、書かれたまま返す。"""
+    return list(dict.fromkeys(m for m in TARGET_CANDIDATE.findall('\n'.join(lines)) if not TARGET_USE.fullmatch(m)))
+
+
 def read_targets(path, errors):
     duplicates = []
 
@@ -109,11 +116,15 @@ def check_targets(extension, text, errors):
     sections = definitions(text)
     normalized = {}
     for name, repos in configured.items():
-        matches = [s for s in sections if s['name'] == name and s['scope'] == 'repository']
-        if not matches:
-            errors.append(f'{name}: ' + ('範囲が repository の定義ではありません' if any(s['name'] == name for s in sections) else '定義にない名前です'))
-        elif len(matches) > 1:
+        # 同じ名前の定義は範囲を問わず数える。原本の member の定義と同じ名前の repository の定義で、原本の定義を外せないようにする。
+        same = [s for s in sections if s['name'] == name]
+        matches = [s for s in same if s['scope'] == 'repository'] if len(same) == 1 else []
+        if not same:
+            errors.append(f'{name}: 定義にない名前です')
+        elif len(same) > 1:
             errors.append(f'{name}: 同じ名前の定義が 2 つ以上あります')
+        elif not matches:
+            errors.append(f'{name}: 範囲が repository の定義ではありません')
         if not isinstance(repos, dict) or not repos:
             errors.append(f'{name}: 対象のリポジトリを 1 つ以上、キーにしたオブジェクトで書いてください')
             continue
@@ -139,6 +150,8 @@ def check_targets(extension, text, errors):
             errors.extend(f'{where}: 値 {label} がありません' for label in used if label not in values)
             normalized.setdefault(name, {})[repo.lower()] = {f'target.{label}': value for label, value in values.items() if key_name(label) and valid_value(value)}
     for section in sections:
+        for raw in target_malformed(section['outside'] + section['instruction']):
+            errors.append(f"{section['name']}: {raw} は {{{{target.<値の名前>}}}} の形で書いてください")
         for label in target_names(section['outside']):
             errors.append(f"{section['name']}: target.{label} は指示の中にだけ書けます")
         if section['name'] in configured:

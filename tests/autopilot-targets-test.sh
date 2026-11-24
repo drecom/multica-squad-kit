@@ -116,6 +116,30 @@ assert attempt({'Scan': {'example/one': {'url': 'u', 'path': 'p'}}}, member) == 
 assert attempt(valid, SCAN) == {'Scan': {'example/one': {'target.url': 'u', 'target.path': 'p'}}}
 print('PASS autopilot-targets: target.* を見出し・スケジュール・範囲・指示の外に書くと誤りにする')
 
+# 書式の崩れた {{target.…}} は、見出し・スケジュール・指示の前後と中のどこにあっても登録の前に止める。
+bad_refs = ('{{target.}}', '{{target.branch }}', '{{target./branch}}', '{{target.*}}', '{{target.branch}', '{{target.branch')
+placements = {
+    '見出し': lambda ref: SCAN.replace('## Scan {{project_key}}', '## Scan ' + ref + ' {{project_key}}'),
+    'スケジュール': lambda ref: SCAN.replace('`0 0 * * 1`', '`' + ref + '`'),
+    '指示の前': lambda ref: SCAN.replace('\n```text', '\n' + ref + '\n\n```text'),
+    '指示の中': lambda ref: SCAN.replace('Scan {{target.url}}', 'Scan ' + ref + ' {{target.url}}'),
+    '指示の後': lambda ref: SCAN + '\n補足は ' + ref + '\n',
+}
+for place, build in placements.items():
+    for ref in bad_refs:
+        result = attempt(valid, build(ref))
+        assert isinstance(result, list) and any(line.startswith(PREFIX + 'Scan: ' + ref.rstrip('}')) and '{{target.<値の名前>}} の形で書いてください' in line for line in result), (place, ref, result)
+# 設定がなくても止める。正しい参照は誤りにしない。
+assert attempt(autopilots=SCAN.replace('{{target.url}}', '{{target.}}').replace('{{target.path}}', 'y')) == lines('Scan: {{target.}} は {{target.<値の名前>}} の形で書いてください')
+assert attempt(valid, SCAN) == {'Scan': {'example/one': {'target.url': 'u', 'target.path': 'p'}}}
+print('PASS autopilot-targets: 書式の崩れた {{target.…}} を、どこに書いても登録の前に止める')
+
+# 同じ名前の定義は範囲を問わず数える。原本の member の定義と同名の repository の定義で、原本の定義を外せない。
+guard = '## ' + MEMBER + ' {{project_key}} {{repository}}\n\n- 範囲: `repository`\n- 実行: `run_only`\n- スケジュール: `0 0 * * 1`（Asia/Tokyo）\n\n```text\nx\n```\n'
+assert attempt({MEMBER: {'example/app': {}}}, guard) == lines(f'{MEMBER}: 同じ名前の定義が 2 つ以上あります')
+assert attempt({MEMBER: {'example/app': {}}}) == lines(f'{MEMBER}: 範囲が repository の定義ではありません')
+print('PASS autopilot-targets: 原本の member の定義と同名の repository の定義を設定に書くと止める')
+
 # 2-4: 名前は見出しの ## のあと、最初の {{ の前まで。名前の中の空白は残す。
 assert attempt({COMMON: {'Example/One': {}}}) == {COMMON: {'example/one': {}}}
 for name in (COMMON + ' ', COMMON.replace(' ', ''), COMMON.replace(' 1 ', ' １ '), COMMON.replace('週 1 回の', '')):
@@ -168,6 +192,21 @@ printf '{' >"$ext/autopilot-targets.json"
 deny_targets
 grep -qxF 'autopilot-targets.json: JSON として読めません' "$test_dir/err"
 echo 'PASS setup: 設定の誤りは全部表示し、質問・保存・登録の前に止まる'
+
+# 書式の崩れた {{target.…}} と、原本の member の定義と同名の repository の定義は、登録の前に止まる。
+definition='## %s {{project_key}} {{repository}}\n\n- 範囲: `repository`\n- 実行: `run_only`\n- スケジュール: `0 0 * * 1`（Asia/Tokyo）\n\n```text\n%s\n```\n'
+for ref in '{{target.}}' '{{target.branch }}' '{{target./branch}}' '{{target.*}}'; do
+ printf "$definition" Scan "Scan $ref." >"$ext/autopilots.md"
+ printf '{"Scan": {"example/one": {"branch": "main"}}}\n' >"$ext/autopilot-targets.json"
+ deny_targets
+ grep -qxF "autopilot-targets.json: Scan: ${ref} は {{target.<値の名前>}} の形で書いてください" "$test_dir/err"
+done
+printf "$definition" '使用上限の見張り' x >"$ext/autopilots.md"
+printf '{"使用上限の見張り": {"example/one": {}}}\n' >"$ext/autopilot-targets.json"
+deny_targets
+grep -qxF 'autopilot-targets.json: 使用上限の見張り: 同じ名前の定義が 2 つ以上あります' "$test_dir/err"
+rm -f "$ext/autopilots.md" "$ext/autopilot-targets.json"
+echo 'PASS setup: 書式の崩れた target の参照と、原本の member の定義と同名の定義は、保存・登録の前に止まる'
 
 # 2-2: 選んだリポジトリにない設定は、質問のあとの確認で止まる。base_input は example/two だけを選ぶ。
 export TEST_REPOS_FILE="$test_dir/repos.json"
@@ -295,6 +334,13 @@ jq -e '([.[]|select(.title|startswith("週 1 回の依存ライブラリの脆�
 echo 'PASS autopilot-targets: 原本の 2 つを app に絞ると、Wiki の定期確認がない'
 jq -e '([.[]|select(.title|startswith("Extra check "))]|length)==2 and ([.[]|select(.scope=="member")]|length)==1' "$project_work/autopilots.json" >/dev/null
 echo 'PASS autopilot-targets: 設定にない定義は全リポジトリに展開し、member の定義は 1 回だけ展開する'
+# 設定に member の定義の名前があっても、展開では絞り込みも値の追加もしない。
+cp "$root/extension-autopilot-targets.json" "$project_work/targets.keep"
+jq '. + {"使用上限の見張り": {"example/app": {"branch": "x"}}}' "$project_work/targets.keep" >"$root/extension-autopilot-targets.json"
+prepare_autopilots
+jq -e '([.[]|select(.scope=="member")]|length)==1 and ([.[]|select(.title|startswith("使用上限の見張り"))]|length)==1' "$project_work/autopilots.json" >/dev/null
+cp "$project_work/targets.keep" "$root/extension-autopilot-targets.json"
+echo 'PASS autopilot-targets: 設定に member の定義の名前があっても、member の定義は絞らない'
 
 # 見出し前の文は展開せず、member の指示には最初のリポジトリの値を使う。
 python3 - "$root/common/autopilots.md" <<'MEMBER'

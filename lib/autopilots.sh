@@ -49,7 +49,7 @@ autopilot_templates() {
 }
 
 prepare_autopilots() {
-	local definitions section role title repo name targets='{}' first=yes
+	local definitions section role title repo name scope targets='{}' first=yes
 	jq -e 'type=="array" and length>0 and all(.[]; .repository|type=="string" and test("^[a-z0-9][a-z0-9_.-]*/[a-z0-9_.-]+$")) and ([.[].repository]|length==(unique|length))' >/dev/null <<<"$selected_repositories" || die 'オートパイロットのリポジトリの一覧が不正です。'
 	template_filter "$enabled" "$root/common/autopilots.md" >"$project_work/autopilots.filtered" || die 'オートパイロットの役のマークが不正です。'
 	autopilot_templates "$project_work/autopilots.filtered" >"$project_work/autopilots.templates" || die 'オートパイロットの節を読めませんでした。'
@@ -62,8 +62,11 @@ prepare_autopilots() {
 		while IFS= read -r section; do
 			if [[ $(jq -r '.scope' <<<"$section") == member && $first != yes ]]; then continue; fi
 			name=$(jq -r '.name' <<<"$section")
-			if jq -e --arg name "$name" --arg repo "$repo" 'has($name) and (.[$name]|has($repo)|not)' >/dev/null <<<"$targets"; then continue; fi
-			jq --arg repo "$repo" --arg name "$name" --argjson targets "$targets" '.+{repository:$repo}+($targets[$name][$repo] // {})' "$project_work/values.json" >"$project_work/autopilot.values" || die 'オートパイロットの値を読めませんでした。'
+			# 絞り込みと値の差し込みは範囲が repository の定義だけに使う。原本の member の定義は設定で外せない。
+			scope=$(jq -r '.scope // ""' <<<"$section")
+			[[ $scope == repository ]] || name=''
+			if [[ -n $name ]] && jq -e --arg name "$name" --arg repo "$repo" 'has($name) and (.[$name]|has($repo)|not)' >/dev/null <<<"$targets"; then continue; fi
+			jq --arg repo "$repo" --arg name "$name" --argjson targets "$targets" '.+{repository:$repo}+(if $name=="" then {} else ($targets[$name][$repo] // {}) end)' "$project_work/values.json" >"$project_work/autopilot.values" || die 'オートパイロットの値を読めませんでした。'
 			jq -jr '.text' <<<"$section" >"$project_work/autopilot.template"
 			template_apply "$project_work/autopilot.values" "$project_work/autopilot.template" >>"$project_work/autopilots.rendered" || die 'オートパイロットを展開できませんでした。'
 			printf '\n' >>"$project_work/autopilots.rendered"
