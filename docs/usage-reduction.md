@@ -30,7 +30,7 @@
 
 ## 承認のときに確認すること
 
-人間が承認のときに確認する点は、次の 5 つである。4 つは合意で残った点で、5 つ目は設計の中で選んだ点である。
+人間が承認のときに確認する点は、次の 6 つである。4 つは合意で残った点で、5 つ目と 6 つ目は設計の中で選んだ点である。
 
 | 点 | 決めたこと | 詳しい節 |
 | --- | --- | --- |
@@ -39,6 +39,7 @@
 | ひな形の形式を変えるか | 変えない。今の front matter の条件の書き方で足りる | [ひな形の形式を変えない理由](#ひな形の形式を変えない理由) |
 | 半分以下に届かないところ | 見張りの 3 役だけが届かない。ほかの 14 役とリーダーの場面は届く | [半分以下に届かない役](#半分以下に届かない役) |
 | 見張りの 3 役に読み方の決まりを読ませるか | 読ませない。読み方の決まりの対象からも外す | [半分以下に届かない役](#半分以下に届かない役) |
+| リーダーの指示の上限を上げるか | 上げない。指示には場面の表の行を足し、細部は参照に置く | [リーダーの指示の大きさ](#リーダーの指示の大きさ) |
 
 ### 区切りを Codex の役に入れない理由
 
@@ -493,18 +494,27 @@ squad-task-post <タスク> --status <状態> --content-file <ファイル> [--p
 | | `leader-principal-final.md` | 設計と PR の見直し・最終レビュー・セキュリティ・2 つの役の結果・見る範囲 |
 | | `leader-principal-diagnose.md` | 診断を頼む |
 | | `leader-principal-reshow.md` | 見せ直し、設計を承認し直したとき |
-| `leader-review-wait.md` | `leader-review-request.md` | 役がない、依頼、照合、ほか |
+| `leader-review-wait.md` | `leader-review-request.md` | 役がない、依頼、照合、ほか。依頼の前の `link-check` を足す |
 | | `leader-review-reply.md` | 返事で起きたとき（進むとき） |
 | | `leader-review-stuck.md` | `decide` が決められないときの理由の表 |
 | `leader-pr-checks.md` | `leader-pr-link.md` | 紐付け、食い違い |
 | | `leader-pr-ci.md` | 知らせ、起きたときの確認、CI、その場の確認。CI の節に、区切りの途中で保留した行の扱いを足す |
-| | `leader-pr-merge.md` | マージの前・コンフリクト・規則・マージ待ち・人間を呼ぶコメントに添える行 |
+| | `leader-pr-merge.md` | マージの前・コンフリクト・規則・マージ待ち・人間を呼ぶコメントに添える行。添える前の `link-check` を足す |
 | `leader-run-status.md` | `leader-run-status.md` | 状態、方針を変える追加 |
 | | `leader-run-wake.md` | 起きたときの確認。区切りの途中の実行を、PR に触れるものとして数える文を足す |
 | | `leader-run-stop.md` | 実行の停止、止めたあと |
 | （新しく足す） | `leader-run-cut.md` | [続きを確認するリーダー](#続きを確認するリーダー)の手順 |
 
 1 つの場面は、決まった参照だけを読む。場面の中で止まる値が出て別の手順が要るときは、別の場面に移り、その場面の参照を読む。たとえば、マージへ回す場面で `link-check` が食い違いを出したら、食い違いの場面へ移る。
+
+分ける前の表が `link-check` を指した時機は、分けたあとも、その時機の場面の参照から届くようにする。返事を待つ回を始める前と、ほかの理由で人間を呼ぶ前は、次の文を置く。
+
+| 時機 | 置く参照と節 | 置く文 |
+| --- | --- | --- |
+| レビューと E2E の返事を待つ回を始める前 | `leader-review-request.md` の「レビューと E2E の依頼」 | 依頼の前に `squad-pr-watch link-check <タスク>` を流す。`紐付いている` のほかは、PR を受け取る・食い違いの場面へ移る |
+| ほかの理由で人間を呼ぶコメントを書く前 | `leader-pr-merge.md` の「人間を呼ぶコメントに添える行」 | 書く前に `link-check` を流す。食い違いと未確認は、PR を受け取る・食い違いの場面へ移る |
+
+紐付いていない PR の CI とコンフリクトは、移った先の `leader-pr-link.md` の判定の表から `leader-pr-ci.md` へ進んで確認する。返事がそろったときの `link-check` は、今のとおり `squad-review-next decide` が流す。
 
 ### 大きさの上限
 
@@ -542,7 +552,7 @@ squad-task-post <タスク> --status <状態> --content-file <ファイル> [--p
 | 最上位の役に最終レビューを頼む | `leader-principal-final.md`、`leader-principal-pick.md` | 62,169 | 31,084 | 23,000 前後 |
 | 最上位の役に診断を頼む | `leader-principal-diagnose.md`、`leader-principal-pick.md` | 62,169 | 31,084 | 10,000 前後 |
 | 設計を承認し直した・見せ直す | `leader-principal-reshow.md`、`leader-principal-pick.md` | 62,169 | 31,084 | 11,000 前後 |
-| レビュー・E2E の依頼 | `leader-review-request.md` | 8,148 | 4,074 | 3,300 前後 |
+| レビュー・E2E の依頼 | `leader-review-request.md` | 8,148 | 4,074 | 4,000 前後 |
 | レビュー・E2E の返事で起きた | `leader-review-reply.md` | 8,148 | 4,074 | 2,000 前後 |
 | `decide` が決められない | `leader-review-stuck.md` | 8,148 | 4,074 | 2,700 前後 |
 | PR を受け取る・食い違い | `leader-pr-link.md` | 26,430 | 13,215 | 5,500 前後 |
@@ -558,6 +568,24 @@ squad-task-post <タスク> --status <状態> --content-file <ファイル> [--p
 区切りの続きの確認は新しい場面で、実装・修正の依頼の場面の基準を引き継ぐ。頼み直しが、その場面の依頼の手順を使うためである。
 
 起きたときの確認は、`leader-run-status.md` から `leader-run-wake.md` へ分ける。今のファイルは 12,578 バイトで、状態と起きたときの確認と方針を変える追加を残すと 6,700 バイトほどになり、上限の 6,289 を超えるためである。`leader-run-stop.md` は、上限との差が 1 割に満たない。実装で足す文は、ほかの参照に置く。
+
+`leader-review-request.md` も、依頼の前の `link-check` の文を足すと、上限との差が 100 バイトほどになる。このあと足す文は、ほかの参照に置く。
+
+### リーダーの指示の大きさ
+
+リーダーの指示（`orchestrator.md`）は、展開した大きさを今の上限の 12,288 バイトに収め、上限は上げない。上限と、縮めた内容を記録する決まりは、今の [planner-requirements.md のリーダーの指示の大きさ](planner-requirements.md#リーダーの指示の大きさ)のとおりである。
+
+場面の表を細かくすると、指示は上限に届く。このあとの変更で指示に足すものは、次のとおりに置く。
+
+| 足すもの | 指示に置くもの | 細部を置く参照 |
+| --- | --- | --- |
+| 短い道の確認 | 場面の表の行のセルに置く短い語句 | `leader-request.md` |
+| 区切りの続きの確認 | 場面の表の 1 行 | `leader-run-cut.md` |
+| まとめた呼び出し | 始めの確認の読み取りの文を置き換える。文は足さない | [リーダーの指示での使い方](#リーダーの指示での使い方) |
+
+足す分の余裕は、読む参照に同じ文があるセルや文を縮めて作る。指示にしかない決まりは縮めない。縮めた所は、planner-requirements.md の表に、箇所・指示の文・省いた語句が読める場所を記録する。場面の表を分けたときに縮めたセルも、同じ表に記録する。
+
+設計の役の指示も 12,288 バイトの上限を持ち、余裕は 30 バイトに満たない。区切りの行は、`run-cut.md` の「実行の区切り」を指す 1 文にする。足りない分は、共通スキルに同じ文がある所を縮めて作る。
 
 ### 大きさのテスト
 
@@ -737,22 +765,24 @@ high にした理由は、原則の判断に考える量を回すためだった
 | --- | --- |
 | `common/skills/squad-handoff/SKILL.md` | [共通スキルの分け方](#共通スキルの分け方)のとおり分け、読み方の節と、場面の索引を足す |
 | `common/skills/squad-handoff/references/` の参照 | 共通スキルとリーダーの参照を表のとおりに分け、`run-cut.md` と、リーダーの `leader-run-wake.md`・`leader-run-cut.md` を足す。リーダーの参照に短い道と区切りの途中を足してまとめた呼び出しを使い、分けた先のファイルでは見出しの階層をそのファイルの中で整える |
+| `common/skills/squad-handoff/references/leader-review-request.md`・`leader-pr-merge.md` | [リーダーの参照の分け方](#リーダーの参照の分け方)のとおり、`link-check` を流す文を足す |
 | `common/monitor/squad-run-cut-values` | 新しく足す |
 | `common/monitor/squad-run-cut`、`common/monitor/squad-task-read`、`common/monitor/squad-task-post` | 新しく足す |
 | `common/monitor/squad-review-next` | `analyze` の欄 `short_path`、表の 9、マージの依頼の確認の 2、マージを頼むコメントの行 |
 | `common/monitor/squad-pr-watch` | `ci-check` が、区切りの途中を作業中として保留する |
 | `common/squad.md`・`common/agents/claude-principal.md`・`common/agents/codex-principal.md`・`lib/questions.sh`・`manual.md` | [最終レビューの範囲の言い回し](#最終レビューの範囲の言い回し)のとおり直す |
-| `common/agents/orchestrator.md` | 思考の深さ・場面と手順の表・短い道の確認・区切りの続きの確認の場面。始めの確認で、まとめた呼び出しを使う |
+| `common/agents/orchestrator.md` | 思考の深さ・場面と手順の表・短い道の確認・区切りの続きの確認の場面。始めの確認でまとめた呼び出しを使い、[リーダーの指示の大きさ](#リーダーの指示の大きさ)のとおり上限に収める |
 | `common/agents/claude-fixer.md` | 思考の深さ、区切りの行 |
 | `common/agents/claude-implementer.md` | 区切りの行、短い道の実装と `設計の判断:` の行 |
 | `common/agents/codex-implementer.md` | 短い道の実装と `設計の判断:` の行 |
-| `common/agents/designer.md` | `IF runtime-claude` の中に区切りの行 |
+| `common/agents/designer.md` | `IF runtime-claude` の中に、`run-cut.md` を指す 1 文の区切りの行 |
 | `common/agents/planner.md` | 合意の問いで短い道を尋ね、同意を本文に残す |
 | 役の指示・`SKILL.md`・リーダーの参照のうち、移した節を名前か「次の」で指す所 | 移した先の参照のファイルと節を指す。すぐ前の文と同じ節は「同じ節」と指してよい |
 | `tests/` | [テスト](#テスト)の確認を足し、思考の深さと最終レビューの範囲の期待を直す。検査の対象は分けた先の参照へ付け替え、新しいテストは `tests/test-weights` に重みを登録する |
 | `tests/leader-eval/` | 新しいスクリプトの名前を `leader_eval.py` の差し替える名前に足し、それを呼ぶ場面の `cli.json` に応答を足す |
 | `docs/principal-review.md`・`docs/review-next-step.md`・`docs/decide-record-read.md`・`docs/leader-principles.md`・`docs/flow-and-index.md` | 短い道と思考の深さに合わせ、この文書と同じコミットで直した |
 | `docs/principal-review.md`・`docs/review-next-step.md`・`docs/reread-followups.md`・`docs/review-eval.md` | 分ける前のリーダーの参照へのリンクを、分けた先の参照と節へ付け替える |
+| `docs/planner-requirements.md`・`docs/leader-principles.md` | 縮めた所を記録し、展開した大きさの値を直す。指示を変えるコミットで直す |
 | `docs/README.md` | 索引の「役の指示と、タスクが進む流れ」の表に、この文書の行を足した |
 | `MANIFEST` | `bash scripts/manifest.sh` で作り直す |
 
@@ -822,3 +852,5 @@ high にした理由は、原則の判断に考える量を回すためだった
 | 呼び出しの数を、役が自分で数える | 圧縮のあとは前の回数が分からない。実行のメッセージの数はスクリプトで読める |
 | 共通スキルを、役ごとのスキルに分ける | 登録とスキルの割り当てが変わり、合意の範囲を超える。同じ決まりが役ごとに写る |
 | 見張りの 3 役に、読み方の決まりを写す | 決まりが 2 か所になる。3 役は大きなファイルを読まない |
+| リーダーの指示の上限の 12,288 バイトを上げる | 毎回読む文が増え、この文書の目的に反する。足す分は参照に置ける |
+| レビュー・E2E の依頼の場面で `leader-pr-link.md` も読む | 場面の見込みが 9,900 前後になり、上限の 4,074 を超える |
