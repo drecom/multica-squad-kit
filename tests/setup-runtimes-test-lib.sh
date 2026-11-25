@@ -78,6 +78,7 @@ STUB
    else
     cat <<'STUB'
 case "$*" in
+'app-server --strict-config --listen stdio://') [[ $CODEX_HOME == "$scenario_dir/host/codex" ]] ;;
 'login status') [[ $CODEX_HOME == "$scenario_dir/host/codex" ]] ;;
 '--version') jq -r '.versions.codex' "$fixture_root/tests/fixtures/cli/USAGE-CAPTURE.json" ;;
 app-server)
@@ -181,7 +182,9 @@ assert value == ' '.join(runtimes)
 assert (scenario / 'host/codex/config.toml').exists() == ('codex' in runtimes)
 assert (scenario / 'host/allowed-repos.d/projects-1').read_text() == 'example/project\n'
 calls = (scenario / 'runtime-calls').read_text().splitlines()
-assert calls == [r + (' auth status' if r == 'claude' else ' login status') for r in runtimes]
+# Codex の設定の検証は、設定ファイルの配置のあとで、ログインの確認より前に 1 回流れる。
+expected = (['codex app-server --strict-config --listen stdio://'] if 'codex' in runtimes else []) + [r + (' auth status' if r == 'claude' else ' login status') for r in runtimes]
+assert calls == expected, calls
 (scenario / 'first-db.json').write_text(json.dumps(db))
 PY
  # 旧回答も含め、同じ設定の再実行で登録・割り当てを増やさない。

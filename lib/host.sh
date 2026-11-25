@@ -119,6 +119,95 @@ PY
 	exit 1
 }
 
+# マークのない人の Codex の設定に、キットが足す 2 つのキーがないときは、警告して先へ進む。
+host_codex_unmarked_keys() {
+	local config=$1 missing
+	grep -qx '# multica-squad-kit-managed' "$config" && return 0
+	missing=$(python3 - "$config" <<'PY'
+import sys
+
+try:
+    import tomllib
+    with open(sys.argv[1], "rb") as source:
+        config = tomllib.load(source)
+except (ImportError, OSError, ValueError):
+    sys.exit(1)
+analytics = config.get("analytics")
+if config.get("check_for_update_on_startup") is not False:
+    print("check_for_update_on_startup = false")
+if not isinstance(analytics, dict) or analytics.get("enabled") is not False:
+    print("[analytics] の enabled = false")
+PY
+	) || return 0
+	[[ -n $missing ]] || return 0
+	missing=${missing//$'\n'/、}
+	ui_notice warn "$config" "マークのない設定に、更新の確認と利用状況の送信を切るキーがありません: $missing" || ui_warning "マークのない設定に、更新の確認と利用状況の送信を切るキーがありません（${missing}）: $config"
+}
+
+# 設定を Codex の厳しい検証にかける。知らないキーなどで 0 以外なら止まる。
+# 古い Codex（引数を知らない）と時間切れは、確認できなかったと警告して先へ進む。
+host_codex_validate() {
+	local config=$agent_home/codex/config.toml result status detail
+	if ! result=$(python3 - "$agent_home/codex" "${codex_check_seconds:-30}" <<'PY'
+import os
+import signal
+import subprocess
+import sys
+import tempfile
+
+home, seconds = sys.argv[1], float(sys.argv[2])
+environment = dict(os.environ, CODEX_HOME=home)
+command = ["codex", "app-server", "--strict-config", "--listen", "stdio://"]
+
+def finish(status, detail=""):
+    printable = "".join(c for c in detail if c in "\n\t" or c.isprintable())
+    print(status)
+    print("\n".join(printable.strip().splitlines()[-20:])[-2000:])
+    sys.exit(0)
+
+with tempfile.TemporaryFile() as errors:
+    try:
+        # 標準入力を閉じ、子のプロセスのグループだけを時間切れで止める。
+        child = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                 stderr=errors, env=environment, start_new_session=True)
+    except OSError:
+        finish("failed", "Codex を起動できません。")
+    try:
+        code = child.wait(timeout=seconds)
+    except subprocess.TimeoutExpired:
+        for sent in (signal.SIGTERM, signal.SIGKILL):
+            try:
+                os.killpg(child.pid, sent)
+            except ProcessLookupError:
+                break
+            try:
+                child.wait(timeout=5)
+                break
+            except subprocess.TimeoutExpired:
+                continue
+        finish("timeout")
+    errors.seek(0)
+    text = errors.read().decode("utf-8", errors="replace")
+    if code == 0:
+        finish("ok")
+    if code == 2 and "unexpected argument '--strict-config'" in text:
+        finish("old")
+    finish("failed", text)
+PY
+	); then
+		die 'Codex の設定の検証を実行できませんでした。python3 を確認して流し直してください。'
+	fi
+	status=${result%%$'\n'*}
+	detail=
+	[[ $result != *$'\n'* ]] || detail=${result#*$'\n'}
+	case $status in
+	ok) ;;
+	old) ui_notice warn "$config" "この Codex は --strict-config を受け付けないため、設定を検証できませんでした" || ui_warning "この Codex は --strict-config を受け付けないため、設定を検証できませんでした: $config" ;;
+	timeout) ui_notice warn "$config" "設定の検証が ${codex_check_seconds:-30} 秒で終わらず、確認できませんでした" || ui_warning "設定の検証が ${codex_check_seconds:-30} 秒で終わらず、確認できませんでした: $config" ;;
+	*) die "Codex の設定が厳しい検証を通りません: ${config}。${detail:+出力: $detail }出力の行のキーを直すか消してから流し直してください。" ;;
+	esac
+}
+
 # JSON には管理マークを付けず、キットが持つキーと項目だけを合わせる。
 host_claude_settings() {
 	local settings=$agent_home/claude/settings.json message
@@ -273,6 +362,8 @@ PY
 		then
 			die 'Codex の設定で allow_login_shell = false を確認できません。表示した設定が正しい TOML で、トップレベルの値が真偽値の false か管理者に確認してもらってください。既存の設定は上書きしません。'
 		fi
+		host_codex_unmarked_keys "$agent_home/codex/config.toml"
+		host_codex_validate
 	fi
 	for file in "$root/common/monitor/"squad-*; do
 		if [[ ${file##*/} == squad-cli-lib ]]; then

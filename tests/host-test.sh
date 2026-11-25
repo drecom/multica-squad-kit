@@ -61,6 +61,18 @@ STUB
 cat >"$test_dir/bin/codex" <<'STUB'
 #!/bin/bash
 base=${0%/*}/..
+if [[ $* == 'app-server --strict-config --listen stdio://' ]]; then
+ [[ $CODEX_HOME == */codex && ! -t 0 ]] || exit 93
+ printf '%s\n' "$CODEX_HOME" >>"$base/codex-checks"
+ case $(cat "$base/codex-strict" 2>/dev/null || echo ok) in
+ ok) exit 0 ;;
+ fail) echo 'Error: /agent/codex/config.toml:3:1: unknown configuration field `bogus`' >&2; exit 1 ;;
+ silent) exit 1 ;;
+ old) echo "error: unexpected argument '--strict-config' found" >&2; exit 2 ;;
+ other2) echo 'error: another usage error' >&2; exit 2 ;;
+ hang) printf '%s\n' "$$" >"$base/codex-pid"; exec /bin/sleep 300 ;;
+ esac
+fi
 [[ $* == 'login status' && $CODEX_HOME == */codex ]] || exit 92
 [[ ! -f $base/no-codex-auth ]]
 STUB
@@ -105,6 +117,7 @@ if [[ ${TEST_HOST_STEPS:-no} == yes ]]; then
  ui_steps_begin err 2 'ホストを準備'
  ui_phase_start 1
 fi
+[[ -z ${TEST_CODEX_SECONDS:-} ]] || codex_check_seconds=$TEST_CODEX_SECONDS
 prepare_host
 RUN
 run() { /bin/bash "$test_dir/run.sh" "$root" >"$test_dir/out" 2>"$test_dir/err"; }
@@ -131,6 +144,17 @@ cmp "$root/common/codex/config.toml" "$TEMPLATE_AGENT_HOME/codex/config.toml"
 grep -qx 'daemon start' "$test_dir/calls"
 grep -qx 'https://example.test' "$test_dir/started-server"
 echo 'PASS host: 新しいホストへ共有ファイルと見張りを配置し、専用環境で一つのデーモンを起動する'
+[[ $(cat "$test_dir/codex-checks") == "$TEMPLATE_AGENT_HOME/codex" ]]
+python3 - "$TEMPLATE_AGENT_HOME/codex/config.toml" <<'PY'
+import sys
+import tomllib
+
+with open(sys.argv[1], "rb") as source:
+    config = tomllib.load(source)
+assert config == {"allow_login_shell": False, "check_for_update_on_startup": False, "analytics": {"enabled": False}}, config
+PY
+! grep -qF 'マークのない設定に' "$test_dir/err"
+echo 'PASS host: 新しいホストで Codex の設定に 2 つのキーを足し、専用の置き場で厳しい検証に 1 回かける'
 settings=$TEMPLATE_AGENT_HOME/claude/settings.json
 python3 - "$settings" "$test_dir/kit-settings.json" <<'PY'
 import json
@@ -577,6 +601,7 @@ for selected in claude codex; do
   export TEMPLATE_AGENT_HOME="$test_dir/$selected-only"
   if [[ $selected == claude ]]; then export TEST_MISSING_RUNTIME=codex; else export TEST_MISSING_RUNTIME=claude; fi
   touch "$test_dir/no-$TEST_MISSING_RUNTIME-auth"
+  : >"$test_dir/codex-checks"
   printf '[{"id":"runtime-%s","owner_id":"member-a","daemon_id":"daemon-a","provider":"%s","status":"online"}]\n' "$selected" "$selected" >"$TEST_RUNTIME_LIST"
   set_mode stopped
   run
@@ -584,6 +609,7 @@ for selected in claude codex; do
   if [[ $selected == claude ]]; then
    [[ ! -e $TEMPLATE_AGENT_HOME/codex/config.toml ]]
    ! grep -q '使用する Codex の設定' "$test_dir/err"
+   [[ ! -s $test_dir/codex-checks ]]
    printf 'invalid existing config\n' >"$TEMPLATE_AGENT_HOME/codex/config.toml"
   else
    cmp "$root/common/codex/config.toml" "$TEMPLATE_AGENT_HOME/codex/config.toml"
@@ -684,6 +710,82 @@ cmp "$root/common/guard/gh" "$TEMPLATE_AGENT_HOME/bin/gh"
 cmp "$root/common/guard/pre-push" "$TEMPLATE_AGENT_HOME/git-hooks/pre-push"
 cmp "$root/common/codex/config.toml" "$TEMPLATE_AGENT_HOME/codex/config.toml"
 echo 'PASS host: マークのある共有ファイルは 原本の内容へ更新する'
+
+# マークのない設定に 2 つのキーがないときは、警告して書き換えずに先へ進む。
+config=$TEMPLATE_AGENT_HOME/codex/config.toml
+for unmarked in $'allow_login_shell = false' $'allow_login_shell = false\ncheck_for_update_on_startup = true\n[analytics]\nenabled = false' $'allow_login_shell = false\ncheck_for_update_on_startup = false\n[analytics]\nenabled = "false"' $'allow_login_shell = false\ncheck_for_update_on_startup = false\n[analytics]\nother = false'; do
+ printf '%s\n' "$unmarked" >"$config"
+ cp "$config" "$test_dir/unmarked-config"
+ set_mode running
+ agent_env
+ run
+ cmp "$config" "$test_dir/unmarked-config"
+ grep -qF '警告: マークのない設定に、更新の確認と利用状況の送信を切るキーがありません' "$test_dir/err"
+ grep -q '^daemon status' "$test_dir/calls"
+done
+printf '%s\n' $'allow_login_shell = false\ncheck_for_update_on_startup = false' >"$config"
+run
+grep -qF '[analytics] の enabled = false' "$test_dir/err"
+! grep -qF 'check_for_update_on_startup' "$test_dir/err"
+printf '%s\n' $'allow_login_shell = false\n[analytics]\nenabled = false' >"$config"
+run
+grep -qF 'check_for_update_on_startup = false' "$test_dir/err"
+! grep -qF 'analytics' "$test_dir/err"
+printf '%s\n' $'allow_login_shell = false\ncheck_for_update_on_startup = false\n[analytics]\nenabled = false' >"$config"
+run
+! grep -qF 'マークのない設定に' "$test_dir/err"
+echo 'PASS host: マークのない Codex の設定に 2 つのキーがないときだけ、書き換えずに警告して進む'
+
+# 設定の検証。0 で進み、0 以外で止まり、古い Codex と時間切れは警告して進む。
+cp "$test_dir/original/codex/config.toml" "$config"
+cp "$root/common/codex/config.toml" "$config"
+: >"$test_dir/codex-checks"
+echo ok >"$test_dir/codex-strict"
+set_mode running
+agent_env
+run
+[[ $(wc -l <"$test_dir/codex-checks") -eq 1 ]]
+! grep -qF 'strict-config' "$test_dir/err"
+for failure in fail silent other2; do
+ echo "$failure" >"$test_dir/codex-strict"
+ cp "$config" "$test_dir/strict-config"
+ set_mode running
+ agent_env
+ deny
+ grep -qF 'Codex の設定が厳しい検証を通りません' "$test_dir/err"
+ grep -qF 'キーを直すか消してから流し直してください' "$test_dir/err"
+ [[ $failure != fail ]] || grep -qF 'unknown configuration field `bogus`' "$test_dir/err"
+ [[ $failure != other2 ]] || grep -qF 'another usage error' "$test_dir/err"
+ cmp "$config" "$test_dir/strict-config"
+ [[ ! -s $test_dir/calls ]]
+done
+# 検証はログインの確認より前にあり、ログイン切れでも設定の誤りを先に出す。
+echo fail >"$test_dir/codex-strict"
+touch "$test_dir/no-codex-auth"
+deny
+grep -qF 'Codex の設定が厳しい検証を通りません' "$test_dir/err"
+! grep -qF 'codex login' "$test_dir/err"
+echo ok >"$test_dir/codex-strict"
+deny
+grep -qF 'codex login' "$test_dir/err"
+rm "$test_dir/no-codex-auth"
+echo 'PASS host: Codex の検証が 0 以外で書き換えずに止まり、ログインの確認より前に設定の誤りを出す'
+
+echo old >"$test_dir/codex-strict"
+set_mode running
+agent_env
+run
+grep -qF '警告: この Codex は --strict-config を受け付けないため、設定を検証できませんでした' "$test_dir/err"
+grep -q '^daemon status' "$test_dir/calls"
+echo hang >"$test_dir/codex-strict"
+set_mode running
+agent_env
+TEST_CODEX_SECONDS=1 run
+grep -qF '警告: 設定の検証が 1 秒で終わらず、確認できませんでした' "$test_dir/err"
+grep -q '^daemon status' "$test_dir/calls"
+! kill -0 "$(cat "$test_dir/codex-pid")" 2>/dev/null
+echo ok >"$test_dir/codex-strict"
+echo 'PASS host: 古い Codex と時間切れは警告して進み、時間切れでは起動した子のプロセスを止める'
 # ID を受け取る関数を、実際の bash と zsh の起動ファイルで確認する。
 cat >"$test_dir/project.sh" <<'RUN'
 #!/bin/bash
