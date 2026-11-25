@@ -227,7 +227,9 @@ START_WAIT=30
 | `MAX_CONSECUTIVE` | 続けて区切ってよい回数。超えたら区切らずリーダーへ返す |
 | `START_WAIT` | 区切ってから続きの実行が始まるまで待つ分。過ぎてもその役の実行がなければ、リーダーが起きて確認する |
 
-このファイルは、シェルで読み込める `KEY=値` の行と、管理の印の行を持つ。セットアップは、ほかの `squad-` のファイルと同じに、`common/monitor/squad-*` の繰り返しで各役の `bin/` へ配る。`squad-run-cut` と `squad-pr-watch` は、自分と同じディレクトリの `squad-run-cut-values` を読み込む。`squad-preflight` の確認する一覧には、`squad-run-cut` と `squad-run-cut-values` を足す。
+このファイルは、シェルで読み込める `KEY=値` の行と、管理の印の行を持つ。セットアップは、ほかの `squad-` のファイルと同じに、`common/monitor/squad-*` の繰り返しで各役の `bin/` へ配る。`squad-preflight` の確認する一覧には、`squad-run-cut` と `squad-run-cut-values` を足す。
+
+`squad-run-cut` だけが、自分と同じディレクトリの `squad-run-cut-values` を読み込む。`squad-pr-watch` は値を読まず、`squad-run-cut state` の出力で区切りの途中を決める。区切りの途中を決める所を `state` の 1 か所にするためである。
 
 値を変えると、`squad-run-cut check` の判定と、続きを待つ時間が変わる。測り直したあとは、原本のこのファイルだけを直す。配られたファイルを手で直しても、セットアップを流し直すと原本の値に戻る。
 
@@ -354,6 +356,8 @@ squad-run-cut state <タスク>
 | `squad-pr-watch ci-check` | 作業中の実行と同じに、CI の失敗の知らせを保留する。記録は `CI <SHA>: 失敗あり（<名前> の区切りの途中なので保留）` にする |
 | `squad-task-read` の欄 `cuts` | `state` の行を、役・状態・区切りのコメントの ID の配列で出す |
 | リーダーの起きたときの確認と、実装・修正の依頼の前の確認 | PR に触れる実行があるとして数える。修正の役もほかの役も新しく頼まず、その役の引き継ぎを待つ |
+
+`squad-pr-watch ci-check` は、`state` が 0 以外で終わるときは、CI の失敗を通知せず同じ終了コードで終わる。状態を読めないまま知らせると、続きの実行と修正の役が同じブランチへ push することがあるためである。
 
 保留した CI の失敗は、続きの実行が通常の引き継ぎを書いたときに、今の保留と同じ手順でリーダーが拾う。
 
