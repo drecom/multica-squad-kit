@@ -227,7 +227,7 @@ START_WAIT=30
 | `MAX_CONSECUTIVE` | 続けて区切ってよい回数。超えたら区切らずリーダーへ返す |
 | `START_WAIT` | 区切ってから続きの実行が始まるまで待つ分。過ぎてもその役の実行がなければ、リーダーが起きて確認する |
 
-このファイルは、シェルで読み込める `KEY=値` の行と、管理の印の行を持つ。セットアップは、ほかの `squad-` のファイルと同じに、`common/monitor/squad-*` の繰り返しで各役の `bin/` へ配る。`squad-run-cut` と `squad-pr-watch` は、自分と同じディレクトリの `squad-run-cut-values` を読み込む。
+このファイルは、シェルで読み込める `KEY=値` の行と、管理の印の行を持つ。セットアップは、ほかの `squad-` のファイルと同じに、`common/monitor/squad-*` の繰り返しで各役の `bin/` へ配る。`squad-run-cut` と `squad-pr-watch` は、自分と同じディレクトリの `squad-run-cut-values` を読み込む。`squad-preflight` の確認する一覧には、`squad-run-cut` と `squad-run-cut-values` を足す。
 
 値を変えると、`squad-run-cut check` の判定と、続きを待つ時間が変わる。測り直したあとは、原本のこのファイルだけを直す。配られたファイルを手で直しても、セットアップを流し直すと原本の値に戻る。
 
@@ -377,7 +377,7 @@ squad-run-cut state <タスク>
 
 ## リーダーの呼び出しのまとめ
 
-リーダーが毎回組み合わせて流す読み取りと書き込みを、2 つのスクリプトにまとめる。どちらも `common/monitor/` に置き、既存の `squad-` のスクリプトと同じに、セットアップが各役の `bin/` へ配る。`squad-preflight` の確認と終了コードは変えない。
+リーダーが毎回組み合わせて流す読み取りと書き込みを、2 つのスクリプトにまとめる。どちらも `common/monitor/` に置き、既存の `squad-` のスクリプトと同じに、セットアップが各役の `bin/` へ配る。`squad-preflight` の確認する一覧に 2 つを足し、終了コードの決め方は変えない。見張りを足したら一覧にも足す決まり（[agent-path.md の確認するもの](agent-path.md#確認するもの)）に従うため。
 
 ### squad-task-read
 
@@ -770,6 +770,7 @@ high にした理由は、原則の判断に考える量を回すためだった
 | `common/monitor/squad-run-cut`、`common/monitor/squad-task-read`、`common/monitor/squad-task-post` | 新しく足す |
 | `common/monitor/squad-review-next` | `analyze` の欄 `short_path`、表の 9、マージの依頼の確認の 2、マージを頼むコメントの行 |
 | `common/monitor/squad-pr-watch` | `ci-check` が、区切りの途中を作業中として保留する |
+| `common/monitor/squad-preflight` | 確認する一覧に `squad-run-cut`・`squad-run-cut-values`・`squad-task-read`・`squad-task-post` を足す。終了コードの決め方は変えない |
 | `common/squad.md`・`common/agents/claude-principal.md`・`common/agents/codex-principal.md`・`lib/questions.sh`・`manual.md` | [最終レビューの範囲の言い回し](#最終レビューの範囲の言い回し)のとおり直す |
 | `common/agents/orchestrator.md` | 思考の深さ・場面と手順の表・短い道の確認・区切りの続きの確認の場面。始めの確認でまとめた呼び出しを使い、[リーダーの指示の大きさ](#リーダーの指示の大きさ)のとおり上限に収める |
 | `common/agents/claude-fixer.md` | 思考の深さ、区切りの行 |
@@ -790,7 +791,7 @@ high にした理由は、原則の判断に考える量を回すためだった
 
 ## 互換性と影響を受ける利用者
 
-導入済みのプロジェクトは、ホストでセットアップを流し直すと、新しい指示とスキルと登録になる。流し直すまでは、前の指示のままで動く。
+導入済みのプロジェクトは、ホストでセットアップを流し直すと、新しい指示とスキルと登録になる。流し直すまでは、前の指示のままで動く。ただし、原本を更新して流し直していない役は、見張りの確認で止まることがある。
 
 | 利用者 | 変わること |
 | --- | --- |
@@ -801,6 +802,8 @@ high にした理由は、原則の判断に考える量を回すためだった
 エージェントの数と登録の名前、スクワッド、オートパイロットは変わらない。登録で変わるのは、2 つの役の思考の深さと、2 つの最上位の役の説明（`description`）だけである。
 
 区切りの続きは起こしで始まるので、流し直した直後から、区切りを使う役の実行に起こしが付く。続きの起こしは、作った役の実行が始まったあとに消える。見張りの起こしは、続きが始まるとその実行が消す。リーダーは、続きの実行が失敗したか止められたとき、または始まらないときに、見張りの起こしで起きることがある。
+
+`squad-preflight` は新しい `squad-` のファイルも確認する。原本の更新で新しい `squad-preflight` だけが届き、`bin/` に新しいファイルがないときは、GitHub への書き込みと見張りの呼び出しの前に止まり、人間を呼ぶ。動いているタスクがないときにセットアップを流し直すと、新しいファイルが置かれて通る。
 
 区切りの値のファイルは配る側のファイルなので、利用者が手元で値を変えても、流し直すと原本の値に戻る。
 
@@ -826,7 +829,7 @@ high にした理由は、原則の判断に考える量を回すためだった
 | `tests/squad-review-next-decide-final-test.sh` | `short_path` が `true` で重要のラベルがなければ、最終レビューを頼まずマージの依頼へ進む。ラベルがあれば頼む |
 | `tests/squad-review-next-decide-control-test.sh` | リーダー以外が書いた `道: 短い` を読まず、最新の `道: 通常` で `false` になる。欄がなければ失敗で終わる |
 | `tests/squad-review-next-decide-merge-test.sh` | 短い道で、head を組のコミットと照合し、マージを頼むコメントに `道: 短い（最終レビューなし）` の行がある |
-| `tests/squad-preflight-test.sh` | 変えずに通る |
+| `tests/squad-preflight-test.sh` | テストを変えずに通る。足した `squad-` のファイルを 1 つずつ外すと、`squad-preflight` が失敗する |
 
 ## 残る危うさ
 
