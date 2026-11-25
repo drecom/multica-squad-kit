@@ -31,14 +31,13 @@
 
 ### 書くキー
 
-次の 9 つのキーを、キットが持つ。値は、実機で効くことを確認したものである。
+次の 8 つのキーを、キットが持つ。値は、実機で効くことを確認したものである。
 
 | キー | 値 | 効くこと |
 | --- | --- | --- |
 | `syncClaudeAiSkills` | `false` | 人の claude.ai のスキルが、役のスキルの一覧に出ない |
 | `syncClaudeAiPlugins` | `false` | 人の claude.ai のプラグインが、役に入らない |
-| `pluginConfigs` の `cc-plugin-agents-md@builtin` | `options.instructionFiles` を `claude-md-and-agents-md` | checkout の AGENTS.md を、指示なしに読み込む |
-| `claudeMdExcludes` | [読み込む範囲](#読み込む範囲)の 2 つの形 | checkout の根より下と、一時ファイルの置き場の AGENTS.md を読み込まない |
+| `pluginConfigs` の `cc-plugin-agents-md@builtin` | `options.instructionFiles` を `claude-md` | AGENTS.md を自動では読み込まない |
 | `disableWorkflows` | `true` | Workflow の道具と、それを使う同梱スキルが消える |
 | `autoMemoryEnabled` | `false` | 自動メモリを読まず、書かない |
 | `cleanupPeriodDays` | `30` | 実行の記録を 30 日残す |
@@ -49,24 +48,17 @@
 
 ### AGENTS.md の読み込み
 
-役の作業ディレクトリには Multica の CLAUDE.md があり、checkout はその下の階層にある。CLAUDE.md があると、Claude Code は AGENTS.md を読まない。上の設定を入れると、役がファイルを Read した時点で、そのファイルから作業ディレクトリまでの階層の AGENTS.md が文脈に入る。
+AGENTS.md の自動の読み込みは入れない。役は、今と同じく、役の指示の手順で checkout の AGENTS.md を読む。承認済みの main の AGENTS.md だけを自動で読む形は、設定だけではできず、フックを足せばできた（[実機で確認した結果](#agentsmd-の読み込みの確認)）。
 
-Bash の `cat` だけでファイルを読んだときは、読み込まれなかった。そのため、役の指示にある「AGENTS.md を読む」手順は残す。設定は、手順を忘れたときの守りにする。
+役の作業ディレクトリには Multica の CLAUDE.md があり、checkout はその下の階層にある。CLAUDE.md があると、Claude Code の既定は AGENTS.md を読まない。キットは `claude-md` の値を書き、Claude Code の既定が変わっても読み込まないようにする。
 
-### 読み込む範囲
+フックの形をこの変更に入れない理由は、次の 3 つである。
 
-設定だけでは、checkout の根より下の AGENTS.md と、checkout の外の一時ファイルの置き場の AGENTS.md も入った（[実機で確認した結果](#agentsmd-の読み込む範囲)）。下の階層には、このリポジトリのひな形 `skeleton/AGENTS.md` のように、役への指示でない AGENTS.md がある。一時ファイルの置き場には、添付や ZIP を展開した、誰が書いたか分からない AGENTS.md が置かれる。
+1. 役の指示は、今も checkout の AGENTS.md を読む手順を持つ。フックを入れても、PR の未承認の変更は手順から入るので、書き手の確認なしに採用しない形にならない
+2. フックは、ホストの全役のすべての Read で動く新しいスクリプトになる。置き場と配り方、書き換えへの守りは、順 2 のフックとあわせて決める
+3. 信頼の根は、手元の `origin/HEAD` の参照である。fetch で動き、同じ OS の利用者が書ける共有の置き場にあるので、承認済みかの確認のしかたを順 2 で決める
 
-そこで、`claudeMdExcludes` に次の 2 つの形を書き、読み込むのを checkout の根の AGENTS.md だけにする。形は、ファイルの絶対パスに合わせる glob である。
-
-| 形 | 読み込まないもの |
-| --- | --- |
-| `**/workdir/*/*/**/AGENTS.md` | 作業ディレクトリの 2 階層より下の AGENTS.md。checkout の根より下の階層にあたる |
-| `**/workdir/tmp/**/AGENTS.md` | 作業ディレクトリの `tmp` の下の AGENTS.md |
-
-`workdir` は、Multica が作る作業ディレクトリの名前である。Multica がこの名前を変えると、形が合わなくなり、下の階層の AGENTS.md も入るようになる。実機の確認で、下の階層が入らないことを見る（[テストと実機の確認](#テストと実機の確認)）。
-
-`claudeMdExcludes` は CLAUDE.md にも効くが、この形は AGENTS.md の名前だけに合う。CLAUDE.md の読み込みは変えない。
+役の指示の手順を変えることと、フックの形は、順 2 であわせて扱う（[残る危うさ](#残る危うさ)）。
 
 ### 自動メモリと記録の日数
 
@@ -109,15 +101,15 @@ Bash の `cat` だけでファイルを読んだときは、読み込まれな�
 - ファイルがなければ、キットのキーだけで作る
 - キットが持つキーだけを書く。ほかのキーは、値を変えずに残す
 - `pluginConfigs` と `skillOverrides` は、キットの項目だけを置き換え、人の項目を残す
-- `permissions.deny` と `claudeMdExcludes` は、人の項目にキットの項目を足す。同じ項目は重ねない
+- `permissions.deny` は、人の項目にキットの項目を足す。同じ項目は重ねない
 - キットが持つキーに人が別の値を書いていたら、キットの値で上書きし、警告を出す
 - 中身が変わらなければ書かない。書くときは、同じディレクトリの一時ファイルから置き換え、権限を 600 にする
 - シンボリックリンク、JSON として読めない、最上位がオブジェクトでない、のどれかなら書かずに止まる
-- `permissions` か `permissions.deny`、`claudeMdExcludes` の形が違う（オブジェクトや配列でない）ときも、書かずに止まる
+- `permissions` か `permissions.deny`、`pluginConfigs` の形が違う（オブジェクトや配列でない）ときも、書かずに止まる
 
 後のバージョンでキーをやめるときは、そのキーを「やめたキー」の一覧に移し、流し直しで消す。項目を足すキー（`permissions.deny` など）は、キットが書いた項目だけを消す。
 
-人がエージェント用のログインをするときも、同じ設定が効く。人のログインの端末にも、止めたスキルと道具は出なくなる。`workdir` という名前のディレクトリで作業すると、下の階層の AGENTS.md も読み込まれない。
+人がエージェント用のログインをするときも、同じ設定が効く。人のログインの端末にも、止めたスキルと道具は出なくなり、AGENTS.md も自動では読み込まれない。
 
 ## Claude のモデルの役の環境変数
 
@@ -194,27 +186,35 @@ Claude Code は、共有の設定ディレクトリを変えずに、`--settings
 
 ### 要確認の項目
 
-3 つの要確認のうち 2 つを入れ、1 つを外した。
+3 つの要確認のうち 1 つを入れ、2 つを外した。
 
 | 項目 | 実機で確認したこと | 扱い |
 | --- | --- | --- |
-| AGENTS.md の自動読み込み | 下の階層の checkout のファイルを Read すると、その AGENTS.md が文脈に入った | 入れた。読み込む範囲を checkout の根に絞る |
+| AGENTS.md の自動読み込み | 設定では、checkout しているブランチの AGENTS.md が入った。main の AGENTS.md だけを入れるには、フックが要った | 外した。読み込まない値を書き、指示の手順で読む |
 | バックグラウンドの実行を切る | Bash の裏の実行が消え、サブエージェントは同期で動いた。`Monitor` は残った | 入れた。`Monitor` は deny で止める |
 | 子プロセスから認証情報を外す（`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`） | bypass の指定が既定の権限に戻され、道具の呼び出しが拒否された | 外した |
 | Codex のモデルの引退 | ひな形のモデルが、ドキュメントの引退の一覧にないことを照らした | 確認だけ。設定は変えない |
 
-### AGENTS.md の読み込む範囲
+### AGENTS.md の読み込みの確認
 
-作業ディレクトリと同じ形の置き場を作り、4 つの場所に AGENTS.md と CLAUDE.md を置いて、同じ場所のファイルを Read した。
+作業ディレクトリと同じ形の置き場を作り、4 つの場所に AGENTS.md と CLAUDE.md を置いて、同じ場所のファイルを Read した。読み込む設定は、`instructionFiles` を `claude-md-and-agents-md` にしたものである。
 
-| 場所 | 設定なし | 設定あり | 設定と `claudeMdExcludes` | CLAUDE.md（今の動作） |
+| 場所 | 設定なし | 読み込む設定 | 読み込む設定と `claudeMdExcludes` | CLAUDE.md（今の動作） |
 | --- | --- | --- | --- | --- |
 | checkout の根 | 入らない | 入った | 入った | 入った |
 | checkout の下の階層 | 入らない | 入った | 入らない | 入った |
 | 作業ディレクトリの `tmp` の下 | 入らない | 入った | 入らない | 入った |
 | 作業ディレクトリの外 | 入らない | 入らない | 入らない | 入らない |
 
-設定だけのときの範囲は、Claude Code が今 CLAUDE.md を読み込む範囲と同じだった。`claudeMdExcludes` の形を足すと、checkout の根だけが入った。
+承認済みの main の AGENTS.md だけを読めるかは、main と PR のブランチで違う AGENTS.md を置いたリポジトリで確認した。PR のブランチを checkout し、ほかのファイルを Read した。
+
+| 設定 | 文脈に入った AGENTS.md |
+| --- | --- |
+| 読み込む設定 | PR のブランチのもの |
+| `claude-md` と、Read の後のフック | main のものだけ |
+| 読み込む設定と、作業ディレクトリの下の AGENTS.md をすべて飛ばす `claudeMdExcludes` と、フック | main のものだけ |
+
+`instructionFiles` が選べるのは、読み込むファイルの種類だけである。git のどのブランチから読むかは選べないので、設定だけでは main に絞れない。フックは、Read したファイルのリポジトリで `origin/HEAD` が指すブランチの AGENTS.md を `git show` で読み、文脈に足した。Multica の checkout でも、`origin/HEAD` は `origin/main` を指していた。
 
 ### 要確認でない項目
 
@@ -254,13 +254,11 @@ Claude の項目のうち、Codex に同じ設定がないものは足さない�
 | エージェント用の `config.toml`（マークがあればキット、なければ人。役とその子プロセスも書ける） | セットアップの検証と、役の Codex の起動 | `allow_login_shell` が `false` で、厳しい検証を通る | セットアップが止まる。マークのないファイルは上書きしない |
 | 役の custom_env と引数（キット・エージェントを編集できるメンバー・CLI を使える役が書ける） | 役の実行の環境変数と引数 | 流し直しのときに、キットの値を含む | 流し直しでキットの値に付け直す。実行の間の書き換えは止めない |
 | Codex の検証の終了コードと標準エラー（Codex が返す） | セットアップの判定 | 30 秒の上限の中で終わった値 | 0 以外は止まる。古い Codex と時間切れは、警告して進む |
-| checkout の根の AGENTS.md（作業先に push できる人。PR の未承認の変更も含む） | 役の文脈。Read のときに入る | 作業先が一覧にある。書いた人は確認せず、今の役の指示で読むものと同じに扱う | 一覧にない作業先は checkout しないので、読まない |
-| checkout の根より下の AGENTS.md（作業先に push できる人。ひな形も含む） | 読まない | なし | `claudeMdExcludes` で飛ばす |
-| 作業ディレクトリの `tmp` の下の AGENTS.md（添付や ZIP の書き手。誰でも書ける） | 読まない | なし | `claudeMdExcludes` で飛ばす |
+| checkout と `tmp` の下の AGENTS.md（作業先に push できる人と PR の書き手、添付や ZIP の書き手） | 自動では読まない | なし | `claude-md` の値で読み込まない |
 
 共有のファイルの書き手は、同じ OS の利用者のすべてのプロセスである。権限 600、JSON の形、管理のマークは、書き手の確認にならない。キットは、流し直しのときに値を戻すだけで、実行の間の書き換えを見つけない。この境界は[残る危うさ](#残る危うさ)に書き、人間の承認を受ける。
 
-checkout の根の AGENTS.md は、今も役の指示で読んでいる。自動の読み込みで、文脈に入る AGENTS.md は増えない。PR の未承認の変更が入る経路も、今の手順と同じである。
+この変更で、文脈に入る AGENTS.md は増えない。役の指示の手順で読む checkout の AGENTS.md は、この設計では変えず、[残る危うさ](#残る危うさ)に書く。
 
 ## 文書と指示の変更
 
@@ -283,7 +281,7 @@ checkout の根の AGENTS.md は、今も役の指示で読んでいる。自動
 
 - 役のスキルの一覧から、人の claude.ai のスキルと、止めた同梱スキルが消える
 - 役は、Bash を裏で動かせず、定期実行と `Monitor` を使えない。今の指示は、どれも使わない前提で書いてある
-- 役は、checkout の根の AGENTS.md を Read のときに読み込む。下の階層と `tmp` の下の AGENTS.md は読み込まない
+- 役は、今と同じく AGENTS.md を自動では読み込まない。Claude Code の既定が変わっても、読み込まないままになる
 - 人がエージェント用のログインの端末を開くと、同じ設定が効く。人が書いたキーは残る
 - 人が `settings.json` にキットのキーと別の値を書いていたら、流し直しでキットの値に戻る
 - Codex の役は、32 KiB を超える指示の後ろも読むようになる
@@ -316,7 +314,7 @@ custom_env、引数、設定は、役の次の実行から効く。デーモン�
 
 戻すときは、古いキットで流し直したあと、残るものを手で消す。動いているタスクがないときに行う。
 
-1. エージェント用の設定ディレクトリの `settings.json` から、[書くキー](#書くキー)の 9 つを消す。`pluginConfigs`・`skillOverrides`・`permissions.deny`・`claudeMdExcludes` は、キットの項目だけを消す
+1. エージェント用の設定ディレクトリの `settings.json` から、[書くキー](#書くキー)の 8 つを消す。`pluginConfigs`・`skillOverrides`・`permissions.deny` は、キットの項目だけを消す
 2. Claude のモデルの役ごとに、`multica agent env get` で今の custom_env を読み、3 つの変数を消したファイルを `multica agent env set --custom-env-file` で書く
 3. Codex の役ごとに、`multica agent update --custom-args` で、上限の 2 つの引数を除いた配列を書く
 
@@ -329,24 +327,24 @@ custom_env、引数、設定は、役の次の実行から効く。デーモン�
 | テスト | 確認すること |
 | --- | --- |
 | `tests/host-test.sh` | ファイルがないときに、キットのキーだけで作ること |
-| `tests/host-test.sh` | 人のキーを残し、`pluginConfigs`・`skillOverrides`・deny・`claudeMdExcludes` の人の項目と混ぜて書くこと |
+| `tests/host-test.sh` | 人のキーを残し、`pluginConfigs`・`skillOverrides`・deny の人の項目と混ぜて書くこと |
 | `tests/host-test.sh` | キットのキーの人の値を上書きして警告すること。「やめたキー」を消し、キットの項目だけを消すこと |
 | `tests/host-test.sh` | 変わらなければ書かず、書くときは権限を 600 にすること |
-| `tests/host-test.sh` | シンボリックリンク、壊れた JSON、`permissions`・deny・`claudeMdExcludes` の形の違いで、書かずに止まること |
+| `tests/host-test.sh` | シンボリックリンク、壊れた JSON、`permissions`・deny・`pluginConfigs` の形の違いで、書かずに止まること |
 | `tests/host-test.sh` | Codex の検証が、0 で進み、0 以外で止まり、古い Codex と時間切れで警告して進むこと。マークのない設定にキーがないとき警告すること |
 | `tests/project-create-test.sh`・`tests/project-runtimes-test.sh`・`tests/project-runtimes-first-test.sh` | Claude のモデルの役にだけ 3 つの変数が付き、Codex の役にだけ上限の引数が付き、ランタイムを替えると外れること |
 
 実機では、認証済みのデーモンで、同じプロジェクトのセットアップを流し直してから次を確認する。`--settings` ではなく設定ディレクトリの `settings.json` で効くことを、ここで確認する。戻し方は[戻し方](#戻し方)にある。
 
 1. Claude の役の実行の始めのスキルの一覧に、`anthropic-skills:` で始まるものがない
-2. Claude の役の実行の記録で、AGENTS.md でないファイルの Read の結果に、checkout の根の AGENTS.md が添えられている。下の階層の AGENTS.md は添えられていない
+2. Claude の役の実行の記録で、AGENTS.md でないファイルの Read の結果に、AGENTS.md が添えられていない
 3. Claude の役の道具の一覧に `Monitor`・`ScheduleWakeup`・`RemoteTrigger` がなく、実行にメモリの置き場が渡されていない
 4. Claude のモデルの役の custom_env に 3 つの変数があり、Codex の役の引数に上限がある
 5. 人がエージェント用のログインの端末を開いても、人のキー（`theme` など）が残っている
 6. Codex を使うホストで、セットアップの検証が通る
 7. QA の役の E2E が、アプリを起動して最後まで流れる
 
-マージの前に人が 1 から 7 を確認し、結果を PR に書く。2 は、AGENTS.md を自分で開く前の Read に添えられたかで、指示の手順で読んだものと見分ける。
+マージの前に人が 1 から 7 を確認し、結果を PR に書く。2 は、AGENTS.md を自分で開く前の Read で見て、指示の手順で読んだものと見分ける。
 
 ## 残る危うさ
 
@@ -355,14 +353,12 @@ custom_env、引数、設定は、役の次の実行から効く。デーモン�
 | 危うさ | 範囲 | 防がない理由と、今の守り |
 | --- | --- | --- |
 | 役やその子プロセスが、共有の `settings.json`・`config.toml` と custom_env を書き換える | 同じホストのすべてのプロジェクトの、次の流し直しまでの役 | 書き手は同じ OS の利用者で、ファイルの権限では分けられない。流し直しで値を戻して警告し、閉じ込めは VM で行う（[VM に閉じ込めて動かす](vm.md)） |
-| checkout の根の AGENTS.md に、PR の未承認の変更が入る | その PR を checkout した役 | 今の役の指示も、同じ AGENTS.md を読む。役ごとに読み込みを切るには、役ごとの設定が要り、順 2 で扱う |
+| 役が、役の指示の手順で、checkout の AGENTS.md を PR の未承認の変更ごと読む | PR のブランチを checkout した役。Claude と Codex の両方 | この設計は役の指示を変えないので今の経路が残るが、自動の読み込みは切って経路を増やさない。指示の手順の見直しとフックの形は、順 2 で扱う |
 
-書き換えられるキーのうち、守りに関わるのは `claudeMdExcludes` と `permissions.deny` である。消されると、下の階層の AGENTS.md が入り、止めた道具が戻る。どちらも、作業先を広げたり、ガードを外したりはしない。`gh` と `git push` のガードは、共有の設定の外にある。
+書き換えられるキーのうち、守りに関わるのは `pluginConfigs` と `permissions.deny` である。書き換えられると、AGENTS.md が自動で入り、止めた道具が戻る。どちらも、作業先を広げたり、ガードを外したりはしない。`gh` と `git push` のガードは、共有の設定の外にある。
 
 ほかに、次が残る。
 
-- AGENTS.md の自動読み込みは、Read の道具に結び付く。Bash だけで作業した役と Codex の役には入らないので、指示の手順を残す
-- 作業ディレクトリの直下に、`tmp` 以外の名前で置いた AGENTS.md は、checkout の根と見分けられずに入る。共通スキルは、一時ファイルを `tmp` に置くと決めている
 - CLAUDE.md の読み込みは、Claude Code の今の動作のまま、下の階層と `tmp` の下でも入る。この変更では変えない
 - 止めるスキルの名前は、Claude Code のバージョンで変わる。バージョンを上げたときに、スキルの一覧を見て、止める一覧を見直す
 - 子プロセスから認証情報を外す設定は、bypass と両立しないので入れない。テストやビルドの子プロセスには、今と同じく認証情報が渡る
@@ -386,6 +382,8 @@ custom_env、引数、設定は、役の次の実行から効く。デーモン�
 | 役の引数に `--strict-config` を付ける | Codex のバージョンが上がってキーが変わると、すべての役の実行が止まる |
 | Codex の AGENTS.md の上限の話を、導入の文書に書くだけにする | Multica が書く指示が、すでに上限を超えている |
 | Codex の上限を `config.toml` だけに書く | マークのない人の設定のホストで効かず、古いキットの流し直しで消える |
-| AGENTS.md の自動読み込みを入れず、指示の手順だけで読む | 受け入れ条件 2 を満たさない。範囲を根に絞れば、文脈に入るものは今の手順と同じになる |
+| AGENTS.md を自動で読み込み、範囲を checkout の根に絞る | PR の未承認の AGENTS.md を、書き手の確認なしに役の指示へ採用する。範囲の絞り込みも、作業ディレクトリの名前に頼る |
+| Read の後のフックで、main の AGENTS.md だけを足す | 実機ではできたが、指示の手順から未承認の変更が入るまま残る。理由は [AGENTS.md の読み込み](#agentsmd-の読み込み)にある |
+| `pluginConfigs` を書かず、既定のままにする | Claude Code の既定が変わると、AGENTS.md の読み込みが始まる |
 | `PushNotification` も deny に書く | 棚卸しの順 1 のどの項目にも当たらない。外へ知らせる道具の扱いは、順 2 の deny で決める |
 | 実行の始めに、共有の設定がキットの値かを確認する | Claude Code は起動のときに設定を読み終えているので、書き換えに気づいても、その実行には効いたあとである。止める仕組みは、順 2 のフックとあわせて決める |
