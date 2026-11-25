@@ -780,6 +780,7 @@ high にした理由は、原則の判断に考える量を回すためだった
 | `common/monitor/squad-review-next` | `analyze` の欄 `short_path`、表の 9、マージの依頼の確認の 2、マージを頼むコメントの行 |
 | `common/monitor/squad-pr-watch` | `ci-check` が、区切りの途中を作業中として保留する |
 | `common/monitor/squad-preflight` | 確認する一覧に `squad-run-cut`・`squad-run-cut-values`・`squad-task-read`・`squad-task-post` を足す。終了コードの決め方は変えない |
+| `common/monitor/squad-cli-lib` | `issue-get` の読み取りの約束に、`squad-task-read` が出すタイトル・ラベル・metadata の `branch` を、省略を許す欄として足す。採取の条件も足す |
 | `common/squad.md`・`common/agents/claude-principal.md`・`common/agents/codex-principal.md`・`lib/questions.sh`・`manual.md` | [最終レビューの範囲の言い回し](#最終レビューの範囲の言い回し)のとおり直す |
 | `common/agents/orchestrator.md` | 思考の深さ・場面と手順の表・短い道の確認・区切りの続きの確認の場面。始めの確認でまとめた呼び出しを使い、[リーダーの指示の大きさ](#リーダーの指示の大きさ)のとおり上限に収める |
 | `common/agents/claude-fixer.md` | 思考の深さ、区切りの行 |
