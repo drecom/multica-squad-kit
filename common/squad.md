@@ -37,7 +37,7 @@
 - 使用率と残る系統からの振り分けは、{{agent.orchestrator.name}} が squad-handoff の `references/leader-dispatch.md` に従って行う。フェーズの見積もりは使用率が読めないときの代わりの決まりだけに使う
 <!-- ENDIF -->
 <!-- IF orchestrator -->
-- 最上位の役は 2 つの務めを担う。すべてのタスクで人間のマージの前に最終レビューを行い、リスクを表すラベル `重要` のあるタスクでは設計のあとの見直しも行う。マークの判断、呼ぶ時機、実装した系統と使用率による選び方は、{{agent.orchestrator.name}} が squad-handoff の `references/leader-principal.md` に従って行う。最上位の役は読んで指摘するだけで、直さない
+- 最上位の役は 2 つの務めを担う。短い道のタスクを除くすべてのタスクで人間のマージの前に最終レビューを行い、リスクを表すラベル `重要` のあるタスクでは設計のあとの見直しも行う。マークの判断、呼ぶ時機、実装した系統と使用率による選び方は、{{agent.orchestrator.name}} が squad-handoff の `references/leader-principal.md` に従って行う。最上位の役は読んで指摘するだけで、直さない
 <!-- IF claude-principal -->
 - Claude の最上位: {{agent.claude-principal.name}}
 <!-- ENDIF -->

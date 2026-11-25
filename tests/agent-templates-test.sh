@@ -616,7 +616,18 @@ for role in claude-principal codex-principal; do
 	grep -qF '直す役:' "$root/common/agents/$role.md"
 	grep -qF '  - 診断:' "$root/common/agents/$role.md"
 	absent -qF 'ラベル `重要` があるタスクだけで呼ばれます' "$root/common/agents/$role.md"
+	# 最終レビューの範囲は、短い道のタスクを除く。説明・役・本文の始めが同じ範囲を書く。始めの文は、要件を決める役の文書が名前で指すので、変えずにあとへ足す。
+	[[ $(principal_model "$role" description) == 短い道を除くすべてのタスクの最終レビューと* ]]
+	[[ $(principal_model "$role" role) == "最上位のレビュー。短い道を除くすべてのタスクの PR の最終レビュー"* ]]
+	grep -qF '最終レビューは、文書だけのものも含むすべてのタスクで行います。人間が同意した小さいタスク（短い道）では行いません。' "$root/common/agents/$role.md"
+	absent -qF 'description: すべてのタスクの最終レビュー' "$root/common/agents/$role.md"
+	absent -qF 'role: 最上位のレビュー。すべてのタスクの' "$root/common/agents/$role.md"
 done
+grep -qF '短い道のタスクを除くすべてのタスクで人間のマージの前に最終レビューを行い' "$root/common/squad.md"
+absent -qF '2 つの務めを担う。すべてのタスクで' "$root/common/squad.md"
+grep -qF '最終レビューは、マークによらず短い道のタスクを除くすべてのタスクで人間のマージの前に頼む' "$root/manual.md"
+absent -qF '最終レビューは、マークによらずすべてのタスクで' "$root/manual.md"
+echo 'PASS templates: 最上位の役の説明・役・本文の始めと共通の指示が、最終レビューを短い道のタスクを除くと書く'
 for scenario in all no-planner no-designer no-planning claude-only codex-only no-reviews runtime-claude-only runtime-codex-only; do
 	[[ ! -f $test_dir/$scenario/claude-principal ]] || grep -qx 'model: claude-fable-5-2' "$test_dir/$scenario/claude-principal"
 	[[ ! -f $test_dir/$scenario/codex-principal ]] || grep -qx 'model: gpt-6.2-astra' "$test_dir/$scenario/codex-principal"
