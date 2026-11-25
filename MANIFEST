@@ -106,11 +106,11 @@ fe95148fdf16a8ea739a39e4b118e1162a92829a626ad42f89779d505f000e11  ./docs/leader-
 f3e7834c16bb59c09a819b29a92ccea1d2ba7bdbe50505af4e1912167369d653  ./docs/metrics.md
 fc4ec5836bb4c9b565596c63b7e0255ce645fb797e1a9bbb07b3b68e3e1f521b  ./docs/own-review-paths.md
 528418dec994f2976e6f04dc655db2e4545405370630db4df109d812887e6bbc  ./docs/planner-requirements.md
-12c5efe7c5a89565b7600f8a7c137733089b5775f51254266d535e2b56f90e0c  ./docs/principal-review.md
+5a2b998b3ba79f2e89a03d89bb01c0df664d3003a7fc55da2f4792427b66cffc  ./docs/principal-review.md
 a58a91809ea09df148c193b451ff8955d8b9c9a7b702cace304633e1673c4b43  ./docs/procedure-review.md
 29fe97cb493ffe208a7fd6de93e446bb965f5d5ed881a51196cbd0862ef62525  ./docs/release.md
 87253fa66c18fc19620dac36e018e6e477368f8479e6700c4ffdfb5947293aae  ./docs/reread-followups.md
-1847f8e717c1f26f9edcd0a0a6e82a6aa42e2d498dbddd11e7ea31c2fb2d191e  ./docs/review-eval.md
+e56ffb892fe18d7e9b8d777cba11d0afc71c5b1ef4ff6e4fe708abb95088e621  ./docs/review-eval.md
 a380d44b72783f24fa5d4e775ff1ccd74d9696a291b3f36306a03a7eca27a6c2  ./docs/review-next-step.md
 ec9e148fd1b63d9314b4845e41e79cc58be28b916ad9d25df2ed571edd0e10d6  ./docs/review-rework.md
 ea489bd6b37ccef2488c766eee998ce62198247d71b54dab7e30d4105283f7fb  ./docs/screens.md
@@ -123,7 +123,7 @@ a2367b63ddcabe6b407ced872701305e8ba9303890d4d47829b9a36b01469037  ./docs/terms.m
 42cf0ae622a4d61b9c9ca60fc3597043294929d3fc06b5f1118ad6cbdc47f636  ./docs/test-trim.md
 4788958c0c608fdfe5e9c299b8fbce2fd761f2840563748f24cb191acdee0746  ./docs/time-breakdown.md
 6627002e845486bb04bb091dda5e2b83b42fbe08434ab46f492385a375c8cc2c  ./docs/usage-answer.md
-1787826b2e44c06db018c75e3dec66c04cfd6d896f774c22df45f451e85d6317  ./docs/usage-reduction.md
+8321c32e368745e69072ac3b4f76a95b2dffe3988435988611146f318a94ad77  ./docs/usage-reduction.md
 b29efd7c2adf1f0b2d7554c0c3a90059156bfd8717105cc156de5bcf871e1cca  ./docs/vm.md
 f9976396457d968a6b10dc34235955d52889eaf20d46cc70c9785a748f2bb3bd  ./install.sh
 18e95b2049d107d250d48f6c8453cffc0c93344aa88246dba97595ed90f0e15d  ./lib/answers.sh
@@ -170,7 +170,6 @@ be9a67eb3b8da9a4012424d8ab5a9c61beecba7f11afcae4595541fbb56257de  ./skeleton/.ag
 33fd31cda4e988ef8116996f2d31db8f69fcd6e32cdfa5abc04f70fef3e0bc78  ./skeleton/README.md
 18454e4d0424a4c4e9474140fc9d5b0b3854a1b4f59d10258cd85c9ffb044da6  ./skeleton/project.md
 86d88f085a22c1879850188758a47bce16efb46c8ed45507a9bc2056bb09be58  ./skeleton/verify-repository.md
-e7201d828c520bb739f2304d86f6c992bc6af132cf91881c9d7f044fad91a2ac  ./tests/__pycache__/base-size-check.cpython-314.pyc
 ec94c1189f1071bf59f9c20765667893b12a24881b6a68739d14f2ecbe0ff678  ./tests/action-advisories-test.sh
 a0cfec35ea5d08442fe0fc81ec8ce12624783326015e812562509311422e8df2  ./tests/agent-templates-test.sh
 2c4dce6d55a2bec00a23cf829eb9939041a27c4bb78891f0aeb0d485ad1713c4  ./tests/ansi-to-png.py

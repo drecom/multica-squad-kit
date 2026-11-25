@@ -736,7 +736,7 @@ high にした理由は、原則の判断に考える量を回すためだった
 | ファイル | 変えること |
 | --- | --- |
 | `common/skills/squad-handoff/SKILL.md` | [共通スキルの分け方](#共通スキルの分け方)のとおり分け、読み方の節と、場面の索引を足す |
-| `common/skills/squad-handoff/references/` の参照 | 共通スキルとリーダーの参照を表のとおりに分け、`run-cut.md` と、リーダーの `leader-run-wake.md`・`leader-run-cut.md` を足す。リーダーの参照に短い道と区切りの途中を足し、まとめた呼び出しを使う |
+| `common/skills/squad-handoff/references/` の参照 | 共通スキルとリーダーの参照を表のとおりに分け、`run-cut.md` と、リーダーの `leader-run-wake.md`・`leader-run-cut.md` を足す。リーダーの参照に短い道と区切りの途中を足してまとめた呼び出しを使い、分けた先のファイルでは見出しの階層をそのファイルの中で整える |
 | `common/monitor/squad-run-cut-values` | 新しく足す |
 | `common/monitor/squad-run-cut`、`common/monitor/squad-task-read`、`common/monitor/squad-task-post` | 新しく足す |
 | `common/monitor/squad-review-next` | `analyze` の欄 `short_path`、表の 9、マージの依頼の確認の 2、マージを頼むコメントの行 |
@@ -749,9 +749,10 @@ high にした理由は、原則の判断に考える量を回すためだった
 | `common/agents/designer.md` | `IF runtime-claude` の中に区切りの行 |
 | `common/agents/planner.md` | 合意の問いで短い道を尋ね、同意を本文に残す |
 | 役の指示・`SKILL.md`・リーダーの参照のうち、移した節を名前か「次の」で指す所 | 移した先の参照のファイルと節を指す。すぐ前の文と同じ節は「同じ節」と指してよい |
-| `tests/` | [テスト](#テスト)の確認を足し、思考の深さと最終レビューの範囲の期待を直す |
+| `tests/` | [テスト](#テスト)の確認を足し、思考の深さと最終レビューの範囲の期待を直す。検査の対象は分けた先の参照へ付け替え、新しいテストは `tests/test-weights` に重みを登録する |
 | `tests/leader-eval/` | 新しいスクリプトの名前を `leader_eval.py` の差し替える名前に足し、それを呼ぶ場面の `cli.json` に応答を足す |
 | `docs/principal-review.md`・`docs/review-next-step.md`・`docs/decide-record-read.md`・`docs/leader-principles.md`・`docs/flow-and-index.md` | 短い道と思考の深さに合わせ、この文書と同じコミットで直した |
+| `docs/principal-review.md`・`docs/review-next-step.md`・`docs/reread-followups.md`・`docs/review-eval.md` | 分ける前のリーダーの参照へのリンクを、分けた先の参照と節へ付け替える |
 | `docs/README.md` | 索引の「役の指示と、タスクが進む流れ」の表に、この文書の行を足した |
 | `MANIFEST` | `bash scripts/manifest.sh` で作り直す |
 

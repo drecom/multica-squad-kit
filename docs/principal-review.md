@@ -58,7 +58,7 @@
 
 最上位の役は、読んで指摘するだけで、直さない。ブランチへの push、PR の本文の書き換え、タスクの状態の変更をしない。
 
-修正は修正の役、設計の直しは設計の役が行う。設計の役がない構成では、設計の直しは設計を用意した人間が行う。決まりは [leader-principal.md の設計の役がない構成の設計の直し](../common/skills/squad-handoff/references/leader-principal-pick.md#最上位の役を呼ぶところ)にある。
+修正は修正の役、設計の直しは設計の役が行う。設計の役がない構成では、設計の直しは設計を用意した人間が行う。決まりは [leader-principal-design.md の設計の役がない構成の設計の直し](../common/skills/squad-handoff/references/leader-principal-design.md#要件の見直しと設計の見直し)にある。
 
 頼まれる見直しは、次の 3 種類と、繰り返しの診断の 4 種類である。種類は、リーダーの依頼に書く。要件の「最終確認」は、この文書の最終レビューと同じものを指す。依頼の行の値は、スクリプトと返事の読み方が前提にしているため、名前は最終レビューのままにする。
 
@@ -67,7 +67,7 @@
 | 設計の見直し | タスクの要件と受け入れ条件、PR の設計文書の差分、フェーズの一覧 | 要件を満たすか、見落とした場合や互換性、戻しにくさ、フェーズの切り方 |
 | 設計と PR の見直し | 上に加え、その時点の PR の実装の差分 | 設計と実装の食い違い、手戻りの原因、このまま進めてよいか |
 | 最終レビュー | [見る範囲](#見る範囲)のとおり、初回は PR の差分全体とほかの役の結果、再確認は前の最終レビューからの差分 | 4 役が見ていない観点の取りこぼし、設計との一致、マージしてよいか |
-| 診断 | 続いた失敗と、それぞれの原因と直し方、ログ・差分・コメント | 根本の原因、直し方、直す役。頼み方と返し方は [leader-flow.md の同じ誤りや差し戻しが続くとき](../common/skills/squad-handoff/references/leader-repeat.md#同じ誤りや差し戻しが続くとき)にある |
+| 診断 | 続いた失敗と、それぞれの原因と直し方、ログ・差分・コメント | 根本の原因、直し方、直す役。頼み方と返し方は [leader-repeat.md の同じ誤りや差し戻しが続くとき](../common/skills/squad-handoff/references/leader-repeat.md#同じ誤りや差し戻しが続くとき)にある |
 
 結果は、ほかのレビューと同じく、squad-handoff の「PR にレビューやテストの結果を書く」の形で PR のコメントにする。先頭の行の結果のマークと、重大度・場所・影響・直し方の書き方は変えない。設計と PR の見直しでは、指摘ごとに `設計` か `コード` の種類を添え、リーダーが直す役を選べるようにする。
 
@@ -140,7 +140,7 @@
 
 重要のマークのないタスクでは、N が 4 になる依頼の前に止め、重要のマークを付けずに手戻りの見直しを頼む。見直しのあとの 4 回目は、聞かずに再開する。重要のマークのあるタスクでは、4 回目の前と、そのあと 3 回ごとに、続けるかを人間に聞く。手戻りの見直しを受けた重要のマークのないタスクでは、7 回目の前から聞く。
 
-続行の確認の決まりは [leader-principal.md の修正の依頼の数え方](../common/skills/squad-handoff/references/leader-principal.md#修正の依頼の数え方)にある。修正の依頼の前に確認する順は、[review-rework.md の修正の依頼の前に確認する順](review-rework.md#修正の依頼の前に確認する順)にある。同じ誤りと同じ部品の診断を、この順のどこに入れるかは、[leader-flow.md の修正の依頼の前に確認する順](../common/skills/squad-handoff/references/leader-fix-request.md#修正の依頼の前に確認する順)で決める。
+続行の確認の決まりは [leader-principal.md の修正の依頼の数え方](../common/skills/squad-handoff/references/leader-principal.md#修正の依頼の数え方)にある。修正の依頼の前に確認する順は、[review-rework.md の修正の依頼の前に確認する順](review-rework.md#修正の依頼の前に確認する順)にある。同じ誤りと同じ部品の診断を、この順のどこに入れるかは、[leader-fix-request.md の修正の依頼の前に確認する順](../common/skills/squad-handoff/references/leader-fix-request.md#修正の依頼の前に確認する順)で決める。
 
 ### 実装を始めたあとの設計の変更
 
@@ -150,11 +150,11 @@
 
 最上位の役を呼ぶところは次の 3 つである。設計の見直しは、重要のマークのあるタスクだけで行う。設計と PR の見直しは、重要のマークのあるタスクと、手戻りの合図が起きた重要のマークのないタスクで行う。最終レビューは、重要のマークの有無によらず、短い道のタスクを除くすべてのタスクで行う。
 
-同じ誤りの再発と、同じ部品の 3 回目の診断は、この 3 つと別に、重要のマークによらず呼ぶ。診断は [leader-flow.md の同じ誤りや差し戻しが続くとき](../common/skills/squad-handoff/references/leader-repeat.md#同じ誤りや差し戻しが続くとき)に書く。
+同じ誤りの再発と、同じ部品の 3 回目の診断は、この 3 つと別に、重要のマークによらず呼ぶ。診断は [leader-repeat.md の同じ誤りや差し戻しが続くとき](../common/skills/squad-handoff/references/leader-repeat.md#同じ誤りや差し戻しが続くとき)に書く。
 
 要件を決める役を置かない構成では、これに加えて、次の役へ回す前の要件の見直しを頼む。決まりは [planner-requirements.md の役を置かない構成の要件の見直し](planner-requirements.md#役を置かない構成の要件の見直し)にある。
 
-設計の役を置かない構成では、これに加えて、実装へ回す前の人間の設計の見直しを、重要のマークの有無によらず頼む。決まりは [leader-principal.md の最上位の役を呼ぶところ](../common/skills/squad-handoff/references/leader-principal-pick.md#最上位の役を呼ぶところ)にある。
+設計の役を置かない構成では、これに加えて、実装へ回す前の人間の設計の見直しを、重要のマークの有無によらず頼む。決まりは [leader-principal-pick.md の最上位の役を呼ぶところ](../common/skills/squad-handoff/references/leader-principal-pick.md#最上位の役を呼ぶところ)にある。
 
 次の図は、設計から人間のマージまでの流れのうち、最上位の役を呼ぶ場面と、手戻りと CI で分かれる道を示す。
 
@@ -190,7 +190,7 @@ flowchart TD
 
 基準の共通 2 に当たるタスクでは、security-reviewer にも同じ依頼で設計の見直しを頼む。security の ❌ を直した設計は、security にだけ 1 回見せ直す。決まりは、[review-rework.md の安全の仕組みに触れる設計の見直し](review-rework.md#安全の仕組みに触れる設計の見直し)にある。
 
-設計の役を置かない構成では人間が直す。その頼み方と見せ直しは [leader-principal.md の見せ直し](../common/skills/squad-handoff/references/leader-principal-reshow.md#見せ直し)にある。
+設計の役を置かない構成では人間が直す。その頼み方と見せ直しは [leader-principal-reshow.md の見せ直し](../common/skills/squad-handoff/references/leader-principal-reshow.md#見せ直し)にある。
 
 ### 設計の承認より後に重要のマークが付いたとき
 
@@ -204,7 +204,7 @@ flowchart TD
 - `コード` の指摘は、止めた修正の依頼に加えて修正の役へ回す。実装のフェーズの前なら、該当するフェーズの依頼に添える
 - 指摘がなければ、止めた振り分けをそのまま再開する
 
-設計の役がない構成では、`設計` の指摘は人間に直しと承認し直しを頼む。共通 2 の対象でないタスクの決まりは [leader-principal.md の最上位の役を呼ぶところ](../common/skills/squad-handoff/references/leader-principal-pick.md#最上位の役を呼ぶところ)にある。共通 2 の対象のタスクの決まりは [leader-principal.md の見せ直し](../common/skills/squad-handoff/references/leader-principal-reshow.md#見せ直し)にある。
+設計の役がない構成では、`設計` の指摘は人間に直しと承認し直しを頼む。共通 2 の対象でないタスクの決まりは [leader-principal-design.md の設計の役がない構成の設計の直し](../common/skills/squad-handoff/references/leader-principal-design.md#要件の見直しと設計の見直し)にある。共通 2 の対象のタスクの決まりは [leader-principal-reshow.md の見せ直し](../common/skills/squad-handoff/references/leader-principal-reshow.md#見せ直し)にある。
 
 ### 最終レビュー
 
@@ -214,7 +214,7 @@ flowchart TD
 
 ⚠️ だけなら、マージを止めずに人間へ回す。同じ指摘が 2 回続けて差し戻されたときに人間を呼ぶ決まりは、最上位の役にも当てはめる。同じ部品に指摘が続くときの決まり（[review-rework.md の同じ部品に指摘が続くとき](review-rework.md#同じ部品に指摘が続くとき)）も、最上位の役に当てはめる。
 
-設計の役がない構成で、結果に `設計への指摘: あり` があるときは、人間へ回す前に、設計を用意した人間に直しと承認し直しを頼む。決まりは [leader-principal.md の最上位の役を呼ぶところ](../common/skills/squad-handoff/references/leader-principal-pick.md#最上位の役を呼ぶところ)にある。
+設計の役がない構成で、結果に `設計への指摘: あり` があるときは、人間へ回す前に、設計を用意した人間に直しと承認し直しを頼む。決まりは [leader-principal-design.md の設計の役がない構成の設計の直し](../common/skills/squad-handoff/references/leader-principal-design.md#要件の見直しと設計の見直し)にある。
 
 最上位の役がない構成はない。最上位の役は外せず、使うランタイムの系統の分だけ必ず置くため。最上位の役がないプロジェクトでは、リーダーの指示にも最上位の役がないので、最終レビューを飛ばす。
 
