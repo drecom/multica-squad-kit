@@ -466,7 +466,7 @@ PR の本文は、`squad-cli-lib` に新しい読み取り `gh-pr-body` を足�
 | `common/skills/squad-handoff/references/leader-pr-checks.md` | [リーダーが手で書くマージの依頼](#リーダーが手で書くマージの依頼)のとおり、6 を直し、節を足す |
 | `common/monitor/squad-review-next` | `decide` のマージの依頼に 4 行を足す。組の結果のコメントから `指摘の一覧:` と件数を読み、PR の本文の注意を整えて写す |
 | `common/monitor/squad-cli-lib` | 読み取り `gh-pr-body` の契約を足す |
-| `tests/fixtures/cli/gh-pr-body.json`、`tests/fixtures/cli/GH-CAPTURE.json` | `tests/capture-gh-fixtures.py` で記録した見本を足す |
+| `tests/fixtures/cli/gh-pr-body.json`、`tests/fixtures/cli/GH-CAPTURE.json`、`tests/fixtures/cli/README.md` | `tests/capture-gh-fixtures.py` で記録した見本を足し、README に見本の出どころの段落を足す |
 | `tests/` の関係するテスト | 下の[テスト](#テスト)のとおり足す。注意の入力の種類の表は `tests/review-note-table.tsv` と `tests/review-note-table-test.sh`、その実測は `tests/test-weights` に足す |
 | `MANIFEST` | `bash scripts/manifest.sh` で作り直す |
 | `docs/decide-record-read.md` | 「想定規模で 1 回測る」に、マージの経路の場面が[マージの依頼へ進む経路の性能](#マージの依頼へ進む経路の性能)にあることを 1 文で足す |
