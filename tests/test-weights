@@ -108,6 +108,7 @@ tests/squad-pr-watch-unlinked-register-test.sh 6
 tests/squad-pr-watch-unlinked-test.sh 12
 tests/squad-pr-watch-url-test.sh 30
 tests/squad-preflight-test.sh 11
+tests/squad-run-cut-test.sh 10
 tests/squad-review-wait-contract-test.sh 27
 tests/squad-review-next-test.sh 70
 tests/squad-review-next-request-test.sh 65

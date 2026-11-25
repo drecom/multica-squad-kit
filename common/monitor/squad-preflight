@@ -20,6 +20,8 @@ set -- \
 	squad-pr-watch \
 	squad-review-next \
 	squad-review-wait \
+	squad-run-cut \
+	squad-run-cut-values \
 	squad-usage-check \
 	squad-usage-lib \
 	squad-usage-read \
