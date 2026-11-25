@@ -4,7 +4,7 @@ description: プロジェクトの画面と文言が、利用者に伝わるか�
 role: UX レビュー。画面や文言を変える PR を受ける
 <!-- IF runtime-codex -->
 <!-- IF codex-implementer -->
-model: gpt-6.1-sol
+model: gpt-6.2-sol
 <!-- ELSE -->
 model: claude-sonnet-5-5
 <!-- ENDIF -->

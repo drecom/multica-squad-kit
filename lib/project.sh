@@ -296,10 +296,13 @@ project_next_step() {
 
 # 登録を終えてから、人間に残る作業を対象のプロジェクトへ起票する。
 prepare_project_issues() {
-	local repo targets
+	local repo targets webhook_repositories='[]'
+	if dependabot_webhook_active; then
+		webhook_repositories=$(dependabot_repositories) || die 'Dependabot の対象のリポジトリを読めませんでした。'
+	fi
 	while IFS= read -r repo; do
 		targets=$(jq -nc --arg repo "$repo" '[$repo]')
-		if dependabot_webhook_active; then
+		if jq -e --arg repo "$repo" 'any(.[]; .repository==$repo)' >/dev/null <<<"$webhook_repositories"; then
 			queue_project_issue dependabot-filter "$targets" "$host_owner_id" "$repo"
 		fi
 		queue_project_issue repository-rules "$targets" "$squad_id" "$repo"

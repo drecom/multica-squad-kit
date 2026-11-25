@@ -23,7 +23,7 @@ ext.mkdir()
 patch = {'qa': {'skills': ['browser-check'], 'max_concurrent_tasks': 2, 'mcp_config': {'mcpServers': {'browser': {'command': 'browser-tool'}}}, 'instructions_file': 'instructions/qa.md'}}
 (ext / 'additions.json').write_text(json.dumps(patch))
 (ext / 'agents').mkdir()
-(ext / 'agents/helper.md').write_text('---\nname: "{{project_key}}-helper-{{member_key}}"\ndescription: Extra helper\nmodel: gpt-6.1-sol\nthinking_level: high\nskills: squad-handoff\n---\n\nHelp the project.\n')
+(ext / 'agents/helper.md').write_text('---\nname: "{{project_key}}-helper-{{member_key}}"\ndescription: Extra helper\nmodel: gpt-6.2-sol\nthinking_level: high\nskills: squad-handoff\n---\n\nHelp the project.\n')
 (ext / 'monitor').mkdir()
 (ext / 'monitor/squad-custom-check').write_text('#!/bin/bash\n# multica-squad-kit-managed\necho check\n')
 (ext / 'skills/browser-check').mkdir(parents=True)

@@ -5,7 +5,7 @@ role: スクワッドのリーダー
 <!-- IF runtime-claude -->
 model: claude-sonnet-5-5
 <!-- ELSE -->
-model: gpt-6.1-sol
+model: gpt-6.2-sol
 <!-- ENDIF -->
 thinking_level: high
 skills: squad-handoff

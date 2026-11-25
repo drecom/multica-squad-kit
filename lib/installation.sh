@@ -83,12 +83,15 @@ installation_autopilots() {
 			# Webhook の認証情報は通常の取得結果からも除いてから受け取る。
 			current=$(mc autopilot get "$id" --output json 2>/dev/null | jq -ce 'select(.autopilot.id|type=="string" and length>0) | {autopilot:(.autopilot|{id,title,status,project_id,assignee_type,assignee_id,execution_mode,description}),triggers:[.triggers[]|{kind,enabled,cron_expression,timezone}]}' 2>/dev/null) || { current='{}'; reason='CLI の読み直しに失敗しました。'; }
 			if printf '%s\n%s\n' "$desired" "$current" | jq -se --arg id "$id" --arg project "$project_id" --arg assignee "$assignee" '
-				.[0] as $desired | .[1] | .autopilot as $current | $current.id==$id and $current.title==$desired.title and $current.status=="active" and
+				.[0] as $desired | .[1] | .autopilot as $current | $current.id==$id and $current.title==$desired.title and ($current.status=="active" or $current.status=="paused") and
 				$current.project_id==$project and $current.assignee_type=="agent" and $current.assignee_id==$assignee and
 				$current.execution_mode==$desired.mode and $current.description==($desired.instructions|sub("\n+$";"")) and
 				(if $desired.trigger=="webhook" then any(.triggers[]; .kind=="webhook" and .enabled==true) and all(.triggers[]; .kind!="schedule")
 				else [.triggers[]|select(.kind=="schedule")][0] | .enabled==true and .cron_expression==$desired.cron and .timezone==$desired.timezone end)
-			' >/dev/null 2>&1; then matched=yes; fi
+			' >/dev/null 2>&1; then
+				if [[ $(jq -r '.autopilot.status' <<<"$current") == active ]]; then matched=yes
+				else reason='一時停止しています。止めたままでよいか確認し、動かすなら画面で再開してください。'; fi
+			fi
 		fi
 		installation_result "オートパイロット $title" "$matched" "$reason"
 	done < <(jq -c '.[]' "$project_work/autopilots.json")
