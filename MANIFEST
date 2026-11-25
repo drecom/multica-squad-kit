@@ -17,7 +17,7 @@ d3753504bb8b7798ff2ad599592246ccf1a262bfbcc1d5d5107a4ca9d0bad325  ./CHANGELOG.md
 1eb99314d85723af288e50d11188f125f136b52e043917134038c50c02ef6a94  ./CONTRIBUTING.md
 35b6fce60988f9b9a34c897a147fc2304550a86189154497fd665bc8009dfc8e  ./EXTENSIONS.md
 c64ff136b0a19ba329f98b05b879ced23358f4863b7aa22d560c2359dba780a9  ./README.md
-0c88f9807ccd66e781117b8f5e1b33243d845171c4865b23c8545f8a99332f60  ./STYLE.md
+98918366ce3f46b590bb6aa4569914648339e1cea6068ccdcecfcdfe6794c353  ./STYLE.md
 6bf25061d3caea72d34f961997d35aca8c8d960aaddac2413516882e6706c97e  ./VERSION
 a8589891c83dd2f462ec04992aec83bc8d93e4cb3038f9a7483d890f0274ff06  ./common/agents/FORMAT
 ec353bac903af1311af1b4c2dd50ab7b1743890ded91db88e0eb4d6a62958059  ./common/agents/ci-monitor.md
@@ -59,7 +59,7 @@ fac2e72f734a7821ea3121010292836c9cf5478e94f934f9ab211752517cc2c9  ./common/monit
 b0e7a3279a4284756a60a54123b595a50e67522bb23ec18a8c0be187410e77d8  ./common/setup-issues.json
 4b643dd888c194280ce6d64343d32facab12d5b98d9e6d0c0a0877a061bf89e4  ./common/shell/.zshenv
 4b643dd888c194280ce6d64343d32facab12d5b98d9e6d0c0a0877a061bf89e4  ./common/shell/env.sh
-9bac12eebcfe0dff08c9c49ad084f0eb0fce3b0a33d24d617d18a8f5369fa458  ./common/skills/squad-handoff/SKILL.md
+53a1c87e781299f00b8697c334b4c0c08f5f9e1fbac35ef53bf8be0f034f6bbe  ./common/skills/squad-handoff/SKILL.md
 34f17665bd8a68b1d9cc0b4d400a1a771b7b32ea7c95fc4d3cc03953b78ab76e  ./common/skills/squad-handoff/references/leader-dispatch.md
 749e8db8365e9a14d2da9e3170d3340d211323a55136d5cebbc48b72a0894dbb  ./common/skills/squad-handoff/references/leader-flow.md
 50efd4af5d50e4cd70e82d05b548889ff25f9962fd66c2b409230102ef5c3554  ./common/skills/squad-handoff/references/leader-pr-checks.md
@@ -67,7 +67,7 @@ b0e7a3279a4284756a60a54123b595a50e67522bb23ec18a8c0be187410e77d8  ./common/setup
 57693434623b5b8b4947ab836b372bfbfb50b910abfd296af162641a898f1a6b  ./common/skills/squad-handoff/references/leader-review-wait.md
 0e603565f0f6810c8d6bc105e6436298446fe9c3fbe70cea14160c95427c1b4c  ./common/skills/squad-handoff/references/leader-run-status.md
 1caa0a53bbaafea6d15e8105f94b22e1cd5b487b9891529111085f838bd88681  ./common/squad.md
-5d91b2dbb56ca90ea65f52cad579c4e8e7b792cd07bbf0f0d4b28cc35972fad9  ./docs/README.md
+7ef78113c30f7d3d4a82a1acb985bf4616f9ece1044d42ecb39bc202d860dad9  ./docs/README.md
 c380ac8fd57091fa1d1ad80ff9724cba6667a7199b440a40b4be9b0e25f83623  ./docs/agent-path.md
 62062b7363a33eb140e814eeff5b3898d2d7d06aadc1ff95a07aa88aa001dbc7  ./docs/autopilot-targets.md
 3ca4ffccd35ce4ddcb26bc3c40ef34d2d2295eb27b8b0e08ea0522827b8bbb9c  ./docs/bug-repro-test.md
@@ -103,6 +103,7 @@ abbb6a7aed1c8da4f421fe06ac0838895c082e6f900e1e116ceda0f72ad9eaa9  ./docs/termina
 a2367b63ddcabe6b407ced872701305e8ba9303890d4d47829b9a36b01469037  ./docs/terms.md
 42cf0ae622a4d61b9c9ca60fc3597043294929d3fc06b5f1118ad6cbdc47f636  ./docs/test-trim.md
 4788958c0c608fdfe5e9c299b8fbce2fd761f2840563748f24cb191acdee0746  ./docs/time-breakdown.md
+d3d56ae6eb8c7903906a55bd1137aa0edb2594a122cb1e4e628937a723f105b5  ./docs/undecided.md
 6627002e845486bb04bb091dda5e2b83b42fbe08434ab46f492385a375c8cc2c  ./docs/usage-answer.md
 b29efd7c2adf1f0b2d7554c0c3a90059156bfd8717105cc156de5bcf871e1cca  ./docs/vm.md
 f9976396457d968a6b10dc34235955d52889eaf20d46cc70c9785a748f2bb3bd  ./install.sh
@@ -151,7 +152,7 @@ be9a67eb3b8da9a4012424d8ab5a9c61beecba7f11afcae4595541fbb56257de  ./skeleton/.ag
 18454e4d0424a4c4e9474140fc9d5b0b3854a1b4f59d10258cd85c9ffb044da6  ./skeleton/project.md
 86d88f085a22c1879850188758a47bce16efb46c8ed45507a9bc2056bb09be58  ./skeleton/verify-repository.md
 ec94c1189f1071bf59f9c20765667893b12a24881b6a68739d14f2ecbe0ff678  ./tests/action-advisories-test.sh
-62d1448b6783cb661f1a6a52b206628baf3aa40da68f638e5c064da805e88ceb  ./tests/agent-templates-test.sh
+0ac1d521bfa6cecc0d3b224f51205e61f7b847790c94a5b01dedf19f6f64c973  ./tests/agent-templates-test.sh
 2c4dce6d55a2bec00a23cf829eb9939041a27c4bb78891f0aeb0d485ad1713c4  ./tests/ansi-to-png.py
 dfbb19bc0056d40e3259c72c68024a744c89987fbb8a18fdd593f6bbd9b8391b  ./tests/arg-limit-lib.sh
 4effb137e0876ad6cf25ccf0a3858c17e80fff848d6e5deb1b70405f7b2d3b8a  ./tests/audit-targets-test.sh

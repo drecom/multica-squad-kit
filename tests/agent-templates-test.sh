@@ -1335,3 +1335,32 @@ done
 grep -qF -- '指摘の一覧:' <<<"$manual_section"
 grep -qF -- '「手で書くマージの依頼の行」' "$refs/leader-pr-checks.md"
 echo 'PASS templates: リーダーの手順に、手で書くマージの依頼の 4 行の名前が行頭の形で 1 回ずつあり、指摘を要約の指摘の一覧から写すと書いてある'
+
+# 設計文書の決まっていないことの節。読む側は、設計の役と、PR の本文を書き直す役。`- マージの前に決めること:` の行は、手順の見直しが働いた跡として数える（docs/undecided.md の「働いた跡」: kind comment、pattern `マージの前に決めること:`、author_type agent）。
+undecided_skill="$root/common/skills/squad-handoff/SKILL.md"
+undecided_heading='### 設計文書の決まっていないこと'
+[[ $(grep -cxF -- "$undecided_heading" "$undecided_skill") == 1 ]]
+python3 -I - "$undecided_skill" "$undecided_heading" <<'UNDECIDEDPY'
+import re
+import sys
+
+path, heading = sys.argv[1:3]
+text = open(path, encoding="utf-8").read().split("\n")
+parent = text.index("## PR を作る・実装を積む")
+end = text.index("## PR にレビューやテストの結果を書く")  # 見本のコードの中にも `## ` の行があるので、次の節の見出しを名前で指す
+parent_lines = text[parent:end]
+assert parent_lines.count(heading) == 1, "見出しが「PR を作る・実装を積む」の中に 1 つでない"
+order = parent_lines.index("### PR の本文の置き場所と順序")
+start = parent_lines.index(heading)
+assert order < start, "節が「PR の本文の置き場所と順序」より前にある"
+body = []
+for line in parent_lines[start + 1:]:
+    if line.startswith("#"):
+        break
+    body.append(line)
+assert body.count("| 決まっていないこと | 今決めない理由 | 決める人 | いつまでに | 決まるまでの扱い |") == 1
+assert body.count("- マージの前に決めること: <決まっていないこと>。決まるまでは<決まるまでの扱い>") == 1
+for value in ("設計の承認", "マージの前", "マージのあと"):
+    assert any(value in line for line in body), value
+UNDECIDEDPY
+echo 'PASS templates: 共通スキルに、設計文書の決まっていないことの節が置き場所の位置に 1 つあり、表の列の見出しと期限の 3 つの値と、マージの前に決めること: の行の形を持つ'
