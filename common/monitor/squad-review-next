@@ -874,7 +874,7 @@ pr_checks() {
 
 	for attempt in 1 2; do
 		status=0
-		out=$("$watch" link-check "$issue" 2>/dev/null) || status=$?
+		out=$("$watch" link-check "$issue" "$round" 2>/dev/null) || status=$?
 		line=$(grep -m1 '^紐付け:' <<<"$out" || true)
 		if [[ -z $line ]]; then
 			line='紐付け: 未確認 pr: 不明 理由: 判定の行が出なかった'
@@ -1137,8 +1137,8 @@ human_call() {
 		printf '%s\n' "$wait_line"
 		if [[ $LINKED == false ]]; then
 			printf 'PR がタスクに紐付いていません。タスクの画面の PR の欄で `%s` を紐付けてください。\n' "$PR_URL"
+			print_linkfail "$work"
 		fi
-		print_linkfail "$work"
 	} >"$body"
 	id=$(post_request "$issue" "$round" "$body")
 	multica issue status "$issue" in_review >/dev/null || dfail 'タスクを in_review にできない（コメントは書いた）'

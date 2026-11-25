@@ -19,7 +19,7 @@ reset
 ci_final_ok
 run final-1
 expect_merge_posted "$(merge_body final-1 "$sha" "$conf_line" "CI ${sha}: 成功" "${lines_all[@]}")" final-1
-expect_calls pr-watch-calls $'link-check test-issue\nconflicts-check test-issue\nci test-issue ci-monitor final-1\nci-wait test-issue orchestrator final-1\nconflicts test-issue --leader orchestrator'
+expect_calls pr-watch-calls $'link-check test-issue final-1\nconflicts-check test-issue\nci test-issue ci-monitor final-1\nci-wait test-issue orchestrator final-1\nconflicts test-issue --leader orchestrator'
 reset
 ci_final_ok
 ciwait "CI ${sha}: チェックなし"

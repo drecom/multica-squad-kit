@@ -113,6 +113,39 @@ run round-1
 [[ $(posted_body) == *$'\n対象の PR: https://github.com/demo/project/pull/99' ]] || fail "対象の PR が紐付けの URL でない: $(posted_body)"
 echo 'PASS review-next-decide: 紐付いていない PR は、その場の CI（見張りの役がある構成は ci-wait）とコンフリクトを確認し、止まる値ならリーダーに任せる'
 
+# 試み直しの結果で、マージの依頼に添える紐付けの依頼の行と、紐付けの失敗の段落が変わる。
+# PR を作った役の引き継ぎには紐付けの失敗の段落がある。link-check は偽物なので、試み直しの結果は、link-check が出す紐付けの行で表す。
+retry_merge_setup() {
+	reset
+	set_merge_roster
+	ok_round
+	final_round final-1 "$sha" round-1
+	result final-1 claude-principal ✅ "$sha" なし
+	jq 'map(if .id == "pr-made" then .content = "PR を作りました https://github.com/demo/project/pull/7\n\n紐付けの失敗: PR をタスクに紐付けられなかった。\n404 で待ち切れなかったため、連携を確認してほしい。" else . end)' "$test_dir/comments.json" >"$test_dir/comments.new" && mv "$test_dir/comments.new" "$test_dir/comments.json"
+}
+# 試み直しで紐付いたときは、紐付けの依頼の行も、紐付けの失敗の段落も、マージのあとに done にする案内もない。
+retry_merge_setup
+run final-1
+expect_status 0
+body=$(posted_body)
+[[ $body == "[@Owner]"*'マージの依頼: '* ]] || fail "マージの依頼を書いていない: $body"
+[[ $body != *'紐付けの失敗:'* && $body != *'紐付いていないので'* && $body != *'GitHub 連携'* && $body != *'ワークスペースの設定'* ]] || fail "紐付いたのに、紐付けの依頼か段落がある: $body"
+expect_call_lacks pr-watch-calls 'unlinked '
+expect_call_has pr-watch-calls 'link-check test-issue final-1'
+# 404 のまま紐付かないときは、今と同じく、紐付けの依頼の行と紐付けの失敗の段落がある。
+retry_merge_setup
+unlinked
+printf 'CI %s: 成功\n' "${sha:0:7}" >"$test_dir/cinow-out"
+run final-1
+expect_status 0
+body=$(posted_body)
+[[ $body == "[@Owner]"*'マージの依頼: '* ]] || fail "マージの依頼を書いていない: $body"
+[[ $body == *'紐付いていないので、マージのあとにタスクを `done` にしてほしい（または先に紐付けてほしい）。PR: `'"$pr_url"'`'* ]] || fail "紐付けの依頼の行がない: $body"
+[[ $body == *$'\n紐付けの失敗: PR をタスクに紐付けられなかった。\n404 で待ち切れなかったため、連携を確認してほしい。'* ]] || fail "紐付けの失敗の段落がない: $body"
+expect_call_has pr-watch-calls 'link-check test-issue final-1'
+expect_call_has pr-watch-calls 'unlinked test-issue final-1 --leader orchestrator'
+echo 'PASS review-next-decide: 試み直しで紐付いたマージの依頼には紐付けの依頼と段落がなく、紐付かないままなら両方が残る'
+
 # ---- 書く前の失敗。
 reset
 ok_round
