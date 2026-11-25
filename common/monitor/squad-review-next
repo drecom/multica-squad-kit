@@ -209,9 +209,11 @@ MATCHPY
 # マージの依頼に写す文（PR の本文の注意と、役の返事の指摘の一覧）から、コードの囲みと HTML コメントを見分ける部品。
 # docs/merge-request-reading.md の「注意の入力の種類と写し方」の表の規則を持つ。DECIDE_PY と NOTE_PY の先頭に足して使う。
 read -r -d '' MARKUP_PY <<'MARKUPPY' || true
+import bisect
 import re
 
 FENCE = re.compile(r"(`{3,}|~{3,})")
+SPECIAL = re.compile(r"\\|`+|<!--")
 DROPPED = "（コードの囲みや HTML は PR の本文の注意を読む）"
 
 
@@ -220,20 +222,29 @@ def fence_closes(line, fence):
     return re.fullmatch(re.escape(fence[0]) + "{" + str(len(fence)) + ",}[ ]*", line) is not None
 
 
-def comment_start(text, pos):
-    """pos 以降で、コードスパンとバックスラッシュの外にある最初の `<!--` の位置。なければ -1。"""
-    while pos < len(text):
-        if text[pos] == "\\":
-            pos += 2
-        elif text[pos] == "`":
-            run = re.match("`+", text[pos:]).group(0)
-            close = re.search("(?<!`)" + run + "(?!`)", text[pos + len(run):])
-            pos += len(run) + (close.end() if close else 0)
-        elif text.startswith("<!--", pos):
-            return pos
+def comment_start(text, pos, index):
+    """pos 以降で、コードスパンとバックスラッシュの外にある最初の `<!--` の位置。なければ -1。
+    行の長さに比例する時間で終える。次に見る記号まで正規表現で飛び、閉じる逆引用符は、同じ長さの並びを行ごとに 1 回だけ集めた index から引く。
+    index は同じ行の呼び出しで使い回す空のリストで、最初に逆引用符を見たときに中身を作る。"""
+    while True:
+        found = SPECIAL.search(text, pos)
+        if not found:
+            return -1
+        mark = found.group(0)
+        if mark == "\\":
+            pos = found.start() + 2
+        elif mark == "<!--":
+            return found.start()
         else:
-            pos += 1
-    return -1
+            if not index:
+                runs = {}
+                for run in re.finditer("`+", text):
+                    runs.setdefault(len(run.group(0)), []).append(run.start())
+                index.append(runs)
+            after = found.end()
+            starts = index[0].get(len(mark), [])
+            at = bisect.bisect_left(starts, after)
+            pos = starts[at] + len(mark) if at < len(starts) else after
 
 
 def markup_step(text, state):
@@ -247,7 +258,7 @@ def markup_step(text, state):
         opened = FENCE.match(text)
         if opened:
             return True, opened.group(1)
-    touched, pos = state == "comment", 0
+    touched, pos, index = state == "comment", 0, []
     while True:
         if state == "comment":
             end = text.find("-->", pos)
@@ -255,7 +266,7 @@ def markup_step(text, state):
                 return True, "comment"
             pos, state = end + 3, None
         else:
-            start = comment_start(text, pos)
+            start = comment_start(text, pos, index)
             if start < 0:
                 return touched, None
             touched, pos, state = True, start + 2, "comment"
@@ -792,18 +803,29 @@ def section(body):
 
 
 def strip_marks(line):
-    """行頭の空白、`>`、箇条書きの記号を、なくなるまで外す。"""
-    while True:
-        before = line
-        line = line.lstrip()
-        if line.startswith(">"):
-            line = line[1:]
+    """行頭の空白、`>`、箇条書きの記号を、なくなるまで外す。長い行でも、行の長さに比例する時間で終える。"""
+    pos = 0
+    while pos < len(line):
+        if line[pos].isspace():
+            pos += 1
+        elif line[pos] == ">":
+            pos += 1
         else:
-            found = BULLET.match(line)
-            if found:
-                line = line[found.end():]
-        if line == before:
-            return line.strip()
+            found = BULLET.match(line, pos)
+            if not found:
+                break
+            pos = found.end()
+    return line[pos:].strip()
+
+
+def heading_shaped(body):
+    """注意の見出しの形の行の数。本文のすべての行を、囲み・コメント・HTML ブロックの中も含めて数える。
+    各行を整える 1 と 2（制御文字を除き、タブを空白にし、行頭の記号を外す）で整え、`#` の並び、空白、`注意` の順で始まり、
+    あとが空白と `#` だけの行を 1 つと数える。"""
+    return sum(
+        re.fullmatch(r"#+[ ]*注意[ #]*", strip_marks(CONTROL.sub("", line.replace("\t", " ")))) is not None
+        for line in body.splitlines()
+    )
 
 
 def shape(raw_lines):
@@ -827,7 +849,8 @@ def shape(raw_lines):
     return kept
 
 
-raw = section(sys.stdin.read())
+body = sys.stdin.read()
+raw = section(body)
 if raw is None:
     print(HEAD + "読めない（PR の本文に注意の見出しがない）")
     sys.exit(0)
@@ -835,7 +858,12 @@ lines = shape(raw)
 if not lines:
     print(HEAD + "読めない（PR の本文の注意が空）")
 elif lines in (["なし"], ["なし。"]):
-    print(HEAD + "なし")
+    # 「なし」と書く条件は、ここ 1 か所に置く。見出しの形の行が本文に 1 つだけのときに限る。
+    count = heading_shaped(body)
+    if count == 1:
+        print(HEAD + "なし")
+    else:
+        print(f"{HEAD}読めない（PR の本文に注意の見出しの形の行が {count} 個ある）")
 else:
     shown, chars = [], 0
     for line in lines:

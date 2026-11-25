@@ -115,6 +115,75 @@ for number, kind, label, text, note_expect, list_expect in rows:
     else:
         print(f"PASS review-note-table: {number} {label}（表: {TABLE}）")
 
+# 表にない書き方を、包みと見本の位置と本物の注意の中身の組み合わせで確認する（設計: 「「なし」と書く条件」）。
+# 見本の `## 注意` と本物の `## 注意` で、注意の見出しの形の行が 2 つになる本文は、包み方が何でも「なし」の行を出さない。
+# 包みは、見分ける規則が読み違えるものを含む（HTML ブロックの開始・宣言・記号つきの囲みの閉じ・字下げ）。
+UNREADABLE = "マージの前に人間がすること: 読めない（PR の本文に注意の見出しの形の行が "
+NONE_LINE = "マージの前に人間がすること: なし"
+
+
+def prefixed(prefix, lines):
+    return [prefix + line for line in lines]
+
+
+wrappers = {
+    "包みなし": lambda s: s,
+    "逆引用符の囲み": lambda s: ["```md"] + s + ["```"],
+    "チルダの囲み": lambda s: ["~~~"] + s + ["~~~"],
+    "閉じていない囲み": lambda s: ["```md"] + s,
+    "コメント": lambda s: ["<!--"] + s + ["-->"],
+    "閉じていないコメント": lambda s: ["<!--"] + s,
+    "引用の中の囲み": lambda s: ["> ```"] + prefixed("> ", s) + ["> ```"],
+    "箇条書きの中の囲み": lambda s: ["- ```"] + prefixed("  ", s) + ["  ```"],
+    "字下げした囲み": lambda s: ["   ```"] + s + ["   ```"],
+    "囲みの中の引用つきの閉じ": lambda s: ["```text", "> ```"] + s,
+    "囲みの中の箇条書きつきの閉じ": lambda s: ["```text", "- ```"] + s,
+    "囲みの中の字下げした閉じ": lambda s: ["```text", "    ```"] + s,
+    "囲みの中の引用と箇条書きつきの閉じ": lambda s: ["```text", "> - ```"] + s,
+    "空白 3 個で字下げした見出し": lambda s: ["```", *prefixed("   ", s[:1]), *s[1:], "```"],
+    "引用つきの見出し": lambda s: ["> " + s[0], *s[1:]],
+    "箇条書きと引用つきの見出し": lambda s: ["> - " + s[0], *s[1:]],
+    "宣言 DOCTYPE": lambda s: ["<!DOCTYPE html>"] + s,
+    "宣言 処理命令": lambda s: ['<?xml version="1.0"?>'] + s,
+    "宣言 CDATA": lambda s: ["<![CDATA["] + s + ["]]>"],
+}
+for tag in ("pre", "script", "style", "textarea", "div", "table", "details", "section", "blockquote", "p"):
+    wrappers[f"HTML ブロック {tag}"] = lambda s, tag=tag: [f"<{tag}>"] + s + [f"</{tag}>"]
+    wrappers[f"閉じていない HTML ブロック {tag}"] = lambda s, tag=tag: [f"<{tag}>"] + s
+
+samples = {"なしの見本": ["## 注意", "なし"], "作業のある見本": ["## 注意", "- 偽の作業"]}
+reals = {"なしの本物": ["## 注意", "なし"], "作業のある本物": ["## 注意", "- 本物の作業"]}
+positions = {
+    "本物の前": lambda sample, real: ["## 概要", "変更"] + sample + real,
+    "本物の節の中": lambda sample, real: real + sample + ["- 続き", "## 確認", "確認した"],
+    "本物の後": lambda sample, real: ["## 概要", "変更"] + real + ["## 確認", "確認した"] + sample,
+}
+combined = 0
+for wrap_name, wrap in wrappers.items():
+    for sample_name, sample in samples.items():
+        for real_name, real in reals.items():
+            for position_name, place in positions.items():
+                combined += 1
+                lines = place(wrap(sample), real)
+                text = "\n".join(lines)
+                label = f"{wrap_name}、{sample_name}、{real_name}、{position_name}"
+                got = run_note(text)
+                if got == NONE_LINE:
+                    failures.append(f"FAIL review-note-table: 組み合わせで「なし」になった: {label}\n  本文: {text!r}")
+                elif got.startswith(UNREADABLE) and not got.endswith(" 個ある）"):
+                    failures.append(f"FAIL review-note-table: 数の行の形が違う: {label}\n  実際: {got!r}")
+# 見出しの形の行が 1 つだけのときは、「なし」の節を「なし」と書く。
+for text in ("## 注意\nなし", "## 概要\n変更\n## 注意\nなし。\n## 確認\n確認した", "<div>\n## 注意\nなし\n## 確認\nOK\n</div>"):
+    if run_note(text) != NONE_LINE:
+        failures.append(f"FAIL review-note-table: 見出しの形の行が 1 つの本文が「なし」にならない: {text!r}")
+# 「なし」だけの節で、見出しの形の行が 2 つ以上なら、数を行に書く。
+for count in (2, 3, 5):
+    text = "```\n" + "\n".join(["## 注意"] * (count - 1)) + "\n```\n## 注意\nなし"
+    expected = UNREADABLE + f"{count} 個ある）"
+    if run_note(text) != expected:
+        failures.append(f"FAIL review-note-table: 見出しの形の行 {count} 個の数の行が違う: {run_note(text)!r}")
+print(f"PASS review-note-table: 包み・見本の位置・本物の注意の中身の組み合わせ {combined} 件で、見出しの形の行が 2 つ以上の本文が「なし」にならない")
+
 if failures:
     print("\n".join(failures), file=sys.stderr)
     sys.exit(1)
