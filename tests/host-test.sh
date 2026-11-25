@@ -131,6 +131,155 @@ cmp "$root/common/codex/config.toml" "$TEMPLATE_AGENT_HOME/codex/config.toml"
 grep -qx 'daemon start' "$test_dir/calls"
 grep -qx 'https://example.test' "$test_dir/started-server"
 echo 'PASS host: 新しいホストへ共有ファイルと見張りを配置し、専用環境で一つのデーモンを起動する'
+settings=$TEMPLATE_AGENT_HOME/claude/settings.json
+python3 - "$settings" "$test_dir/kit-settings.json" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+settings = Path(sys.argv[1])
+actual = json.loads(settings.read_text())
+assert actual == {
+    "syncClaudeAiSkills": False,
+    "syncClaudeAiPlugins": False,
+    "pluginConfigs": {"cc-plugin-agents-md@builtin": {"options": {"instructionFiles": "claude-md"}}},
+    "disableWorkflows": True,
+    "autoMemoryEnabled": False,
+    "cleanupPeriodDays": 30,
+    "skillOverrides": {key: "off" for key in (
+        "batch", "loop", "schedule", "deep-research", "workflow-authoring",
+        "design", "design-sync", "dataviz", "debug", "doctor", "update-config",
+        "fewer-permission-prompts", "plugin-authoring", "run-skill-generator",
+    )},
+    "permissions": {"deny": ["Monitor", "ScheduleWakeup", "RemoteTrigger"]},
+}, actual
+assert settings.stat().st_mode & 0o777 == 0o600
+Path(sys.argv[2]).write_bytes(settings.read_bytes())
+PY
+echo 'PASS host: Claude の共有の設定をキットの 8 つのキーだけで作り、権限を 600 にする'
+
+cat >"$test_dir/settings-run.sh" <<'RUN'
+#!/bin/bash
+set -euo pipefail
+source "$1/lib/ui.sh"
+source "${TEST_SETTINGS_HOST:-$1/lib/host.sh}"
+die() { ui_error "$*"; exit 1; }
+host_paths
+host_claude_settings
+RUN
+settings_run() { /bin/bash "$test_dir/settings-run.sh" "$root" >"$test_dir/out" 2>"$test_dir/err"; }
+python3 - "$settings" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+settings = Path(sys.argv[1])
+config = json.loads(settings.read_text())
+config.update(theme="dark", custom={"nested": [True, None, "人の値"]}, syncClaudeAiSkills=True, cleanupPeriodDays=7)
+config["pluginConfigs"]["personal-plugin"] = {"options": {"enabled": True}}
+config["pluginConfigs"]["cc-plugin-agents-md@builtin"]["options"]["instructionFiles"] = "agents-md"
+config["skillOverrides"].update(batch="on", **{"personal-skill": "on", "code-review": "on"})
+config["permissions"] = {"allow": ["Read"], "deny": ["Bash(secret)", "Monitor"]}
+settings.write_text(json.dumps(config, ensure_ascii=False))
+settings.chmod(0o644)
+PY
+settings_run
+for key in syncClaudeAiSkills cleanupPeriodDays pluginConfigs.cc-plugin-agents-md@builtin skillOverrides.batch; do
+ grep -qF "$key" "$test_dir/err"
+done
+grep -q '警告:' "$test_dir/err"
+python3 - "$settings" "$test_dir/kit-settings.json" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+settings = Path(sys.argv[1])
+actual = json.loads(settings.read_text())
+expected = json.loads(Path(sys.argv[2]).read_text())
+expected.update(theme="dark", custom={"nested": [True, None, "人の値"]})
+expected["pluginConfigs"]["personal-plugin"] = {"options": {"enabled": True}}
+expected["skillOverrides"].update({"personal-skill": "on", "code-review": "on"})
+expected["permissions"] = {"allow": ["Read"], "deny": ["Bash(secret)", "Monitor", "ScheduleWakeup", "RemoteTrigger"]}
+assert actual == expected, actual
+assert settings.stat().st_mode & 0o777 == 0o600
+# 空白とキーの順番だけが違うときも書かない。
+settings.write_text(json.dumps(actual, ensure_ascii=False, sort_keys=True))
+settings.chmod(0o640)
+stat = settings.stat()
+Path(str(settings) + ".before").write_text(json.dumps([stat.st_ino, stat.st_mtime_ns, stat.st_mode, settings.read_text()]))
+PY
+settings_run
+[[ ! -s $test_dir/err ]]
+python3 - "$settings" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+settings = Path(sys.argv[1])
+stat = settings.stat()
+assert [stat.st_ino, stat.st_mtime_ns, stat.st_mode, settings.read_text()] == json.loads(Path(str(settings) + ".before").read_text())
+assert not list(settings.parent.glob(".settings.*"))
+PY
+echo 'PASS host: 人のキー・プラグイン・スキル・権限を残し、キットの値を警告して戻し、同じ中身は書かない'
+
+# やめるキーがまだないため、将来その一覧に移した場合を作業用のコピーで確認する。
+python3 - "$root/lib/host.sh" "$test_dir/retired-host.sh" "$settings" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+host = Path(sys.argv[1]).read_text()
+host = host.replace("retired_keys = ()", 'retired_keys = ("formerKitKey",)')
+host = host.replace("retired_items = {}", 'retired_items = {("pluginConfigs",): ("formerKitPlugin",), ("skillOverrides",): ("formerKitSkill",), ("permissions", "deny"): ("FormerKitTool",)}')
+Path(sys.argv[2]).write_text(host)
+settings = Path(sys.argv[3])
+config = json.loads(settings.read_text())
+config["formerKitKey"] = True
+config["pluginConfigs"]["formerKitPlugin"] = {}
+config["skillOverrides"]["formerKitSkill"] = "off"
+config["permissions"]["deny"].append("FormerKitTool")
+settings.write_text(json.dumps(config))
+PY
+TEST_SETTINGS_HOST="$test_dir/retired-host.sh" settings_run
+python3 - "$settings" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+settings = Path(sys.argv[1])
+actual = json.loads(settings.read_text())
+expected = json.loads(json.loads(Path(str(settings) + ".before").read_text())[-1])
+assert actual == expected, actual
+PY
+echo 'PASS host: やめたキーとキットの項目だけを消し、人の項目を残す'
+
+for invalid in '{' '[]' 'null' 'true' '"text"' '30' '{"permissions":[]}' '{"permissions":null}' '{"permissions":{"deny":{}}}' '{"permissions":{"deny":null}}' '{"pluginConfigs":[]}' '{"pluginConfigs":null}' '{"skillOverrides":[]}'; do
+ printf '%s\n' "$invalid" >"$settings"
+ cp "$settings" "$test_dir/invalid-settings"
+ if settings_run; then exit 1; fi
+ cmp "$settings" "$test_dir/invalid-settings"
+ grep -qF '設定を直してから流し直してください' "$test_dir/err"
+done
+# 準備全体でも、形の違いをデーモン操作の前に止める。
+set_mode running
+deny
+[[ ! -s $test_dir/calls ]]
+echo 'PASS host: 壊れた JSON と最上位・permissions・deny・pluginConfigs・skillOverrides の形の違いで書かずに止まる'
+
+rm "$settings"
+for target in "$test_dir/kit-settings.json" "$test_dir/missing-settings.json"; do
+ ln -s "$target" "$settings"
+ if settings_run; then exit 1; fi
+ [[ -L $settings && $(readlink "$settings") == "$target" ]]
+ grep -qF 'シンボリックリンクを実体のファイルに置き換えてください' "$test_dir/err"
+ rm "$settings"
+done
+[[ ! -e $test_dir/missing-settings.json ]]
+cp "$test_dir/kit-settings.json" "$settings"
+settings_run
+[[ ! -s $test_dir/err ]]
+echo 'PASS host: 実体の有無によらずシンボリックリンクを拒み、リンク先を書き換えない'
+
 cmp "$root/common/host/start-daemon" "$TEMPLATE_AGENT_HOME/start-daemon"
 [[ $(sed -n '2p' "$TEMPLATE_AGENT_HOME/start-daemon") == '# multica-squad-kit-managed' ]]
 [[ -x $TEMPLATE_AGENT_HOME/start-daemon && ! -e $TEMPLATE_AGENT_HOME/bin/start-daemon ]]
@@ -438,6 +587,7 @@ for selected in claude codex; do
    printf 'invalid existing config\n' >"$TEMPLATE_AGENT_HOME/codex/config.toml"
   else
    cmp "$root/common/codex/config.toml" "$TEMPLATE_AGENT_HOME/codex/config.toml"
+   [[ ! -e $TEMPLATE_AGENT_HOME/claude/settings.json ]]
   fi
   set_mode busy
   agent_env

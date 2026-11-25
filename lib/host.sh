@@ -119,6 +119,130 @@ PY
 	exit 1
 }
 
+# JSON には管理マークを付けず、キットが持つキーと項目だけを合わせる。
+host_claude_settings() {
+	local settings=$agent_home/claude/settings.json message
+	if ! message=$(python3 - "$settings" <<'PY'
+import copy
+import json
+import os
+from pathlib import Path
+import sys
+import tempfile
+
+owned_keys = {
+    "syncClaudeAiSkills": False,
+    "syncClaudeAiPlugins": False,
+    "disableWorkflows": True,
+    "autoMemoryEnabled": False,
+    "cleanupPeriodDays": 30,
+}
+owned_items = {
+    "pluginConfigs": {
+        "cc-plugin-agents-md@builtin": {"options": {"instructionFiles": "claude-md"}},
+    },
+    "skillOverrides": dict.fromkeys((
+        "batch", "loop", "schedule", "deep-research", "workflow-authoring",
+        "design", "design-sync", "dataviz", "debug", "doctor", "update-config",
+        "fewer-permission-prompts", "plugin-authoring", "run-skill-generator",
+    ), "off"),
+}
+owned_deny = ("Monitor", "ScheduleWakeup", "RemoteTrigger")
+# キーをやめるときはここへ移す。項目を足すキーは、キットの項目だけを消す。
+retired_keys = ()
+retired_items = {}
+
+def same(left, right):
+    return json.dumps(left, sort_keys=True) == json.dumps(right, sort_keys=True)
+
+def container(config, path, kind):
+    current = config
+    for key in path[:-1]:
+        if key not in current:
+            return None
+        current = current[key]
+        if not isinstance(current, dict):
+            raise ValueError(".".join(path[:-1]) + " をオブジェクトに直してください。")
+    if path[-1] not in current:
+        return None
+    value = current[path[-1]]
+    if not isinstance(value, kind):
+        shape = "オブジェクト" if kind is dict else "配列"
+        raise ValueError(".".join(path) + " を" + shape + "に直してください。")
+    return value
+
+settings = Path(sys.argv[1])
+temporary = None
+try:
+    if settings.is_symlink():
+        raise ValueError("シンボリックリンクを実体のファイルに置き換えてください。")
+    exists = settings.exists()
+    if exists and not settings.is_file():
+        raise ValueError("通常のファイルに置き換えてください。")
+    try:
+        original = json.loads(settings.read_text(encoding="utf-8")) if exists else {}
+    except (ValueError, UnicodeError):
+        raise ValueError("JSON として読めません。正しい JSON に直してください。") from None
+    if not isinstance(original, dict):
+        raise ValueError("最上位をオブジェクトに直してください。")
+    config = copy.deepcopy(original)
+    # 書き換える前に、合わせる入れ物の形をすべて確認する。
+    for key in owned_items:
+        container(config, (key,), dict)
+    container(config, ("permissions",), dict)
+    container(config, ("permissions", "deny"), list)
+    for path, items in retired_items.items():
+        value = container(config, path, (dict, list))
+        if isinstance(value, dict):
+            for item in items:
+                value.pop(item, None)
+        elif isinstance(value, list):
+            value[:] = [item for item in value if item not in items]
+    for key in retired_keys:
+        config.pop(key, None)
+    overwritten = []
+    for key, value in owned_keys.items():
+        if key in config and not same(config[key], value):
+            overwritten.append(key)
+        config[key] = value
+    for key, items in owned_items.items():
+        target = config.setdefault(key, {})
+        for item, value in items.items():
+            if item in target and not same(target[item], value):
+                overwritten.append(key + "." + item)
+            target[item] = value
+    deny = config.setdefault("permissions", {}).setdefault("deny", [])
+    for item in owned_deny:
+        if item not in deny:
+            deny.append(item)
+    if not exists or not same(config, original):
+        fd, temporary = tempfile.mkstemp(prefix=".settings.", dir=settings.parent)
+        with os.fdopen(fd, "w", encoding="utf-8") as target:
+            os.fchmod(target.fileno(), 0o600)
+            json.dump(config, target, ensure_ascii=False, indent=2)
+            target.write("\n")
+        os.replace(temporary, settings)
+        temporary = None
+    if overwritten:
+        print("キットが持つ設定をキットの値で上書きしました: " + ", ".join(overwritten))
+except ValueError as error:
+    print(str(error))
+    sys.exit(1)
+except OSError:
+    print("ファイルを読み書きできません。置き場と権限を確認してください。")
+    sys.exit(1)
+finally:
+    if temporary is not None:
+        os.unlink(temporary)
+PY
+	); then
+		die "Claude の設定を合わせられません: ${settings}。$message 設定を直してから流し直してください。"
+	fi
+	if [[ -n $message ]]; then
+		ui_notice warn "$settings" "$message" || ui_warning "$message: $settings"
+	fi
+}
+
 prepare_host() {
 	local file
 	host_paths
@@ -158,6 +282,7 @@ PY
 		fi
 	done
 	if uses_runtime claude; then
+		host_claude_settings
 		host_check_claude_auth
 	fi
 	if uses_runtime codex; then
