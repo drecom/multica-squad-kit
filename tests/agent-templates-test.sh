@@ -550,6 +550,16 @@ for dir in "$test_dir/"*/; do
 done
 echo 'PASS templates: 紐付けの確認の節に link-check の呼び方を残し、全構成のリーダーがこの手順へ向く'
 
+# 読む側: リーダーが返事を待つ回の前と、ほかの理由で人間を呼ぶ前に、その場面の参照から link-check を流す。
+# 分ける前の表が link-check を指した 2 つの時機を、分けたあとの参照が持つ。
+review_request_section=$(awk '/^## レビューと E2E の依頼$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$root/common/skills/squad-handoff/references/leader-review-request.md")
+grep -qF 'squad-pr-watch link-check <タスク>' <<<"$review_request_section"
+grep -qF 'leader-pr-link.md' <<<"$review_request_section"
+human_call_section=$(awk '/^## 人間を呼ぶコメントに添える行$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$root/common/skills/squad-handoff/references/leader-pr-merge.md")
+grep -qF 'squad-pr-watch link-check <タスク>' <<<"$human_call_section"
+grep -qF 'leader-pr-link.md' <<<"$human_call_section"
+echo 'PASS templates: 返事を待つ回の前と人間を呼ぶ前の参照が、link-check を流す文と食い違いの場面への移り先を持つ'
+
 # 読む側: リーダーが leader-pr-ci.md の手順どおりに、common/monitor/squad-pr-watch の ci-now・conflicts-check と、common/monitor/squad-pr-link の `紐付け:` の判定を読む。
 now_section=$(awk '/^## 紐付いていない PR のその場の確認$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$pr_ci_ref")
 for phrase in 'squad-pr-watch ci-now <タスク> <リーダーの ID> <きっかけのコメント> [<見張り役の ID>]' 'squad-pr-watch conflicts-check <タスク>' '`紐付け:`'; do
