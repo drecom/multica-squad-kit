@@ -16,7 +16,7 @@ set -euo pipefail
 dir=$PR_WATCH_TEST_DIR
 if [[ "${1-} ${2-} ${3-}" == 'issue get test-issue' ]]; then
 	# この機能が保存する metadata の鍵を除き、実物の見本で検証する。
-	jq 'del(.metadata.pr_link_pending, .metadata.pr_link_record)' "$dir/task.json" >"$dir/task-base.json"
+	jq 'del(.metadata.pr_link_pending)' "$dir/task.json" >"$dir/task-base.json"
 	python3 "$PR_WATCH_TEST_ROOT/tests/cli-stub.py" pr-watch "$dir" multica calls.jsonl \
 		emit issue-get "$dir/task-base.json" -- "$@" >/dev/null
 	cat "$dir/task.json"
@@ -37,6 +37,9 @@ with (work / "calls.jsonl").open("a") as out:
 if (work / "fail-post").exists():
     sys.exit(1)
 parent = args[args.index("--parent") + 1]
+# 起動したコメントのある実行は、そのコメントへの返信だけを受け付け、根のコメントや別の親を断る。
+if (work / "trigger-comment").exists() and parent != (work / "trigger-comment").read_text():
+    sys.exit(1)
 body = Path(args[args.index("--content-file") + 1]).read_text()
 comments = json.loads((work / "comments.json").read_text())
 response = json.loads((Path(os.environ["PR_WATCH_TEST_ROOT"]) / "tests/fixtures/cli/issue-comment-add.json").read_text())[0]
@@ -79,6 +82,7 @@ reset_retry() {
 	update_task ".metadata.pr_link_pending = \"$pr\""
 	: >"$test_dir/curl-calls.jsonl"
 	rm -f "$test_dir/api-called" "$test_dir/fail-after" "$test_dir/curl-config" "$test_dir/fail-post"
+	printf 'trigger-1' >"$test_dir/trigger-comment"
 	printf '200' >"$test_dir/api-status"
 	printf '{"pull_requests":[]}' >"$test_dir/pulls-after.json"
 }
@@ -99,13 +103,13 @@ api_once() {
 	[[ $(<"$test_dir/curl-config") == 'header = "Authorization: Bearer fixture-token"' ]]
 }
 no_api() { [[ ! -s $test_dir/curl-calls.jsonl ]]; }
-check_retry() { check_output "$1" link-check test-issue; }
+check_retry() { check_output "$1" link-check test-issue trigger-1; }
 check_record() {
 	# 読む側: squad-pr-watch の link_record_data が /note と固定の行を読む。
 	assert_jq -s --arg result "$1" --arg pr "$pr" 'length == 1 and
+		(.[0].args | (index("--parent") as $i | .[$i+1] == "trigger-1")) and
 		(.[0].body | startswith("/note\n紐付けの試み直し: " + $result + " pr: " + $pr + " 時刻: ")) and
 		(.[0].body | test("時刻: [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\\n$"))' "$test_dir/posted.jsonl"
-	assert_jq '.metadata.pr_link_record | startswith("link-record-")' "$test_dir/task.json"
 }
 
 for status in 200 404 500 transport; do
@@ -151,7 +155,7 @@ for failure in cli missing-field missing-url invalid-url; do
 	missing-url) printf '{"pull_requests":[{}]}' >"$test_dir/pulls-after.json" ;;
 	invalid-url) after_urls https://example.invalid/pull/67 ;;
 	esac
-	line=$(cd "$test_dir" && bash "$script" link-check test-issue)
+	line=$(cd "$test_dir" && bash "$script" link-check test-issue trigger-1)
 	[[ $line == "紐付け: 未確認 pr: $pr 理由: "* && $line != *$'\n'* ]]
 	pending_remains
 	api_once
@@ -162,9 +166,9 @@ echo 'PASS link-retry: API のあとに一覧を読めなければ未確認を 1
 for missing in token server; do
 	reset_retry
 	if [[ $missing == token ]]; then
-		(cd "$test_dir" && unset MULTICA_TOKEN && bash "$script" link-check test-issue) >"$test_dir/output"
+		(cd "$test_dir" && unset MULTICA_TOKEN && bash "$script" link-check test-issue trigger-1) >"$test_dir/output"
 	else
-		(cd "$test_dir" && unset MULTICA_SERVER_URL && bash "$script" link-check test-issue) >"$test_dir/output"
+		(cd "$test_dir" && unset MULTICA_SERVER_URL && bash "$script" link-check test-issue trigger-1) >"$test_dir/output"
 	fi
 	[[ $(<"$test_dir/output") == "紐付け: 紐付いていない pr: $pr" ]]
 	pending_remains
@@ -198,7 +202,7 @@ for state in foreign invalid absent mismatch unreadable; do
 	mismatch) after_urls "$other"; cp "$test_dir/pulls-after.json" "$test_dir/pulls.json" ;;
 	unreadable) echo 'issue pull-requests test-issue' >"$test_dir/fail" ;;
 	esac
-	(cd "$test_dir" && bash "$script" link-check test-issue) >"$test_dir/output"
+	(cd "$test_dir" && bash "$script" link-check test-issue trigger-1) >"$test_dir/output"
 	no_api
 	[[ ! -s $test_dir/posted.jsonl ]]
 	pending_remains
@@ -247,7 +251,7 @@ for kind in record-deletion-failed retry-deletion-failed; do
 done
 echo 'PASS link-retry: 一度紐付いた記録があれば、マークが残り紐付けが外されても API を呼ばず記録を書かず、マークを消し直す'
 
-# すでに紐付いていてマークがあり、コメントを読めないときも、記録を書かず、マークを消さない。
+# すでに紐付いていてマークがあり、コメントを読めないときは、記録を書かず、マークだけを消す。
 reset_retry
 after_urls "$pr"
 cp "$test_dir/pulls-after.json" "$test_dir/pulls.json"
@@ -255,9 +259,9 @@ echo 'issue comment list' >"$test_dir/fail"
 check_retry "紐付け: 紐付いている pr: $pr"
 no_api
 [[ ! -s $test_dir/posted.jsonl ]]
-pending_remains
-assert_jq -s 'all(.[]; .[0:3] != ["issue","metadata","delete"] and .[0:3] != ["issue","metadata","set"])' "$test_dir/calls.jsonl"
-echo 'PASS link-retry: 紐付いていてもコメントを読めなければ、記録を書かず、マークも消さない'
+pending_deleted
+assert_jq -s 'all(.[]; .[0:3] != ["issue","metadata","set"])' "$test_dir/calls.jsonl"
+echo 'PASS link-retry: 紐付いていてもコメントを読めなければ、記録を書かず、マークだけを消す'
 
 for failure in comments post; do
 	reset_retry
@@ -271,21 +275,36 @@ for failure in comments post; do
 		no_api
 		[[ ! -s $test_dir/posted.jsonl ]]
 		pending_remains
-		assert_jq 'has("metadata") and (.metadata | has("pr_link_record") | not)' "$test_dir/task.json"
 		assert_jq -s 'all(.[]; .[0:3] != ["issue","metadata","delete"] and .[0:3] != ["issue","metadata","set"])' "$test_dir/calls.jsonl"
 	else
 		api_once
+		# 投稿が断られても出力と終了コードは変わらず、記録がないので、5 分の中でも次の呼び出しが API を呼ぶ。
+		[[ $(jq length "$test_dir/comments.json") == 0 ]]
+		rm -f "$test_dir/fail-post"
+		check_retry "紐付け: 紐付いていない pr: $pr"
+		[[ $(jq -s 'length' "$test_dir/curl-calls.jsonl") == 2 ]]
+		[[ $(jq -s 'length' "$test_dir/posted.jsonl") == 1 ]]
 	fi
 done
-echo 'PASS link-retry: コメントを読めなければ API を呼ばず、マークも記録も変えない'
+echo 'PASS link-retry: コメントを読めなければ API を呼ばず、投稿が失敗しても出力を変えず、次の呼び出しで試み直す'
+
+# 起動したコメントのある実行が根のコメントを断られても、出力と終了コードを変えず、次の呼び出しは API を呼ぶ。
+reset_retry
+check_output "紐付け: 紐付いていない pr: $pr" link-check test-issue
+[[ $(jq -s 'length' "$test_dir/curl-calls.jsonl") == 1 && ! -s $test_dir/posted.jsonl ]]
+grep -q '"--parent", ""' "$test_dir/calls.jsonl"
+check_output "紐付け: 紐付いていない pr: $pr" link-check test-issue
+[[ $(jq -s 'length' "$test_dir/curl-calls.jsonl") == 2 && ! -s $test_dir/posted.jsonl ]]
+echo 'PASS link-retry: 根のコメントを断る実行でも出力を変えず、5 分の中でも次の呼び出しが API を呼ぶ'
 
 # マージ待ちの見張りでは、最後の記録から 6 時間がたっているときだけ試み直す。
 reset_retry
+rm -f "$test_dir/trigger-comment"
 update_task '.status = "in_review"'
 line=$(cd "$test_dir" && bash "$script" unlinked-check test-issue orchestrator)
 [[ $line == /note$'\nCI abcdef0: 失敗あり\nコンフリクト: MERGEABLE head: abcdef0123456789 知らせ: なし' ]]
 api_once
-assert_jq -s '[.[] | select(.body | startswith("/note\n紐付けの試み直し: 一覧にない（200） pr: '"$pr"' 時刻: "))] | length == 1' "$test_dir/posted.jsonl"
+assert_jq -s '[.[] | select(.body | startswith("/note\n紐付けの試み直し: 一覧にない（200） pr: '"$pr"' 時刻: "))] | length == 1 and (.[0].args | (index("--parent") as $i | .[$i+1] == "ci-thread"))' "$test_dir/posted.jsonl"
 pending_remains
 echo 'PASS link-retry: マージ待ちの見張りは、記録がなければ API を 1 回呼び、今の出力を保つ'
 
@@ -321,94 +340,120 @@ def reset():
     write("pulls-after.json", {"pull_requests": []})
     for name in ("calls.jsonl", "curl-calls.jsonl", "posted.jsonl"):
         (work / name).write_text("")
-    for name in ("fail", "api-called", "fail-after", "fail-post"):
+    for name in ("fail", "api-called", "fail-after", "fail-post", "trigger-comment"):
         (work / name).unlink(missing_ok=True)
     (work / "api-status").write_text("404")
 
-def run(linked=False):
-    result = subprocess.run(["bash", script, "link-check", "test-issue"], cwd=work,
-                            text=True, capture_output=True)
+def run(linked=False, trigger="trigger-1", started=True):
+    # started は起動したコメントのある実行。その実行は、そのコメント（引数に渡さないときは trigger-1）への返信だけを投稿できる。
+    if started:
+        (work / "trigger-comment").write_text("trigger-1" if trigger is None else trigger)
+    else:
+        (work / "trigger-comment").unlink(missing_ok=True)
+    args = ["bash", script, "link-check", "test-issue"] + ([trigger] if trigger else [])
+    result = subprocess.run(args, cwd=work, text=True, capture_output=True)
     expected = "紐付いている" if linked else "紐付いていない"
     assert result.returncode == 0 and result.stdout == f"紐付け: {expected} pr: {pr}\n", result
 
-def comment(author="agent", content=None, created=None):
+def comment(author="agent", content=None, created=None, parent=None, cid="previous"):
     value = copy.deepcopy(prototype)
-    value.update(id="previous", author_type=author, parent_id=None,
+    value.update(id=cid, author_type=author, parent_id=parent,
                  content=content or f"/note\n紐付けの試み直し: 見つからない（404） pr: {pr} 時刻: 2099-01-01T00:00:00Z\n",
                  created_at=created or "2000-01-01T00:00:00Z")
     return value
 
+def aged(value):
+    value["created_at"] = "2000-01-01T00:00:00Z"
+    return value
+
 reset()
 run()
-root = read("task.json")["metadata"]["pr_link_record"]
-assert read("comments.json")[0]["parent_id"] is None
-posted = rows("posted.jsonl")[0]
-body_path = work / posted["args"][posted["args"].index("--content-file") + 1]
+posted = rows("posted.jsonl")
+assert len(posted) == 1 and posted[0]["args"][posted[0]["args"].index("--parent") + 1] == "trigger-1"
+assert read("comments.json")[0]["parent_id"] == "trigger-1"
+body_path = work / posted[0]["args"][posted[0]["args"].index("--content-file") + 1]
 assert body_path.parent == work / "tmp" and not body_path.exists()
+assert "pr_link_record" not in read("task.json")["metadata"]
+# 5 分の中は、同じスレッドでも別のコメントでも試みない。
 run()
+run(trigger="trigger-2")
 assert len(rows("curl-calls.jsonl")) == len(rows("posted.jsonl")) == 1
+# 本文の時刻ではなくコメントの作成時刻で判定し、5 分を過ぎたら、起動したコメントへの返信を足す。
 comments = read("comments.json")
-comments[0]["created_at"] = "2000-01-01T00:00:00Z"
 comments[0]["content"] = comments[0]["content"].split(" 時刻:")[0] + " 時刻: 2099-01-01T00:00:00Z\n"
-write("comments.json", comments)
-run()
-assert read("task.json")["metadata"]["pr_link_record"] == root
-assert read("comments.json")[-1]["parent_id"] == root
+write("comments.json", [aged(comments[0])])
+run(trigger="trigger-2")
 assert len(rows("curl-calls.jsonl")) == len(rows("posted.jsonl")) == 2
+assert read("comments.json")[-1]["parent_id"] == "trigger-2"
 # 最新の返信が一覧の先頭でも、その作成時刻で間隔を判定する。
 write("comments.json", list(reversed(read("comments.json"))))
-run()
+run(trigger="trigger-3")
 assert len(rows("curl-calls.jsonl")) == len(rows("posted.jsonl")) == 2
-print("PASS link-record: 元のコメントの ID を保存し、5 分の中は試みず、過ぎたら返信し、本文の時刻と一覧の順序を判定に使わない")
+print("PASS link-record: 記録は起動したコメントへの返信にし、5 分の中は別のスレッドの記録も数えて試みず、本文の時刻と一覧の順序を判定に使わない")
+
+reset()
+run(trigger=None, started=False)
+assert read("comments.json")[0]["parent_id"] is None and len(rows("posted.jsonl")) == 1
+print("PASS link-record: 起動したコメントがなく、コメントから起動した実行でもなければ、ルートのコメントに置く")
 
 recent = datetime.datetime.now(datetime.timezone.utc).isoformat()
-for kind in ("member", "system", "first-line", "second-line", "missing"):
+for kind in ("member", "system", "first-line", "second-line", "other-pr", "other-thread-trusted"):
     reset()
-    value = comment(created=recent)
+    value = comment(created=recent, parent="elsewhere")
     if kind in ("member", "system"):
         value["author_type"] = kind
     elif kind == "first-line":
         value["content"] = value["content"].replace("/note", "別の行", 1)
     elif kind == "second-line":
         value["content"] = "/note\n別の記録\n" + value["content"].split("\n")[1]
-    else:
-        value["id"] = "other-id"
-        value["created_at"] = "2000-01-01T00:00:00Z"
+    elif kind == "other-pr":
+        value["content"] = value["content"].replace(pr, other)
     write("comments.json", [value])
-    task = read("task.json")
-    task["metadata"]["pr_link_record"] = "previous"
-    write("task.json", task)
     run()
-    assert len(rows("curl-calls.jsonl")) == 1
-    assert read("task.json")["metadata"]["pr_link_record"] != "previous"
-    assert read("comments.json")[-1]["parent_id"] is None
-print("PASS link-record: 元のコメントが人間・system・形が違う・見つからないときは、新しい元のコメントを書いて ID を直す")
+    # 検証できない記録は間隔に数えず、検証できた記録は、どのスレッドのものでも数える。
+    expected = 0 if kind == "other-thread-trusted" else 1
+    assert len(rows("curl-calls.jsonl")) == expected, kind
+    assert len(rows("posted.jsonl")) == expected, kind
+    if expected:
+        assert read("comments.json")[-1]["parent_id"] == "trigger-1", kind
+print("PASS link-record: 人間・system・形が違う・別の PR の行は間隔に数えず、検証できた行は別のスレッドのものも数える")
 
 reset()
-# 返信先には条件 1・2 だけ、間隔には同じ PR の条件も使う。
-write("comments.json", [comment(content=f"/note\n紐付けの試み直し: 見つからない（404） pr: {other} 時刻: 2099-01-01T00:00:00Z\n", created=recent)])
-task = read("task.json")
-task["metadata"]["pr_link_record"] = "previous"
-write("task.json", task)
-run()
-assert len(rows("curl-calls.jsonl")) == 1
-assert read("comments.json")[-1]["parent_id"] == "previous"
-print("PASS link-record: 別の PR の記録は間隔に数えず、検証できた元のコメントへの返信にする")
+write("comments.json", [comment(created=recent, parent="elsewhere")])
+run(trigger=None, started=True)
+assert len(rows("curl-calls.jsonl")) == 0
+reset()
+run(trigger=None, started=True)
+# 根のコメントを断られても、出力と終了コードは変えず、次の呼び出しは 5 分の中でも API を呼ぶ。
+assert len(rows("curl-calls.jsonl")) == 1 and rows("posted.jsonl") == []
+run(trigger=None, started=True)
+assert len(rows("curl-calls.jsonl")) == 2 and rows("posted.jsonl") == []
+print("PASS link-record: 根のコメントを断られても出力と終了コードを保ち、記録がないので次の呼び出しが API を呼ぶ")
 
-for failure in ("post", "metadata"):
+reset()
+write("pulls-after.json", {"pull_requests": [{"html_url": pr}]})
+(work / "fail-post").touch()
+run(linked=True)
+assert "pr_link_pending" not in read("task.json")["metadata"]
+calls = rows("calls.jsonl")
+posting = next(i for i,c in enumerate(calls) if c[:3] == ["issue", "comment", "add"])
+deletion = next(i for i,c in enumerate(calls) if c[:3] == ["issue", "metadata", "delete"])
+assert posting < deletion
+print("PASS link-record: 投稿が失敗しても、判定と終了コードを保ち、マークを消す")
+
+# 紐付いていてマークがあり、検証できる「紐付いた」「紐付いていた」の記録があれば、どのスレッドのものでも、記録を書かずマークだけを消す。
+for result in ("紐付いた", "紐付いていた"):
     reset()
-    write("pulls-after.json", {"pull_requests": [{"html_url": pr}]})
-    if failure == "post":
-        (work / "fail-post").touch()
-    else:
-        (work / "fail").write_text("issue metadata set")
+    task = read("task.json")
+    task["metadata"]["pr_link_pending"] = pr
+    write("task.json", task)
+    write("pulls.json", {"pull_requests": [{"html_url": pr}]})
+    write("comments.json", [aged(comment(content=f"/note\n紐付けの試み直し: {result} pr: {pr} 時刻: 2099-01-01T00:00:00Z\n", parent="elsewhere"))])
     run(linked=True)
+    assert rows("posted.jsonl") == [] and rows("curl-calls.jsonl") == []
     assert "pr_link_pending" not in read("task.json")["metadata"]
-    calls = rows("calls.jsonl")
-    posting = next(i for i,c in enumerate(calls) if c[:3] == ["issue", "comment", "add"])
-    deletion = next(i for i,c in enumerate(calls) if c[:3] == ["issue", "metadata", "delete"])
-    assert posting < deletion
-print("PASS link-record: 投稿か ID の保存が失敗しても、判定と終了コードを保ち、マークを消す")
+    assert any(c[:3] == ["issue", "metadata", "delete"] for c in rows("calls.jsonl"))
+print("PASS link-record: 紐付いた記録があれば、記録を書かずマークだけを消す")
 
 def run_unlinked(expect=None):
     result = subprocess.run(["bash", script, "unlinked-check", "test-issue", "orchestrator"], cwd=work,

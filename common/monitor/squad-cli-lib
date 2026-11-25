@@ -84,11 +84,6 @@ squad_cli_contracts() {
           "nullable": true
         },
         {
-          "path": "metadata.pr_link_record",
-          "class": "optional",
-          "nullable": true
-        },
-        {
           "path": "metadata.pr_url",
           "class": "optional",
           "nullable": true
@@ -100,11 +95,6 @@ squad_cli_contracts() {
         }
       ],
       "samples": [
-        {
-          "name": "metadata.pr_link_record-present",
-          "where": ".metadata | has(\"pr_link_record\")",
-          "unavailable": "紐付け直しの元のコメントを指すアプリケーションの metadata。導入前の採取にはないため、契約で宣言した欄を紐付け直しのテストで設定する。"
-        },
         {
           "name": "metadata.pr_link_pending-present",
           "where": ".metadata | has(\"pr_link_pending\")",

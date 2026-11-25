@@ -131,6 +131,7 @@ body=$(posted_body)
 [[ $body == "[@Owner]"*'マージの依頼: '* ]] || fail "マージの依頼を書いていない: $body"
 [[ $body != *'紐付けの失敗:'* && $body != *'紐付いていないので'* && $body != *'GitHub 連携'* && $body != *'ワークスペースの設定'* ]] || fail "紐付いたのに、紐付けの依頼か段落がある: $body"
 expect_call_lacks pr-watch-calls 'unlinked '
+expect_call_has pr-watch-calls 'link-check test-issue final-1'
 # 404 のまま紐付かないときは、今と同じく、紐付けの依頼の行と紐付けの失敗の段落がある。
 retry_merge_setup
 unlinked
@@ -141,6 +142,7 @@ body=$(posted_body)
 [[ $body == "[@Owner]"*'マージの依頼: '* ]] || fail "マージの依頼を書いていない: $body"
 [[ $body == *'紐付いていないので、マージのあとにタスクを `done` にしてほしい（または先に紐付けてほしい）。PR: `'"$pr_url"'`'* ]] || fail "紐付けの依頼の行がない: $body"
 [[ $body == *$'\n紐付けの失敗: PR をタスクに紐付けられなかった。\n404 で待ち切れなかったため、連携を確認してほしい。'* ]] || fail "紐付けの失敗の段落がない: $body"
+expect_call_has pr-watch-calls 'link-check test-issue final-1'
 expect_call_has pr-watch-calls 'unlinked test-issue final-1 --leader orchestrator'
 echo 'PASS review-next-decide: 試み直しで紐付いたマージの依頼には紐付けの依頼と段落がなく、紐付かないままなら両方が残る'
 

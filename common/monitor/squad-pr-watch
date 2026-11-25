@@ -3,9 +3,10 @@
 # PR のコンフリクトと CI の結果を、タスクの wakeup で拾う。
 # 人間に回すたびに 1 回きりの規則を入れ直し、すでにあるコンフリクトも次の確認で拾う。
 #
-#   squad-pr-watch link-check <タスク>
+#   squad-pr-watch link-check <タスク> [<きっかけのコメント>]
 #     metadata の pr_url と紐付いた PR の一覧を比べ、紐付けの状態を 1 行で出す。
 #     紐付け直しのマーク（pr_link_pending）があるときだけ、紐付けを試み直し、タスクに記録を書く。
+#     記録は、きっかけのコメントへの返信にする。きっかけを渡さないときだけ、根のコメントにする。
 #     マークがなければ書き込まない。読めないときも「未確認」の行を出し、0 で終わる。
 #   squad-pr-watch conflicts <タスク> [--leader <リーダーの ID>]
 #     古いコンフリクトの規則を消し、呼び出した orchestrator 自身を起こす規則を作る。
@@ -44,7 +45,7 @@ UNLINKED_LIMIT_HOURS=72
 UNLINKED_MAX_FIRES=100
 
 usage() {
-	echo '使い方: squad-pr-watch link-check <タスク> | conflicts <タスク> [--leader <リーダーの ID>] | conflicts-check <タスク> | ci <タスク> <見張り役の ID> <きっかけのコメント> | ci-check <タスク> <リーダーの ID> <見張り役の ID> | ci-now <タスク> <リーダーの ID> <きっかけのコメント> [<見張り役の ID>] | ci-held <タスク> <きっかけのコメント> | unlinked <タスク> <きっかけのコメント> [<見張り役の ID>] [--leader <リーダーの ID>] | unlinked-check <タスク> <リーダーの ID> [<見張り役の ID>] | ci-wait <タスク> <リーダー> <きっかけのコメント> [<起きた規則>] | ci-wait-clear <タスク>' >&2
+	echo '使い方: squad-pr-watch link-check <タスク> [<きっかけのコメント>] | conflicts <タスク> [--leader <リーダーの ID>] | conflicts-check <タスク> | ci <タスク> <見張り役の ID> <きっかけのコメント> | ci-check <タスク> <リーダーの ID> <見張り役の ID> | ci-now <タスク> <リーダーの ID> <きっかけのコメント> [<見張り役の ID>] | ci-held <タスク> <きっかけのコメント> | unlinked <タスク> <きっかけのコメント> [<見張り役の ID>] [--leader <リーダーの ID>] | unlinked-check <タスク> <リーダーの ID> [<見張り役の ID>] | ci-wait <タスク> <リーダー> <きっかけのコメント> [<起きた規則>] | ci-wait-clear <タスク>' >&2
 	exit 2
 }
 
@@ -132,7 +133,7 @@ print(json.dumps(dict(state=state, url=url, reason=reason, line=line,
 URLPY
 }
 
-# コメントの一覧は標準入力で受け、返信先、間隔に数える記録、一度紐付いたかを検証する。
+# コメントの一覧は標準入力で受け、間隔に数える記録と、一度紐付いたかを検証する。記録はどのスレッドのものも数える。
 link_record_data() {
 	python3 -c '
 import datetime
@@ -140,9 +141,9 @@ import json
 import re
 import sys
 
-url, record, now, interval = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4])
+url, now, interval = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
 prefix = "紐付けの試み直し:"
-parent, latest, linked = "", None, False
+latest, linked = None, False
 for comment in json.load(sys.stdin):
     content = comment.get("content")
     lines = content.splitlines() if isinstance(content, str) else []
@@ -150,8 +151,6 @@ for comment in json.load(sys.stdin):
         continue
     if lines[0] != "/note" or not lines[1].startswith(prefix):
         continue
-    if comment["id"] == record:
-        parent = record
     match = re.search(r" pr: (\S+)(?: |$)", lines[1])
     if not match or match[1].casefold() != url.casefold():
         continue
@@ -165,30 +164,27 @@ for comment in json.load(sys.stdin):
     except (ValueError, TypeError, AttributeError):
         continue
     latest = value if latest is None else max(latest, value)
-print(json.dumps(dict(parent=parent, linked=linked,
+print(json.dumps(dict(linked=linked,
                      recent=latest is not None and now < latest + interval)))
 ' "$@"
 }
 
-# 投稿に失敗しても呼び出し元の判定は変えない。元のコメントの ID は投稿後に保存する。
+# 投稿に失敗しても呼び出し元の判定は変えない。parent が空のときだけ根のコメントになる。
 link_record_post() (
-	local issue=$1 parent=$2 result=$3 pr_url=$4 body response id
+	local issue=$1 parent=$2 result=$3 pr_url=$4 body
 	mkdir -p tmp || return 1
 	body=$(mktemp tmp/pr-watch-link-record.XXXXXX) || return 1
 	trap 'rm -f -- "$body"' EXIT
 	printf '/note\n紐付けの試み直し: %s pr: %s 時刻: %s\n' \
 		"$result" "$pr_url" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$body" || return 1
-	response=$(squad_cli_read issue-comment-add "$issue" "$parent" "$body") || return 1
-	if [[ -z $parent ]]; then
-		id=$(jq -er '.id | select(type == "string" and length > 0)' <<<"$response") || return 1
-		multica issue metadata set "$issue" --key pr_link_record --value "$id" --type string >/dev/null || return 1
-	fi
+	squad_cli_read issue-comment-add "$issue" "$parent" "$body" >/dev/null || return 1
 )
 
 # 第 2 引数は、前の記録からこの秒数がたつまで試み直さない間隔。省くと 5 分にする。
+# 第 3 引数は、記録を返信にする元のコメント。省くと記録は根のコメントになる。
 link_check() {
-	local issue=$1 interval=${2:-300} cmd task data pr_url prs line
-	local comments record info parent='' result='' now mark=0 readable=1
+	local issue=$1 interval=${2:-300} parent=${3-} cmd task data pr_url prs line
+	local comments info result='' now mark=0 readable=1
 	for cmd in jq python3 multica; do
 		if ! command -v "$cmd" >/dev/null 2>&1; then
 			printf '紐付け: 未確認 pr: 不明 理由: %s が見つからない\n' "$cmd"
@@ -212,12 +208,9 @@ link_check() {
 	jq -e '.metadata | has("pr_link_pending")' <<<"$task" >/dev/null && mark=1
 	if { [[ $line == '紐付け: 紐付いていない '* ]] && jq -e '.pending_matches' <<<"$data" >/dev/null; } \
 		|| { [[ $line == '紐付け: 紐付いている '* ]] && ((mark)); }; then
-		record=$(jq -r '.metadata.pr_link_record | select(type == "string")' <<<"$task")
 		now=$(date +%s)
-		if comments=$(squad_cli_read issue-comments "$issue") \
-			&& info=$(printf '%s\n' "$comments" | link_record_data "$pr_url" "$record" "$now" "$interval"); then
-			parent=$(jq -r .parent <<<"$info")
-		else
+		if ! comments=$(squad_cli_read issue-comments "$issue") \
+			|| ! info=$(printf '%s\n' "$comments" | link_record_data "$pr_url" "$now" "$interval"); then
 			readable=0
 		fi
 		if [[ $line == '紐付け: 紐付いていない '* ]]; then
@@ -235,8 +228,9 @@ link_check() {
 				printf '%s\n' "$line"
 				return 0
 			fi
-		elif ((! readable)); then
-			# 記録の置き場所を決められないので、記録もマークの削除もせず、次の判定に任せる。
+		elif ((! readable)) || jq -e '.linked' <<<"$info" >/dev/null; then
+			# 記録を書けないか、すでにあるので、記録は書かずにマークだけを消す。
+			multica issue metadata delete "$issue" --key pr_link_pending >/dev/null 2>&1 || :
 			printf '%s\n' "$line"
 			return 0
 		fi
@@ -806,7 +800,7 @@ unlinked_check() {
 		unlinked_stop "$issue" 'マージ待ちから外れている'
 		return 0
 	fi
-	link_line=$(link_check "$issue" "$UNLINKED_LINK_INTERVAL")
+	link_line=$(link_check "$issue" "$UNLINKED_LINK_INTERVAL" "$(jq -r '.metadata.ci_watch_thread | select(type == "string")' <<<"$task")")
 	case $link_line in
 	'紐付け: 紐付いている '*) unlinked_stop "$issue" 'PR がタスクに紐付いた'; return 0 ;;
 	'紐付け: 食い違い '*)
@@ -1044,8 +1038,8 @@ fi
 
 case ${1:-} in
 link-check)
-	(($# == 2)) || usage
-	link_check "$2"
+	(($# == 2 || $# == 3)) || usage
+	link_check "$2" 300 "${3-}"
 	;;
 conflicts)
 	(($# == 2)) || usage

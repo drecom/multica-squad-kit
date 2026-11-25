@@ -874,7 +874,7 @@ pr_checks() {
 
 	for attempt in 1 2; do
 		status=0
-		out=$("$watch" link-check "$issue" 2>/dev/null) || status=$?
+		out=$("$watch" link-check "$issue" "$round" 2>/dev/null) || status=$?
 		line=$(grep -m1 '^紐付け:' <<<"$out" || true)
 		if [[ -z $line ]]; then
 			line='紐付け: 未確認 pr: 不明 理由: 判定の行が出なかった'

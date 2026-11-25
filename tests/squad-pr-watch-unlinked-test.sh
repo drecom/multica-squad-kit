@@ -101,12 +101,12 @@ touch "$test_dir/allow-missing-fields"
 unknown_link 不明
 echo 'PASS link-check: タスクを読めないときも未確認を出す'
 
-for args in 'link-check' 'link-check test-issue extra'; do
+for args in 'link-check' 'link-check test-issue trigger extra'; do
 	status=0
 	# 引数の不足と過剰は、使い方と終了コード 2 を返す。
 	# shellcheck disable=SC2086
 	bash "$script" $args >"$test_dir/output" 2>"$test_dir/error" || status=$?
 	[[ $status == 2 && ! -s $test_dir/output ]]
-	grep -q '使い方: squad-pr-watch link-check <タスク>' "$test_dir/error"
+	grep -q '使い方: squad-pr-watch link-check <タスク> \[<きっかけのコメント>\]' "$test_dir/error"
 done
 echo 'PASS link-check: 引数の数が違えば使い方を標準エラーに出し、2 で終える'
