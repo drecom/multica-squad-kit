@@ -50,7 +50,7 @@ f54cec61b627324eecf0230f68db70da92c0862f83104b0c71f62e929483b63e  ./common/monit
 409375f4941ebc072133b6829b346ab0c805345aa8022ab04386b1da73bf9356  ./common/monitor/squad-pr-link-lib
 0e47284e66e36bfa1c9934fe897e6ad735c3638d248dace1d5e0791bc43ef8ad  ./common/monitor/squad-pr-watch
 4a9a177b8376df2883dc055bb74699ef93bdd0af7ab061fd0060e043b2b9358d  ./common/monitor/squad-preflight
-e090cab5b890cbf96dca6703ab7c73b5b2940f2efaa04837f49ea5d3dca174cb  ./common/monitor/squad-review-next
+67a1239262d6074ac70ea8c276cb05ec65f565a87fdb7ab519621ba26109431b  ./common/monitor/squad-review-next
 652c87bbe6b0c221424d58dda0e9806d48c8972cac162fee910b51078b7eec5e  ./common/monitor/squad-review-wait
 047ce7aa188ff399d5dc36b35a4b89da164be6a0b106a0120459afa10a21673e  ./common/monitor/squad-usage-check
 67746f87ae656f2e23961f61772297fc617a13dc86f5122a61e25b26a53b133b  ./common/monitor/squad-usage-lib
@@ -82,7 +82,7 @@ ce01904b58b09ea957686673d8f9883b1e59f5e84dbdb74bd7ab30759d1a1797  ./docs/host-st
 ea7ebff44ce2dfa5cf4c68c764dde731c5c34514ea14fe1009369476511df8b0  ./docs/instruction-reread.md
 369c5b96674d47f949a255bb28643e07bb2a623a6b1c24628805724591a94b50  ./docs/leader-eval-picks.md
 69b7173fb109007371f2c2279b77b4f60cc288d602abbea067c7dc0bef6278f1  ./docs/leader-principles.md
-26c5ed5a7d801bc15e59ddd5437a46cec0dfcf6a56e8e03c1a4731fdd26fd8c7  ./docs/merge-request-reading.md
+66e1440745fd2690a40e77f497cff011e84417b3afdbff3a5ffdb6c277e373e2  ./docs/merge-request-reading.md
 f3e7834c16bb59c09a819b29a92ccea1d2ba7bdbe50505af4e1912167369d653  ./docs/metrics.md
 fc4ec5836bb4c9b565596c63b7e0255ce645fb797e1a9bbb07b3b68e3e1f521b  ./docs/own-review-paths.md
 528418dec994f2976e6f04dc655db2e4545405370630db4df109d812887e6bbc  ./docs/planner-requirements.md
@@ -719,7 +719,7 @@ c30af744bb2f897be7b9de5f7ba2384844db156c60d05de7ca8b0172579108d3  ./tests/squad-
 8be0407eca2a3bad68e7f6fe8ccd8afe6a9f272bb91a79b9efc5aec706d17720  ./tests/squad-review-next-decide-recognize-test.sh
 c6cc0b4588a01424ebd04ae5bea45770fa33d212fa5a2c8285f4c35a0b30de99  ./tests/squad-review-next-decide-requirement-test.sh
 42845b5a674c6933383168a9606b0bb7dc9668cb0f4e4e1d3963c0c02e5b43b8  ./tests/squad-review-next-decide-retry-test.sh
-f7c4864913a0ac80dc7a4151ebe903656b63f2e1e44ad1ffb868f01e0d0c112f  ./tests/squad-review-next-decide-rework-record-test.sh
+4e719b5b5afc35d8268a19edccfbdf70b552067db2144ab9616450509874fa49  ./tests/squad-review-next-decide-rework-record-test.sh
 6eefca4c65c11153655edde501751caf49830f7ea471032921d783864054c7d1  ./tests/squad-review-next-decide-route-test.sh
 85d53db7fd552ffe76f9263ce014d7e8d48242edd43282a0cb061935997ca215  ./tests/squad-review-next-decide-unexecuted-test.sh
 480f46094b66b2e7c0a425eb129fadf2ada47d5ce749a17b2aac9146acd3ba3b  ./tests/squad-review-next-decide-unlinked-test.sh

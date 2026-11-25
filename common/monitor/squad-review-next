@@ -270,6 +270,32 @@ def markup_step(text, state):
             if start < 0:
                 return touched, None
             touched, pos, state = True, start + 2, "comment"
+
+
+MENTION_HEAD = re.compile(r"\]\(mention://", re.IGNORECASE)
+
+
+def unlink_mentions(text):
+    """メンションのリンク [名前](mention://…) を名前だけにし、残る mention:// は mention: // に直す。
+    ]( の位置から前へ戻って開きを探すので、[ が長く続く行でも行の長さに比例する時間で終える。"""
+    out, pos, end = [], 0, -1
+    for head in MENTION_HEAD.finditer(text):
+        if head.start() < pos:
+            continue
+        if end < head.end():
+            end = text.find(")", head.end())
+            if end < 0:
+                break
+        close = text.rfind("]", pos, head.start())
+        opened = text.find("[", pos if close < 0 else close + 1, head.start())
+        if opened < 0:
+            continue
+        out.append(text[pos:opened])
+        out.append(text[opened + 1:head.start()])
+        pos = end + 1
+    out.append(text[pos:])
+    return "".join(out).replace("mention://", "mention: //")
+
 MARKUPPY
 
 # decide の判定の中核。標準出力に JSON を 1 行だけ出す。
@@ -623,7 +649,6 @@ def final_pending(round_of):
 
 CONTROL = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f]")
 LEAD = re.compile(r"(?:[-*+]|[0-9]{1,9}\))(?=\s|\Z)")
-MENTION = re.compile(r"\[([^\]]*)\]\(mention://[^)]*\)", re.IGNORECASE)
 PRE_COUNT = re.compile(r"前からある不具合 ([0-9]+) 件")
 LIST_HEAD = re.compile(r"指摘の一覧:[ \t]*([0-9]+)[ \t]*件")
 MAX_ITEMS, MAX_ITEM_CHARS = 10, 200
@@ -633,21 +658,19 @@ def tidy(text, mentions=True):
     """写す文を整える。docs/merge-request-reading.md の「写す文の整え方」の 1・2・5。指摘の行の `<番号>.` は残す。4 は行の並びを見る finding_list が行う。
     mentions を False にすると、5（メンションのリンクの置き換え）をしない。囲みとコメントを見分けるときは、置き換える前の文を読む。"""
     text = CONTROL.sub("", text.replace("\t", " "))
-    while True:
-        before = text
-        text = text.lstrip()
-        if text.startswith(">"):
-            text = text[1:]
+    pos = 0
+    while pos < len(text):  # 末尾全体を写さず、位置で進める。行の長さに比例する時間で終える
+        if text[pos].isspace() or text[pos] == ">":
+            pos += 1
         else:
-            found = LEAD.match(text)
-            if found:
-                text = text[found.end():]
-        if text == before:
-            break
+            found = LEAD.match(text, pos)
+            if not found:
+                break
+            pos = found.end()
+    text = text[pos:]
     if not mentions:
         return text.strip()
-    text = MENTION.sub(lambda found: found.group(1), text.strip())
-    return text.replace("mention://", "mention: //")
+    return unlink_mentions(text.strip())
 
 
 def safe_name(name):
@@ -779,7 +802,6 @@ HEAD = "マージの前に人間がすること: "
 MAX_LINES, MAX_CHARS = 10, 800
 CONTROL = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f]")
 BULLET = re.compile(r"(?:[-*+]|[0-9]{1,9}[.)])(?=\s|\Z)")
-MENTION = re.compile(r"\[([^\]]*)\]\(mention://[^)]*\)", re.IGNORECASE)
 
 
 def section(body):
@@ -842,8 +864,7 @@ def shape(raw_lines):
         if line.startswith("<"):
             dropped = True
             continue
-        line = MENTION.sub(lambda found: found.group(1), line)
-        kept.append(line.replace("mention://", "mention: //"))
+        kept.append(unlink_mentions(line))
     if dropped:
         kept.append(DROPPED)
     return kept

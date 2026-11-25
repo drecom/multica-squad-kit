@@ -215,10 +215,10 @@ for mark in ❌ ✅; do
 done
 
 # ---- マージの依頼へ進む経路。⚠️ の要約の長い 1 項目と、PR の本文の長い 1 行を、2 つの場面で通す。
-# 長い 1 行の中身は、閉じたコードスパン（`a`）の繰り返しと、長さの違う閉じていない逆引用符の並びにする。
+# 長い 1 行の中身は、閉じたコードスパン（`a`）の繰り返し、長さの違う閉じていない逆引用符の並び、行頭の長い記号列（引用・箇条書き・番号・空白）にする。
 # 囲みとコメントを見分ける走査が、行の長さに比例して終わるかを測る。
 body_chars=65536
-make_merge_scale() { # 場面（closed | unclosed）
+make_merge_scale() { # 場面（closed | unclosed | quote | bullet | number | space | bracket）
 	"$REWORK_RECORD_REAL_PYTHON" -I - "$test_dir" "$1" "$scale_comments" "$scale_bytes" "$body_chars" <<'PY'
 import json
 from pathlib import Path
@@ -231,7 +231,11 @@ marker = '@@ITEM@@'
 
 
 def long_line(length):
-    if scene == 'closed':
+    marks = {'quote': '>', 'bullet': '- ', 'number': '1) ', 'space': ' ', 'bracket': '['}
+    if scene in marks:
+        # 行頭の記号だけが長く続く 1 行。外す処理が、記号を 1 つ外すたびに残りを写すと 2 乗で伸びる。
+        text = marks[scene] * ((length - 1) // len(marks[scene]))  # 末尾に文字を残し、前後の空白を削る処理で長さが変わらないようにする
+    elif scene == 'closed':
         # 空白で区切り、コードスパンを 1 つずつ閉じる。区切らないと、隣り合う逆引用符が 2 個の並びになり、全体が 1 つのスパンに読まれる。
         text = '`a` ' * (length // 4)
     else:
@@ -300,8 +304,16 @@ if len(shared) != 1 or len(decide) != 1 or len(note) != 1:
 print(f'{shared[0]:.3f} {decide[0]:.3f} {note[0]:.3f} {shared[0] + decide[0] + note[0]:.3f}')
 PY
 }
-for scene in closed unclosed; do
-	if [[ $scene == closed ]]; then label=閉じたコードスパン; else label=閉じていない逆引用符; fi
+for scene in closed unclosed quote bullet number space bracket; do
+	case $scene in
+	closed) label=閉じたコードスパン ;;
+	unclosed) label=閉じていない逆引用符 ;;
+	quote) label=長い引用記号 ;;
+	bullet) label=長い箇条書きの記号 ;;
+	number) label=長い番号の記号 ;;
+	space) label=長い空白 ;;
+	bracket) label=長い開き角括弧 ;;
+	esac
 	reset
 	set_merge_roster
 	ok_round
