@@ -399,7 +399,7 @@ squad-task-read <タスク> [--since <RFC3339>]
 | 欄 | 中身 |
 | --- | --- |
 | `schema_version` | `1` |
-| `task` | ID・識別子・タイトル・状態・ラベル・metadata（`repository`・`branch`・`pr_url` ほか）・担当 |
+| `task` | ID・識別子・タイトル・状態・ラベル・metadata のうち読み取りの約束にある欄（`repository`・`branch`・`pr_url` など）・担当 |
 | `comments` | `--since` より後のコメントの、ID・親の ID・作者の種類と ID・時刻・本文。`--since` がなければ全件 |
 | `pr` | metadata の `pr_url` の PR の、URL・状態・draft か・head の SHA・マージの可否。`pr_url` がなければ `null` |
 | `ci` | PR の head のチェックの名前と結論。PR がなければ `null` |
@@ -407,7 +407,7 @@ squad-task-read <タスク> [--since <RFC3339>]
 | `cuts` | [区切りの途中](#区切りの途中)の `squad-run-cut state` の行を、役・状態・区切りのコメントの ID の配列で出す。区切りのコメントがなければ空の配列 |
 | `errors` | 読めなかった欄の名前と理由の配列 |
 
-タスクを読めないときは、終了コード 1 にする。PR か CI か実行か区切りを読めないときは、その欄を `null` にして `errors` に理由を足し、終了コード 0 にする。使い方の誤りは 2 にする。
+タスクかコメントを読めないときは、終了コード 1 にする。コメントを `null` にすると、リーダーが新しい指示を見落とすためである。PR か CI か実行か区切りを読めないときは、その欄を `null` にして `errors` に理由を足し、終了コード 0 にする。使い方の誤りは 2 にする。
 
 PR と CI の読み取りは GitHub への読み取りなので、リーダーが実行の始めに流した `squad-preflight` のあとに使う。
 
