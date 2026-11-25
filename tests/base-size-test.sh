@@ -60,19 +60,45 @@ p = sys.argv[1]
 lines = open(p).read().split('\n')
 i = lines.index('## 場面と手順')
 j = next(k for k in range(i, len(lines)) if lines[k].startswith('| ') and not lines[k].startswith('| 場面'))
-lines.insert(j, '| 新しい場面のテスト | 条件 | `leader-flow.md` |')
+lines.insert(j, '| 新しい場面のテスト | 条件 | `leader-request.md` |')
 open(p, 'w').write('\n'.join(lines))
 PY
 expect_fail 'フィクスチャにない場面の行' size "$d" 'FAIL 場面 新しい場面のテスト: フィクスチャにない場面'
 
-# 上限を適用する場面は、読む参照の大きさの和が上限を超えたら落ちる。
+# 場面は、読む参照の大きさの和が上限を超えたら、場面の名前と上限を添えて落ちる。
 d="$test_dir/scene-over"
 copy_root "$d"
-sed -i.bak 's/^\(scene\t実装・修正の依頼.*\t\)未適用\t.*/\1適用\t/' "$d/fixture/baseline.tsv"
-rm -f "$d/fixture/baseline.tsv.bak"
-expect_fail '場面の大きさが上限を超える' size "$d" 'FAIL scene 実装・修正の依頼'
+python3 -c 'import sys; open(sys.argv[1], "a").write("あ" * 3000)' "$d/common/skills/squad-handoff/references/leader-run-stop.md"
+expect_fail '場面の大きさが上限を超える' size "$d" 'FAIL scene 実行の停止: 今の大きさ'
+grep -qE 'FAIL scene 実行の停止: 今の大きさ [0-9]+、上限 6289' "$test_dir/err" || { echo 'FAIL base-size: 場面の上限の値が違う' >&2; cat "$test_dir/err" >&2; exit 1; }
 
-# 扱いが未適用か対象外の行には、理由が要る。
+# 場面が読む参照が複数あるときは、その和で比べる。
+d="$test_dir/scene-sum"
+copy_root "$d"
+python3 -c 'import sys; open(sys.argv[1], "a").write("あ" * 8000)' "$d/common/skills/squad-handoff/references/leader-principal-pick.md"
+expect_fail '場面の参照の和が上限を超える' size "$d" 'FAIL scene 最上位の役に診断を頼む: 今の大きさ'
+
+# 場面の表が読む参照がなければ、場面の名前と参照を出して落ちる。
+d="$test_dir/scene-ref-missing"
+copy_root "$d"
+rm "$d/common/skills/squad-handoff/references/leader-review-stuck.md"
+expect_fail '読む参照がない' size "$d" 'FAIL 場面 `decide` が決められない: 読む参照 leader-review-stuck.md がない'
+
+# 場面の上限が基準の半分（切り捨て）でなければ落ちる。
+d="$test_dir/scene-limit"
+copy_root "$d"
+sed -i.bak 's/^\(scene\t実行の停止\t12578\t\)6289\t/\16290\t/' "$d/fixture/baseline.tsv"
+rm -f "$d/fixture/baseline.tsv.bak"
+expect_fail '場面の上限が基準の半分でない' size "$d" '実行の停止 の上限が基準の半分'
+
+# 扱いは 適用 か 対象外 のどちらかで、未適用は使えない。
+d="$test_dir/treat-unknown"
+copy_root "$d"
+sed -i.bak 's/^\(scene\t実行の停止\t.*\t\)適用\t/\1未適用\t/' "$d/fixture/baseline.tsv"
+rm -f "$d/fixture/baseline.tsv.bak"
+expect_fail '扱いが 適用 でも 対象外 でもない行' size "$d" '扱いが 適用、対象外 のどれでもない'
+
+# 扱いが対象外の行には、理由が要る。
 d="$test_dir/no-reason"
 copy_root "$d"
 python3 - "$d/fixture/baseline.tsv" <<'PY'

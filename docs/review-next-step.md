@@ -241,7 +241,14 @@ flowchart TD
 
 ## 次の依頼の決め方
 
-`decide` は、まず[回の種類](#回の種類)を読み、自分で決める回だけを先へ進める。そのうえで回の返事の組を読み、上から順に当てはめて最初に当たった行で決める。決まりは、リーダーの手順をそのまま写したものである。手順は [leader-review-wait.md](../common/skills/squad-handoff/references/leader-review-wait.md)、[leader-principal.md](../common/skills/squad-handoff/references/leader-principal.md)、[leader-pr-checks.md](../common/skills/squad-handoff/references/leader-pr-checks.md) にある。
+`decide` は、まず[回の種類](#回の種類)を読み、自分で決める回だけを先へ進める。そのうえで回の返事の組を読み、上から順に当てはめて最初に当たった行で決める。決まりは、リーダーの手順をそのまま写したものである。手順は、次のファイルにある。
+
+- [leader-review-reply.md](../common/skills/squad-handoff/references/leader-review-reply.md)
+- [leader-review-request.md](../common/skills/squad-handoff/references/leader-review-request.md)
+- [leader-review-stuck.md](../common/skills/squad-handoff/references/leader-review-stuck.md)
+- [leader-principal.md](../common/skills/squad-handoff/references/leader-principal.md)
+- [leader-pr-ci.md](../common/skills/squad-handoff/references/leader-pr-ci.md)
+- [leader-pr-merge.md](../common/skills/squad-handoff/references/leader-pr-merge.md)
 
 | 順 | 条件 | 次の依頼 |
 | --- | --- | --- |
@@ -265,7 +272,7 @@ flowchart TD
 
 ### 返事がそろったときの PR の確認
 
-リーダーの手順は、返事がそろったときに PR の紐付けを確認する（[PR の紐付けの確認](../common/skills/squad-handoff/references/leader-pr-checks.md#pr-の紐付けの確認)）。紐付いていなければ、その場で CI とコンフリクトを読む（[紐付いていない PR のその場の確認](../common/skills/squad-handoff/references/leader-pr-checks.md#紐付いていない-pr-のその場の確認)）。
+リーダーの手順は、返事がそろったときに PR の紐付けを確認する（[PR の紐付けの確認](../common/skills/squad-handoff/references/leader-pr-link.md#pr-の紐付けの確認)）。紐付いていなければ、その場で CI とコンフリクトを読む（[紐付いていない PR のその場の確認](../common/skills/squad-handoff/references/leader-pr-ci.md#紐付いていない-pr-のその場の確認)）。
 
 `decide` も同じ区切りで同じ確認を流し、表の 2〜4 とする。止まる値は、どれも人間を呼ばずにリーダーを起こす。人間を呼ぶか、修正へ回すかは、リーダーが手順で決める。
 
@@ -376,7 +383,7 @@ flowchart TD
 次の依頼を決められません: 検証スキルが未記入で未実行（<役>、<役>）
 ```
 
-`<役>` は名簿のキー（`code-reviewer`、`qa` など）で、組の順に、未実行のすべての役を `、` で区切って並べる。名簿にない役は、ほかの理由と同じにエージェントの ID を書く。リーダーは、この理由で [leader-review-wait.md](../common/skills/squad-handoff/references/leader-review-wait.md) の表から、squad-handoff の「リーダーが報告を受けたとき」の手順へ進む。
+`<役>` は名簿のキー（`code-reviewer`、`qa` など）で、組の順に、未実行のすべての役を `、` で区切って並べる。名簿にない役は、ほかの理由と同じにエージェントの ID を書く。リーダーは、この理由で [leader-review-stuck.md](../common/skills/squad-handoff/references/leader-review-stuck.md) の表から、squad-handoff の「リーダーが報告を受けたとき」の手順へ進む。
 
 最上位の役の結果も、同じ行で未実行と読む。結果を使うところごとに、次のとおり扱う。
 
@@ -389,7 +396,7 @@ flowchart TD
 
 ### コミットの照合
 
-照合の決まりは、[確認したコミットの照合](../common/skills/squad-handoff/references/leader-review-wait.md#確認したコミットの照合)のとおりにする。7 文字以上の 16 進で、依頼の `確認するコミット:` の先頭と一致すればよい。行がない・`なし`・合わない役を、合わない役とする。
+照合の決まりは、[確認したコミットの照合](../common/skills/squad-handoff/references/leader-review-request.md#確認したコミットの照合)のとおりにする。7 文字以上の 16 進で、依頼の `確認するコミット:` の先頭と一致すればよい。行がない・`なし`・合わない役を、合わない役とする。
 
 頼み直しの回は、[レビューの依頼を書く](#レビューの依頼を書く)と同じ形で書き、`観点:` の行の代わりに `コミットが合わず頼み直す役: <名前>` を置く。名前はメンションのリンクにしない。前の回の依頼に `列挙を頼む部品:` の行があれば、同じ順で写す。前の回でも `コミットが合わず頼み直す役:` に名前があった役が、また合わなければ、3 回目は頼まずにリーダーを起こす。
 
@@ -489,7 +496,7 @@ ZIP が成果物の回は、照合の値が名前と sha256 になる。分岐�
 
 ### マージの依頼
 
-❌ がなく、最終レビューが要らないか済んでいれば、人間のマージへ回す前の確認を、[マージの前の確認](../common/skills/squad-handoff/references/leader-pr-checks.md#マージの前の確認)の順に流す。止まる値が出たら、マージの依頼を書かずにリーダーを起こす。CI の待ちだけは、リーダーを起こさずに待ちの記録を書いて終わる。
+❌ がなく、最終レビューが要らないか済んでいれば、人間のマージへ回す前の確認を、[マージの前の確認](../common/skills/squad-handoff/references/leader-pr-merge.md#マージの前の確認)の順に流す。止まる値が出たら、マージの依頼を書かずにリーダーを起こす。CI の待ちだけは、リーダーを起こさずに待ちの記録を書いて終わる。
 
 QA の役があり、[観点の選び方](#観点の選び方)で QA が選ばれる変更なのに、組に QA の結果がないときは、下の確認を流さずにリーダーを起こす。画面に触れる変更を、E2E なしで人間へ回さないためである。
 
@@ -564,7 +571,7 @@ CI まで通ったときだけ、規則を登録する。CI を待つ間は登�
 
 #### マージを頼むコメント
 
-呼ぶ人間をメンションし、次の行を順に置く。行の形と添える文は、リーダーの手順の [人間を呼ぶコメントに添える行](../common/skills/squad-handoff/references/leader-pr-checks.md#人間を呼ぶコメントに添える行)と同じである。
+呼ぶ人間をメンションし、次の行を順に置く。行の形と添える文は、リーダーの手順の [人間を呼ぶコメントに添える行](../common/skills/squad-handoff/references/leader-pr-merge.md#人間を呼ぶコメントに添える行)と同じである。
 
 1. マージを頼む 1 行
 2. `マージの依頼: <head の完全な SHA>`。head は、マージの依頼の確認の 2 で照合した PR の今の head にする
@@ -778,7 +785,7 @@ Codex が利用不可で、週の使用率が 80% 未満のときは、リセッ
 
 人間を呼ぶ行とコメントの形、答えの記録、答えが効いているあいだの判定は、[usage-answer.md](usage-answer.md) にある。「待つ」か「進める」の答えの記録が効いているあいだは、24 時間の判定をせず、記録に従う。
 
-`decide` がこの呼び出しを書くときは、表の 2 で紐付いていなければ、リーダーの手順の[人間を呼ぶコメントに添える行](../common/skills/squad-handoff/references/leader-pr-checks.md#人間を呼ぶコメントに添える行)のうち、マージの依頼でないときの行を添える。紐付けの依頼の 1 行、`紐付けの失敗:` の段落、連携の確認の依頼で、置き方は[マージを頼むコメント](#マージを頼むコメント)と同じである。人間を呼ぶ機会に、紐付けの依頼もまとめて届けるためである。
+`decide` がこの呼び出しを書くときは、表の 2 で紐付いていなければ、リーダーの手順の[人間を呼ぶコメントに添える行](../common/skills/squad-handoff/references/leader-pr-merge.md#人間を呼ぶコメントに添える行)のうち、マージの依頼でないときの行を添える。紐付けの依頼の 1 行、`紐付けの失敗:` の段落、連携の確認の依頼で、置き方は[マージを頼むコメント](#マージを頼むコメント)と同じである。人間を呼ぶ機会に、紐付けの依頼もまとめて届けるためである。
 
 最初に待ち始めた時刻は、同じ工程の `使用率の待ち:` の行が続くあいだ引き継ぐ。続きを切って次の待ちから数え直すのは、次の 3 つのどれかに当たるときだけである。
 
@@ -1057,7 +1064,7 @@ Codex の利用不可のリセット時刻は読めないので、60 分ごと�
 
 ### コンフリクトの扱いの案
 
-マージの前に `CONFLICTING` のとき、`decide` が修正の役へ解消を頼む案は採らなかった。解消を頼む条件（[起きたときの確認](../common/skills/squad-handoff/references/leader-pr-checks.md#起きたときの確認)）は、動いている実行の有無を読む判断を含むためである。頻度が低いので、リーダーに任せる。
+マージの前に `CONFLICTING` のとき、`decide` が修正の役へ解消を頼む案は採らなかった。解消を頼む条件（[起きたときの確認](../common/skills/squad-handoff/references/leader-pr-ci.md#起きたときの確認)）は、動いている実行の有無を読む判断を含むためである。頻度が低いので、リーダーに任せる。
 
 ### 止まる値の扱いの案
 

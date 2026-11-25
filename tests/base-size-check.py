@@ -22,7 +22,7 @@ from pathlib import Path
 SKILL = Path('common/skills/squad-handoff/SKILL.md')
 REFS = Path('common/skills/squad-handoff/references')
 AGENTS = Path('common/agents')
-TREATMENTS = ('適用', '対象外', '未適用')
+TREATMENTS = ('適用', '対象外')
 
 
 def normalize(text):

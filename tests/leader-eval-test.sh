@@ -1062,14 +1062,17 @@ echo "PASS leader-eval: 今と新しい指示を展開し、squad-handoff と一
 
 # 新しい指示と一緒に配る手順には、判断と受け渡しに使う行の決まりを残す。
 refs="$out/instructions/new/skills/squad-handoff/references"
-for phrase in '同じ誤り:' '同じ部品:' '同じ部品の確認:' '頼む範囲:' '列挙を頼む部品:' '自動の依頼の確認:' '設計との差:' '設計との差の扱い:'; do
-	grep -qF -- "$phrase" "$refs/leader-flow.md"
+for phrase in '同じ誤り:' '同じ部品:' '同じ部品の確認:' '頼む範囲:' '列挙を頼む部品:'; do
+	grep -qF -- "$phrase" "$refs/leader-repeat.md"
 done
-for phrase in '修正の続行の確認:' '共通 2 の判断:' '入力と信頼の表の確認:'; do
-	grep -qF -- "$phrase" "$refs/leader-principal.md"
+for phrase in '自動の依頼の確認:' '修正の続行の確認:'; do
+	grep -qF -- "$phrase" "$refs/leader-fix-request.md"
 done
 for phrase in '設計との差:' '設計との差の扱い:'; do
-	grep -qF -- "$phrase" "$refs/leader-dispatch.md"
+	grep -qF -- "$phrase" "$refs/leader-design-diff.md"
+done
+for phrase in '共通 2 の判断:' '入力と信頼の表の確認:'; do
+	grep -qF -- "$phrase" "$refs/leader-principal-final.md"
 done
 echo 'PASS leader-eval: 配る手順に、同じ誤り・同じ部品・続行と安全の確認・設計との差の行の決まりがある'
 

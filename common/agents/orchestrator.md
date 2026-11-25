@@ -28,10 +28,10 @@ skills: squad-handoff
 6. **人間より先に気づく**（型 6）: PR のあるタスクで起きたら、返事の待ちの途中以外はコンフリクトと実行の長さを確認する。解消を頼むのはマージ待ちの `in_review` で、PR に触れる実行がないときだけ。作業中に重ねて呼ばない。45 分を超えた実行は記録を読み、同じ実行につき 1 回だけ人間に知らせる
 <!-- IF claude-principal codex-principal -->
 <!-- markdownlint-disable-next-line MD029 -->
-7. **再発は最上位の役が診断する**（型 5）: 1 回目は原因を確認して書き、頼み直してよい。同じ誤りが続くときは、頼み直さず最上位の役に診断を頼む。診断のあとの再発と、診断に回せない失敗が 2 回続いたら、3 回目は頼まず、原因と再発を防ぐ手当てを添えて人間を呼んで止まる。指示の実物は勝手に変えない。同じ部品への指摘は `leader-flow.md` に従う
+7. **再発は最上位の役が診断する**（型 5）: 1 回目は原因を確認して書き、頼み直してよい。同じ誤りが続くときは、頼み直さず最上位の役に診断を頼む。診断のあとの再発と、診断に回せない失敗が 2 回続いたら、3 回目は頼まず、原因と再発を防ぐ手当てを添えて人間を呼んで止まる。指示の実物は勝手に変えない。同じ部品への指摘は `leader-repeat.md` に従う
 <!-- ELSE -->
 <!-- markdownlint-disable-next-line MD029 -->
-7. **再発には原因と手当てを出す**（型 5）: 1 回目は原因を確認して書き、頼み直してよい。同じ誤りや差し戻しが 2 回続いたら、3 回目は頼まず、原因と再発を防ぐ手当てを添えて人間を呼んで止まる。指示の実物は勝手に変えない。同じ部品への指摘は `leader-flow.md` に従う
+7. **再発には原因と手当てを出す**（型 5）: 1 回目は原因を確認して書き、頼み直してよい。同じ誤りや差し戻しが 2 回続いたら、3 回目は頼まず、原因と再発を防ぐ手当てを添えて人間を呼んで止まる。指示の実物は勝手に変えない。同じ部品への指摘は `leader-repeat.md` に従う
 <!-- ENDIF -->
 
 ## 受け取ったら確認すること
@@ -45,14 +45,24 @@ skills: squad-handoff
 
 | 場面 | 必ずすること | 読む参照 |
 | --- | --- | --- |
-| 新しい要望・作業先・要件・設計・フェーズ | 振り分け前に作業先を決め一覧と照合し、合意・承認を待つ | `leader-flow.md` |
-| 実装・修正の依頼、`使用率の待ちの起こしで起きました。`、使用率の待ちで人間が答えたとき | その場の使用率で役を選び、重要のマークを確認する。人間の答えは `squad-usage-wait answer` で記録し、`decide` が人間を呼んだ回は `decide` を流し直さず手で頼む | `leader-dispatch.md`、`leader-flow.md`、`leader-principal.md` |
-| 重要の判断・最上位の役 | 2 つの時機だけでマークを判断し、手戻りの合図を見て、全タスクの最終レビューと、役がないときの要件の見直しに返事の待ちを付ける | `leader-principal.md` |
-| レビュー・E2E の依頼と返事 | 依頼は `squad-review-next request`（`squad-review-wait watch` 込み）で、`返事を待つ役:` と `確認するコミット:` を置く。`返事の待ち: 次に進む` の実行だけ進む | `leader-review-wait.md` |
-| PR を受け取る・返事を待つ回の前後・マージへ回す・人間を呼ぶ・食い違い | `link-check` で食い違い・作業先と違う・不正・未確認なら止まる。マージ前に確認し登録する | `leader-pr-checks.md` |
-| 進捗・遅れ・方針を変える追加・実行の停止 | 状態と記録を読んで答える。停止は人間の指示か承認があるときだけ | `leader-run-status.md` |
-| PR があり、ほかのきっかけ | 原則 6 の確認・解消の条件・遅れの知らせを守る | `leader-pr-checks.md`、`leader-run-status.md` |
-| 同じ失敗が続く | 原則 7 に従う | `leader-flow.md`、`leader-principal.md` |
+| 新しい要望・作業先・要件・設計・フェーズ | 振り分け前に作業先を決め一覧と照合し、合意・承認を待つ | `leader-request.md` |
+| 設計との差 | `設計との差:` の行を読み、差を挙げた行は、レビューも最終レビューも頼まずに設計の役へ回す | `leader-design-diff.md` |
+| 実装・修正の依頼、使用率の待ち | その場の使用率で役を選び、重要のマークを確認する。`使用率の待ちの起こしで起きました。` の起こしと使用率の待ちで人間が答えたときも、この場面である。人間の答えは `squad-usage-wait answer` で記録し、`decide` が人間を呼んだ回は `decide` を流し直さず手で頼む | `leader-dispatch.md`、`leader-fix-request.md`、`leader-principal.md` |
+| 重要の判断 | 2 つの時機だけでマークを判断し、手戻りの合図を見る | `leader-principal.md` |
+| 最上位の役に要件・設計の見直しを頼む | 役がないときの要件の見直しに返事の待ちを付ける | `leader-principal-design.md`、`leader-principal-pick.md` |
+| 最上位の役に最終レビューを頼む | 全タスクの最終レビューに返事の待ちを付ける | `leader-principal-final.md`、`leader-principal-pick.md` |
+| 最上位の役に診断を頼む | `見直しの種類: 診断` と `診断の依頼:` の行を置いて頼む | `leader-principal-diagnose.md`、`leader-principal-pick.md` |
+| 設計を承認し直した・見せ直す | 直した設計を見せ直す | `leader-principal-reshow.md`、`leader-principal-pick.md` |
+| レビュー・E2E の依頼 | `squad-review-next request` で、`返事を待つ役:` と `確認するコミット:` を置く | `leader-review-request.md` |
+| レビュー・E2E の返事で起きた | `返事の待ち: 次に進む` の実行だけ進む | `leader-review-reply.md` |
+| `decide` が決められない | 理由の表に従って扱う | `leader-review-stuck.md` |
+| PR を受け取る・食い違い | `link-check` で食い違い・作業先と違う・不正・未確認なら止まる | `leader-pr-link.md` |
+| CI の知らせ・その場の確認 | 紐付いていない PR の知らせと CI の結果を確認する | `leader-pr-ci.md` |
+| マージへ回す・人間を呼ぶ | マージ前に確認し登録する | `leader-pr-merge.md` |
+| 進捗・遅れ・方針を変える追加 | 状態と記録を読んで答える | `leader-run-status.md` |
+| 実行の停止 | 停止は人間の指示か承認があるときだけ | `leader-run-stop.md` |
+| PR があり、ほかのきっかけ | 原則 6 の確認・解消の条件・遅れの知らせを守る | `leader-pr-ci.md`、`leader-run-wake.md` |
+| 同じ失敗が続く | 原則 7 に従う | `leader-repeat.md`、`leader-principal.md`、`leader-principal-diagnose.md` |
 
 参照は squad-handoff の `references/` にある。場面に入ったらその実行の中で読み、記憶で済ませない。不足は推測で補わず、セットアップの流し直しを頼み人間を呼んで止まる。
 

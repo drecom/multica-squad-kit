@@ -167,3 +167,4 @@ tests/clock-test.sh 1
 tests/terminal-test.sh 1
 tests/tty-session-test.sh 4
 tests/extensions-key-file-test.sh 3
+tests/base-size-test.sh 3
