@@ -48,7 +48,7 @@ c9f338dd47ba2cb8aa8e4d2ee2208700faf9f1aa05c5e7407b3bdc9e31d8f14c  ./common/monit
 8f187cb0ff2e26d5e2f4d4acab7c8314f6107908c3c9af15366ab601c4ea52a8  ./common/monitor/squad-dispatch-pick
 b4fc8a780ef9d07e32c96b58d698767276b2772ab8561be5c3a6179f7d7f4da6  ./common/monitor/squad-pr-link
 33de9251e13aa5d0c61f7562bccd46e34b8e9ef04eb4314ec2b8fcfd957b81fb  ./common/monitor/squad-pr-link-lib
-50924a746ed9a14815e15ef08bd0a40c7fc1f0aa2352b8f0af13613d5908ca6d  ./common/monitor/squad-pr-watch
+43cd71762b2605ff5af3df04df187aa5b17ac08be1280f1aed2895dcb4317f93  ./common/monitor/squad-pr-watch
 e28fbd27221ddacdd79a2b893c201f33ca1f40eb8264e352a067548ede5530cf  ./common/monitor/squad-preflight
 56a0eede2db518749713fe1ea2d24e712e97aef4f207df2f68d5cd060f368a5f  ./common/monitor/squad-review-next
 652c87bbe6b0c221424d58dda0e9806d48c8972cac162fee910b51078b7eec5e  ./common/monitor/squad-review-wait
@@ -630,7 +630,7 @@ c814b4291af3be09bf1adfe01b9e5778dadcf4b2d70e268b2ca840fbdb067567  ./tests/own-re
 4acd5121695a2c9905a32050f963097846bb5b5c0ff74a0a94822af4fe457be4  ./tests/pr-link-procedure-table.tsv
 dc25895fd5677a8e06601ee32d44ccb93025e9097869f3b44f9d27f9ac95aa14  ./tests/pr-watch-ci-wait-lib.sh
 55b9576a609ce28779d3885049d0d16000e1df737bfd0594c76fb0a8d4131037  ./tests/pr-watch-fixture.py
-590390ee5eaf165b30acb680c7f2a7bc37123272f816d818b5cdac7b7d19e7c3  ./tests/pr-watch-test-lib.sh
+1bcb66aaa8b25e52d9a3164658c0ca2465a9940f3e6af4f7994594823c4f5b52  ./tests/pr-watch-test-lib.sh
 5a1e26a157c41cc1e8cfb3c0458c80fbf3174f183d0ad0d723f5605d8191f984  ./tests/pre-push-test.sh
 32bdfe52ae6a0e5949e26846ad289256ea94603c7d697af78dfb978e61d3b971  ./tests/project-changes-test.sh
 f07f7c2bd123320169b8c93f6502a02f91eb50b0f6dee67823a1cba306b0726e  ./tests/project-create-test.sh
@@ -718,7 +718,7 @@ c35bc84c42124a133e73a3e1be31e554b01473d4a31b0e0024b90f4835e81386  ./tests/squad-
 4f5228f743f7720ec896fadef88c126ffd796abbf2e60a08b947322bc50c6cc7  ./tests/squad-dispatch-pick-test.sh
 0cad5d7aca5b898b55ea836b5d528f36220202ac04fdc11238cf4589c85cc6a8  ./tests/squad-pr-link-test.sh
 75fed61082c5d12f12594a5ea65266746f618777a668a57cc877ab4f830f4405  ./tests/squad-pr-watch-ci-arg-limit-test.sh
-9b7320ffbf504c3ce1da3565bf6785e7ea225ff456995b365a16bb3ce02cf0e3  ./tests/squad-pr-watch-ci-handoff-test.sh
+561580105346b4a2c9391e37fa553584bc77094d6359cf656af36cd4667d63e3  ./tests/squad-pr-watch-ci-handoff-test.sh
 a53926705482f308ff7c6cf87e9082f118b9f8db888936ae852164ebd1e2b9f7  ./tests/squad-pr-watch-ci-now-test.sh
 99a423227f20e26202f30a2cca7884db991d39ab234f02f6efaee12eb69aecd3  ./tests/squad-pr-watch-ci-test.sh
 774fbdb59e6a6c95cd5840a97ee7b33b46da8cebcab43b226b3ab91b683a573a  ./tests/squad-pr-watch-ci-wait-body-test.sh

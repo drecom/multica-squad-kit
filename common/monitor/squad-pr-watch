@@ -15,7 +15,7 @@
 #   squad-pr-watch ci <タスク> <見張り役の ID> <きっかけのコメント>
 #     CI が終わるたびに見張り役を起こす規則を作る。有効な規則があれば何もしない。
 #   squad-pr-watch ci-check <タスク> <リーダーの ID> <見張り役の ID>
-#     今の head で確定した CI の失敗があれば、ほかの役の作業中は保留し、それ以外は一度だけ知らせる。
+#     今の head で確定した CI の失敗があれば、ほかの役の作業中と区切りの途中は保留し、それ以外は一度だけ知らせる。
 #     0 で終わるときは、記録のスレッドに残す /note と 1 行を標準出力に出す。
 #   squad-pr-watch ci-now <タスク> <リーダーの ID> <きっかけのコメント> [<見張り役の ID>]
 #     同じ判定をその場で行い、メンションなしで知らせる。見張り役は省ける。
@@ -334,7 +334,7 @@ ci_handled() {
 }
 
 ci_check() {
-	local issue=$1 id=$2 monitor_id=$3 orchestrator task thread pr_url pr checks failures head short comments body runs active names role name agent squad handoffs notice target selection_status
+	local issue=$1 id=$2 monitor_id=$3 orchestrator task thread pr_url pr checks failures head short comments body runs active cuts names role name agent squad handoffs notice target selection_status
 	local mode=${4:-watch} trigger=${5-} data
 	task=$(squad_cli_read issue-get "$issue")
 	data=$(pr_url_data "$task")
@@ -426,6 +426,23 @@ ci_check() {
 		done <<<"$active"
 		ci_record "CI ${short}: 失敗あり（${names} の作業中なので保留）"
 		return 0
+	fi
+	# 区切りから続きの実行が終わるまでは、動いている実行がなくても作業中として扱う。
+	# 区切りのコメントがなければ状態を読む必要がないので、名簿などは読まない。
+	# 状態を読めないまま通知すると、同じブランチへ 2 つの役が push するので、失敗は通知にすり替えない。
+	if jq -e 'any(.[]; .author_type == "agent" and (.content | test("(^|\n)区切り:")))' <<<"$comments" >/dev/null; then
+		cuts=$(MULTICA_AGENT_ID=$id bash "${PR_WATCH_SCRIPT%/*}/squad-run-cut" state "$issue") || return "$?"
+		active=$(awk '$1 == "区切り:" && ($3 == "待ち" || $3 == "動いている") { print $2 }' <<<"$cuts")
+		if [[ -n $active ]]; then
+			names=''
+			while IFS= read -r role; do
+				agent=$(squad_cli_read agent-get "$role")
+				name=$(jq -r '.name' <<<"$agent")
+				names+="${names:+、}${name}"
+			done <<<"$active"
+			ci_record "CI ${short}: 失敗あり（${names} の区切りの途中なので保留）"
+			return 0
+		fi
 	fi
 	notice=''
 	if [[ $mode == watch ]]; then

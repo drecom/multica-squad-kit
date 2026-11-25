@@ -43,6 +43,7 @@ case "${1-} ${2-} ${3-}" in
  jq --arg id "$3" '.[] | select(.id == $id)' "$dir/agents.json" >"$dir/agent-response.json"
  emit agent-get "$dir/agent-response.json" ;;
 'issue runs test-issue') emit issue-runs "$dir/runs.json" ;;
+'squad member list') emit squad-member-list "$dir/members.json" ;;
 'issue wakeup list') emit issue-wakeups "$dir/rules.json" ;;
 'issue metadata set' | 'issue metadata delete')
 	operation=$3
@@ -183,6 +184,7 @@ reset_fixture() {
 	printf '[]' >"$test_dir/rules.json"
 	printf '[]' >"$test_dir/comments.json"
 	printf '[]' >"$test_dir/runs.json"
+	printf '[]' >"$test_dir/members.json"
 	printf 'ci-thread' >"$test_dir/allowed-parent"
 	cp "$test_dir/agents.base.json" "$test_dir/agents.json"
 	rm -f "$test_dir/allow-missing-fields" "$test_dir/wakeup-response.json" "$test_dir/fail" "$test_dir/fail-gh" "$test_dir/pr-after-first.json" "$test_dir/persist-created-rule" "$test_dir/fail-conflicts" "$test_dir/mergeable-read" "$test_dir/expected-pr-url"
