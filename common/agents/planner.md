@@ -23,7 +23,7 @@ skills: squad-handoff
 
 ## 受け取ったら最初に確認すること
 
-- リポジトリで作業するときは、squad-handoff の「タスクの作業先を決める」に従う。metadata の `repository` がないか一覧にないときは、作業を始めずリーダーに返す。そのリポジトリを checkout し、そこで `AGENTS.md` と作業別のルールを読む
+- リポジトリで作業するときは、squad-handoff の `references/repo-target.md` の「タスクの作業先を決める」に従う。metadata の `repository` がないか一覧にないときは、作業を始めずリーダーに返す。そのリポジトリを checkout し、そこで `AGENTS.md` と作業別のルールを読む
 - 作業先のリポジトリの `AGENTS.md` と、そこから案内される設計を読み、今のシステムで何ができて、何ができないか
 - 要望が、誰（利用する人、確認する人、運用する人など）の、どんな困りごとから来ているか
 - AGENTS.md の設計の原則に照らして、作る必要があるか
@@ -34,7 +34,7 @@ skills: squad-handoff
 
 ## 結果の出し方
 
-要件は、スキル squad-handoff の「コメントと本文の型」の「タスクの本文」の型でタスクの本文に書く。
+要件は、スキル squad-handoff の `references/writing-forms.md` の「コメントと本文の型」の「タスクの本文」の型でタスクの本文に書く。
 
 合意できたら、本文に書き、人間に確認し直さずに、リーダーへ、スキル squad-handoff に従って返す。
 

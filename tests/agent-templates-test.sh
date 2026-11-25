@@ -411,9 +411,9 @@ done
 echo 'PASS templates: 13 の役のメンションのリンクの行は「このプロジェクトの値」に戻らず、見張りの 3 役のリンクは残る'
 
 # 画像の添付の手順の見出しと、添付のコマンドの形。読む側は、「squad-handoff の「画像を載せる」」と名前で指す qa・実装・修正の役の指示。
-image_skill="$root/common/skills/squad-handoff/SKILL.md"
+image_skill="$root/common/skills/squad-handoff/references/pr.md"
 grep -qxF '## 画像を載せる' "$image_skill"
-grep -qxF '## 人間に操作を頼む前に' "$image_skill"
+grep -qxF '## 人間に操作を頼む前に' "$root/common/skills/squad-handoff/references/human-ops.md"
 awk '/^## 画像を載せる$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$image_skill" >"$test_dir/image-section"
 for text in 'gh pr comment' --attach 'multica issue comment add' --attachment; do
 	grep -qF -- "$text" "$test_dir/image-section"
@@ -531,7 +531,7 @@ if grep -qF 'squad-pr-watch conflicts-check' <<<"$rearm_section"; then exit 1; f
 before_conflicts=${rearm_section%%squad-pr-watch conflicts <タスク>*}
 before_unlinked=${rearm_section%%squad-pr-watch unlinked <タスク>*}
 ((${#before_conflicts} < ${#before_unlinked}))
-state_skill="$root/common/skills/squad-handoff/SKILL.md"
+state_skill="$root/common/skills/squad-handoff/references/pr.md"
 grep -qxF '## PR の状態を書く' "$state_skill"
 state_section=$(awk '/^## PR の状態を書く$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$state_skill")
 grep -qF 'コンフリクト:' <<<"$state_section"
@@ -716,6 +716,8 @@ echo 'PASS templates: 差し込んだ値のマーク・記法・改行・引用�
 
 # PR を作った直後の紐付けの呼び方と、失敗の記録の行。読む側は、`紐付けの失敗:` の行を読む common/monitor/squad-review-next と、呼び方を実行する設計・実装の役。
 skill="$root/common/skills/squad-handoff/SKILL.md"
+pr_skill="$root/common/skills/squad-handoff/references/pr.md"
+reply_skill="$root/common/skills/squad-handoff/references/review-reply.md"
 for scenario in all no-planner no-designer no-planning claude-only codex-only no-reviews minimum runtime-claude-only runtime-codex-only; do
 	for role in designer claude-implementer codex-implementer; do
 		file="$test_dir/$scenario/$role"
@@ -723,7 +725,7 @@ for scenario in all no-planner no-designer no-planning claude-only codex-only no
 		grep -qF 'squad-pr-link <タスク> <PR の URL>' "$file"
 	done
 done
-sed -n '/^## PR を作る・実装を積む$/,/^### PR の本文の置き場所と順序$/p' "$skill" >"$test_dir/pr-link-procedure"
+sed -n '/^## PR を作る・実装を積む$/,/^### PR の本文の置き場所と順序$/p' "$pr_skill" >"$test_dir/pr-link-procedure"
 # 手順のバッククォートの語は、種類に分けて見る。種類ごとの見る・見ないと理由は tests/pr-link-procedure-table.tsv にあり、表の行ごとに手順を 1 か所だけ変えた写しを作って、検査が落ちる・通るを照合する。説明文は固定しない。読む側は common/monitor/squad-pr-link・squad-pr-watch・squad-review-next と leader-run-status.md で、鍵の pr_url と branch を読む。
 pr_link_check="$root/tests/pr-link-procedure-check.py"
 python3 "$pr_link_check" check "$test_dir/pr-link-procedure"
@@ -733,9 +735,13 @@ absent -qF '紐付け済みとして飛ばす' "$test_dir/pr-link-procedure"
 absent -qF 'PR とタスクは、タスクの画面で URL を指定して紐付ける' "$test_dir/pr-link-procedure"
 echo "PASS templates: 全構成で PR 作成直後に squad-pr-link を呼び、手順のバッククォートの語を種類ごとに見て、紐付けの失敗の記録の行と metadata の鍵（pr_url と branch）を保つ（$(<"$test_dir/pr-link-table.out")）"
 
-for heading in 本文の書き方 'PR を作る・実装を積む' 'PR の本文の置き場所と順序' 引き継ぐとき 'レビューと E2E の返事を返す' 'PR にレビューやテストの結果を書く'; do
+for heading in 本文の書き方 引き継ぐとき; do
 	grep -qx "#\{2,3\} $heading" "$skill"
 done
+for heading in 'PR を作る・実装を積む' 'PR の本文の置き場所と順序' 'PR にレビューやテストの結果を書く'; do
+	grep -qx "#\{2,3\} $heading" "$pr_skill"
+done
+grep -qx '## レビューと E2E の返事を返す' "$reply_skill"
 grep -qF 'codex exec --sandbox read-only --ephemeral' "$test_dir/all/codex-fixer"
 absent -qF 'Agent ツールで' "$test_dir/all/codex-fixer"
 echo 'PASS templates: 共通スキルが役の指示の参照する見出しを持ち、Codex の修正の役は codex exec で見直す'
@@ -821,7 +827,7 @@ grep -qF '重要のマーク:' "$test_dir/all/designer"
 echo 'PASS templates: 設計の役の指示が、見せ直しの返し先と重要のマークの記録の行を読む'
 
 # セットアップが起票した記入のタスクの metadata（squad_kit_task）を、役が探すマークにする。
-sed -n '/^## 記入が足りずに止まるとき$/,/^## 人間を呼んで止まるとき$/p' "$skill" >"$test_dir/unfilled-stop"
+sed -n '/^## 記入が足りずに止まるとき$/,$p' "$root/common/skills/squad-handoff/references/missing-fill.md" >"$test_dir/unfilled-stop"
 grep -qx '## 記入が足りずに止まるとき' "$test_dir/unfilled-stop"
 for phrase in 'squad_kit_task=project-instructions' 'squad_kit_task=repository-change'; do
 	grep -qF "$phrase" "$test_dir/unfilled-stop"
@@ -936,7 +942,8 @@ echo 'PASS templates: 設計の文書が指す参照の見出しがあり、リ�
 
 # レビューと E2E の返事: 返事を書く役は report で返し、設計への指摘の行を持つ。次の依頼は common/monitor/squad-review-next の decide が書き、リーダーは決められないときだけ起きる。
 handoff_skill="$root/common/skills/squad-handoff/SKILL.md"
-grep -qF -- '設計への指摘: <あり | なし>' "$handoff_skill"
+refs_skill="$root/common/skills/squad-handoff/references"
+grep -qF -- '設計への指摘: <あり | なし>' "$refs_skill/review-reply.md"
 for role in code-reviewer ux-reviewer security-reviewer performance-reviewer qa claude-principal codex-principal; do
 	grep -qF 'squad-review-wait report <タスク> <きっかけのコメント> <ファイル>' "$test_dir/all/$role"
 done
@@ -983,21 +990,20 @@ echo 'PASS templates: manual.md の「共通 2 の設計の見直し」に、設
 
 # squad-review-next がマークを読み、squad-cli-lib が前の回: と結果の行の並びを読む。
 # 説明文は固定せず、記録の鍵・プレースホルダーと、その並びだけを確認する。
-python3 - "$handoff_skill" "$refs/leader-principal.md" "$test_dir/all" <<'PY_RESULT'
+python3 - "$refs_skill/pr.md" "$refs_skill/review-reply.md" "$refs/leader-principal.md" "$test_dir/all" <<'PY_RESULT'
 import re
 import sys
 from pathlib import Path
 
-skill, principal, agents = map(Path, sys.argv[1:])
+pr_ref, reply_ref, principal, agents = map(Path, sys.argv[1:])
 mark = '<マーク> <自分のエージェントの名前>: <結論>'
 commit = '確認したコミット:'
 design = '設計への指摘:'
-text = skill.read_text()
-section = text.split('## PR にレビューやテストの結果を書く\n', 1)[1].split('\n## ', 1)[0]
+section = pr_ref.read_text().split('## PR にレビューやテストの結果を書く\n', 1)[1].split('\n## ', 1)[0]
 assert mark in section
 for symbol in ('❌', '⚠️', '✅'):
     assert re.search(r'^\| ' + symbol + r' \|', section, re.M), symbol
-reply = text.split('## レビューと E2E の返事を返す\n', 1)[1].split('\n## ', 1)[0]
+reply = reply_ref.read_text().split('## レビューと E2E の返事を返す\n', 1)[1].split('\n## ', 1)[0]
 assert any(commit in p and mark in p and p.index(commit) < p.index(mark)
            for p in reply.split('\n\n')), '共通スキル: コミット・マークの順'
 for role in ('code-reviewer', 'ux-reviewer', 'security-reviewer', 'performance-reviewer',
@@ -1011,7 +1017,7 @@ PY_RESULT
 echo 'PASS templates: 通常の結果のマーク・記録の並びと最終レビューの前の回の形を保つ'
 
 # 検証が未実行の結果の行。共通スキルの節が置き、common/monitor/squad-review-next の decide が読む。役のひな形は写さない。
-sed -n '/^### 未記入の報告を返す$/,/^### リーダーが報告を受けたとき$/p' "$handoff_skill" >"$test_dir/unfilled-report"
+sed -n '/^### 未記入の報告を返す$/,/^### リーダーが報告を受けたとき$/p' "$refs_skill/missing-fill.md" >"$test_dir/unfilled-report"
 grep -qxF '未実行: 検証スキルが未記入' "$test_dir/unfilled-report"
 for role in code-reviewer ux-reviewer security-reviewer performance-reviewer qa claude-principal codex-principal; do
 	if grep -qF '未実行: 検証スキルが未記入' "$test_dir/all/$role"; then
@@ -1207,9 +1213,9 @@ for scenario in all no-planner no-designer no-planning claude-only codex-only no
 done
 echo 'PASS templates: 週次の 2 つの指示がデフォルトブランチを取得し、失敗で止まり、対象の行を返す'
 
-# 読む側: 役の指示が指す common/skills/squad-handoff/SKILL.md の節「更新を知らされたときに照合する」を、全役が更新を知らされたときに読む。
+# 読む側: 役の指示が指す common/skills/squad-handoff/references/human-ops.md の節「更新を知らされたときに照合する」を、全役が更新を知らされたときに読む。
 # 照合のために役が流す読み取りのコマンドと、報告の行の形。
-awk '/^## 更新を知らされたときに照合する$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$handoff_skill" >"$test_dir/reconcile-section"
+awk '/^## 更新を知らされたときに照合する$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$refs_skill/human-ops.md" >"$test_dir/reconcile-section"
 [[ -s $test_dir/reconcile-section ]]
 for phrase in \
 	'| 接続先 | `multica auth status`' \
@@ -1223,19 +1229,19 @@ for phrase in \
 done
 echo 'PASS templates: 共通スキルの照合の節に、読むコマンド 6 つと照合の行の形がある'
 
-# 読む側: 役の指示（qa・planner・code-reviewer など）が、common/skills/squad-handoff/SKILL.md のこれらの節の見出しを名前で指す。
+# 読む側: 役の指示（qa・planner・code-reviewer など）が、common/skills/squad-handoff/references/writing-forms.md のこれらの節の見出しを名前で指す。
 # 役の指示が参照する、共通スキルの節の見出し。
 type_skill="$root/common/skills/squad-handoff/SKILL.md"
 for phrase in '## コメントと本文の型' '### 共通の項目名' '### タスクの本文'; do
-	grep -qF -- "$phrase" "$type_skill"
+	grep -qxF -- "$phrase" "$root/common/skills/squad-handoff/references/writing-forms.md"
 done
 echo 'PASS templates: 共通スキルに、役の指示が参照するコメントと本文の型の見出しがある'
 
-# 言い回しの決まり: 共通スキルの小節「言い回し」は「本文の書き方」と「コメントと本文の型」の間にあり、6 つの決まりの行を 1 行ずつ持つ。同じ行が STYLE.md にも 1 行ずつある。読む側は、小節を読む全役と、STYLE.md を読む原本の文書を書く人。
+# 言い回しの決まり: 共通スキルの小節「言い回し」は「本文の書き方」と「タスクのコメントを書く」の間にあり、6 つの決まりの行を 1 行ずつ持つ。同じ行が STYLE.md にも 1 行ずつある。読む側は、小節を読む全役と、STYLE.md を読む原本の文書を書く人。
 phrasing_style="$root/STYLE.md"
 body_line=$(grep -nxF '## 本文の書き方' "$type_skill" | cut -d: -f1)
 phrasing_line=$(grep -nxF '### 言い回し' "$type_skill" | cut -d: -f1)
-types_line=$(grep -nxF '## コメントと本文の型' "$type_skill" | cut -d: -f1)
+types_line=$(grep -nxF '## タスクのコメントを書く' "$type_skill" | cut -d: -f1)
 [[ -n $body_line && -n $phrasing_line && -n $types_line ]]
 ((body_line < phrasing_line && phrasing_line < types_line))
 phrasing_section=$(awk '/^### 言い回し$/ {inside=1; next} inside && /^#/ {exit} inside {print}' "$type_skill")
