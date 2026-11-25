@@ -4,6 +4,10 @@
 # check: 区切るかを 1 行で出す。終了コードは 0（使い方の誤りは 2）。
 # post: 引き継ぎのコメントを投稿し、リーダーの見張りと自分の続きの起こしを作る。
 #   終了コード 0 は完了、1 は読み書きの失敗、2 は使い方か行の誤り、3 は起こしを作れない、4 は続けて区切れる回数の超過。
+# resume: 続きの実行の始めに、自分の実行の見張りを作り、post が作ったリーダーの見張りを消す。
+#   終了コード 0 は続けられる、1 は区切りのコメントを確かな形で読めない、2 は使い方の誤り、3 は見張りを作れない。
+# state: 役ごとに、区切りの続きの状態（待ち・動いている・始まらない・失敗した・終わった）を出す。
+#   終了コード 0 は完了、1 は読めない、2 は使い方の誤り。
 set -euo pipefail
 here=$(dirname "${BASH_SOURCE[0]}")
 source "$here/squad-cli-lib"
@@ -14,6 +18,8 @@ usage() {
 		echo '使い方:'
 		echo '  squad-run-cut check <タスク> <自分のエージェントの ID> <圧縮の回数>'
 		echo '  squad-run-cut post <タスク> <ファイル> <自分のエージェントの ID> <リーダーのエージェントの ID>'
+		echo '  squad-run-cut resume <タスク> <区切りのコメントの ID> <自分のエージェントの ID> <リーダーのエージェントの ID>'
+		echo '  squad-run-cut state <タスク>'
 	} >&2
 	exit 2
 }
@@ -115,11 +121,78 @@ post() {
 	printf '投稿: %s\n見張り: %s\n起こし: %s\n' "$comment" "$watch" "$wake"
 }
 
+# 続きの実行の始めに流す。見張りを自分の実行に付け替える。
+resume() {
+	[[ $# == 4 && -n $1 && -n $2 && -n $3 && -n $4 ]] || usage
+	local task=$1 cut=$2 self=$3 leader=$4 comments instruction ids id
+	comments=$(squad_cli_read issue-comments "$task") || { echo 'タスクのコメントを読めません' >&2; exit 1; }
+	if ! jq -e --arg id "$cut" --arg self "$self" '
+		type == "array" and any(.[]; .id == $id and .author_type == "agent" and .author_id == $self
+			and (.content | test("(^|\n)区切り:")))' <<<"$comments" >/dev/null 2>&1; then
+		echo "区切りのコメントを確認できません（コメント: ${cut}）。作者が自分でないか、区切りの行がありません" >&2
+		exit 1
+	fi
+	if [[ -z ${MULTICA_TASK_ID-} ]]; then
+		echo '実行の ID（MULTICA_TASK_ID）がないため、見張りを作れません' >&2
+		exit 3
+	fi
+	mkdir -p tmp
+	instruction=$(mktemp tmp/run-cut-wakeup.XXXXXX)
+	trap "$(printf 'rm -f -- %q' "$instruction")" EXIT
+	printf '区切りの続きの確認: %s\n' "$cut" >"$instruction"
+	if ! squad_cli_read issue-wakeup-create "$task" "$instruction" --kind event --event task.failed,task.cancelled \
+		--task-id "$MULTICA_TASK_ID" --agent-id "$leader" | jq -e .id >/dev/null; then
+		echo "実行の見張りの起こしを作れません（区切りのコメント: ${cut}）" >&2
+		exit 3
+	fi
+	# post が作った、時刻の見張りだけを消す。実行の見張りは、同じ指示で条件を持つので残る。消せなくても止まらない。
+	if ids=$(squad_cli_read issue-wakeups "$task" | jq -r --arg leader "$leader" --arg text "区切りの続きの確認: ${cut}" '
+		.[] | select(.agent_id == $leader and .condition == null and (.instruction | rtrimstr("\n")) == $text) | .id' 2>/dev/null); then
+		while IFS= read -r id; do
+			[[ -n $id ]] || continue
+			multica issue wakeup delete "$task" "$id" --output json >/dev/null 2>&1 || true
+		done <<<"$ids"
+	fi
+	printf '続き: %s\n' "$cut"
+}
+
+# 区切りを使う役ごとに、最も新しい区切りのコメントから、続きの状態を 1 行で出す。
+state() {
+	[[ $# == 1 && -n $1 ]] || usage
+	value_ok || exit 1
+	local task=$1 roster comments runs ids
+	roster=$(squad_cli_read_roster_for_caller "$task") || { echo '名簿を読めません' >&2; exit 1; }
+	comments=$(squad_cli_read issue-comments "$task") || { echo 'タスクのコメントを読めません' >&2; exit 1; }
+	runs=$(squad_cli_read issue-runs "$task") || { echo 'タスクの実行の一覧を読めません' >&2; exit 1; }
+	ids=$(jq -c '[.roles["claude-implementer"], .roles["claude-fixer"], .roles["designer"] | select(. != null) | .id]' <<<"$roster") \
+		|| { echo '名簿から役のエージェントを読めません' >&2; exit 1; }
+	jq -nr --argjson ids "$ids" --argjson comments "$comments" --argjson runs "$runs" --argjson wait "$START_WAIT" '
+		def ts: sub("\\.[0-9]+"; "") | sub("\\+00:00$"; "Z") | fromdateiso8601;
+		def is_cut: .content | test("(^|\n)区切り:");
+		def finished: . == "completed" or . == "failed" or . == "cancelled";
+		$ids[] as $id
+		| ($comments | map(select(.author_type == "agent" and .author_id == $id) | . + {t: (.created_at | ts)})) as $own
+		| ($own | map(select(is_cut)) | sort_by(.t) | last) as $cut
+		| select($cut != null)
+		# 区切りのあとに、区切りでないコメントを書いていれば、区切りを終えている。
+		| select($own | map(select(.t > $cut.t and (is_cut | not))) | length == 0)
+		| ($runs | map(select(.agent_id == $id) | . + {t: (.created_at | ts)}) | map(select(.t > $cut.t)) | sort_by(.t)) as $after
+		| (if ($after | length) == 0 then
+				(if now - $cut.t > $wait * 60 then "始まらない" else "待ち" end)
+			elif any($after[]; .status | finished | not) then "動いている"
+			elif ($after | last | .status) == "completed" then "終わった"
+			else "失敗した" end) as $state
+		| "区切り: \($id) \($state) \($cut.id)"' \
+		|| { echo '区切りの状態を決められません' >&2; exit 1; }
+}
+
 (($# > 0)) || usage
 command=$1
 shift
 case $command in
 check) check "$@" ;;
 post) post "$@" ;;
+resume) resume "$@" ;;
+state) state "$@" ;;
 *) usage ;;
 esac
