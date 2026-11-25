@@ -359,6 +359,17 @@ if part == 'gh':
         assert result.returncode == 1 and result.stdout == '', result
     print('PASS gh-default-branch: 空文字・文字列以外・オブジェクト以外の応答を拒む')
 
+    # PR の本文は、本文がない PR の空文字を受け付け、body の欠落と null を契約の誤りにする。
+    entry = entries['gh-pr-body']
+    body = json.loads((fixtures / 'gh-pr-body.json').read_text())[0]
+    assert entry['command'][-2:] == ['--json', 'body'] and entry['fields'][0]['path'] == 'body'
+    assert success('gh-pr-body', body) == body
+    assert success('gh-pr-body', {'body': ''}) == {'body': ''}
+    missing_body = {key: value for key, value in body.items() if key != 'body'}
+    failure('gh-pr-body', missing_body, entry['fields'][0])
+    failure('gh-pr-body', dict(body, body=None), entry['fields'][0])
+    print('PASS gh-pr-body: 見本が契約に合い、空の本文を受け付け、body がない応答は契約の誤りになる')
+
     # 見本なしの Status も、公式スキーマから作った同じケースで全必須欄を消す。
     (work / 'contracts.json').write_text(json.dumps({'entries': entries}))
     status = json.loads(subprocess.check_output(['python3', str(root / 'tests/gh-fixture.py'),

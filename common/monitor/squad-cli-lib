@@ -1312,6 +1312,33 @@ squad_cli_contracts() {
         }
       ]
     },
+    "gh-pr-body": {
+      "command": [
+        "gh",
+        "pr",
+        "view",
+        "{number}",
+        "--repo",
+        "{repo}",
+        "--json",
+        "body"
+      ],
+      "shape": "object",
+      "capture": "external",
+      "fields": [
+        {
+          "path": "body",
+          "class": "required",
+          "nullable": false
+        }
+      ],
+      "samples": [
+        {
+          "name": "element",
+          "where": "true"
+        }
+      ]
+    },
     "gh-pr-mergeable": {
       "command": [
         "gh",
