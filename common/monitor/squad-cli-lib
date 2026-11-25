@@ -59,6 +59,21 @@ squad_cli_contracts() {
           "nullable": true
         },
         {
+          "path": "title",
+          "class": "optional",
+          "nullable": true
+        },
+        {
+          "path": "labels",
+          "class": "optional",
+          "nullable": true
+        },
+        {
+          "path": "metadata.branch",
+          "class": "optional",
+          "nullable": true
+        },
+        {
           "path": "metadata.ci_wait_head",
           "class": "optional",
           "nullable": true
@@ -112,6 +127,24 @@ squad_cli_contracts() {
           "name": "metadata.ci_wait_rule-present",
           "where": ".metadata | has(\"ci_wait_rule\")",
           "unavailable": "CI 待ちが作るアプリケーションの metadata。導入前の採取にはないため、契約で宣言した欄を待ちのテストで設定する。"
+        },
+        {
+          "name": "title-absent",
+          "where": ". | has(\"title\") | not",
+          "unavailable": "Multica は title を常に返すため、採取にはない。契約は、欄のない応答（テストの代用品）を読める形にしておく。"
+        },
+        {
+          "name": "labels-absent",
+          "where": ". | has(\"labels\") | not",
+          "unavailable": "Multica は labels を常に返すため、採取にはない。契約は、欄のない応答（テストの代用品）を読める形にしておく。"
+        },
+        {
+          "name": "branch-present",
+          "where": ".metadata | has(\"branch\")"
+        },
+        {
+          "name": "branch-absent",
+          "where": ".metadata | has(\"branch\") | not"
         },
         {
           "name": "ci_watch_thread-present",
