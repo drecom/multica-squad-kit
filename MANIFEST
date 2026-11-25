@@ -67,7 +67,7 @@ b0e7a3279a4284756a60a54123b595a50e67522bb23ec18a8c0be187410e77d8  ./common/setup
 57693434623b5b8b4947ab836b372bfbfb50b910abfd296af162641a898f1a6b  ./common/skills/squad-handoff/references/leader-review-wait.md
 0e603565f0f6810c8d6bc105e6436298446fe9c3fbe70cea14160c95427c1b4c  ./common/skills/squad-handoff/references/leader-run-status.md
 1caa0a53bbaafea6d15e8105f94b22e1cd5b487b9891529111085f838bd88681  ./common/squad.md
-5d91b2dbb56ca90ea65f52cad579c4e8e7b792cd07bbf0f0d4b28cc35972fad9  ./docs/README.md
+7ef78113c30f7d3d4a82a1acb985bf4616f9ece1044d42ecb39bc202d860dad9  ./docs/README.md
 c380ac8fd57091fa1d1ad80ff9724cba6667a7199b440a40b4be9b0e25f83623  ./docs/agent-path.md
 62062b7363a33eb140e814eeff5b3898d2d7d06aadc1ff95a07aa88aa001dbc7  ./docs/autopilot-targets.md
 3ca4ffccd35ce4ddcb26bc3c40ef34d2d2295eb27b8b0e08ea0522827b8bbb9c  ./docs/bug-repro-test.md
@@ -103,6 +103,7 @@ abbb6a7aed1c8da4f421fe06ac0838895c082e6f900e1e116ceda0f72ad9eaa9  ./docs/termina
 a2367b63ddcabe6b407ced872701305e8ba9303890d4d47829b9a36b01469037  ./docs/terms.md
 42cf0ae622a4d61b9c9ca60fc3597043294929d3fc06b5f1118ad6cbdc47f636  ./docs/test-trim.md
 4788958c0c608fdfe5e9c299b8fbce2fd761f2840563748f24cb191acdee0746  ./docs/time-breakdown.md
+2f80af83fa618a9e2cb37b7badad5be3e2d758b4dc283893a8fc7ece5c32f0df  ./docs/undecided.md
 6627002e845486bb04bb091dda5e2b83b42fbe08434ab46f492385a375c8cc2c  ./docs/usage-answer.md
 b29efd7c2adf1f0b2d7554c0c3a90059156bfd8717105cc156de5bcf871e1cca  ./docs/vm.md
 f9976396457d968a6b10dc34235955d52889eaf20d46cc70c9785a748f2bb3bd  ./install.sh
