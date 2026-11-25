@@ -3,7 +3,7 @@ name: "{{project_key}}-claude-fixer-{{member_key}}"
 description: レビューの指摘、main とのコンフリクト、CI の失敗を直す
 role: 修正（Claude）。レビューの指摘、main とのコンフリクト、CI の失敗を受ける
 model: claude-sonnet-5-5
-thinking_level: high
+thinking_level: medium
 skills: squad-handoff, verify
 ---
 

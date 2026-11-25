@@ -345,7 +345,6 @@ for dir in "$test_dir/"*/; do
 	[[ $(wc -c <"$file") -le 12288 ]]
 	awk '/^## 判断の優先の原則$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$file" >"$test_dir/principles"
 	[[ $(grep -cE '^[1-7]\. \*\*' "$test_dir/principles") -eq 7 ]]
-	grep -qx 'thinking_level: high' "$file"
 	# 原則 7 に数え方の行は書かない。数え方は参照のファイルだけに書く。
 	absent -qF '往復' "$test_dir/principles"
 	absent -qF '同じ失敗' "$test_dir/principles"
@@ -357,7 +356,19 @@ for dir in "$test_dir/"*/; do
 		[[ -s $root/common/skills/squad-handoff/references/$ref ]]
 	done
 done
-echo 'PASS templates: 全構成のリーダーは見出しの並び・索引の参照先・12KB 以内・high を保つ'
+echo 'PASS templates: 全構成のリーダーは見出しの並び・索引の参照先・12KB 以内を保つ'
+# 思考の深さ: Claude で動くリーダーと修正の役は medium、Codex で動くリーダーは high、QA は medium、Codex の修正の役は high のまま。
+for dir in "$test_dir/"*/; do
+	scenario=$(basename "$dir")
+	[[ -f $dir/orchestrator ]] || continue
+	if [[ $scenario == runtime-codex-only ]]; then want=high; else want=medium; fi
+	[[ $(template_field "$dir/orchestrator" thinking_level) == "$want" ]]
+	[[ $(template_field "$dir/orchestrator" model) == "$(if [[ $want == high ]]; then echo gpt-6.2-sol; else echo claude-sonnet-5-5; fi)" ]]
+	[[ ! -f $dir/claude-fixer ]] || [[ $(template_field "$dir/claude-fixer" thinking_level) == medium ]]
+	[[ ! -f $dir/codex-fixer ]] || [[ $(template_field "$dir/codex-fixer" thinking_level) == high ]]
+	[[ ! -f $dir/qa ]] || [[ $(template_field "$dir/qa" thinking_level) == medium ]]
+done
+echo 'PASS templates: 思考の深さは Claude のリーダーと claude-fixer が medium、Codex のリーダーと codex-fixer が high、QA が medium'
 runtimes='["claude","codex"]'
 
 # 全分岐で長い方を足した上限を測る。役の相関を無視するので、すべての組み合わせを上回る。
@@ -457,11 +468,13 @@ for runtime in claude codex; do
 			[[ $(template_field "$file" thinking_level) == high ]]
 		else [[ $model == "$expected" ]]; fi
 		for field in thinking_level max_concurrent_tasks skills; do
+			# Codex だけの構成のリーダーは high。Claude を使う構成の medium とは別の値で、上の思考の深さの確認が見る。
+			[[ $role == orchestrator && $field == thinking_level && $runtime == codex ]] && continue
 			[[ $(template_field "$file" "$field") == "$(template_field "$test_dir/all/$role" "$field")" ]]
 		done
 	done
 done
-echo 'PASS templates: 片方だけのランタイムでは設計表のモデルへ移し、思考の深さ・同時実行数・スキルを保つ'
+echo 'PASS templates: 片方だけのランタイムでは設計表のモデルへ移し、思考の深さ（Codex のリーダーを除く）・同時実行数・スキルを保つ'
 
 # 要件を決める役は、Claude を使う構成では Fable 5.2、Codex だけでは GPT-6.2 Astra で、どの構成でも high にする。
 for scenario in all no-designer claude-only codex-only no-reviews runtime-claude-only; do

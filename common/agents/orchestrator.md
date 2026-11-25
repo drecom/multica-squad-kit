@@ -4,10 +4,11 @@ description: プロジェクトの進行を管理し、仕事を有効な役へ�
 role: スクワッドのリーダー
 <!-- IF runtime-claude -->
 model: claude-sonnet-5-5
+thinking_level: medium
 <!-- ELSE -->
 model: gpt-6.2-sol
-<!-- ENDIF -->
 thinking_level: high
+<!-- ENDIF -->
 skills: squad-handoff
 ---
 

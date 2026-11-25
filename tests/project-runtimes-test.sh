@@ -32,6 +32,9 @@ for selected in claude codex; do
   if [[ $role == designer ]]; then role_model=$(if [[ $selected == claude ]]; then echo claude-opus-5-5; else echo gpt-6.2-sol; fi); fi
   jq -e --arg role "$role" --arg model "$role_model" --arg runtime "runtime-$selected" '.id==("agent-demo-"+$role+"-owner") and .model==$model and .runtime_id==$runtime' "$TEST_DB/agents/agent-demo-$role-owner.json" >/dev/null
   if [[ $role == planner || $role == designer ]]; then jq -e '.thinking_level=="high"' "$TEST_DB/agents/agent-demo-$role-owner.json" >/dev/null; fi
+  # リーダーは Claude で medium、Codex で high。QA は medium のまま。
+  if [[ $role == orchestrator ]]; then jq -e --arg want "$(if [[ $selected == claude ]]; then echo medium; else echo high; fi)" '.thinking_level==$want' "$TEST_DB/agents/agent-demo-$role-owner.json" >/dev/null; fi
+  if [[ $role == qa ]]; then jq -e '.thinking_level=="medium"' "$TEST_DB/agents/agent-demo-$role-owner.json" >/dev/null; fi
   jq -e --arg selected "$selected" --arg env "$TEMPLATE_AGENT_HOME/template/shell/project-a/env.sh" 'if $selected=="claude" then .CLAUDE_ENV_FILE==$env else .CLAUDE_ENV_FILE==null end' "$TEST_DB/env/agent-demo-$role-owner.json" >/dev/null
   role_args='[]'
   if [[ $role == orchestrator ]]; then role_args='["--keep","value"]'; fi
@@ -125,6 +128,25 @@ for selected in both codex; do
  echo "PASS project runtimes: 前の世代の Codex のモデルで登録済みの $selected の流し直しで、Codex の役のモデルが同じ格の新しい ID になり、Claude のモデルと思考の深さは変わらず、エージェントとオートパイロットは作られない"
 done
 unset TEST_RUNTIMES
+
+# 思考の深さが high で登録済みの Claude のリーダーと修正の役は、流し直しで medium になり、Codex の役の思考の深さは変わらない。
+export TEST_EXCLUDED='[]' TEST_ROLE_COUNT=17
+unset TEST_RUNTIMES
+rm -rf "$TEST_DB" "$TEMPLATE_AGENT_HOME"
+cp -R "$test_dir/completed/db" "$TEST_DB"
+cp -R "$test_dir/completed/host" "$TEMPLATE_AGENT_HOME"
+for role in orchestrator claude-fixer; do
+ jq '.thinking_level="high"' "$TEST_DB/agents/agent-demo-$role-owner.json" >"$TEST_DB/new"
+ mv "$TEST_DB/new" "$TEST_DB/agents/agent-demo-$role-owner.json"
+done
+before_codex=$(for role in codex-implementer codex-fixer; do jq -c '[.name,.thinking_level]' "$TEST_DB/agents/agent-demo-$role-owner.json"; done)
+: >"$TEST_DB/calls"
+run
+for role in orchestrator claude-fixer; do jq -e '.thinking_level=="medium"' "$TEST_DB/agents/agent-demo-$role-owner.json" >/dev/null; done
+jq -e '.thinking_level=="medium"' "$TEST_DB/agents/agent-demo-qa-owner.json" >/dev/null
+[[ $(for role in codex-implementer codex-fixer; do jq -c '[.name,.thinking_level]' "$TEST_DB/agents/agent-demo-$role-owner.json"; done) == "$before_codex" ]]
+! jq -es 'any(.[]; .[0:2]==["agent","create"] or .[0:2]==["autopilot","create"])' "$TEST_DB/calls" >/dev/null
+echo 'PASS project runtimes: 思考の深さが high で登録済みの Claude のリーダーと修正の役が、流し直しで medium になり、Codex の役と QA は変わらない'
 
 # Claude Code だけへ移した登録を流し直しても、エージェントは更新されず、どの役も Claude の決まった ID のままである。
 export TEST_EXCLUDED='[]' TEST_ROLE_COUNT=17 TEST_RUNTIMES='["claude"]'
