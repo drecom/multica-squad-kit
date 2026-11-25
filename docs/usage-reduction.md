@@ -785,6 +785,7 @@ high にした理由は、原則の判断に考える量を回すためだった
 | `common/agents/planner.md` | 合意の問いで短い道を尋ね、同意を本文に残す |
 | 役の指示・`SKILL.md`・リーダーの参照のうち、移した節を名前か「次の」で指す所 | 移した先の参照のファイルと節を指す。すぐ前の文と同じ節は「同じ節」と指してよい |
 | `tests/` | [テスト](#テスト)の確認を足し、思考の深さと最終レビューの範囲の期待を直す。検査の対象は分けた先の参照へ付け替え、新しいテストは `tests/test-weights` に重みを登録する |
+| `tests/pr-watch-test-lib.sh`・`tests/setup-runtimes-test-lib.sh`・`tests/command-forms-table.tsv`・`tests/leader-eval-test.sh` | 上の `tests/` の変更に合わせ、テストの部品のスタブと期待と、検査の対象のファイルを直す |
 | `tests/leader-eval/` | 新しいスクリプトの名前を `leader_eval.py` の差し替える名前に足し、それを呼ぶ場面の `cli.json` に応答を足す |
 | `docs/principal-review.md`・`docs/review-next-step.md`・`docs/decide-record-read.md`・`docs/leader-principles.md`・`docs/flow-and-index.md` | 短い道と思考の深さに合わせ、この文書と同じコミットで直した |
 | `docs/principal-review.md`・`docs/review-next-step.md`・`docs/reread-followups.md`・`docs/review-eval.md` | 分ける前のリーダーの参照へのリンクを、分けた先の参照と節へ付け替える |
