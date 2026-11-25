@@ -836,6 +836,7 @@ echo 'PASS templates: 返事の手順の参照が、squad-review-wait の呼び�
 for phrase in 'runs <タスク> --active' '--siblings' 'run-messages' '--help'; do
 	grep -qF -- "$phrase" "$refs/leader-run-status.md"
 done
+grep -qF -- 'squad-pr-watch link-check <タスク> <きっかけのコメント>' "$refs/leader-run-status.md"
 echo 'PASS templates: 進捗と停止の参照が、実行の状態を読むコマンドの形を持つ'
 grep -qF -- 'squad-pr-watch conflicts-check' "$refs/leader-pr-checks.md"
 echo 'PASS templates: PR の状態の参照が、conflicts-check の呼び方を持つ'
