@@ -764,8 +764,8 @@ high にした理由は、原則の判断に考える量を回すためだった
 | ファイル | 変えること |
 | --- | --- |
 | `common/skills/squad-handoff/SKILL.md` | [共通スキルの分け方](#共通スキルの分け方)のとおり分け、読み方の節と、場面の索引を足す |
-| `common/skills/squad-handoff/references/` の参照 | 共通スキルとリーダーの参照を表のとおりに分け、`run-cut.md` と、リーダーの `leader-run-wake.md`・`leader-run-cut.md` を足す。リーダーの参照に短い道と区切りの途中を足してまとめた呼び出しを使い、分けた先のファイルでは見出しの階層をそのファイルの中で整える |
-| `common/skills/squad-handoff/references/leader-review-request.md`・`leader-pr-merge.md` | [リーダーの参照の分け方](#リーダーの参照の分け方)のとおり、`link-check` を流す文を足す |
+| `common/skills/squad-handoff/references/` の参照 | 共通スキルとリーダーの参照を表のとおりに分け、`run-cut.md` と、リーダーの `leader-run-wake.md`・`leader-run-cut.md` を足し、リーダーの参照に短い道と区切りの途中を足してまとめた呼び出しを使う。分けた先のファイルでは見出しの階層をそのファイルの中で整え、語は `tests/terms-test.sh` の決まりに合わせる |
+| `common/skills/squad-handoff/references/leader-review-request.md`・`leader-pr-merge.md` | [リーダーの参照の分け方](#リーダーの参照の分け方)のとおり、`link-check` を流す文を足す。`leader-pr-merge.md` では節の始めに段落として足し、元の文は変えない |
 | `common/monitor/squad-run-cut-values` | 新しく足す |
 | `common/monitor/squad-run-cut`、`common/monitor/squad-task-read`、`common/monitor/squad-task-post` | 新しく足す |
 | `common/monitor/squad-review-next` | `analyze` の欄 `short_path`、表の 9、マージの依頼の確認の 2、マージを頼むコメントの行 |
@@ -782,7 +782,7 @@ high にした理由は、原則の判断に考える量を回すためだった
 | `tests/leader-eval/` | 新しいスクリプトの名前を `leader_eval.py` の差し替える名前に足し、それを呼ぶ場面の `cli.json` に応答を足す |
 | `docs/principal-review.md`・`docs/review-next-step.md`・`docs/decide-record-read.md`・`docs/leader-principles.md`・`docs/flow-and-index.md` | 短い道と思考の深さに合わせ、この文書と同じコミットで直した |
 | `docs/principal-review.md`・`docs/review-next-step.md`・`docs/reread-followups.md`・`docs/review-eval.md` | 分ける前のリーダーの参照へのリンクを、分けた先の参照と節へ付け替える |
-| `docs/planner-requirements.md`・`docs/leader-principles.md` | 縮めた所を記録し、展開した大きさの値を直す。指示を変えるコミットで直す |
+| `docs/planner-requirements.md`・`docs/leader-principles.md` | 縮めた所を記録し、展開した大きさの値を直す。記録の表の省いた語句が読める場所は分けた先の参照を指し、指示を変えるコミットで直す |
 | `docs/README.md` | 索引の「役の指示と、タスクが進む流れ」の表に、この文書の行を足した |
 | `MANIFEST` | `bash scripts/manifest.sh` で作り直す |
 
