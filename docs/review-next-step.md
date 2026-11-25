@@ -6,7 +6,7 @@
 
 返事を待つ回と `proceed` の仕組みは、リーダーの指示 `leader-review-wait.md` と `squad-review-wait` のコメントにあり、この文書はその上に成り立つ。
 
-PR の紐付けと紐付いていない PR の扱いは、リーダーの指示 `leader-pr-checks.md` の「PR の紐付けの確認」にある。すべてのタスクの最終レビューとマージの前の CI の待ちは [principal-review.md](principal-review.md) にある。この文書の仕組みはそれらの決まりを呼び、決まりそのものはそれらの文書が持つ。
+PR の紐付けと紐付いていない PR の扱いは、リーダーの指示 `leader-pr-checks.md` の「PR の紐付けの確認」にある。短い道を除くすべてのタスクの最終レビューとマージの前の CI の待ちは [principal-review.md](principal-review.md) にある。この文書の仕組みはそれらの決まりを呼び、決まりそのものはそれらの文書が持つ。
 
 ## 目的と範囲
 
