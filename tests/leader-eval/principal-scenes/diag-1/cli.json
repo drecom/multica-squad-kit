@@ -9,6 +9,85 @@
       "stdout": "{\n  \"id\": \"issue-shop-1\",\n  \"identifier\": \"SHOP-1\",\n  \"title\": \"カートに商品数を出す\",\n  \"status\": \"in_progress\",\n  \"assignee_type\": \"squad\",\n  \"assignee_id\": \"squad-shop\",\n  \"project_id\": \"project-shop\",\n  \"labels\": [],\n  \"metadata\": {\n    \"repository\": \"example/shop\",\n    \"branch\": \"feat/cart-badge\",\n    \"pr_url\": \"https://github.com/example/shop/pull/7\"\n  },\n  \"description\": \"カートのアイコンに、入っている商品の数を出す。100 以上は `99+` と表示する。\"\n}"
     },
     {
+      "match": "squad-task-read issue-shop-1",
+      "stdout": {
+        "schema_version": 1,
+        "task": {
+          "id": "issue-shop-1",
+          "identifier": "SHOP-1",
+          "title": "カートに商品数を出す",
+          "status": "in_progress",
+          "labels": [],
+          "metadata": {
+            "repository": "example/shop",
+            "branch": "feat/cart-badge",
+            "pr_url": "https://github.com/example/shop/pull/7"
+          },
+          "assignee_type": "squad",
+          "assignee_id": "squad-shop"
+        },
+        "comments": [
+          {
+            "id": "comment-1",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-claude-implementer",
+            "created_at": "2026-01-10T09:10:00Z",
+            "content": "[@SQUAD-SHOP](mention://squad/squad-shop) 実装を push しました。PR: https://github.com/example/shop/pull/7\n\n確認したこと:\n- 単体テストが通った"
+          },
+          {
+            "id": "comment-2",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T09:20:00Z",
+            "content": "[@shop-claude-fixer-member1](mention://agent/agent-claude-fixer) CI の失敗の修正を頼みます。\n\nCI 3f9a2c1: 失敗あり\n原因: 100 のときの表示が `99+` にならない（`src/cart/Badge.test.tsx` の失敗）。\n修正の依頼: 1 回目"
+          },
+          {
+            "id": "comment-3",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-claude-fixer",
+            "created_at": "2026-01-10T09:30:00Z",
+            "content": "[@SQUAD-SHOP](mention://squad/squad-shop) CI の test の失敗を直して push しました（head: 7d1e0b3）。\n\n`Badge.tsx` の表示の文字列を `99+` に直しました。手元で単体テストが通りました。"
+          },
+          {
+            "id": "comment-4",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T09:40:00Z",
+            "content": "@PRINCIPAL_MENTION@ 同じテストの失敗が続いたので、診断を頼みます。\n\n見直しの種類: 診断\n診断の依頼: 1 回目。失敗: 同じ誤り テスト cart-badge-test\n返事を待つ役: @PRINCIPAL_MENTION@\n確認するコミット: 7d1e0b34a5c6d7e8f9012345a6b7c8d9e0f1a2b3\n振り分け: 最上位の役 @PRINCIPAL_ID@ を選んだ（使用率: 空いている）\n\n1 回目の失敗は CI 3f9a2c1 の test で、`Badge › 100 以上は 99+ と表示する` が落ちた。書いた原因は「100 のときの表示が 99+ にならない」で、修正の役に直しを頼んだ。\n再発は CI 7d1e0b3 の同じテストで、修正の役は表示の文字列を直したと返した。"
+          }
+        ],
+        "pr": {
+          "url": "https://github.com/example/shop/pull/7",
+          "state": "OPEN",
+          "draft": true,
+          "head_sha": "7d1e0b34a5c6d7e8f9012345a6b7c8d9e0f1a2b3",
+          "mergeable": "MERGEABLE"
+        },
+        "ci": {
+          "head_sha": "7d1e0b34a5c6d7e8f9012345a6b7c8d9e0f1a2b3",
+          "checks": [
+            {
+              "name": "test",
+              "status": "completed",
+              "conclusion": "failure"
+            },
+            {
+              "name": "lint",
+              "status": "completed",
+              "conclusion": "success"
+            }
+          ]
+        },
+        "runs": [],
+        "cuts": [],
+        "errors": []
+      }
+    },
+    {
       "match": "multica issue comment list issue-shop-1",
       "stdout": "[\n  {\n    \"id\": \"comment-1\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-claude-implementer\",\n    \"parent_id\": null,\n    \"content\": \"[@SQUAD-SHOP](mention://squad/squad-shop) 実装を push しました。PR: https://github.com/example/shop/pull/7\\n\\n確認したこと:\\n- 単体テストが通った\",\n    \"created_at\": \"2026-01-10T09:10:00Z\"\n  },\n  {\n    \"id\": \"comment-2\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-orchestrator\",\n    \"parent_id\": null,\n    \"content\": \"[@shop-claude-fixer-member1](mention://agent/agent-claude-fixer) CI の失敗の修正を頼みます。\\n\\nCI 3f9a2c1: 失敗あり\\n原因: 100 のときの表示が `99+` にならない（`src/cart/Badge.test.tsx` の失敗）。\\n修正の依頼: 1 回目\",\n    \"created_at\": \"2026-01-10T09:20:00Z\"\n  },\n  {\n    \"id\": \"comment-3\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-claude-fixer\",\n    \"parent_id\": null,\n    \"content\": \"[@SQUAD-SHOP](mention://squad/squad-shop) CI の test の失敗を直して push しました（head: 7d1e0b3）。\\n\\n`Badge.tsx` の表示の文字列を `99+` に直しました。手元で単体テストが通りました。\",\n    \"created_at\": \"2026-01-10T09:30:00Z\"\n  },\n  {\n    \"id\": \"comment-4\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-orchestrator\",\n    \"parent_id\": null,\n    \"content\": \"@PRINCIPAL_MENTION@ 同じテストの失敗が続いたので、診断を頼みます。\\n\\n見直しの種類: 診断\\n診断の依頼: 1 回目。失敗: 同じ誤り テスト cart-badge-test\\n返事を待つ役: @PRINCIPAL_MENTION@\\n確認するコミット: 7d1e0b34a5c6d7e8f9012345a6b7c8d9e0f1a2b3\\n振り分け: 最上位の役 @PRINCIPAL_ID@ を選んだ（使用率: 空いている）\\n\\n1 回目の失敗は CI 3f9a2c1 の test で、`Badge › 100 以上は 99+ と表示する` が落ちた。書いた原因は「100 のときの表示が 99+ にならない」で、修正の役に直しを頼んだ。\\n再発は CI 7d1e0b3 の同じテストで、修正の役は表示の文字列を直したと返した。\",\n    \"created_at\": \"2026-01-10T09:40:00Z\"\n  }\n]"
     },

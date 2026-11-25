@@ -71,6 +71,118 @@
       }
     },
     {
+      "match": "squad-task-read issue-shop-1",
+      "stdout": {
+        "schema_version": 1,
+        "task": {
+          "id": "issue-shop-1",
+          "identifier": "SHOP-1",
+          "title": "カートに商品数を出す",
+          "status": "in_progress",
+          "labels": [],
+          "metadata": {
+            "repository": "example/shop",
+            "branch": "feat/cart-badge",
+            "pr_url": "https://github.com/example/shop/pull/7"
+          },
+          "assignee_type": "squad",
+          "assignee_id": "squad-shop"
+        },
+        "comments": [
+          {
+            "id": "c-owner",
+            "parent_id": null,
+            "author_type": "member",
+            "author_id": "member1",
+            "created_at": "2026-01-10T09:00:00Z",
+            "content": "カートに商品数を出してください。"
+          },
+          {
+            "id": "c-design",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-designer",
+            "created_at": "2026-01-10T09:01:00Z",
+            "content": "設計の draft PR を作りました。変更の一覧は src/cart/Badge.tsx と src/cart/Badge.test.tsx です。100 以上は 99+ と表示します。"
+          },
+          {
+            "id": "c-approved",
+            "parent_id": null,
+            "author_type": "member",
+            "author_id": "member1",
+            "created_at": "2026-01-10T09:02:00Z",
+            "content": "設計とフェーズ 1 を承認します。"
+          },
+          {
+            "id": "c-dispatch",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T09:03:00Z",
+            "content": "[@Implementer](mention://agent/agent-claude-implementer) フェーズ 1 を実装してください。"
+          },
+          {
+            "id": "c-impl",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-claude-implementer",
+            "created_at": "2026-01-10T09:05:00Z",
+            "content": "実装を push しました。全フェーズを積み、単体テストも通りました。\n設計との差: なし"
+          },
+          {
+            "id": "c-fix-request",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T09:06:00Z",
+            "content": "[@Fixer](mention://agent/agent-claude-fixer) 負の数の表示を直してください。\n修正の依頼: 1 回目"
+          },
+          {
+            "id": "c-fix-diff",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-claude-fixer",
+            "created_at": "2026-01-10T09:07:00Z",
+            "content": "負の数の表示を直して push しました。単体テストも通りました。\n設計との差: src/cart/Badge.css 余白の追加が変更の一覧にない"
+          },
+          {
+            "id": "c-design-request",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T09:08:00Z",
+            "content": "[@Designer](mention://agent/agent-designer) 差の扱いを決めてください。\n設計との差: src/cart/Badge.css 余白の追加が変更の一覧にない"
+          },
+          {
+            "id": "c-handling",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-designer",
+            "created_at": "2026-01-10T09:09:00Z",
+            "content": "設計との差の扱い: src/cart/Badge.css 戻す\nリーダーは差を返した修正の役へ、余白の追加を取り消し、既存の余白を使うことを頼んでください。設計は変えていません。"
+          }
+        ],
+        "pr": {
+          "url": "https://github.com/example/shop/pull/7",
+          "state": "OPEN",
+          "draft": true,
+          "head_sha": "3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567",
+          "mergeable": "MERGEABLE"
+        },
+        "ci": null,
+        "runs": [
+          {
+            "id": "run-1",
+            "agent_id": "agent-claude-fixer",
+            "status": "completed",
+            "created_at": null
+          }
+        ],
+        "cuts": [],
+        "errors": []
+      }
+    },
+    {
       "match": "multica issue comment list issue-shop-1",
       "stdout": [
         {

@@ -22,6 +22,7 @@ set -- \
 	squad-review-wait \
 	squad-run-cut \
 	squad-run-cut-values \
+	squad-task-post \
 	squad-task-read \
 	squad-usage-check \
 	squad-usage-lib \

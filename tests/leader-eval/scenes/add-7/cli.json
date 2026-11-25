@@ -86,6 +86,53 @@
       }
     },
     {
+      "match": "squad-task-read issue-shop-1",
+      "stdout": {
+        "schema_version": 1,
+        "task": {
+          "id": "issue-shop-1",
+          "identifier": "SHOP-1",
+          "title": "商品数の表示上限を管理する",
+          "status": "in_progress",
+          "labels": [],
+          "metadata": {},
+          "assignee_type": "squad",
+          "assignee_id": "squad-shop"
+        },
+        "comments": [
+          {
+            "id": "comment-2",
+            "parent_id": null,
+            "author_type": "member",
+            "author_id": "member1",
+            "created_at": "2026-01-10T09:00:00Z",
+            "content": "要件と受け入れ条件を本文に書きました。複数の作業先に分けて進めてください。"
+          },
+          {
+            "id": "comment-request",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": null,
+            "content": "見直しの種類: 要件の見直し\n確認するコミット: タスクの本文 3a2a10619e4dfa8e3d95ecd152cb35938ad3d1d8e24e09577450e4c203a46d24\n返事を待つ役: [@Principal](mention://agent/agent-codex-principal)"
+          },
+          {
+            "id": "comment-result",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-codex-principal",
+            "created_at": null,
+            "content": "確認したコミット: なし（checkout できない: example/admin）\n❌ shop-codex-principal-member1: 要件を見直していない\n設計への指摘: なし"
+          }
+        ],
+        "pr": null,
+        "ci": null,
+        "runs": [],
+        "cuts": [],
+        "errors": []
+      }
+    },
+    {
       "match": "multica issue comment list issue-shop-1",
       "stdout": [
         {
@@ -155,6 +202,30 @@
       }
     },
     {
+      "match": "squad-task-read issue-admin-1",
+      "stdout": {
+        "schema_version": 1,
+        "task": {
+          "id": "issue-admin-1",
+          "identifier": "ADMIN-1",
+          "title": null,
+          "status": "backlog",
+          "labels": [],
+          "metadata": {
+            "repository": "example/admin"
+          },
+          "assignee_type": null,
+          "assignee_id": null
+        },
+        "comments": [],
+        "pr": null,
+        "ci": null,
+        "runs": [],
+        "cuts": [],
+        "errors": []
+      }
+    },
+    {
       "match": "multica issue get issue-shop-2",
       "stdout": {
         "id": "issue-shop-2",
@@ -166,6 +237,30 @@
         "metadata": {
           "repository": "example/shop"
         }
+      }
+    },
+    {
+      "match": "squad-task-read issue-shop-2",
+      "stdout": {
+        "schema_version": 1,
+        "task": {
+          "id": "issue-shop-2",
+          "identifier": "SHOP-2",
+          "title": null,
+          "status": "backlog",
+          "labels": [],
+          "metadata": {
+            "repository": "example/shop"
+          },
+          "assignee_type": null,
+          "assignee_id": null
+        },
+        "comments": [],
+        "pr": null,
+        "ci": null,
+        "runs": [],
+        "cuts": [],
+        "errors": []
       }
     }
   ],

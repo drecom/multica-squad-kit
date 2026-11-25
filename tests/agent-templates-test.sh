@@ -560,6 +560,22 @@ grep -qF 'squad-pr-watch link-check <タスク>' <<<"$human_call_section"
 grep -qF 'leader-pr-link.md' <<<"$human_call_section"
 echo 'PASS templates: 返事を待つ回の前と人間を呼ぶ前の参照が、link-check を流す文と食い違いの場面への移り先を持つ'
 
+# 読む側: リーダーの始めの確認は squad-task-read、人間を呼んで止まる所と結果を書く所は squad-task-post を使う。
+# 指示は読み取りを 1 回の呼び出しにし、参照は止まる所の状態の変更を squad-task-post に向ける。
+for dir in "$test_dir/"*/; do
+	[[ -f $dir/orchestrator ]] || continue
+	grep -qF 'squad-task-read <タスク>' "$dir/orchestrator"
+	grep -qF 'squad-task-post <タスク> --status in_review --content-file <ファイル>' "$dir/orchestrator"
+	# 始めの確認の読み取りは 1 回の呼び出しにまとめ、タスクとコメントの個別の読み取りは指示に残さない。
+	! grep -qE 'multica issue (get|comment list)' "$dir/orchestrator"
+done
+leader_refs=$root/common/skills/squad-handoff/references
+for ref in leader-run-stop.md leader-pr-link.md leader-pr-ci.md leader-dispatch.md; do
+	grep -qF 'squad-task-post' "$leader_refs/$ref"
+done
+grep -qF 'squad-task-read <タスク>' "$leader_refs/leader-run-wake.md"
+echo 'PASS templates: リーダーの指示と参照が、始めの確認に squad-task-read、人間を呼んで止まる所に squad-task-post を使う'
+
 # 読む側: リーダーが leader-pr-ci.md の手順どおりに、common/monitor/squad-pr-watch の ci-now・conflicts-check と、common/monitor/squad-pr-link の `紐付け:` の判定を読む。
 now_section=$(awk '/^## 紐付いていない PR のその場の確認$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$pr_ci_ref")
 for phrase in 'squad-pr-watch ci-now <タスク> <リーダーの ID> <きっかけのコメント> [<見張り役の ID>]' 'squad-pr-watch conflicts-check <タスク>' '`紐付け:`'; do

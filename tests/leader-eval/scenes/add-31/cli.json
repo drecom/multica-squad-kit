@@ -71,6 +71,134 @@
       }
     },
     {
+      "match": "squad-task-read issue-shop-1",
+      "stdout": {
+        "schema_version": 1,
+        "task": {
+          "id": "issue-shop-1",
+          "identifier": "SHOP-1",
+          "title": "カートに商品数を出す",
+          "status": "in_progress",
+          "labels": [],
+          "metadata": {
+            "repository": "example/shop",
+            "branch": "feat/cart-badge",
+            "pr_url": "https://github.com/example/shop/pull/7"
+          },
+          "assignee_type": "squad",
+          "assignee_id": "squad-shop"
+        },
+        "comments": [
+          {
+            "id": "c-owner",
+            "parent_id": null,
+            "author_type": "member",
+            "author_id": "member1",
+            "created_at": "2026-01-10T08:05:00Z",
+            "content": "カートに商品数を出してください。"
+          },
+          {
+            "id": "c-design",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-designer",
+            "created_at": "2026-01-10T08:10:00Z",
+            "content": "設計の draft PR を作りました。変更の一覧は src/cart/Badge.tsx と src/cart/Badge.test.tsx です。100 以上は 99+ と表示します。"
+          },
+          {
+            "id": "c-approved",
+            "parent_id": null,
+            "author_type": "member",
+            "author_id": "member1",
+            "created_at": "2026-01-10T08:15:00Z",
+            "content": "設計とフェーズ 1 を承認します。"
+          },
+          {
+            "id": "c-dispatch",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T08:20:00Z",
+            "content": "[@Implementer](mention://agent/agent-claude-implementer) フェーズ 1 を実装してください。"
+          },
+          {
+            "id": "c-impl",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-claude-implementer",
+            "created_at": "2026-01-10T08:25:00Z",
+            "content": "[@SQUAD-SHOP](mention://squad/squad-shop) 実装を push しました。PR: https://github.com/example/shop/pull/7\n\n確認したこと:\n- 単体テストが通った\n\n残っていること:\n- レビュー"
+          },
+          {
+            "id": "c-diff",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-claude-implementer",
+            "created_at": "2026-01-10T08:30:00Z",
+            "content": "実装を push しました。\n設計との差: src/cart/Badge.tsx 表示の境界が設計と食い違う"
+          },
+          {
+            "id": "c-diff-ask",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T08:35:00Z",
+            "content": "[@Designer](mention://agent/agent-designer) 差の扱いを決めてください。\n設計との差: src/cart/Badge.tsx 表示の境界が設計と食い違う"
+          },
+          {
+            "id": "c-handling",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-designer",
+            "created_at": "2026-01-10T08:40:00Z",
+            "content": "表示の境界は設計の決めたことを変えないと直せません。\n設計との差の扱い: src/cart/Badge.tsx 設計を変える\nリーダーは設計の変更を頼んでください。"
+          },
+          {
+            "id": "c-change",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T08:45:00Z",
+            "content": "[@Designer](mention://agent/agent-designer) 設計の変更を頼みます。表示の境界を 100 以上は 99+ に 1 つへ決めてください。\n設計の変更: 実装を始めたあと"
+          },
+          {
+            "id": "c-design2",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-designer",
+            "created_at": "2026-01-10T08:50:00Z",
+            "content": "[@Owner](mention://member/member1) 設計を変えて push しました。設計とフェーズを承認してください。\n設計の変更: 実装を始めたあと"
+          },
+          {
+            "id": "c-reapprove",
+            "parent_id": null,
+            "author_type": "member",
+            "author_id": "member1",
+            "created_at": "2026-01-10T08:55:00Z",
+            "content": "変えた設計とフェーズを承認します。"
+          }
+        ],
+        "pr": {
+          "url": "https://github.com/example/shop/pull/7",
+          "state": "OPEN",
+          "draft": true,
+          "head_sha": "3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567",
+          "mergeable": "MERGEABLE"
+        },
+        "ci": null,
+        "runs": [
+          {
+            "id": "run-1",
+            "agent_id": "agent-claude-implementer",
+            "status": "completed",
+            "created_at": null
+          }
+        ],
+        "cuts": [],
+        "errors": []
+      }
+    },
+    {
       "match": "multica issue comment list issue-shop-1",
       "stdout": [
         {

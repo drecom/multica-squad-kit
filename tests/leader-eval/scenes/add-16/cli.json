@@ -29,6 +29,137 @@
       }
     },
     {
+      "match": "squad-task-read issue-shop-1",
+      "stdout": {
+        "schema_version": 1,
+        "task": {
+          "id": "issue-shop-1",
+          "identifier": "SHOP-1",
+          "title": "ログインの確認コードの発行と検証を変える",
+          "status": "in_progress",
+          "labels": [
+            "重要"
+          ],
+          "metadata": {
+            "repository": "example/shop",
+            "branch": "feat/cart-badge",
+            "pr_url": "https://github.com/example/shop/pull/7"
+          },
+          "assignee_type": "squad",
+          "assignee_id": "squad-shop"
+        },
+        "comments": [
+          {
+            "id": "c-1",
+            "parent_id": null,
+            "author_type": "member",
+            "author_id": "member1",
+            "created_at": "2026-01-10T09:30:00Z",
+            "content": "ログインの確認コードを変えたい"
+          },
+          {
+            "id": "c-2",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T10:00:00Z",
+            "content": "設計を待ちます。\n\n重要のマーク: 付けた。基準: 共通 2（安全の仕組みに触れる）。理由: 確認コードの発行と検証を変える"
+          },
+          {
+            "id": "c-3",
+            "parent_id": null,
+            "author_type": "member",
+            "author_id": "member1",
+            "created_at": "2026-01-10T10:30:00Z",
+            "content": "設計とフェーズを用意しました。https://github.com/example/shop/pull/7\n\n| フェーズ | 内容 | 見積もり |\n| --- | --- | --- |\n| 1 | 実装とテスト | 小さい |\n\n見直しの結果を読んで承認します。"
+          },
+          {
+            "id": "c-4",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T10:40:00Z",
+            "content": "[@shop-claude-principal-member1](mention://agent/agent-claude-principal) [@shop-security-reviewer-member1](mention://agent/agent-security-reviewer) 見直しをお願いします。\n\n見直しの種類: 設計の見直し\n設計を用意した人: 人間\n確認するコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567\n返事を待つ役: [@shop-claude-principal-member1](mention://agent/agent-claude-principal) [@shop-security-reviewer-member1](mention://agent/agent-security-reviewer)"
+          },
+          {
+            "id": "c-5",
+            "parent_id": "c-4",
+            "author_type": "agent",
+            "author_id": "agent-claude-principal",
+            "created_at": "2026-01-10T10:50:00Z",
+            "content": "/note\n✅ shop-claude-principal-member1: 指摘なし（設計の見直し）\n確認したコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567"
+          },
+          {
+            "id": "c-6",
+            "parent_id": "c-4",
+            "author_type": "agent",
+            "author_id": "agent-security-reviewer",
+            "created_at": "2026-01-10T10:55:00Z",
+            "content": "/note\n❌ shop-security-reviewer-member1: 必須 1 件\n- 入力と信頼の表に、確認コードを受け取った人が本人かを確認する条件がない\n確認したコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567"
+          },
+          {
+            "id": "c-7",
+            "parent_id": "c-4",
+            "author_type": "agent",
+            "author_id": "agent-security-reviewer",
+            "created_at": "2026-01-10T10:55:00Z",
+            "content": "[@shop-orchestrator-member1](mention://agent/agent-orchestrator) 返事がそろいました。"
+          },
+          {
+            "id": "c-8",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T11:30:00Z",
+            "content": "[@Owner](mention://member/member1) 設計の見直しの結果をお知らせします。security-reviewer の ❌ を直してください。\n\n直したあとの返し先: スクワッド\n最上位の役の結果: c-5（✅ 指摘なし）\nsecurity-reviewer の結果: c-6（❌ 入力と信頼の表に、確認コードを受け取った人が本人かを確認する条件がない）\n\n返事は次のどちらかで書いてください。\n- 直し終えたら、PR に直しを push してから、このタスクに「直した」と返事をする\n- 直さずに進めるなら、そう書いて、設計とフェーズを承認する"
+          },
+          {
+            "id": "c-9",
+            "parent_id": null,
+            "author_type": "member",
+            "author_id": "member1",
+            "created_at": "2026-01-10T12:00:00Z",
+            "content": "直した"
+          },
+          {
+            "id": "c-10",
+            "parent_id": "c-9",
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T12:05:00Z",
+            "content": "[@shop-security-reviewer-member1](mention://agent/agent-security-reviewer) 直した設計の見直しをお願いします。\n\n見直しの種類: 設計の見直し\n設計を用意した人: 人間\n見せ直し: 1 回目\n返事を待つ役: [@shop-security-reviewer-member1](mention://agent/agent-security-reviewer)\n確認するコミット: 8d4e1b7a9c2f5036b1e8d7a4c3f2e1d0b9a87654"
+          },
+          {
+            "id": "c-11",
+            "parent_id": "c-10",
+            "author_type": "agent",
+            "author_id": "agent-security-reviewer",
+            "created_at": "2026-01-10T12:20:00Z",
+            "content": "/note\n❌ shop-security-reviewer-member1: 必須 1 件\n- 入力と信頼の表に、確認コードを受け取った人が本人かを確認する条件がまだない\n確認したコミット: 8d4e1b7a9c2f5036b1e8d7a4c3f2e1d0b9a87654"
+          },
+          {
+            "id": "c-12",
+            "parent_id": "c-10",
+            "author_type": "agent",
+            "author_id": "agent-security-reviewer",
+            "created_at": "2026-01-10T12:20:00Z",
+            "content": "[@shop-orchestrator-member1](mention://agent/agent-orchestrator) 返事がそろいました。"
+          }
+        ],
+        "pr": {
+          "url": "https://github.com/example/shop/pull/7",
+          "state": "OPEN",
+          "draft": true,
+          "head_sha": "8d4e1b7a9c2f5036b1e8d7a4c3f2e1d0b9a87654",
+          "mergeable": "MERGEABLE"
+        },
+        "ci": null,
+        "runs": [],
+        "cuts": [],
+        "errors": []
+      }
+    },
+    {
       "match": "multica issue comment list issue-shop-1",
       "stdout": [
         {

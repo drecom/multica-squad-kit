@@ -63,6 +63,37 @@
       }
     },
     {
+      "match": "squad-task-read issue-shop-1",
+      "stdout": {
+        "schema_version": 1,
+        "task": {
+          "id": "issue-shop-1",
+          "identifier": "SHOP-1",
+          "title": "商品数の表示上限を管理する",
+          "status": "in_progress",
+          "labels": [],
+          "metadata": {},
+          "assignee_type": "squad",
+          "assignee_id": "squad-shop"
+        },
+        "comments": [
+          {
+            "id": "comment-2",
+            "parent_id": null,
+            "author_type": "member",
+            "author_id": "member1",
+            "created_at": "2026-01-10T09:00:00Z",
+            "content": "要件と受け入れ条件を本文に書きました。複数の作業先に分けて進めてください。"
+          }
+        ],
+        "pr": null,
+        "ci": null,
+        "runs": [],
+        "cuts": [],
+        "errors": []
+      }
+    },
+    {
       "match": "multica issue comment list issue-shop-1",
       "stdout": [
         {

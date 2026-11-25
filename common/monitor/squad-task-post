@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# multica-squad-kit-managed
+# リーダーが、コメントを投稿してから、タスクの状態を変える。状態を変えた理由が、いつもコメントに残る。
+# 使い方: squad-task-post <タスク> --status <状態> --content-file <ファイル> [--parent <コメントの ID>]
+# 出力: 投稿: <コメントの ID>、状態: <前> -> <後>
+# 終了コード: 0 は両方できた、1 は投稿できない（状態は変えない）、2 は使い方の誤り、
+# 3 は投稿のあと状態を変えられない（投稿は流し直さず、状態だけ multica issue status で流し直す）。
+set -euo pipefail
+here=$(dirname "${BASH_SOURCE[0]}")
+source "$here/squad-cli-lib"
+
+usage() {
+	echo '使い方: squad-task-post <タスク> --status <状態> --content-file <ファイル> [--parent <コメントの ID>]' >&2
+	exit 2
+}
+
+task=
+state=
+file=
+parent=
+while (($# > 0)); do
+	case $1 in
+	--status | --content-file | --parent)
+		(($# >= 2)) && [[ -n $2 ]] || usage
+		case $1 in
+		--status) [[ -z $state ]] || usage; state=$2 ;;
+		--content-file) [[ -z $file ]] || usage; file=$2 ;;
+		--parent) [[ -z $parent ]] || usage; parent=$2 ;;
+		esac
+		shift 2 ;;
+	-*) usage ;;
+	*)
+		[[ -z $task ]] || usage
+		task=$1
+		shift ;;
+	esac
+done
+[[ -n $task && -n $state && -n $file ]] || usage
+case $state in
+todo | in_progress | in_review | done | blocked | backlog | cancelled) ;;
+*) echo "状態は todo・in_progress・in_review・done・blocked・backlog・cancelled のどれかにしてください: $state" >&2; usage ;;
+esac
+[[ -f $file && -r $file && -s $file ]] || { echo "コメントのファイルを読めないか、空です: $file" >&2; usage; }
+
+# 状態の変更の前の値を、投稿の前に読む。読めないときは、何も変えずに止まる。
+before=$(squad_cli_read issue-get "$task" | jq -er .status) || { echo "タスクの状態を読めません: $task" >&2; exit 1; }
+
+if [[ -n $parent ]]; then
+	response=$(squad_cli_read issue-comment-add "$task" "$parent" "$file") || { echo 'コメントを投稿できません。状態は変えていません' >&2; exit 1; }
+else
+	response=$(multica issue comment add "$task" --content-file "$file" --output json) || { echo 'コメントを投稿できません。状態は変えていません' >&2; exit 1; }
+fi
+comment=$(jq -er .id <<<"$response") || { echo 'コメントの ID を読めません。状態は変えていません' >&2; exit 1; }
+printf '投稿: %s\n' "$comment"
+
+if ! multica issue status "$task" "$state" >/dev/null; then
+	echo "コメントは投稿しました（${comment}）が、状態を ${state} にできません。投稿は流し直さず、multica issue status だけを流し直してください" >&2
+	exit 3
+fi
+printf '状態: %s -> %s\n' "$before" "$state"

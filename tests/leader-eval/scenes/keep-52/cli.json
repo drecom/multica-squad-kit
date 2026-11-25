@@ -9,6 +9,65 @@
       "stdout": "{\n  \"id\": \"issue-shop-1\",\n  \"identifier\": \"SHOP-1\",\n  \"title\": \"ログインにパスワードの再設定を足す\",\n  \"status\": \"in_progress\",\n  \"assignee_type\": \"squad\",\n  \"assignee_id\": \"squad-shop\",\n  \"project_id\": \"project-shop\",\n  \"labels\": [\n    {\n      \"id\": \"label-important\",\n      \"name\": \"重要\"\n    }\n  ],\n  \"metadata\": {\n    \"repository\": \"example/shop\",\n    \"branch\": \"feat/design-1\",\n    \"pr_url\": \"https://github.com/example/shop/pull/7\"\n  },\n  \"description\": \"ログインの画面に、メールで届くリンクからパスワードを再設定する機能を足す。\"\n}"
     },
     {
+      "match": "squad-task-read issue-shop-1",
+      "stdout": {
+        "schema_version": 1,
+        "task": {
+          "id": "issue-shop-1",
+          "identifier": "SHOP-1",
+          "title": "ログインにパスワードの再設定を足す",
+          "status": "in_progress",
+          "labels": [
+            "重要"
+          ],
+          "metadata": {
+            "repository": "example/shop",
+            "branch": "feat/design-1",
+            "pr_url": "https://github.com/example/shop/pull/7"
+          },
+          "assignee_type": "squad",
+          "assignee_id": "squad-shop"
+        },
+        "comments": [
+          {
+            "id": "comment-1",
+            "parent_id": null,
+            "author_type": "member",
+            "author_id": "member1",
+            "created_at": "2026-01-10T09:30:00Z",
+            "content": "ログインにパスワードの再設定を足したい。ラベルは自分で付けた"
+          },
+          {
+            "id": "comment-2",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T10:00:00Z",
+            "content": "設計を頼みます。\n\n重要のマーク: 人間が付けたマークを確認した。"
+          },
+          {
+            "id": "comment-3",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-designer",
+            "created_at": "2026-01-10T10:30:00Z",
+            "content": "[@SQUAD-SHOP](mention://squad/squad-shop) 設計の draft PR を作りました。https://github.com/example/shop/pull/7\n\n確認したこと:\n- 設計文書の差分を確認した\n\n残っていること:\n- 人間の承認"
+          }
+        ],
+        "pr": {
+          "url": "https://github.com/example/shop/pull/7",
+          "state": "OPEN",
+          "draft": true,
+          "head_sha": "3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567",
+          "mergeable": "MERGEABLE"
+        },
+        "ci": null,
+        "runs": [],
+        "cuts": [],
+        "errors": []
+      }
+    },
+    {
       "match": "multica issue comment list issue-shop-1",
       "stdout": "[\n  {\n    \"id\": \"comment-1\",\n    \"author_type\": \"member\",\n    \"author_id\": \"member1\",\n    \"parent_id\": null,\n    \"content\": \"ログインにパスワードの再設定を足したい。ラベルは自分で付けた\",\n    \"created_at\": \"2026-01-10T09:30:00Z\"\n  },\n  {\n    \"id\": \"comment-2\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-orchestrator\",\n    \"parent_id\": null,\n    \"content\": \"設計を頼みます。\\n\\n重要のマーク: 人間が付けたマークを確認した。\",\n    \"created_at\": \"2026-01-10T10:00:00Z\"\n  },\n  {\n    \"id\": \"comment-3\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-designer\",\n    \"parent_id\": null,\n    \"content\": \"[@SQUAD-SHOP](mention://squad/squad-shop) 設計の draft PR を作りました。https://github.com/example/shop/pull/7\\n\\n確認したこと:\\n- 設計文書の差分を確認した\\n\\n残っていること:\\n- 人間の承認\",\n    \"created_at\": \"2026-01-10T10:30:00Z\"\n  }\n]"
     },

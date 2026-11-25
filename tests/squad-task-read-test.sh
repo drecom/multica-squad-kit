@@ -131,7 +131,7 @@ run() {
 	err=$(<"$test_dir/err")
 }
 expect_status() { [[ $status == "$1" ]] || fail "$2: 終了コード ${status}（期待 ${1}）。出力: $out / $err"; }
-# JSON の式が真になることを確かめる。
+# JSON の式が真になることを確認する。
 expect_json() { jq -e "$1" >/dev/null <<<"$out" || fail "$2: 式 ${1} が真になりません。出力: $out"; }
 
 # ---- 欄がそろう ----

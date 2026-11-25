@@ -1036,6 +1036,8 @@ multica no-such-command >/dev/null 2>&1 || true
 printf '確認します [@member1](mention://member/member1)\n' >tmp/c.md
 multica issue comment add issue-shop-1 --parent comment-2 --content-file tmp/c.md >/dev/null
 multica issue status issue-shop-1 in_review >/dev/null
+printf '結果を書きます [@member1](mention://member/member1)\n' >tmp/c2.md
+squad-task-post issue-shop-1 --status in_review --content-file tmp/c2.md --parent comment-2 >/dev/null
 echo '{"type":"result","result":"done","is_error":false,"permission_denials":[]}'
 EOF2
 chmod +x "$stub_bin/claude"
@@ -1086,6 +1088,12 @@ jq -e -s 'all(.[]; .response == "done" and .exit_code == 0 and (.duration_ms >= 
 jq -e -s 'all(.[]; .criteria | all(.[]; has("n") and has("kind") and has("pass") and has("reason")))' "$out/runs.jsonl" >/dev/null
 grep -q '^| keep-2 | 保 | 2/2 | 2/2 | - |$' "$out/summary.md"
 grep -q '^| 1-1 | 1 | 2/2 | 2/2 | - |$' "$out/summary.md"
+# squad-task-post は、本文を持つ書き込みとして記録し、実物が続けて行う投稿と状態の変更も、同じ形で記録する
+jq -e -s 'all(.[]; any(.calls[]; .command == "squad-task-post issue-shop-1 --status in_review --content-file tmp/c2.md --parent comment-2"
+	and .kind == "write" and .exit == 0 and (.bodies[0] | contains("結果を書きます"))))' "$out/runs.jsonl" >/dev/null
+jq -e -s 'all(.[]; [.calls[].command] as $c | ($c | index("squad-task-post issue-shop-1 --status in_review --content-file tmp/c2.md --parent comment-2")) as $i
+	| $c[$i + 1] == "multica issue comment add issue-shop-1 --parent comment-2" and $c[$i + 2] == "multica issue status issue-shop-1 in_review")' "$out/runs.jsonl" >/dev/null
+jq -e -s 'all(.[]; .comments | any(contains("結果を書きます")))' "$out/runs.jsonl" >/dev/null
 echo "PASS leader-eval: スタブのコマンドが呼び出しを記録し、runs.jsonl と summary.md が決まった形で出る"
 
 grep -q '^leader claude-sonnet-5-5 medium' "$test_dir/stub.log"
