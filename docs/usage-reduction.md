@@ -425,12 +425,17 @@ squad-task-post <タスク> --status <状態> --content-file <ファイル> [--p
 | 投稿できなかった | 標準エラーに理由。状態は変えない | 1 |
 | 使い方の誤り | 標準エラーに使い方 | 2 |
 | 投稿のあと、状態を変えられなかった | `投稿: <コメントの ID>` と、標準エラーに理由 | 3 |
+| 投稿のあと、応答からコメントの ID を読めなかった | `投稿: 未確認` と、標準エラーに理由。状態は変える | 状態を変えられれば 0、変えられなければ 3 |
+
+投稿のコマンドが成功したら、応答からコメントの ID を読めなくても、投稿できたとして状態を変える。
 
 終了コード 3 のときは、リーダーが状態の変更だけを `multica issue status` で流し直す。投稿を流し直すと、同じコメントが 2 つになるためである。
 
 ### リーダーの指示での使い方
 
 リーダーの指示の「始めに確認すること」は、タスクとコメントと PR と実行の読み取りを `squad-task-read` の 1 回にする。人間を呼んで止まるときと、状態を変えて結果を書くときは、`squad-task-post` を使う。決まった行を読む見張りのスクリプト（`squad-pr-watch` など）は、そのまま使う。
+
+`squad-task-post` で `in_review` にする決まりは、リーダーの指示の「人間を待つところ」に 1 か所だけ置き、人間を呼んで止まるどの場面にも当てはまる文にする。参照の `in_review` にする行は、書き換えない。上限との差が小さい参照があり、行ごとに書き足すと超えるためである。すでに `squad-task-post` を書いた参照の行は、そのままでよい。
 
 ## 毎回読む文を軽くする
 
@@ -782,7 +787,7 @@ high にした理由は、原則の判断に考える量を回すためだった
 | `common/monitor/squad-preflight` | 確認する一覧に `squad-run-cut`・`squad-run-cut-values`・`squad-task-read`・`squad-task-post` を足す。終了コードの決め方は変えない |
 | `common/monitor/squad-cli-lib` | `issue-get` の読み取りの約束に、`squad-task-read` が出すタイトル・ラベル・metadata の `branch` を、省略を許す欄として足す。採取の条件も足す |
 | `common/squad.md`・`common/agents/claude-principal.md`・`common/agents/codex-principal.md`・`lib/questions.sh`・`manual.md` | [最終レビューの範囲の言い回し](#最終レビューの範囲の言い回し)のとおり直す |
-| `common/agents/orchestrator.md` | 思考の深さ・場面と手順の表・短い道の確認・区切りの続きの確認の場面。始めの確認でまとめた呼び出しを使い、[リーダーの指示の大きさ](#リーダーの指示の大きさ)のとおり上限に収める |
+| `common/agents/orchestrator.md` | 思考の深さ・場面と手順の表・短い道の確認・区切りの続きの確認の場面。始めの確認と人間を待つところでまとめた呼び出しを使い、[リーダーの指示の大きさ](#リーダーの指示の大きさ)のとおり上限に収める |
 | `common/agents/claude-fixer.md` | 思考の深さ、区切りの行 |
 | `common/agents/claude-implementer.md` | 区切りの行、短い道の実装と `設計の判断:` の行 |
 | `common/agents/codex-implementer.md` | 短い道の実装と `設計の判断:` の行 |
@@ -837,7 +842,7 @@ high にした理由は、原則の判断に考える量を回すためだった
 | 同上 | `state`: 待ち・動いている・始まらない・失敗した・終わったの 5 つを出し分け、名簿の 3 役でない作者の区切りを飛ばす |
 | `tests/squad-pr-watch-ci-handoff-test.sh` | 失敗した CI を、区切りの途中のタスクでは `区切りの途中なので保留` の行で保留する |
 | `tests/squad-task-read-test.sh`（新しく足す） | 1 つの JSON に欄がそろい、PR のないタスクで `pr` と `ci` が `null` になる。区切りの途中が `cuts` に、読めない欄が `errors` に出る |
-| `tests/squad-task-post-test.sh`（新しく足す） | 投稿のあとに状態が変わり、投稿の失敗で状態を変えない。状態の失敗で終了 3 になる |
+| `tests/squad-task-post-test.sh`（新しく足す） | 投稿のあとに状態が変わり、コメントの ID を読めない応答でも変わる。投稿の失敗で状態を変えず、状態の失敗で終了 3 になる |
 | `tests/squad-review-next-decide-final-test.sh` | `short_path` が `true` で重要のラベルがなければ、最終レビューを頼まずマージの依頼へ進む。ラベルがあれば頼む |
 | `tests/squad-review-next-decide-control-test.sh` | リーダー以外が書いた `道: 短い` を読まず、最新の `道: 通常` で `false` になる。欄がなければ失敗で終わる |
 | `tests/squad-review-next-decide-merge-test.sh` | 短い道で、head を組のコミットと照合し、マージを頼むコメントに `道: 短い（最終レビューなし）` の行がある |
