@@ -434,7 +434,7 @@ squad-task-post <タスク> --status <状態> --content-file <ファイル> [--p
 
 | 置き場所 | 節 |
 | --- | --- |
-| `SKILL.md`（常に読む） | 表のあとに並べる 12 の節 |
+| `SKILL.md`（常に読む） | 表のあとに並べる 11 の節 |
 | `references/repo-target.md` | タスクの作業先を決める |
 | `references/writing-forms.md` | コメントと本文の型、タスクの本文、言い回しと引き継ぐときの見本 |
 | `references/pr.md` | 「PR を作る・実装を積む」「PR の本文の置き場所と順序」「PR にレビューやテストの結果を書く」「PR の状態を書く」「画像を載せる」 |
@@ -748,7 +748,7 @@ high にした理由は、原則の判断に考える量を回すためだった
 | `common/agents/codex-implementer.md` | 短い道の実装と `設計の判断:` の行 |
 | `common/agents/designer.md` | `IF runtime-claude` の中に区切りの行 |
 | `common/agents/planner.md` | 合意の問いで短い道を尋ね、同意を本文に残す |
-| 役の指示のうち、共通スキルの節を名前で指すもの | 移した先の参照を指す |
+| 役の指示・`SKILL.md`・リーダーの参照のうち、移した節を名前か「次の」で指す所 | 移した先の参照のファイルと節を指す。すぐ前の文と同じ節は「同じ節」と指してよい |
 | `tests/` | [テスト](#テスト)の確認を足し、思考の深さと最終レビューの範囲の期待を直す |
 | `tests/leader-eval/` | 新しいスクリプトの名前を `leader_eval.py` の差し替える名前に足し、それを呼ぶ場面の `cli.json` に応答を足す |
 | `docs/principal-review.md`・`docs/review-next-step.md`・`docs/decide-record-read.md`・`docs/leader-principles.md`・`docs/flow-and-index.md` | 短い道と思考の深さに合わせ、この文書と同じコミットで直した |

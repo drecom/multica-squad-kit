@@ -109,7 +109,7 @@ a2367b63ddcabe6b407ced872701305e8ba9303890d4d47829b9a36b01469037  ./docs/terms.m
 42cf0ae622a4d61b9c9ca60fc3597043294929d3fc06b5f1118ad6cbdc47f636  ./docs/test-trim.md
 4788958c0c608fdfe5e9c299b8fbce2fd761f2840563748f24cb191acdee0746  ./docs/time-breakdown.md
 6627002e845486bb04bb091dda5e2b83b42fbe08434ab46f492385a375c8cc2c  ./docs/usage-answer.md
-a6ebe29c5139b8574d890fe3feca2183a21cab66796a16c2f5a588a657475d9f  ./docs/usage-reduction.md
+1787826b2e44c06db018c75e3dec66c04cfd6d896f774c22df45f451e85d6317  ./docs/usage-reduction.md
 b29efd7c2adf1f0b2d7554c0c3a90059156bfd8717105cc156de5bcf871e1cca  ./docs/vm.md
 f9976396457d968a6b10dc34235955d52889eaf20d46cc70c9785a748f2bb3bd  ./install.sh
 18e95b2049d107d250d48f6c8453cffc0c93344aa88246dba97595ed90f0e15d  ./lib/answers.sh
@@ -156,7 +156,6 @@ be9a67eb3b8da9a4012424d8ab5a9c61beecba7f11afcae4595541fbb56257de  ./skeleton/.ag
 33fd31cda4e988ef8116996f2d31db8f69fcd6e32cdfa5abc04f70fef3e0bc78  ./skeleton/README.md
 18454e4d0424a4c4e9474140fc9d5b0b3854a1b4f59d10258cd85c9ffb044da6  ./skeleton/project.md
 86d88f085a22c1879850188758a47bce16efb46c8ed45507a9bc2056bb09be58  ./skeleton/verify-repository.md
-7b16264d2bf587274f2524df16febdb744b60f0d8a62607d3ac53a2b3ffb02ee  ./tests/__pycache__/base-size-check.cpython-314.pyc
 ec94c1189f1071bf59f9c20765667893b12a24881b6a68739d14f2ecbe0ff678  ./tests/action-advisories-test.sh
 839735f6fdcb4d478bcd1470768d49a3534cc1906a1edaa247948906df1de61c  ./tests/agent-templates-test.sh
 2c4dce6d55a2bec00a23cf829eb9939041a27c4bb78891f0aeb0d485ad1713c4  ./tests/ansi-to-png.py
