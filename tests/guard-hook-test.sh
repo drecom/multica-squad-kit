@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # ZIP のルートで bash tests/guard-hook-test.sh を実行する。
-# PreToolUse のフックが、Bash とシェルの入力を 1 つずつのコマンドに分ける部品（common/guard/shell_split.py）を確認する。
-# 設計の docs/agent-guards.md「Bash とシェルの入力は、次の順に読む」の 1〜6 を、順に確認する。
+# PreToolUse のフックを確認する。
+# 前半は、Bash とシェルの入力を 1 つずつのコマンドに分ける部品（common/guard/shell_split.py）を、
+# 設計の docs/agent-guards.md「Bash とシェルの入力は、次の順に読む」の 1〜6 の順に確認する。
+# 後半は、PreToolUse のスクリプト（common/guard/pre-tool-use）が、照合の例と分離の例を、Claude と Codex の入力の形で同じに判定することを確認する。
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -244,7 +246,7 @@ echo 'PASS 構文の形: if・for・while・case・グループ・関数・[[ ]]
 
 # --- リダイレクト ---
 
-expect_json 'echo x > ~/.netrc' '.commands[0].redirects == [{"op":">","target":"~/.netrc","dynamic":false}] and (.commands[0].argv | map(.text)) == ["echo","x"]'
+expect_json 'echo x > ~/.netrc' '.commands[0].redirects == [{"op":">","target":"~/.netrc","dynamic":false,"tilde":true}] and (.commands[0].argv | map(.text)) == ["echo","x"]'
 expect_json 'echo x>>f 2>&1 1>/dev/null <in &> out' '(.commands[0].redirects | map([.op, .target])) == [[">>","f"],["2>&","1"],["1>","/dev/null"],["<","in"],["&>","out"]]'
 expect_json 'cat > "$HOME/x" < $(gh a)' '(.commands | map(.redirects | length)) == [0,2] and .commands[1].redirects[0].dynamic'
 expect_json '> out' '.commands[0].argv == [] and .commands[0].redirects[0].target == "out"'
@@ -254,6 +256,7 @@ echo 'PASS リダイレクト: 演算子（fd を含む）と先を、引数と�
 
 # --- 値が決まらない語 ---
 
+expect_json $'cat \'~/a\' ~/b "~/c" d=~/e x~y' '[.commands[0].argv[1:][] | .tilde // false] == [false,true,false,true,false]'
 expect_json '$CMD x' '.commands[0].argv[0].dynamic and (.commands[0].argv[1].dynamic | not)'
 expect_json 'git* x' '.commands[0].argv[0].dynamic'
 expect_json 'git{a,b} x' '.commands[0].argv[0].dynamic'
@@ -263,3 +266,213 @@ expect_json '[ -f x ] && [[ x ]]' '[.commands[].argv[0].dynamic] == [false,false
 echo 'PASS 値が決まらない語: 展開・引用していないグロブとブレース展開を含む語に印を付ける'
 
 echo 'PASS guard-hook: PreToolUse の入力の分け方'
+
+# --- PreToolUse のスクリプト ---
+# 置き場は、ホストに写したときと同じ形にする。スクリプトと分割の部品が並び、空の gh の置き場が隣にある。
+hook_dir="$test_dir/guard"
+work="$test_dir/work"
+home="$test_dir/home"
+mkdir -p "$hook_dir/gh-empty" "$work/sub" "$home/.config/gh" "$home/.ssh"
+cp "$root/common/guard/pre-tool-use" "$root/common/guard/shell_split.py" "$hook_dir/"
+chmod 700 "$hook_dir/gh-empty"
+printf 'secret\n' >"$home/.ssh/id_ed25519"
+ln -s "$home/.ssh" "$work/ssh-link"
+hook="$hook_dir/pre-tool-use"
+
+# 入力の形。Claude は Bash の command、Codex は shell の command 配列と exec_command の cmd で渡す。
+json_claude() { jq -nc --arg c "$1" --arg d "$work" '{hook_event_name:"PreToolUse",session_id:"s",cwd:$d,tool_name:"Bash",tool_input:{command:$c}}'; }
+json_codex_shell() { jq -nc --arg c "$1" --arg d "$work" '{hook_event_name:"PreToolUse",session_id:"s",turn_id:"t",cwd:$d,tool_name:"shell",tool_input:{command:["bash","-lc",$c]}}'; }
+json_codex_exec() { jq -nc --arg c "$1" --arg d "$work" '{hook_event_name:"PreToolUse",session_id:"s",turn_id:"t",cwd:$d,tool_name:"exec_command",tool_input:{cmd:$c,workdir:$d}}'; }
+json_file_tool() { jq -nc --arg t "$1" --arg k "$2" --arg p "$3" --arg d "$work" '{hook_event_name:"PreToolUse",session_id:"s",cwd:$d,tool_name:$t,tool_input:({($k):$p,content:"GIT_CONFIG_COUNT",new_string:"export GH_TOKEN=x"})}'; }
+
+task_id=task-1
+extra_env=()
+# フックを流し、終了コードを返す。標準エラーは $test_dir/err に残す。extra_env に、役の環境へ足す NAME=値を置く。
+run_hook() {
+	local json=$1 rc=0
+	env -i PATH="$PATH" HOME="$home" ${task_id:+MULTICA_TASK_ID="$task_id"} \
+		GH_CONFIG_DIR="$hook_dir/gh-empty" SQUAD_KIT_GH_CONFIG_DIR="$home/.config/gh" \
+		${extra_env[@]+"${extra_env[@]}"} "$hook" <<<"$json" >"$test_dir/hook-out" 2>"$test_dir/err" || rc=$?
+	printf '%s' "$rc"
+}
+# 判定を確認する。止めるときは、終了コード 2 と、理由とガードを避けない文が標準エラーにあることまで見る。
+expect_verdict() {
+	local verdict=$1 label=$2 json=$3 rc
+	rc=$(run_hook "$json")
+	if [[ $verdict == pass ]]; then
+		if [[ $rc -ne 0 ]]; then
+			printf 'FAIL 通すはずの入力（%s）: 終了コード %s\n  入力: %s\n' "$label" "$rc" "$json" >&2
+			cat "$test_dir/err" >&2
+			exit 1
+		fi
+	elif [[ $rc -ne 2 ]] || ! grep -q '^PreToolUse のガード: ' "$test_dir/err" || ! grep -q '避ける' "$test_dir/err"; then
+		printf 'FAIL 止めるはずの入力（%s）: 終了コード %s\n  入力: %s\n' "$label" "$rc" "$json" >&2
+		cat "$test_dir/err" >&2
+		exit 1
+	fi
+}
+# 同じコマンドを、3 つの入力の形で同じに判定する。
+expect_command() {
+	local verdict=$1 command=$2
+	expect_verdict "$verdict" "Claude: $command" "$(json_claude "$command")"
+	expect_verdict "$verdict" "Codex shell: $command" "$(json_codex_shell "$command")"
+	expect_verdict "$verdict" "Codex exec_command: $command" "$(json_codex_exec "$command")"
+}
+
+# --- 7. 照合の例（通す 4 件と止める 9 件） ---
+
+expect_command pass 'rg -n GH_CONFIG_DIR common/guard/gh'
+expect_command pass 'grep -rn -- --no-verify docs tests'
+expect_verdict pass 'Edit: docs への書き込み' "$(json_file_tool Edit file_path "$work/docs/agent-guards.md")"
+expect_command pass 'bash tests/run.sh tests/gh-test.sh'
+
+expect_command stop 'GH_CONFIG_DIR=/tmp/x gh pr create'
+expect_command stop 'export GH_TOKEN=x'
+expect_command stop 'git push --no-verify origin HEAD'
+expect_command stop 'git -c credential.helper= push'
+expect_command stop "bash -c 'git config core.hooksPath /dev/null'"
+expect_command stop 'env -i git push'
+expect_command stop 'echo "$(git push --no-verify origin HEAD)"'
+expect_command stop 'cat ~/.ssh/id_ed25519'
+expect_verdict stop 'Write: 作業ディレクトリの直下の .mcp.json' "$(json_file_tool Write file_path "$work/.mcp.json")"
+echo 'PASS 照合の例: 通す 4 件と止める 9 件を、Claude と Codex の入力の形で同じに判定する'
+
+# --- 8. 種類ごとの止める操作と、通す操作 ---
+
+# 認証の置き場の変数
+for c in 'GH_CONFIG_DIR=x gh auth status' 'SQUAD_KIT_ALLOWED_REPOS=/dev/null gh x' 'export SQUAD_KIT_GH_CONFIG_DIR=/x' \
+	'unset GH_CONFIG_DIR' 'env -u GH_TOKEN gh x' 'env --unset=GITHUB_TOKEN gh x' 'env GH_ENTERPRISE_TOKEN=x gh x' \
+	'export GITHUB_ENTERPRISE_TOKEN' 'declare -x GH_TOKEN=x' 'X=1 GH_TOKEN=x git fetch'; do
+	expect_command stop "$c"
+done
+# git の環境変数
+for c in 'GIT_CONFIG_COUNT=0 git push' 'export GIT_CONFIG_KEY_1=x' 'GIT_TRACE=1 git fetch' 'GIT_SSH_COMMAND=ssh git push' \
+	'export GIT_SSH=x' 'GIT_ASKPASS=x git push' 'export SSH_ASKPASS=x'; do
+	expect_command stop "$c"
+done
+# 環境を外す
+for c in 'env -i x' 'env --ignore-environment x' 'env - x' 'sudo env -i x'; do
+	expect_command stop "$c"
+done
+# git の守りを外す指定。キーは大文字と小文字を区別しない
+for c in 'git push --no-ver origin' 'git push origin HEAD --no-verify' 'git -C sub push --no-verify' 'git credential fill' 'git credential-store get' \
+	'git --config-env=credential.helper=X push' 'git -ccredential.helper=x push' 'git -c Core.SshCommand=x fetch' 'git -c url.x.insteadOf=y fetch' \
+	'git -c http.extraHeader=x fetch' 'git -c include.path=x fetch' 'git -c includeIf.x.path=y fetch' \
+	'git config CORE.HOOKSPATH x' 'git config --global credential.helper x' 'git config --unset core.sshCommand' 'git config --add url.a.insteadOf b' \
+	'git config set core.hooksPath x' 'git config unset core.hooksPath' 'git config --file x core.hooksPath y'; do
+	expect_command stop "$c"
+done
+# 認証情報の置き場と、読み込まれる設定のリダイレクト
+for c in 'cat "$HOME/.ssh/id_ed25519"' 'cat ${HOME}/.git-credentials' 'cat ~/.netrc' 'ls ~/.ssh' 'cat < ~/.netrc' "cat $home/.config/gh/hosts.yml" \
+	"cat $hook_dir/gh-empty/hosts.yml" 'cat ssh-link/id_ed25519' 'cat --file=~/.netrc' 'security find-generic-password -s x' 'security -q find-internet-password' \
+	'echo x > .mcp.json' 'echo x >> .claude/settings.json' 'echo x 2> .claude/settings.local.json' 'echo x >| .mcp.json' 'echo x &> .mcp.json' \
+	'echo x > ~/.ssh/authorized_keys' 'cat ~/.ssh'; do
+	expect_command stop "$c"
+done
+# 通す操作。検索の語と引用したデータは、代入や置き場として読まない
+for c in 'echo x > sub/.mcp.json' 'cat .mcp.json' 'cat .claude/settings.json' 'echo x > .claude/other.json' 'git config --get core.hooksPath' 'git config core.hooksPath' \
+	'git config user.name x' 'git -c user.name=x commit -m y' 'git push origin HEAD' 'git push -n origin' 'git push origin -- --no-verify' \
+	"echo 'export GH_TOKEN=x'" "echo 'cat ~/.ssh/id_ed25519'" "cat '\$HOME/.ssh/id_ed25519'" 'rg -n "GIT_CONFIG_COUNT" lib' 'env FOO=1 git status' \
+	"rg -n '~/.ssh' docs" "cat '~/.ssh/id_ed25519'" \
+	'env -u FOO git status' 'GIT_AUTHOR_NAME=x git commit -m y' 'export PATH=$PATH:/x' 'security list-keychains' 'echo env -i' \
+	$'cat <<\'EOF\'\nGH_TOKEN=x $(gh api -X POST y)\nEOF'; do
+	expect_command pass "$c"
+done
+# Write・Edit・NotebookEdit は、書く先だけを見る
+expect_verdict stop 'Edit: .claude/settings.json' "$(json_file_tool Edit file_path "$work/.claude/settings.json")"
+expect_verdict stop 'Edit: 相対のパス' "$(json_file_tool Edit file_path ".claude/settings.local.json")"
+expect_verdict stop 'Write: シンボリックリンク' "$(ln -sfn "$work/.mcp.json" "$work/sub/link.json"; json_file_tool Write file_path "$work/sub/link.json")"
+expect_verdict stop 'NotebookEdit: .mcp.json' "$(json_file_tool NotebookEdit notebook_path "$work/.mcp.json")"
+expect_verdict pass 'Write: 下の階層の .mcp.json' "$(json_file_tool Write file_path "$work/sub/.mcp.json")"
+expect_verdict pass 'NotebookEdit: ノートブック' "$(json_file_tool NotebookEdit notebook_path "$work/a.ipynb")"
+expect_verdict pass 'Write: ホームの .ssh の中身を書く先でない作業先' "$(json_file_tool Write file_path "$work/tests/x.sh")"
+expect_verdict stop 'Write: 書く先のパスがない' "$(jq -nc --arg d "$work" '{cwd:$d,tool_name:"Write",tool_input:{content:"x"}}')"
+# 読むツールと、知らないツールは通す
+expect_verdict pass 'Read' "$(jq -nc --arg d "$work" '{cwd:$d,tool_name:"Read",tool_input:{file_path:"/etc/hosts"}}')"
+echo 'PASS 種類ごとの止める操作: 変数・git・環境・置き場・設定の書き込みを止め、検索の語・引用したデータ・別の場所は通す'
+
+# --- 9. 読めない入力と分けられない入力は止める。MULTICA_TASK_ID がなければ通す ---
+
+expect_verdict stop '読めない JSON' 'not json'
+expect_verdict stop 'オブジェクトでない JSON' '[1]'
+expect_verdict stop 'ツールの名前がない' '{"tool_input":{"command":"ls"}}'
+expect_verdict stop 'コマンドがない Bash' '{"tool_name":"Bash","tool_input":{}}'
+expect_verdict stop '閉じない引用符' "$(json_claude 'echo "abc')"
+expect_verdict stop '閉じない展開' "$(json_codex_shell 'echo $(ls')"
+expect_command stop 'echo "$(ls'
+
+task_id=
+for c in 'export GH_TOKEN=x' 'env -i git push --no-verify' 'cat ~/.ssh/id_ed25519'; do
+	expect_command pass "$c"
+done
+expect_verdict pass 'MULTICA_TASK_ID なしの Write' "$(json_file_tool Write file_path "$work/.mcp.json")"
+expect_verdict pass 'MULTICA_TASK_ID なしの読めない入力' 'not json'
+extra_env=(GH_TOKEN=fake)
+expect_command pass 'gh pr create'
+extra_env=()
+task_id=task-1
+echo 'PASS MULTICA_TASK_ID がないとき: 何もせずに通す。読めない入力と分けられない入力は、ある実行で止める'
+
+# --- 10. 認証の分離 ---
+# 仮のトークンの変数がある場合と、空の置き場に仮のファイルがある場合のそれぞれで、同じ例を 3 つの入力の形で判定する。
+
+gh_post='gh api -X POST repos/o/r/issues'
+check_isolation_examples() {
+	local mode=$1
+	# 通す 3 件
+	expect_command pass 'multica issue get X'
+	expect_command pass "multica issue get '\$($gh_post)'"
+	expect_command pass $'multica issue comment add X --content-stdin <<\'EOF\'\n$('"$gh_post"$')\nEOF'
+	# 止める 6 件
+	expect_command stop "multica issue get \"\$($gh_post)\""
+	expect_command stop "multica issue get \"\`$gh_post\`\""
+	expect_command stop $'multica issue comment add X --content-stdin <<EOF\n$('"$gh_post"$')\nEOF'
+	expect_command stop 'multica issue get $(cat <(gh auth token))'
+	expect_command stop '$CMD issue get X'
+	expect_command stop 'gh pr create'
+	# 止める理由に、分離が成り立たないことと、呼ぶ人間に知らせることが出る
+	run_hook "$(json_claude 'gh pr create')" >/dev/null
+	grep -q '認証の分離が成り立っていません' "$test_dir/err" || { echo "FAIL ($mode) 分離の理由が出ない" >&2; cat "$test_dir/err" >&2; exit 1; }
+	grep -q '呼ぶ人間' "$test_dir/err" || { echo "FAIL ($mode) 人間に知らせる文が出ない" >&2; exit 1; }
+	# 追加の確認: 複数のコマンドは、すべてが multica のときだけ通す。Write・Edit は、通常の照合のまま
+	expect_command pass 'multica issue get X | multica issue get Y'
+	expect_command pass 'multica issue get X && multica issue comment add X --content "done"'
+	expect_command stop 'multica issue get X; gh pr create'
+	expect_command stop 'multica issue get X | cat'
+	expect_command pass 'multica issue get $ISSUE_ID'
+	expect_command stop 'multica issue get "$(echo x)"'
+	expect_command stop 'multica issue get X > ~/.netrc'
+	expect_command stop 'export GH_TOKEN=x; multica issue get X'
+	expect_command stop 'cd sub && multica issue get X'
+	expect_verdict pass "($mode) Write" "$(json_file_tool Write file_path "$work/docs/x.md")"
+	expect_verdict stop "($mode) Write: .mcp.json" "$(json_file_tool Write file_path "$work/.mcp.json")"
+}
+
+# 仮のトークンの変数
+for var in GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN; do
+	extra_env=("$var=fake-token")
+	check_isolation_examples "トークン $var"
+done
+# 空のトークンの変数は、分離を壊さない
+extra_env=(GH_TOKEN=)
+expect_command pass 'gh pr create'
+# 空の置き場の仮のファイル
+extra_env=()
+expect_command pass 'gh pr create'
+printf 'fake: x\n' >"$hook_dir/gh-empty/hosts.yml"
+check_isolation_examples '空の置き場の仮のファイル'
+rm -f "$hook_dir/gh-empty/hosts.yml"
+mkdir "$hook_dir/gh-empty/nested"
+check_isolation_examples '空の置き場の仮のディレクトリ'
+rmdir "$hook_dir/gh-empty/nested"
+expect_command pass 'gh pr create'
+# GH_CONFIG_DIR が、キットの空の置き場でない
+extra_env=("GH_CONFIG_DIR=$home/.config/gh")
+check_isolation_examples 'GH_CONFIG_DIR が別の場所'
+extra_env=(GH_CONFIG_DIR=)
+check_isolation_examples 'GH_CONFIG_DIR が空'
+extra_env=()
+echo 'PASS 認証の分離: 仮のトークンと空の置き場の仮のファイルで、multica だけを通し、二重引用符とバッククォートと引用していない区切りの展開を止める'
+rm -f "$work/sub/link.json"
+
+echo 'PASS guard-hook: PreToolUse のスクリプトの照合と分離の確認'

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # multica-squad-kit-managed
-"""Bash とシェルの入力を、実行する 1 つずつのコマンドに分ける。PreToolUse のフックが照合する前の段である。
+"""Bash とシェルの入力を、実行する 1 つずつのコマンドに分ける。PreToolUse のフックが照合する前の手順である。
 
 標準入力のシェルの文を読み、標準出力に JSON を書く。分け方は docs/agent-guards.md の「Bash とシェルの入力は、次の順に読む」に従う。
 
@@ -16,6 +16,7 @@
   words:     代入のあとの語すべて。env -i のような、飛ばす語も残す。{text, dynamic}
   argv:      飛ばす語を除いた、実行するコマンドと引数。{text, dynamic}。実行しない（command -v など）ときは空
   redirects: リダイレクト。{op, target, dynamic}。op は 2> のように fd を含み、<< と <<< で、ヒアドキュメントと here-string を分ける
+tilde は、語が引用していない ~ で始まる、または引用のない語の = の直後が ~ のときだけ true で付く（単引用符と二重引用符の中の ~ は、シェルが展開しない）。
 dynamic は、語が展開（$ やバッククォート）・引用していないグロブ・ブレース展開を含み、値が決まらないことを示す。
 """
 import json
@@ -249,7 +250,7 @@ class Parser:
                     target = self.read_word()
                     if target.raw == "":
                         raise Unsplittable("リダイレクト %s の先がない" % op)
-                    redirects.append({"op": op, "target": target.text, "dynamic": target.dynamic})
+                    redirects.append(with_tilde({"op": op, "target": target.text, "dynamic": target.dynamic}, target))
                     if m.group() in ("<<", "<<-"):
                         self.pending.append((target.text, m.group() == "<<-", target.quoted))
                     continue
@@ -551,10 +552,17 @@ class Parser:
             Parser(shell_text, self.out, self.depth + 1).parse_all()
         return {
             "assign": assigns + extra,
-            "words": [{"text": w.text, "dynamic": w.dynamic} for w in words],
-            "argv": [{"text": w.text, "dynamic": w.dynamic} for w in argv],
+            "words": [with_tilde({"text": w.text, "dynamic": w.dynamic}, w) for w in words],
+            "argv": [with_tilde({"text": w.text, "dynamic": w.dynamic}, w) for w in argv],
             "redirects": redirects,
         }
+
+
+def with_tilde(entry, word):
+    """語が引用していない ~ で始まるとき、または引用のない語の = の直後が ~ のとき（シェルや、渡された先のプログラムが ~ を展開しうるとき）だけ、tilde を足す。"""
+    if word.raw.startswith("~") or (not word.quoted and "=~" in word.raw):
+        entry["tilde"] = True
+    return entry
 
 
 # --- 飛ばすコマンド ---
