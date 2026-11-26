@@ -64,15 +64,27 @@ base=${0%/*}/..
 if [[ $* == 'app-server --strict-config --listen stdio://' ]]; then
  [[ $CODEX_HOME == */codex && ! -t 0 ]] || exit 93
  printf '%s\n' "$CODEX_HOME" >>"$base/codex-checks"
- case $(cat "$base/codex-strict" 2>/dev/null || echo ok) in
+ mode=$(cat "$base/codex-strict" 2>/dev/null || echo ok)
+ case $mode in
  ok) exit 0 ;;
  fail) echo 'Error: /agent/codex/config.toml:3:1: unknown configuration field `bogus`' >&2; exit 1 ;;
  silent) exit 1 ;;
  old) echo "error: unexpected argument '--strict-config' found" >&2; exit 2 ;;
  other2) echo 'error: another usage error' >&2; exit 2 ;;
  secret) echo 'invalid type: string "SYNTHETIC_SECRET_VALUE", expected a map' >&2; exit 1 ;;
- orphan) (trap '' TERM; printf '%s\n' "$BASHPID" >"$base/codex-child-pid"; exec /bin/sleep 300) & printf '%s\n' "$$" >"$base/codex-pid"; wait ;;
- hang) printf '%s\n' "$$" >"$base/codex-pid"; exec /bin/sleep 300 ;;
+ term-*)
+  # term-<親>-<子孫>。親は TERM で終わる（exit）か無視する（ignore）。子孫は、なし（none）、TERM のあと 0.5 秒で終わる（finish）、無視する（ignore）。
+  spec=${mode#term-}; p=${spec%-*}; d=${spec#*-}
+  case $d in
+  finish) ( trap '/bin/sleep 0.5; echo done >"$base/desc-done"; exit 0' TERM; /bin/sleep 300 & wait ) & ;;
+  ignore) ( trap '' TERM; exec /bin/sleep 300 ) & ;;
+  esac
+  [[ $d == none ]] || printf '%s\n' "$!" >"$base/desc-pid"
+  printf '%s\n' "$$" >"$base/codex-pid"
+  case $p in
+  exit) trap 'exit 0' TERM; /bin/sleep 300 & wait $! ;;
+  ignore) trap '' TERM; exec /bin/sleep 300 ;;
+  esac ;;
  esac
 fi
 [[ $* == 'login status' && $CODEX_HOME == */codex ]] || exit 92
@@ -120,6 +132,7 @@ if [[ ${TEST_HOST_STEPS:-no} == yes ]]; then
  ui_phase_start 1
 fi
 [[ -z ${TEST_CODEX_SECONDS:-} ]] || codex_check_seconds=$TEST_CODEX_SECONDS
+[[ -z ${TEST_CODEX_GRACE:-} ]] || codex_grace_seconds=$TEST_CODEX_GRACE
 prepare_host
 RUN
 run() { /bin/bash "$test_dir/run.sh" "$root" >"$test_dir/out" 2>"$test_dir/err"; }
@@ -783,23 +796,40 @@ agent_env
 run
 grep -qF '警告: この Codex は --strict-config を受け付けないため、設定を検証できませんでした' "$test_dir/err"
 grep -q '^daemon status' "$test_dir/calls"
-echo hang >"$test_dir/codex-strict"
-set_mode running
-agent_env
-TEST_CODEX_SECONDS=1 run
-grep -qF '警告: 設定の検証が 1 秒で終わらず、確認できませんでした' "$test_dir/err"
-grep -q '^daemon status' "$test_dir/calls"
-! kill -0 "$(cat "$test_dir/codex-pid")" 2>/dev/null
-# 親が先に終わり、TERM を無視する子孫がグループに残っても、猶予のあとに KILL で止める。
-echo orphan >"$test_dir/codex-strict"
-rm -f "$test_dir/codex-child-pid"
-set_mode running
-agent_env
-TEST_CODEX_SECONDS=1 run
-grep -qF '警告: 設定の検証が 1 秒で終わらず、確認できませんでした' "$test_dir/err"
-! kill -0 "$(cat "$test_dir/codex-child-pid")" 2>/dev/null
+# 時間切れの扱い。docs/agent-settings.md の「時間切れの扱い」の表と同じ行を、次の表から流す。
+# 列: 名前|最短（ミリ秒）|最長（ミリ秒）|子孫の終了処理の印。上限 1 秒、猶予 3 秒で流す。
+# 親が先に終わる行は、子孫が残る間だけ待つ。親が残る行と、子孫が TERM を無視する行は、猶予の 3 秒が過ぎてから KILL を送る。
+timeout_rows='term-exit-none|0|2500|-
+term-exit-finish|1400|3000|あり
+term-exit-ignore|3800|8000|-
+term-ignore-none|3800|8000|-
+term-ignore-finish|3800|8000|あり
+term-ignore-ignore|3800|8000|-'
+process_gone() { [[ $1 =~ ^[0-9]+$ ]] || return 1; ! kill -0 "$1" 2>/dev/null; }
+# 判定が、生きた子と空の PID で失敗することを先に確かめる。
+/bin/sleep 30 &
+live=$!
+! process_gone "$live"
+! process_gone ''
+kill "$live"
+wait "$live" 2>/dev/null || true
+while IFS='|' read -r row min max marker; do
+ echo "$row" >"$test_dir/codex-strict"
+ rm -f "$test_dir/desc-pid" "$test_dir/desc-done" "$test_dir/codex-pid"
+ set_mode running
+ agent_env
+ started=$(python3 -c 'import time; print(int(time.time() * 1000))')
+ TEST_CODEX_SECONDS=1 TEST_CODEX_GRACE=3 run
+ elapsed=$(( $(python3 -c 'import time; print(int(time.time() * 1000))') - started ))
+ grep -qF '警告: 設定の検証が 1 秒で終わらず、確認できませんでした' "$test_dir/err"
+ grep -q '^daemon status' "$test_dir/calls"
+ [[ $elapsed -ge $min && $elapsed -le $max ]] || { echo "時間切れの行 $row: ${elapsed} ミリ秒（期待 $min〜$max）" >&2; exit 1; }
+ process_gone "$(cat "$test_dir/codex-pid")"
+ [[ ! -f $test_dir/desc-pid ]] || process_gone "$(cat "$test_dir/desc-pid")"
+ if [[ $marker == あり ]]; then [[ -f $test_dir/desc-done ]]; else [[ ! -f $test_dir/desc-done ]]; fi
+done <<<"$timeout_rows"
 echo ok >"$test_dir/codex-strict"
-echo 'PASS host: 古い Codex と時間切れは警告して進み、時間切れでは起動した子のプロセスと、TERM を無視する子孫を止める'
+echo 'PASS host: 古い Codex と時間切れは警告して進み、時間切れの表の 6 行で、猶予の長さと KILL を送る条件と、子のプロセスの後始末が決めたとおりになる'
 # ID を受け取る関数を、実際の bash と zsh の起動ファイルで確認する。
 cat >"$test_dir/project.sh" <<'RUN'
 #!/bin/bash

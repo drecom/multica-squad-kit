@@ -148,14 +148,15 @@ PY
 # 古い Codex（引数を知らない）と時間切れは、確認できなかったと警告して先へ進む。
 host_codex_validate() {
 	local config=$agent_home/codex/config.toml result status detail
-	if ! result=$(python3 - "$agent_home/codex" "${codex_check_seconds:-30}" <<'PY'
+	if ! result=$(python3 - "$agent_home/codex" "${codex_check_seconds:-30}" "${codex_grace_seconds:-5}" <<'PY'
 import os
 import signal
 import subprocess
 import sys
 import tempfile
+import time
 
-home, seconds = sys.argv[1], float(sys.argv[2])
+home, seconds, grace = sys.argv[1], float(sys.argv[2]), float(sys.argv[3])
 environment = dict(os.environ, CODEX_HOME=home)
 command = ["codex", "app-server", "--strict-config", "--listen", "stdio://"]
 
@@ -175,23 +176,33 @@ with tempfile.TemporaryFile() as errors:
     try:
         code = child.wait(timeout=seconds)
     except subprocess.TimeoutExpired:
-        # 親が先に終わっても、TERM を無視する子孫がグループに残りうる。猶予のあとに必ずグループへ KILL を送る。
+        # TERM を送った時刻から、グループ全体へ猶予を与える。猶予の間は、親が先に終わっても、残る子孫を待つ。
+        # グループが空になれば KILL は送らず、猶予が過ぎてもグループが残るときだけ KILL を送る。
+        # docs/agent-settings.md の「時間切れの扱い」の表と、tests/host-test.sh の表が、この規則を決める。
+        def group_alive():
+            child.poll()
+            try:
+                os.killpg(child.pid, 0)
+            except ProcessLookupError:
+                return False
+            return True
+
         try:
             os.killpg(child.pid, signal.SIGTERM)
         except ProcessLookupError:
             pass
-        try:
-            child.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            pass
-        try:
-            os.killpg(child.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        try:
-            child.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            pass
+        deadline = time.monotonic() + grace
+        while group_alive() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        if group_alive():
+            try:
+                os.killpg(child.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            try:
+                child.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
         finish("timeout")
     errors.seek(0)
     text = errors.read().decode("utf-8", errors="replace")
