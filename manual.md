@@ -136,6 +136,65 @@ CODEX_HOME="$HOME/.multica-agent/codex" codex login
 
 認証情報の値を 原本、プロジェクトの説明、質問の答えやコメントに書かない。Git と `gh` の認証は引き継ぐが、Claude と Codex の個人の hook・プラグイン・MCP などの設定は実行へ持ち込まない。ホスト上では OS ユーザーの権限で動くため、実行環境と渡す認証の範囲は管理者が決める。
 
+#### キットがエージェント用の設定に書くこと
+
+セットアップは、使うランタイムのエージェント用の設定を、流し直すたびにキットの値へそろえる。変わりがなければ書き込まない。
+
+Claude の共有の設定は、置き場の `settings.json` である。次の 8 つのキーだけをキットが持ち、人が足したほかのキーは残す。
+
+- `syncClaudeAiSkills` と `syncClaudeAiPlugins` を `false` にする。人が claude.ai で使うスキルとプラグインを、役に混ぜない
+- `disableWorkflows` を `true`、`autoMemoryEnabled` を `false`、`cleanupPeriodDays` を `30` にする
+- `skillOverrides` で、無人の実行に要らない 14 のスキルを止める。`code-review`・`simplify`・`security-review`・`claude-api`・`verify`・`run` は止めない
+- `permissions.deny` に、`Monitor`・`ScheduleWakeup`・`RemoteTrigger` を足す。人が書いた項目は残し、重ねては足さない
+- `pluginConfigs` の `cc-plugin-agents-md@builtin` に、`instructionFiles` を `claude-md` で置く
+
+`pluginConfigs` と `skillOverrides` は、キットの項目だけを替える。人がキットのキーに別の値を書いていたときは、キットの値で上書きして警告する。
+
+同じ設定が、人がエージェント用のログインで開く端末にも効く。止めたスキルとツールは使えず、人が書いた `theme` などのキーは変わらない。
+
+`AGENTS.md` の自動読み込みは入れない。最後のキーは、Claude Code の既定が変わっても読み込まないための値である。役は、指示の手順で、チェックアウトの `AGENTS.md` を読む。
+
+役の設定も、流し直しで合わせる。変更は、役の次の実行から効き、デーモンの再起動は要らない。
+
+| 対象 | 書くこと |
+| --- | --- |
+| Claude のモデルの役の環境変数 | `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`、`CLAUDE_CODE_DISABLE_CRON=1`、`DISABLE_AUTOUPDATER=1`。Claude 以外のモデルの使用上限の見張りが、Claude の置き場を使うときは、`DISABLE_AUTOUPDATER` だけを付ける |
+| Codex のモデルの役の引数 | `-c project_doc_max_bytes=65536`。指示文書を読む上限を 64 KiB に上げる |
+| Codex の `config.toml` | マークのあるファイルに、`check_for_update_on_startup=false` と `[analytics] enabled=false` を置く |
+
+マークのない人の `config.toml` は、キットが書き替えない。そのファイルに 2 つのキーがなければ警告する。
+
+#### 設定のために新しく止まる場合
+
+次の 3 つのときは、設定を書かずに止まる。表示を読んで直し、同じセットアップを流し直す。
+
+| 表示 | 直すこと |
+| --- | --- |
+| 「Codex の設定が厳しい検証を通りません」 | マークのない人の `config.toml` を、出力の行のキーを直すか消す |
+| 「Claude の設定を合わせられません」とシンボリックリンクと出る | `settings.json` を、実体のファイルに置き換える |
+| 「Claude の設定を合わせられません」と JSON として読めない、または形が違うと出る | 表示された箇所を、正しい JSON と形に直す |
+
+Codex の設定の検証は、`codex app-server --strict-config` で 30 秒までかける。古い Codex と時間切れは、警告して進む。
+
+#### 流し直したあとの戻し方
+
+動いているタスクがないときに戻す。まず、前のバージョンの原本で、セットアップを流し直す。そのあとで、残るものを手で消す。
+
+1. エージェント用の置き場の `settings.json` から、上の 8 つのキーを消す。`pluginConfigs`・`skillOverrides`・`permissions.deny` は、キットの項目だけを消す
+2. Claude のモデルの役ごとに、`multica agent env get` で今の custom_env を読む。3 つの変数を消したファイルを、`multica agent env set --custom-env-file` で書く
+3. Codex のモデルの役ごとに、`multica agent update --custom-args` で、`-c` と `project_doc_max_bytes=65536` を除いた配列を書く
+
+`config.toml` は、前のバージョンの流し直しで戻る。マークのない人のファイルは、キットが変えていないので、戻す作業はない。
+
+#### 同じバージョンにそろえる
+
+同じホストのすべてのプロジェクトは、同じバージョンの原本で流し直す。古いバージョンで流し直すプロジェクトがあると、設定の一部が入れ替わる。
+
+- マークのある `config.toml` の 2 つのキーは、古いバージョンの流し直しで消える。新しいバージョンで流し直すと戻る
+- `settings.json` のキーと、役の 3 つの変数と引数は、古いバージョンは知らないので残る
+
+`config.toml` の 2 つのキーは、更新の確認と利用状況の送信を切るだけで、役の判断は変わらない。
+
 ### 片方だけのランタイムで動かす
 
 Claude Code か Codex の片方だけのホストでも導入できる。質問の「使うランタイム」で選んだものだけを確認して使い、ない方で動いていた役は、ある方のモデルで動かす。ただし最上位の役は移さず、ない方の最上位の役は置かない。
@@ -1226,6 +1285,7 @@ flowchart TD
 | 共通スキルの更新を飛ばした | 起票したタスクで、更新できる人に共通スキルの更新を頼む。ほかの登録処理は続く |
 | 作成中の手順が `✖` で止まった | 手順の行に添えた名前と、続く `エラー:` の理由を確認して直し、同じ答えで流し直す。流し直しは現在の設定を読んで続ける |
 | 起票できなかったタスクがある | 表示された理由を直し、同じ答えで流し直す。まだないタスクだけを起票する |
+| 設定を合わせる処理が止まった（Codex の設定の検証、`settings.json` のシンボリックリンク・JSON・形） | [設定のために新しく止まる場合](#設定のために新しく止まる場合)の表で直し、同じセットアップを流し直す |
 | ガードが拒否した | 実行のプロジェクトと選んだリポジトリが正しいか確認する。絶対パスや環境変数の手動注入などで迂回しない |
 | エージェントの実行が始めの確認で止まり、`squad-preflight` が見つからない | ガードのディレクトリが PATH にない。動いているタスクがないときに、同じプロジェクトでセットアップを流し直す |
 | エージェントの実行が始めの確認で止まり、`gh` がガードでない | ガードより先に別の `gh` を選んでいるので、動いているタスクがないときに、同じプロジェクトでセットアップを流し直す。直らなければ、エージェントの custom_env の `CLAUDE_ENV_FILE`（Claude）か custom_args（Codex）を確認する |
