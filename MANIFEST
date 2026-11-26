@@ -70,7 +70,7 @@ e09d29a0dc17a3ffb46c1caf2d864153cacdf5acc1fd32e9e8c58809eb6d31ac  ./common/skill
 eef33255fb11f5a350bd499acab86f982faf3205ca7f0f88eaa5fb602c26a082  ./common/skills/squad-handoff/references/leader-fix-request.md
 63a7b33a876e26d51be1ac9ab3b5caca5ff53ea5e52a5ba3fd46be8aeb96ed34  ./common/skills/squad-handoff/references/leader-pr-ci.md
 99d6255cccee4904f20132bf326929a0a7ed1de1b4e049f79aad90a180820d96  ./common/skills/squad-handoff/references/leader-pr-link.md
-74aeb7ee770c60e41536c22174317b9dd2c7f04bbd0ae22ca5c9e5c63d6b8bb9  ./common/skills/squad-handoff/references/leader-pr-merge.md
+41e32c1770da0982c16832305cdf2adc3798cc155fc071e42a4268bfaa99e54e  ./common/skills/squad-handoff/references/leader-pr-merge.md
 76440f903aa8de096d069953a1f82e27a8bc086a07eef47a3658d707258e9d4b  ./common/skills/squad-handoff/references/leader-principal-design.md
 b1bfbd3eb3d2b3145afd12c96c5230bc90d136d379e5e4fb8b3c3d3a9083af40  ./common/skills/squad-handoff/references/leader-principal-diagnose.md
 446a2cea9fbcdcbcc9dc26c0c06214decd67e582bfc7e47be50ce7a0d7db7a63  ./common/skills/squad-handoff/references/leader-principal-final.md
@@ -181,7 +181,6 @@ be9a67eb3b8da9a4012424d8ab5a9c61beecba7f11afcae4595541fbb56257de  ./skeleton/.ag
 33fd31cda4e988ef8116996f2d31db8f69fcd6e32cdfa5abc04f70fef3e0bc78  ./skeleton/README.md
 18454e4d0424a4c4e9474140fc9d5b0b3854a1b4f59d10258cd85c9ffb044da6  ./skeleton/project.md
 86d88f085a22c1879850188758a47bce16efb46c8ed45507a9bc2056bb09be58  ./skeleton/verify-repository.md
-9c20ea416629da3bb37acda87bdf1339e5ea3067bcfbcf484b3407b3a5ea9552  ./tests/__pycache__/base-size-check.cpython-314.pyc
 ec94c1189f1071bf59f9c20765667893b12a24881b6a68739d14f2ecbe0ff678  ./tests/action-advisories-test.sh
 075b8ec958e559c87838f4ab6dd49a0d7eccf4071a183180cf7ebac8639ddbf2  ./tests/agent-templates-test.sh
 2c4dce6d55a2bec00a23cf829eb9939041a27c4bb78891f0aeb0d485ad1713c4  ./tests/ansi-to-png.py
