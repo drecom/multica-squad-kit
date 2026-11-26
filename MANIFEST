@@ -100,7 +100,7 @@ b95232d26ae1ae5fcdb6af4dadc63d3877c2a4f4a21d0a87752b2acf606c5dc5  ./common/skill
 3f91e3e8613df7240d8eb1cac9116181ef22e772bb6f3273a93302dc65eae439  ./common/skills/squad-handoff/references/writing-forms.md
 19bf4eb0781004c0e270fd227004025b6e7a266a452098c2d4aae01d85b1018b  ./common/squad.md
 543e59279a8e1a66b6cf94a24ef078e570cc8a48ea213614fd727f61c1618a93  ./docs/README.md
-9b095d3a3fb35609388c94ac6843a2e7e2b0f1487265565c1738b9fe1ed1383a  ./docs/agent-guards.md
+99006c25bddd13c5ddfda609d0f1772d98e0a8e128bbfdae4179aa5dc09a3c8d  ./docs/agent-guards.md
 c380ac8fd57091fa1d1ad80ff9724cba6667a7199b440a40b4be9b0e25f83623  ./docs/agent-path.md
 8ff8c31670debca0fe0217b708435ebc18b70e7b101949d3c5bbf2d6650674ea  ./docs/agent-settings.md
 62062b7363a33eb140e814eeff5b3898d2d7d06aadc1ff95a07aa88aa001dbc7  ./docs/autopilot-targets.md
