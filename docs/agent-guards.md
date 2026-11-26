@@ -337,7 +337,9 @@ Codex のフックは `-c` の形で入れ、コマンドのルールは外し�
 | --- | --- |
 | `common/guard/gh` | `SQUAD_KIT_GH_CONFIG_DIR` があるとき、`GH_CONFIG_DIR` にして本物の `gh` を呼ぶ。絶対パスですり抜けられるという見出しの文を直す |
 | `common/guard/` に足すもの | 認証情報のヘルパー、SSH のコマンド、PreToolUse と Stop のスクリプト |
+| `common/guard/shell_split.py` | PreToolUse のスクリプトが使う補助で、シェルのコマンドの文を[読む順](#pretooluse-で止めるもの)に分ける |
 | `lib/host.sh` | スクリプトと空のディレクトリを置き、`settings.json` にフックと deny の項目を足す。`config.toml` に信頼を書き、ガードの確認で[認証の分離](#認証の分離を確認できないときに止める)を見て、合わなければ止める |
+| `lib/codex-hooks.py` | `lib/host.sh` が使う補助で、役と同じ引数で起こした app-server から `hooks/list` を読む |
 | `lib/project.sh` | すべての役の custom_env に変数を足し、Claude の役の MCP の設定を `{}` にする。Codex の役の引数にフックを足し、信頼がなければ役を変える前に止める |
 | `common/host/start-daemon` | 起動する端末に 4 つのトークンの変数があれば、デーモンを起動せずに止める |
 | `common/codex/config.toml` | 信頼の値を埋めるひな形にする |
@@ -415,7 +417,7 @@ Codex のフックは `-c` の形で入れ、コマンドのルールは外し�
 | 足す `tests/guard-hook-test.sh` | Stop のスクリプトが、コメントがあれば通し、ないとき・CLI の失敗・残る処理で続けさせ、4 回目で終わらせること。タスクのない実行は通すこと |
 | `tests/host-test.sh` | `settings.json` にフックと deny の項目を足し、人の項目を残し、キットの項目だけを付け直すこと |
 | `tests/host-test.sh` | `hooks/list` の値で信頼を書き、読めないときに止まること |
-| `tests/host-test.sh` | Codex の役があり、マークのない人の設定に信頼がないと、役を変える前に止まり、足す行を出すこと。信頼を足せば進み、Codex の役がなければ止まらないこと |
+| `tests/project-runtimes-first-test.sh` | Codex の役があり、マークのない人の設定に信頼がないと、役を変える前に止まり、足す行を出すこと。信頼を足せば進み、Codex の役がなければ止まらないこと |
 | `tests/guard-check-test.sh` | 仮のトークンの変数・空の置き場の仮のファイル・未認証にならない仮の `gh` で、ガードの確認が失敗すること。許すリポジトリのファイルを変えないこと |
 | `tests/host-daemon-test.sh` | 仮のトークンの変数があると、起動入口がデーモンを起動せずに止まること |
 | `tests/project-create-test.sh`・`tests/project-runtimes-test.sh`・`tests/project-runtimes-first-test.sh` | 変数とフックの引数と MCP の設定が、役とランタイムに合わせて付き、ランタイムを替えると外れること |
