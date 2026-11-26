@@ -848,6 +848,7 @@ high にした理由は、原則の判断に考える量を回すためだった
 | `tests/leader-eval/` | 新しいスクリプトの名前を `leader_eval.py` の差し替える名前に足し、それを呼ぶ場面の `cli.json` に応答を足す |
 | `docs/principal-review.md`・`docs/review-next-step.md`・`docs/decide-record-read.md`・`docs/leader-principles.md`・`docs/flow-and-index.md` | 短い道と思考の深さに合わせ、この文書と同じコミットで直した |
 | `docs/principal-review.md`・`docs/review-next-step.md`・`docs/reread-followups.md`・`docs/review-eval.md` | 分ける前のリーダーの参照へのリンクを、分けた先の参照と節へ付け替える |
+| `docs/review-next-step.md` | CI の待ちの規則で起きたあとに head が変わったときの文を、[head の照合の表](#head-の照合の表)の「一致しない」の列に従う文にする |
 | `docs/planner-requirements.md`・`docs/leader-principles.md` | 縮めた所を記録し、展開した大きさの値を直す。記録の表の省いた語句が読める場所は分けた先の参照を指し、指示を変えるコミットで直す |
 | `docs/README.md` | 索引の「役の指示と、タスクが進む流れ」の表に、この文書の行を足した |
 | `MANIFEST` | `bash scripts/manifest.sh` で作り直す |
