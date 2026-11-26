@@ -166,8 +166,10 @@ state() {
 	runs=$(squad_cli_read issue-runs "$task") || { echo 'タスクの実行の一覧を読めません' >&2; exit 1; }
 	ids=$(jq -c '[.roles["claude-implementer"], .roles["claude-fixer"], .roles["designer"] | select(. != null) | .id]' <<<"$roster") \
 		|| { echo '名簿から役のエージェントを読めません' >&2; exit 1; }
-	jq -nr --argjson ids "$ids" --argjson comments "$comments" --argjson runs "$runs" --argjson wait "$START_WAIT" '
-		def ts: sub("\\.[0-9]+"; "") | sub("\\+00:00$"; "Z") | fromdateiso8601;
+	# コメントと実行の一覧は大きくなるので、引数ではなくファイルとして渡す（引数の長さの上限を避ける）。
+	jq -nr --argjson ids "$ids" --slurpfile comments_f <(printf '%s' "$comments") --slurpfile runs_f <(printf '%s' "$runs") --argjson wait "$START_WAIT" '
+		$comments_f[0] as $comments | $runs_f[0] as $runs
+		| def ts: sub("\\.[0-9]+"; "") | sub("\\+00:00$"; "Z") | fromdateiso8601;
 		def is_cut: .content | test("(^|\n)区切り:");
 		def finished: . == "completed" or . == "failed" or . == "cancelled";
 		$ids[] as $id

@@ -130,6 +130,13 @@ expect_status 0 'ID を読めない'
 expect_calls "multica issue status $TASK in_review" 'ID を読めない: 状態の変更'
 [[ $(calls | grep -c 'issue comment add') == 1 ]] || fail 'ID を読めない: 投稿は 1 回だけです'
 reset
+touch "$stub_dir/id-unreadable"
+run "$TASK" --status in_review --content-file "$body" --parent c-parent
+expect_status 0 '親ありで ID を読めない'
+[[ $out == $'投稿: 未確認\n状態: in_progress -> in_review' ]] || fail "親ありで ID を読めない: 出力が違います: $out"
+expect_calls "multica issue status $TASK in_review" '親ありで ID を読めない: 状態の変更'
+[[ $(calls | grep -c 'issue comment add') == 1 ]] || fail '親ありで ID を読めない: 投稿は 1 回だけです'
+reset
 touch "$stub_dir/id-unreadable" "$stub_dir/status-fail"
 run "$TASK" --status in_review --content-file "$body"
 expect_status 3 'ID を読めず状態も変えられない'

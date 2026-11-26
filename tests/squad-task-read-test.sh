@@ -167,10 +167,20 @@ run $TASK --since 2026-11-01T01:30:00Z
 expect_status 0 '--since'
 expect_json '[.comments[].id] == ["c2", "c3"]' '--since より後だけ'
 run $TASK --since 2026-11-01T02:00:00Z
+expect_json '[.comments[].id] == ["c2", "c3"]' '--since の同じ秒の後の小数秒は含める'
+run $TASK --since 2026-11-01T02:00:00.123456Z
 expect_json '[.comments[].id] == ["c3"]' '--since と同じ時刻は含めない'
+run $TASK --since 2026-11-01T02:00:00.100000Z
+expect_json '[.comments[].id] == ["c2", "c3"]' '--since の同じ秒の前の小数秒'
+run $TASK --since 2026-11-01T02:00:00.9Z
+expect_json '[.comments[].id] == ["c3"]' '--since の同じ秒の小数秒より後は含めない'
+run $TASK --since 2026-11-01T11:00:00.1+09:00
+expect_json '[.comments[].id] == ["c2", "c3"]' '--since の時差つきの小数秒'
 run $TASK --since 2026-11-01T10:30:00+09:00
 expect_json '[.comments[].id] == ["c2", "c3"]' '--since の時差'
 run $TASK --since 2026-11-01T11:00:00+09:00
+expect_json '[.comments[].id] == ["c2", "c3"]' '--since の時差の境目の小数秒は含める'
+run $TASK --since 2026-11-01T11:00:00.123456+09:00
 expect_json '[.comments[].id] == ["c3"]' '--since の時差の境目'
 run $TASK --since 2026-11-01T03:00:00Z
 expect_json '.comments == []' '--since のあとにコメントがない'
@@ -179,6 +189,17 @@ expect_status 0 '--since を先に書く'
 expect_json '[.comments[].id] == ["c2", "c3"]' '--since を先に書く'
 run $TASK
 expect_json '[.comments[].id] == ["c1", "c2", "c3"]' '--since なしは全件'
+
+# ---- 大きなコメントの履歴 ----
+reset
+big=$(printf 'x%.0s' $(seq 1 2000))
+python3 -c '
+import json, sys
+print(json.dumps([{"id": "c%d" % i, "parent_id": None, "author_type": "member", "author_id": "u-1",
+	"created_at": "2026-11-01T01:00:00Z", "content": sys.argv[1]} for i in range(500)]))' "$big" >"$stub_dir/comments.json"
+run $TASK
+expect_status 0 '500 件・100 万バイトのコメント'
+expect_json '(.comments | length) == 500 and .errors == []' '大きなコメントの履歴を引数の上限に当たらず読む'
 
 # ---- PR のないタスク ----
 reset

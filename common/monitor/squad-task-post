@@ -46,11 +46,10 @@ esac
 # 状態の変更の前の値を、投稿の前に読む。読めないときは、何も変えずに止まる。
 before=$(squad_cli_read issue-get "$task" | jq -er .status) || { echo "タスクの状態を読めません: $task" >&2; exit 1; }
 
-if [[ -n $parent ]]; then
-	response=$(squad_cli_read issue-comment-add "$task" "$parent" "$file") || { echo 'コメントを投稿できません。状態は変えていません' >&2; exit 1; }
-else
-	response=$(multica issue comment add "$task" --content-file "$file" --output json) || { echo 'コメントを投稿できません。状態は変えていません' >&2; exit 1; }
-fi
+# 投稿の成否は終了コードで決め、応答の ID の検証は成功のあとに分ける（読み取りの応答検証を通すと、投稿できたのに失敗に見える）。
+args=(issue comment add "$task" --content-file "$file" --output json)
+[[ -z $parent ]] || args+=(--parent "$parent")
+response=$(multica "${args[@]}") || { echo 'コメントを投稿できません。状態は変えていません' >&2; exit 1; }
 # 投稿はできている。ID を読めなくても、状態は変えて、理由を標準エラーに残す。
 if ! comment=$(jq -er .id <<<"$response" 2>/dev/null); then
 	comment=未確認
