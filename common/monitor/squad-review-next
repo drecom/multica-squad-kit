@@ -508,8 +508,10 @@ if mismatched:
 flagged = [key_of.get(entry["id"], entry["id"]) for entry in results if entry["result"]["design"]]
 if flagged:
     stop(f"設計への指摘: あり（{'、'.join(flagged)}）")
+if judge["short_path"] and marked:
+    stop("短い道に重要のマークがある（通常の道へ戻して設計を頼む）")
 
-failed = [entry for entry in results if entry["result"]["mark"] == "ng"]
+failed =[entry for entry in results if entry["result"]["mark"] == "ng"]
 if failed:
     count = sum(1 for comment in comments for line in lines_of(comment) if line.startswith("修正の依頼:"))
     if count + 1 == 4:
@@ -1071,7 +1073,7 @@ merge_request() {
 		printf '[@%s](mention://member/%s) レビューと確認が済みました。PR のマージを判断してください。\n' "$HUMAN_NAME" "$HUMAN_ID"
 		printf 'マージの依頼: %s\n' "$MERGE_HEAD"
 		printf '前の回: %s\n' "$round"
-		[[ $(jq -r '.short_path' <<<"$res") != true ]] || printf '道: 短い（最終レビューなし）\n'
+		[[ $(jq -r '.short_path' <<<"$res") != true ]] || printf '最終レビューなし（短い道）\n'
 		printf '%s\n' "$CONF_LINE"
 		[[ -z $CI_LINES ]] || printf '%s\n' "$CI_LINES"
 		jq -r '.lines[]' <<<"$res"

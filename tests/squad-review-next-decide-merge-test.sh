@@ -262,7 +262,7 @@ for with_principal in yes no; do
 	ok_round
 	add path orchestrator '道: 短い'
 	run round-1
-	expect_merge_posted "$(merge_body round-1 "$sha" '道: 短い（最終レビューなし）' "$conf_line" '✅ demo-code-reviewer-test: 結果' '✅ demo-qa-test: 結果')"
+	expect_merge_posted "$(merge_body round-1 "$sha" '最終レビューなし（短い道）' "$conf_line" '✅ demo-code-reviewer-test: 結果' '✅ demo-qa-test: 結果')"
 	expect_no_calls pick-calls
 	expect_calls pr-watch-calls $'link-check test-issue\nconflicts-check test-issue\nconflicts test-issue --leader orchestrator'
 	# head が進んだときはマージを頼まず、古い組を根拠に進めない。

@@ -50,7 +50,7 @@ b4fc8a780ef9d07e32c96b58d698767276b2772ab8561be5c3a6179f7d7f4da6  ./common/monit
 33de9251e13aa5d0c61f7562bccd46e34b8e9ef04eb4314ec2b8fcfd957b81fb  ./common/monitor/squad-pr-link-lib
 43cd71762b2605ff5af3df04df187aa5b17ac08be1280f1aed2895dcb4317f93  ./common/monitor/squad-pr-watch
 a42bc9f4e0cab7a342bdd980e845b816354c3787152f1cd6c2b80b592d1d56ea  ./common/monitor/squad-preflight
-52e31478f87032f6fff1de838e3d19825001a494adbf97618b13f87801139d0c  ./common/monitor/squad-review-next
+42f3e5accfed8ce6291439bfb51a87ea32e86a4af8f7ac46b2cd541b722b93e5  ./common/monitor/squad-review-next
 652c87bbe6b0c221424d58dda0e9806d48c8972cac162fee910b51078b7eec5e  ./common/monitor/squad-review-wait
 637050a7e02f134fb23ee2bf1c0b475d4c5863d8e3777f238b2b1c247c6bf331  ./common/monitor/squad-run-cut
 d01f8b949abb8359dd72254134adeb4c24d8bc9772d0868865718aeb1345d3c5  ./common/monitor/squad-run-cut-values
@@ -70,7 +70,7 @@ e09d29a0dc17a3ffb46c1caf2d864153cacdf5acc1fd32e9e8c58809eb6d31ac  ./common/skill
 eef33255fb11f5a350bd499acab86f982faf3205ca7f0f88eaa5fb602c26a082  ./common/skills/squad-handoff/references/leader-fix-request.md
 63a7b33a876e26d51be1ac9ab3b5caca5ff53ea5e52a5ba3fd46be8aeb96ed34  ./common/skills/squad-handoff/references/leader-pr-ci.md
 949b100f552c141a8fa1f8c5ee9dafe75ed42869b3d2b0ee51e7f72d48fa4365  ./common/skills/squad-handoff/references/leader-pr-link.md
-efa1f3753bb69c31c8164bb3187f00a01537312968e618c27cc767663afc6428  ./common/skills/squad-handoff/references/leader-pr-merge.md
+52a3e47f1c2211af59cf717552893d9dbe46052bcfda69de45f1664195a26a60  ./common/skills/squad-handoff/references/leader-pr-merge.md
 76440f903aa8de096d069953a1f82e27a8bc086a07eef47a3658d707258e9d4b  ./common/skills/squad-handoff/references/leader-principal-design.md
 b1bfbd3eb3d2b3145afd12c96c5230bc90d136d379e5e4fb8b3c3d3a9083af40  ./common/skills/squad-handoff/references/leader-principal-diagnose.md
 446a2cea9fbcdcbcc9dc26c0c06214decd67e582bfc7e47be50ce7a0d7db7a63  ./common/skills/squad-handoff/references/leader-principal-final.md
@@ -81,7 +81,7 @@ defcb73c53327f21bca16182034126e616326bf0febe501417b0d9905366514d  ./common/skill
 d02745a026fae71cf4ea099ea7015f83c177f5b01d4721340eda62de33cb8fca  ./common/skills/squad-handoff/references/leader-request.md
 184f83242981b876f4c714445ebf14aad957ff2317bc6329e93e33a9e6a92a36  ./common/skills/squad-handoff/references/leader-review-reply.md
 25756f6dff82a6ee41966217e318fddeb826913a85e29d9bbcd672a1c2dddf6b  ./common/skills/squad-handoff/references/leader-review-request.md
-ad475eb97d493b3ec65873a821e506d6950aab1744cb76c768ccbcf9f7414700  ./common/skills/squad-handoff/references/leader-review-stuck.md
+f99dc1f01f8588919ef6bc4a7fcdde1f998bde1fc769c744ad5a243d8721abf5  ./common/skills/squad-handoff/references/leader-review-stuck.md
 513e15d0eac3e9e0c98a866513ce535d675ba32ba20f2a97995b9097691e95b9  ./common/skills/squad-handoff/references/leader-run-cut.md
 7a19fb7d7a1508d07f433399c00618047cde3a18162b2d13985c77d52f63b6fa  ./common/skills/squad-handoff/references/leader-run-status.md
 5a9e31b2a6b5f5a36eef91c654e4361b161e52e4838550c9cfc597f119e0be52  ./common/skills/squad-handoff/references/leader-run-stop.md
@@ -739,9 +739,9 @@ b6516ab0d25a143ae0541f6f666e3468addd88f6278523ed36fffb55a90c0ae7  ./tests/squad-
 61f598bf61d549365b28eacb615ba6293dc031bb9c522f45b11fcfba3e6edb55  ./tests/squad-review-next-decide-body-test.sh
 c6d8d24f452e507b13642c9b8b2bcbc318d1a46cb055c916757cbfa23ac01ee6  ./tests/squad-review-next-decide-ciwait-test.sh
 6dfbc4162025517bf83ad4666dca692f08dee974605a5457a2a99172e5ab5bd2  ./tests/squad-review-next-decide-control-test.sh
-c898bda48f69741cb9dc02536463eda449f31bfc153cf963903c8d6f2dc6c775  ./tests/squad-review-next-decide-final-test.sh
+5476f0bf916f48e5ad62361f1e38767ff2fa76cbc64b355ca9f3bd7f417e811d  ./tests/squad-review-next-decide-final-test.sh
 862268be3cab2e091c0202e490dcb84ca7342efa551f5c08046981d0b0e7306c  ./tests/squad-review-next-decide-fix-test.sh
-33787ae19f84a2e17ee903a1bdfd67006df7d5fafcb920240ef7af2ab8f5b452  ./tests/squad-review-next-decide-merge-test.sh
+3796b65c816dc650555e7077ce304c34b4a5993c7da1549445b230fa8f437fb2  ./tests/squad-review-next-decide-merge-test.sh
 c30af744bb2f897be7b9de5f7ba2384844db156c60d05de7ca8b0172579108d3  ./tests/squad-review-next-decide-pr-test.sh
 8be0407eca2a3bad68e7f6fe8ccd8afe6a9f272bb91a79b9efc5aec706d17720  ./tests/squad-review-next-decide-recognize-test.sh
 c6cc0b4588a01424ebd04ae5bea45770fa33d212fa5a2c8285f4c35a0b30de99  ./tests/squad-review-next-decide-requirement-test.sh

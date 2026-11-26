@@ -291,10 +291,28 @@ expect_status 0
 [[ $(<"$test_dir/out") == $'次の依頼: マージの依頼\n依頼: posted-comment' ]] || fail '短い道がマージの依頼へ進まない'
 expect_no_calls pick-calls
 expect_no_calls watch-calls
-# 重要なら、短い道の記録があっても最終レビューを頼む。
+# 重要が付いた短い道は、最終レビューもマージも頼まず、リーダーを起こす。
 reset
 ok_round
 add path orchestrator '道: 短い'
+set_issue_labels label-imp
+run round-1
+expect_leader '短い道に重要のマークがある'
+expect_no_calls pick-calls
+# ❌ の結果があっても、修正の依頼を書かずに同じ理由で止まる。
+reset
+base_round
+result round-1 code-reviewer ❌ "$sha" なし
+result round-1 qa ✅ "$sha" なし
+add path orchestrator '道: 短い'
+set_issue_labels label-imp
+run round-1
+expect_leader '短い道に重要のマークがある'
+# 重要が付いていても、通常に戻した記録が最新なら最終レビューを頼む。
+reset
+ok_round
+add path-short orchestrator '道: 短い'
+add path-normal orchestrator '道: 通常'
 set_issue_labels label-imp
 run round-1
 expect_posted 最終レビュー "$(final_request_body 'PR の差分全体')"
@@ -305,4 +323,4 @@ add path-short orchestrator '道: 短い'
 add path-normal orchestrator '道: 通常'
 run round-1
 expect_posted 最終レビュー "$(final_request_body 'PR の差分全体')"
-echo 'PASS review-next-decide: 短い道だけ最終レビューを飛ばし、重要と通常の道では頼む'
+echo 'PASS review-next-decide: 短い道だけ最終レビューを飛ばし、重要が付いた短い道は止め、通常の道では頼む'
