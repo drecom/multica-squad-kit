@@ -177,13 +177,16 @@ host_codex_validate() {
 }
 
 # JSON には管理マークを付けず、キットが持つキーと項目だけを合わせる。
+# フックは、コマンドのパスがキットの置き場（guard）の中にある項目だけをキットの項目として合わせる。
 host_claude_settings() {
-	local settings=$agent_home/claude/settings.json message
-	if ! message=$(python3 - "$settings" <<'PY'
+	local settings=$agent_home/claude/settings.json guard=$agent_home/guard human_gh message
+	human_gh=$(host_human_gh_dir) || die '人の gh の置き場を決められませんでした。'
+	if ! message=$(python3 - "$settings" "$guard" "$human_gh" <<'PY'
 import copy
 import json
 import os
 from pathlib import Path
+import shlex
 import sys
 import tempfile
 
@@ -204,7 +207,30 @@ owned_items = {
         "fewer-permission-prompts", "plugin-authoring", "run-skill-generator",
     ), "off"),
 }
-owned_deny = ("Monitor", "ScheduleWakeup", "RemoteTrigger")
+settings = Path(sys.argv[1])
+guard = os.path.normpath(sys.argv[2])
+human_gh = os.path.normpath(sys.argv[3])
+home = os.path.normpath(os.environ.get("HOME") or "/")
+
+def deny_read(path, directory):
+    # 絶対パスは // で始める。ディレクトリは中のファイルまで含める。
+    return "Read(/" + path + ("/**" if directory else "") + ")"
+
+owned_deny = (
+    "Monitor", "ScheduleWakeup", "RemoteTrigger", "PushNotification",
+    deny_read(human_gh, True),
+    deny_read(home + "/.ssh", True),
+    deny_read(home + "/.git-credentials", False),
+    deny_read(home + "/.netrc", False),
+)
+owned_permissions = {"blockWritesOutsideWorkingDirectories": True}
+hook_groups = {
+    "PreToolUse": {
+        "matcher": "Bash|Write|Edit|NotebookEdit",
+        "hooks": [{"type": "command", "command": shlex.quote(guard + "/pre-tool-use")}],
+    },
+    "Stop": {"hooks": [{"type": "command", "command": shlex.quote(guard + "/stop")}]},
+}
 # キーをやめるときはここへ移す。項目を足すキーは、キットの項目だけを消す。
 retired_keys = ()
 retired_items = {}
@@ -228,7 +254,20 @@ def container(config, path, kind):
         raise ValueError(".".join(path) + " を" + shape + "に直してください。")
     return value
 
-settings = Path(sys.argv[1])
+def is_kit_hook(handler):
+    if not isinstance(handler, dict) or not isinstance(handler.get("command"), str):
+        return False
+    try:
+        words = shlex.split(handler["command"])
+    except ValueError:
+        return False
+    return bool(words) and os.path.dirname(os.path.normpath(words[0])) == guard
+
+def kit_handlers(group):
+    if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
+        return []
+    return [handler for handler in group["hooks"] if is_kit_hook(handler)]
+
 temporary = None
 try:
     if settings.is_symlink():
@@ -248,6 +287,9 @@ try:
         container(config, (key,), dict)
     container(config, ("permissions",), dict)
     container(config, ("permissions", "deny"), list)
+    container(config, ("hooks",), dict)
+    for event in hook_groups:
+        container(config, ("hooks", event), list)
     for path, items in retired_items.items():
         value = container(config, path, (dict, list))
         if isinstance(value, dict):
@@ -268,10 +310,40 @@ try:
             if item in target and not same(target[item], value):
                 overwritten.append(key + "." + item)
             target[item] = value
-    deny = config.setdefault("permissions", {}).setdefault("deny", [])
+    permissions = config.setdefault("permissions", {})
+    for key, value in owned_permissions.items():
+        if key in permissions and not same(permissions[key], value):
+            overwritten.append("permissions." + key)
+        permissions[key] = value
+    deny = permissions.setdefault("deny", [])
     for item in owned_deny:
         if item not in deny:
             deny.append(item)
+    # 人のフックは残し、キットの置き場のスクリプトを指す項目だけを、キットの値の 1 つに合わせる。
+    for event, desired in hook_groups.items():
+        groups = config.setdefault("hooks", {}).setdefault(event, [])
+        kept = []
+        found = changed = False
+        for group in groups:
+            handlers = kit_handlers(group)
+            if not handlers:
+                kept.append(group)
+                continue
+            others = [handler for handler in group["hooks"] if not is_kit_hook(handler)]
+            if others:
+                group["hooks"] = others
+                kept.append(group)
+                changed = True
+            elif not found and same(group, desired):
+                kept.append(group)
+                found = True
+            else:
+                changed = True
+        if not found:
+            kept.append(copy.deepcopy(desired))
+        groups[:] = kept
+        if changed:
+            overwritten.append("hooks." + event)
     if not exists or not same(config, original):
         fd, temporary = tempfile.mkstemp(prefix=".settings.", dir=settings.parent)
         with os.fdopen(fd, "w", encoding="utf-8") as target:
@@ -309,6 +381,10 @@ prepare_host() {
 	chmod 700 "$agent_home/guard/gh-empty" || die '空の gh の置き場の権限を設定できませんでした。'
 	host_shared_file "$root/common/guard/git-credential" "$agent_home/guard/git-credential" yes
 	host_shared_file "$root/common/guard/git-ssh" "$agent_home/guard/git-ssh" yes
+	# フックのスクリプトと、PreToolUse が読む分割の部品。settings.json のフックがこの置き場を指す。
+	host_shared_file "$root/common/guard/pre-tool-use" "$agent_home/guard/pre-tool-use" yes
+	host_shared_file "$root/common/guard/stop" "$agent_home/guard/stop" yes
+	host_shared_file "$root/common/guard/shell_split.py" "$agent_home/guard/shell_split.py" yes
 	host_shared_file "$root/common/guard/gh" "$agent_home/bin/gh" yes
 	host_shared_file "$root/common/guard/pre-push" "$agent_home/git-hooks/pre-push" yes
 	host_shared_file "$root/common/host/start-daemon" "$agent_home/start-daemon" yes

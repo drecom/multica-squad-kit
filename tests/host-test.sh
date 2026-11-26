@@ -105,7 +105,7 @@ STUB
 printf '#!/bin/bash\nexit 0\n' >"$test_dir/bin/sleep"
 chmod +x "$test_dir/bin/"*
 export PATH="$test_dir/bin:$PATH" TEMPLATE_AGENT_HOME="$test_dir/agent's home" TEMPLATE_DAEMON_ID_FILE="$test_dir/daemon.id"
-export VSCODE_TEST_MARKER=must-not-be-inherited
+export VSCODE_TEST_MARKER=must-not-be-inherited GH_CONFIG_DIR="$test_dir/human-gh"
 printf daemon-a >"$TEMPLATE_DAEMON_ID_FILE"
 cat >"$test_dir/run.sh" <<'RUN'
 #!/bin/bash
@@ -167,7 +167,7 @@ for file in "$root/common/monitor/"squad-*; do
 done
 cmp "$root/common/guard/gh" "$TEMPLATE_AGENT_HOME/bin/gh"
 cmp "$root/common/guard/pre-push" "$TEMPLATE_AGENT_HOME/git-hooks/pre-push"
-for file in git-credential git-ssh; do
+for file in git-credential git-ssh pre-tool-use stop shell_split.py; do
  cmp "$root/common/guard/$file" "$TEMPLATE_AGENT_HOME/guard/$file"
  [[ -x $TEMPLATE_AGENT_HOME/guard/$file ]]
 done
@@ -201,11 +201,26 @@ echo 'PASS host: 新しいホストで Codex の設定に 2 つのキーを足�
 settings=$TEMPLATE_AGENT_HOME/claude/settings.json
 python3 - "$settings" "$test_dir/kit-settings.json" <<'PY'
 import json
+import os
 from pathlib import Path
+import shlex
 import sys
 
 settings = Path(sys.argv[1])
 actual = json.loads(settings.read_text())
+# 置き場の名前にアポストロフィがあるので、フックのコマンドは引用符で囲まれる。
+guard = os.path.normpath(os.path.dirname(os.path.dirname(settings))) + "/guard"
+pre_tool_use = shlex.quote(guard + "/pre-tool-use")
+stop = shlex.quote(guard + "/stop")
+assert pre_tool_use.startswith("'") and stop.startswith("'")
+home = os.path.normpath(os.environ["HOME"])
+kit_reads = [
+    "Read(/" + os.path.normpath(os.environ["GH_CONFIG_DIR"]) + "/**)",
+    "Read(/" + home + "/.ssh/**)",
+    "Read(/" + home + "/.git-credentials)",
+    "Read(/" + home + "/.netrc)",
+]
+assert all(item.startswith("Read(//") for item in kit_reads)
 assert actual == {
     "syncClaudeAiSkills": False,
     "syncClaudeAiPlugins": False,
@@ -218,12 +233,19 @@ assert actual == {
         "design", "design-sync", "dataviz", "debug", "doctor", "update-config",
         "fewer-permission-prompts", "plugin-authoring", "run-skill-generator",
     )},
-    "permissions": {"deny": ["Monitor", "ScheduleWakeup", "RemoteTrigger"]},
+    "permissions": {
+        "deny": ["Monitor", "ScheduleWakeup", "RemoteTrigger", "PushNotification", *kit_reads],
+        "blockWritesOutsideWorkingDirectories": True,
+    },
+    "hooks": {
+        "PreToolUse": [{"matcher": "Bash|Write|Edit|NotebookEdit", "hooks": [{"type": "command", "command": pre_tool_use}]}],
+        "Stop": [{"hooks": [{"type": "command", "command": stop}]}],
+    },
 }, actual
 assert settings.stat().st_mode & 0o777 == 0o600
 Path(sys.argv[2]).write_bytes(settings.read_bytes())
 PY
-echo 'PASS host: Claude の共有の設定をキットの 8 つのキーだけで作り、権限を 600 にする'
+echo 'PASS host: Claude の共有の設定をキットのキーだけで作り、フック・deny・書き込み制限を含め、権限を 600 にする'
 
 cat >"$test_dir/settings-run.sh" <<'RUN'
 #!/bin/bash
@@ -237,7 +259,9 @@ RUN
 settings_run() { /bin/bash "$test_dir/settings-run.sh" "$root" >"$test_dir/out" 2>"$test_dir/err"; }
 python3 - "$settings" <<'PY'
 import json
+import os
 from pathlib import Path
+import shlex
 import sys
 
 settings = Path(sys.argv[1])
@@ -246,18 +270,34 @@ config.update(theme="dark", custom={"nested": [True, None, "人の値"]}, syncCl
 config["pluginConfigs"]["personal-plugin"] = {"options": {"enabled": True}}
 config["pluginConfigs"]["cc-plugin-agents-md@builtin"]["options"]["instructionFiles"] = "agents-md"
 config["skillOverrides"].update(batch="on", **{"personal-skill": "on", "code-review": "on"})
-config["permissions"] = {"allow": ["Read"], "deny": ["Bash(secret)", "Monitor"]}
+config["permissions"] = {"allow": ["Read"], "deny": ["Bash(secret)", "Monitor", "Read(//human/.aws/**)"], "blockWritesOutsideWorkingDirectories": False}
+# 人のフックと、キットの置き場のスクリプトを指す項目（matcher の違うもの・人のフックと同じ組・消された Stop）を作る。
+guard = os.path.dirname(os.path.dirname(settings)) + "/guard"
+kit_pre = shlex.quote(guard + "/pre-tool-use")
+config["hooks"] = {
+    "PreToolUse": [
+        {"matcher": "Bash", "hooks": [{"type": "command", "command": "/human/audit"}]},
+        {"matcher": "Bash", "hooks": [{"type": "command", "command": kit_pre}]},
+        {"matcher": "Write", "hooks": [{"type": "command", "command": "/human/write"}, {"type": "command", "command": kit_pre}]},
+        {"matcher": "Bash", "hooks": [{"type": "command", "command": "/elsewhere/guard/pre-tool-use"}]},
+    ],
+    "Stop": [{"hooks": [{"type": "command", "command": "/human/stop"}]}],
+    "SessionStart": [{"hooks": [{"type": "command", "command": "/human/start"}]}],
+}
 settings.write_text(json.dumps(config, ensure_ascii=False))
 settings.chmod(0o644)
 PY
 settings_run
-for key in syncClaudeAiSkills cleanupPeriodDays pluginConfigs.cc-plugin-agents-md@builtin skillOverrides.batch; do
+for key in syncClaudeAiSkills cleanupPeriodDays pluginConfigs.cc-plugin-agents-md@builtin skillOverrides.batch permissions.blockWritesOutsideWorkingDirectories hooks.PreToolUse; do
  grep -qF "$key" "$test_dir/err"
 done
+! grep -qF 'hooks.Stop' "$test_dir/err"
 grep -q '警告:' "$test_dir/err"
 python3 - "$settings" "$test_dir/kit-settings.json" <<'PY'
 import json
+import os
 from pathlib import Path
+import shlex
 import sys
 
 settings = Path(sys.argv[1])
@@ -266,7 +306,28 @@ expected = json.loads(Path(sys.argv[2]).read_text())
 expected.update(theme="dark", custom={"nested": [True, None, "人の値"]})
 expected["pluginConfigs"]["personal-plugin"] = {"options": {"enabled": True}}
 expected["skillOverrides"].update({"personal-skill": "on", "code-review": "on"})
-expected["permissions"] = {"allow": ["Read"], "deny": ["Bash(secret)", "Monitor", "ScheduleWakeup", "RemoteTrigger"]}
+kit_deny = expected["permissions"]["deny"][1:]
+expected["permissions"] = {
+    "allow": ["Read"],
+    "deny": ["Bash(secret)", "Monitor", "Read(//human/.aws/**)", *[item for item in kit_deny if item != "Monitor"]],
+    "blockWritesOutsideWorkingDirectories": True,
+}
+guard = os.path.dirname(os.path.dirname(settings)) + "/guard"
+kit_pre = shlex.quote(guard + "/pre-tool-use")
+kit_stop = shlex.quote(guard + "/stop")
+expected["hooks"] = {
+    "PreToolUse": [
+        {"matcher": "Bash", "hooks": [{"type": "command", "command": "/human/audit"}]},
+        {"matcher": "Write", "hooks": [{"type": "command", "command": "/human/write"}]},
+        {"matcher": "Bash", "hooks": [{"type": "command", "command": "/elsewhere/guard/pre-tool-use"}]},
+        {"matcher": "Bash|Write|Edit|NotebookEdit", "hooks": [{"type": "command", "command": kit_pre}]},
+    ],
+    "Stop": [
+        {"hooks": [{"type": "command", "command": "/human/stop"}]},
+        {"hooks": [{"type": "command", "command": kit_stop}]},
+    ],
+    "SessionStart": [{"hooks": [{"type": "command", "command": "/human/start"}]}],
+}
 assert actual == expected, actual
 assert settings.stat().st_mode & 0o777 == 0o600
 # 空白とキーの順番だけが違うときも書かない。
@@ -287,7 +348,7 @@ stat = settings.stat()
 assert [stat.st_ino, stat.st_mtime_ns, stat.st_mode, settings.read_text()] == json.loads(Path(str(settings) + ".before").read_text())
 assert not list(settings.parent.glob(".settings.*"))
 PY
-echo 'PASS host: 人のキー・プラグイン・スキル・権限を残し、キットの値を警告して戻し、同じ中身は書かない'
+echo 'PASS host: 人のキー・プラグイン・スキル・権限・フックを残し、キットの値を警告して戻し、同じ中身は書かない'
 
 # やめるキーがまだないため、将来その一覧に移した場合を作業用のコピーで確認する。
 python3 - "$root/lib/host.sh" "$test_dir/retired-host.sh" "$settings" <<'PY'
@@ -320,7 +381,7 @@ assert actual == expected, actual
 PY
 echo 'PASS host: やめたキーとキットの項目だけを消し、人の項目を残す'
 
-for invalid in '{' '[]' 'null' 'true' '"text"' '30' '{"permissions":[]}' '{"permissions":null}' '{"permissions":{"deny":{}}}' '{"permissions":{"deny":null}}' '{"pluginConfigs":[]}' '{"pluginConfigs":null}' '{"skillOverrides":[]}'; do
+for invalid in '{' '[]' 'null' 'true' '"text"' '30' '{"permissions":[]}' '{"permissions":null}' '{"permissions":{"deny":{}}}' '{"permissions":{"deny":null}}' '{"pluginConfigs":[]}' '{"pluginConfigs":null}' '{"skillOverrides":[]}' '{"hooks":[]}' '{"hooks":null}' '{"hooks":{"PreToolUse":{}}}' '{"hooks":{"Stop":null}}'; do
  printf '%s\n' "$invalid" >"$settings"
  cp "$settings" "$test_dir/invalid-settings"
  if settings_run; then exit 1; fi
@@ -331,7 +392,7 @@ done
 set_mode running
 deny
 [[ ! -s $test_dir/calls ]]
-echo 'PASS host: 壊れた JSON と最上位・permissions・deny・pluginConfigs・skillOverrides の形の違いで書かずに止まる'
+echo 'PASS host: 壊れた JSON と最上位・permissions・deny・pluginConfigs・skillOverrides・hooks と各イベントの形の違いで書かずに止まる'
 
 rm "$settings"
 for target in "$test_dir/kit-settings.json" "$test_dir/missing-settings.json"; do
