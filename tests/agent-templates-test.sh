@@ -882,6 +882,63 @@ grep -qF '| 区切りの続きの確認で起きた |' "$test_dir/all/orchestrat
 [[ -f $refs/leader-run-cut.md ]]
 echo 'PASS templates: リーダーの場面の表に区切りの続きの確認の行があり、leader-run-cut.md がある'
 
+# リーダーの区切りの続きの確認の参照: state が終了コード 0 以外なら頼み直さず人間を呼ぶ。頼み直しは修正の依頼の数に足さない。
+grep -qF '`state` が終了コード 0 以外で終わったときは、頼み直さず、標準エラーの要約を添えて人間を呼ぶ。' "$refs/leader-run-cut.md"
+grep -qF '頼み直しは、修正の依頼の数に足さない' "$refs/leader-run-cut.md"
+echo 'PASS templates: 区切りの続きの確認の参照が、state の終了コード 0 以外の人間の呼び出しと、頼み直しを修正の依頼の数に足さない文を持つ'
+
+# 小さいタスクの短い道: 読む側は、common/monitor/squad-review-next の decide（最も新しい `道:` の行）と、手順を読むリーダー。
+short_path=$(awk '/^## 小さいタスクの短い道$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$refs/leader-request.md")
+[[ -n $short_path ]]
+# 短い道の実装の依頼は、設計の役と最上位の役を呼ばず、レビューと E2E、人間のマージの判断の順に進める。
+short_request=$(awk '/^### 短い道の実装の依頼$/ {inside=1; next} inside && /^#/ {exit} inside {print}' "$refs/leader-request.md")
+grep -qF '設計の役と最上位の役を呼ばずに、実装の役へ頼む' <<<"$short_request"
+grep -qF 'レビューと E2E、人間のマージの判断の順に進める。最終レビューは頼まない' <<<"$short_request"
+grep -qF '`道: 短い` の行を置き' <<<"$short_request"
+echo 'PASS templates: 短い道の実装の依頼は、設計の役と最上位の役を呼ばず、実装、レビューと E2E、人間のマージの判断の順に進める'
+
+# 要件を決める役があるときは、同意の行がなければ `道: 短い` を書かない。ないときは、リーダーが 4 つの基準で決める。
+consent=$(awk '/^### 同意の記録$/ {inside=1; next} inside && /^#/ {exit} inside {print}' "$refs/leader-request.md")
+grep -qF '道: 短い（人間の同意を得た）' <<<"$consent"
+grep -qF 'この行がないタスクは、通常の道にする' <<<"$consent"
+write_path=$(awk '/^### 道の記録$/ {inside=1; next} inside && /^#/ {exit} inside {print}' "$refs/leader-request.md")
+grep -qF '本文に `道: 短い（人間の同意を得た）` の行がある' <<<"$write_path"
+grep -qF 'どれかが当たらなければ、通常の道にする' <<<"$write_path"
+grep -qF '`道: 短い` を書く前に、次のすべてを読む' <<<"$write_path"
+grep -qF '道: 短い（人間の同意を得た）' "$root/common/agents/planner.md"
+grep -qF '受け入れ条件」の節の末尾' "$root/common/agents/planner.md"
+echo 'PASS templates: 要件を決める役があるとき、同意の行がなければリーダーは `道: 短い` を書かず、同意の行は要件を決める役が置く'
+criteria=$(awk '/^### 小さいタスクの基準$/ {inside=1; next} inside && /^#/ {exit} inside {print}' "$refs/leader-request.md")
+grep -qF '1 つでも当たらないか、当たるかを決められなければ、通常の道にする' <<<"$criteria"
+for n in 1 2 3 4; do
+	grep -qE "^$n\. " <<<"$criteria"
+done
+grep -qF '要件を決める役がないときは、リーダーが同じ基準で決める' <<<"$consent"
+echo 'PASS templates: 要件を決める役がないとき、リーダーが 4 つの基準で道を決める'
+
+# 実装の役が `設計の判断: 要る` を返したら、リーダーは `道: 通常` を書いて設計の役へ戻す。
+back=$(awk '/^### 通常の道へ戻す$/ {inside=1; next} inside && /^#/ {exit} inside {print}' "$refs/leader-request.md")
+grep -qF '`道: 通常` の行を置き、設計の役に設計を頼む' <<<"$back"
+grep -qF '`設計の判断: 要る（<判断が要る点>）` の行を返した' <<<"$back"
+grep -qF '`設計への指摘: あり` がある' <<<"$back"
+grep -qF 'ラベル `重要` を付けた' <<<"$back"
+for dir in "$test_dir/"*/; do
+	for role in claude-implementer codex-implementer; do
+		[[ -f $dir/$role ]] || continue
+		grep -qF '設計の判断: 要る（<判断が要る点>）' "$dir/$role"
+		grep -qF '短い道の実装' "$dir/$role"
+	done
+done
+echo 'PASS templates: 実装の役の `設計の判断: 要る` を、リーダーは `道: 通常` と設計の役への依頼で受ける'
+
+# 人間を待つところは、人間を呼んで止まるどの場面も squad-task-post で結果を書く文にする。
+for dir in "$test_dir/"*/; do
+	[[ -f $dir/orchestrator ]] || continue
+	wait_section=$(awk '/^## 人間を待つところ$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$dir/orchestrator")
+	grep -qF '人間を呼んで止まるどの場面も、`squad-task-post <タスク> --status in_review --content-file <ファイル>` で結果を書き' <<<"$wait_section"
+done
+echo 'PASS templates: 人間を待つところが、人間を呼んで止まるどの場面も squad-task-post で結果を書く文を持つ'
+
 # 設計の役が返す記録の行。読む側は、`直したあとの返し先:` と `重要のマーク:` を読む leader-principal.md の手順。
 grep -qF '直したあとの返し先: スクワッド' "$test_dir/all/designer"
 grep -qF '重要のマーク:' "$test_dir/all/designer"
