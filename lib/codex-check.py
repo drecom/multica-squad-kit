@@ -92,8 +92,12 @@ def stop_group(ops, pgid, grace, confirm):
 
     結果は "timeout"（停止済みを確認し、直接の子を回収した）か "unconfirmed"（確認できなかった）である。
     猶予の間は状態を見ず、直接の子も回収しない。回収のあとにグループへ送らない。
+    終了までの上限は、TERM から猶予と確認の期間を足した時刻である。期限は 1 回だけ決め、
+    状態の読み取り・回収の再試行・例外の後始末は、すべてその期限までの残り時間だけを使う。
     """
     sends = []
+    # 期限は、時計を読めた時点で 1 回だけ決める。例外の後始末も、同じ期限を引き継ぐ。
+    limits = {}
 
     def send(name, number):
         # 送った結果は記録するだけで、停止の判定には使わない。
@@ -107,13 +111,16 @@ def stop_group(ops, pgid, grace, confirm):
     try:
         send("TERM", signal.SIGTERM)
         term_time = ops.now()
+        limits["last"] = term_time + grace + confirm
         while True:
             remaining = term_time + grace - ops.now()
             if remaining <= 0:
                 break
             ops.sleep(min(remaining, POLL_SECONDS))
         send("KILL", signal.SIGKILL)
-        deadline = ops.now() + confirm
+        # 確認の期限は KILL の直後に決める。TERM から数えた上限を超えない。
+        deadline = min(ops.now() + confirm, limits["last"])
+        limits["deadline"] = deadline
         while True:
             remaining = deadline - ops.now()
             if remaining <= 0:
@@ -125,23 +132,30 @@ def stop_group(ops, pgid, grace, confirm):
         ops.reap()
         return "unconfirmed", sends
     except Exception:
-        reap_until(ops, confirm)
+        reap_until(ops, limits.get("deadline"), limits.get("last"), confirm)
         return "unconfirmed", sends
 
 
-def reap_until(ops, confirm):
-    """例外のあとも、期限まで直接の子の回収を試みる。"""
+def reap_until(ops, deadline, last, confirm):
+    """例外のあとも、決めた期限まで直接の子の回収を試みる。新しい期間は足さない。
+
+    確認の期限を決める前に例外が起きたときは、今から確認の期間を取る。ただし TERM から数えた上限を超えない。
+    """
     try:
-        deadline = ops.now() + confirm
+        if deadline is None:
+            deadline = ops.now() + confirm
+            if last is not None:
+                deadline = min(deadline, last)
         while True:
             try:
                 if ops.reap():
                     return
             except Exception:
                 pass
-            if ops.now() >= deadline:
+            remaining = deadline - ops.now()
+            if remaining <= 0:
                 return
-            ops.sleep(POLL_SECONDS)
+            ops.sleep(min(remaining, POLL_SECONDS))
     except Exception:
         # 時計も使えないときは、1 回だけ試す。
         try:

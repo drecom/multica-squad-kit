@@ -28,8 +28,10 @@ EIO = OSError(errno.EIO, "other")
 class Fake(check.Operations):
     """仮想の時計で動く。events に (時刻, 操作, 値) を残し、状態・送信・回収の結果は表から決める。"""
 
-    def __init__(self, sends=None, state=None, reap=None, raises=None):
+    def __init__(self, sends=None, state=None, reap=None, raises=None, raise_at=None):
         self.t = 0.0
+        # raise_at: 操作の名前 -> (時刻, 例外, 回数)。仮想の時刻がその時刻以後になった呼び出しで、回数だけ例外にする。
+        self.raise_at = dict(raise_at or {})
         self.events = []
         self.sends = sends or {}
         # state(時刻, 何回目) -> 状態。回収済みのあとに読んだ回数は数えない。
@@ -45,6 +47,11 @@ class Fake(check.Operations):
     def maybe_raise(self, name):
         if name in self.raises:
             raise self.raises[name]
+        if name in self.raise_at:
+            when, error, count = self.raise_at[name]
+            if self.t >= when and count > 0:
+                self.raise_at[name] = (when, error, count - 1)
+                raise error
 
     def send(self, pgid, number):
         assert pgid == PGID
@@ -89,6 +96,8 @@ def invariants(fake, result):
     if "send" not in names:
         return
     assert terms and names[0] == "send" and fake.events[0][2] == "TERM", fake.events
+    # どの流れでも、終了処理は TERM から猶予と確認の期間を足した時間を超えない（読み取りと待ちの刻みの分だけ許す）。
+    assert fake.t - terms[0] <= GRACE + CONFIRM + 0.1, ("終了処理が期限を超えた", fake.t - terms[0], fake.events)
     if kills:
         assert kills[0] - terms[0] >= GRACE, ("KILL が TERM から猶予より早い", fake.events)
         between = [e for e in fake.events if terms[0] <= e[0] < kills[0] and e[1] in ("state", "reap")]
@@ -202,6 +211,45 @@ fake = Fake(raises={"now": RuntimeError("boom")})
 result = check.stop_group(fake, PGID, GRACE, CONFIRM)
 assert result[0] == "unconfirmed" and fake.reaps >= 1
 print("PASS codex-check: 途中で例外が起きても、直接の子の回収を試み、回収のあとにグループへ送らず、確認できないと返す")
+
+# --- 期限を数え直さない -----------------------------------------------------
+# 確認の期限の近くで例外が起きても、回収の再試行は決めた期限までの残りだけを使う。
+# 回収は期限まで成功しない。状態の読み取り・回収・時計が、時刻の以後に例外になる全部の組を流す。
+for where in ("state", "reap", "now"):
+    for when in (5.0, 7.5, 9.9, 9.93, 9.99):
+        for count in (1, 1000):
+            fake = Fake(sends={"TERM": EPERM, "KILL": EPERM}, state=lambda t, n: check.RUNNING,
+                        reap=lambda t, n: False, raise_at={where: (when, RuntimeError("boom"), count)})
+            result = run(fake, "unconfirmed")
+            assert result[1][0] == ("TERM", "EPERM"), result
+            assert fake.reaps >= 1, ("例外のあとも、期限までに直接の子の回収を試みる", where, when, fake.events)
+            end = fake.t - times(fake, "send", "TERM")[0]
+            assert end <= GRACE + CONFIRM + 0.1, ("期限を数え直した", where, when, count, end)
+# 状態の読み取りと回収が、同じ時刻以後にどちらも例外になる（14.93 秒に延びた組）。
+for when in (5.0, 9.9, 9.93):
+    boom = (when, RuntimeError("boom"), 1000)
+    fake = Fake(sends={"TERM": EPERM, "KILL": EPERM}, state=lambda t, n: check.RUNNING,
+                reap=lambda t, n: False, raise_at={"state": boom, "reap": boom})
+    run(fake, "unconfirmed")
+# 停止済みで回収だけが期限の直前に例外になる。再試行で回収できれば、時間切れとして返す。
+fake = Fake(state=stopped, reap=lambda t, n: n >= 3, raise_at={"reap": (9.9, RuntimeError("boom"), 1)})
+fake.state_of = stopped
+result = check.stop_group(fake, PGID, GRACE, CONFIRM)
+invariants(fake, result)
+assert result[0] in ("timeout", "unconfirmed")
+# KILL の直後に時計が 1 回だけ読めないときも、TERM から数えた上限までで終わる。
+fake = Fake(sends={"TERM": EPERM, "KILL": EPERM}, state=lambda t, n: check.RUNNING, reap=lambda t, n: False)
+real_now = fake.now
+state = {"calls": 0}
+def now_failing_after_kill():
+    if any(name == "send" and value == "KILL" for _, name, value in fake.events) and state["calls"] == 0:
+        state["calls"] += 1
+        raise RuntimeError("clock")
+    return real_now()
+fake.now = now_failing_after_kill
+result = run(fake, "unconfirmed")
+assert state["calls"] == 1 and fake.reaps >= 1
+print("PASS codex-check: 期限の近くで状態の読み取り・回収・時計が例外になっても、期限を数え直さず、TERM から猶予と確認の期間までで終わる")
 
 # --- ps の出力の読み方 -----------------------------------------------------------
 header = "  PID  PGID STAT COMMAND\n"
