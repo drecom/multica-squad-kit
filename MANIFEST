@@ -48,7 +48,7 @@ c9f338dd47ba2cb8aa8e4d2ee2208700faf9f1aa05c5e7407b3bdc9e31d8f14c  ./common/monit
 8f187cb0ff2e26d5e2f4d4acab7c8314f6107908c3c9af15366ab601c4ea52a8  ./common/monitor/squad-dispatch-pick
 f54cec61b627324eecf0230f68db70da92c0862f83104b0c71f62e929483b63e  ./common/monitor/squad-pr-link
 409375f4941ebc072133b6829b346ab0c805345aa8022ab04386b1da73bf9356  ./common/monitor/squad-pr-link-lib
-0cb318f04c8bad779897a1bba55f3a1eaf1c0851444ed231c4e2c4c4dc4b315c  ./common/monitor/squad-pr-watch
+c8c24bc23ee4aed3e41c8e3924f34284b92ba7a170856af3f53b9da2912dcb83  ./common/monitor/squad-pr-watch
 a42bc9f4e0cab7a342bdd980e845b816354c3787152f1cd6c2b80b592d1d56ea  ./common/monitor/squad-preflight
 981d5552acff3c2661974a67694e4a12554f6e8091401057790eb50aaf72d6b0  ./common/monitor/squad-review-next
 652c87bbe6b0c221424d58dda0e9806d48c8972cac162fee910b51078b7eec5e  ./common/monitor/squad-review-wait
@@ -182,7 +182,7 @@ be9a67eb3b8da9a4012424d8ab5a9c61beecba7f11afcae4595541fbb56257de  ./skeleton/.ag
 18454e4d0424a4c4e9474140fc9d5b0b3854a1b4f59d10258cd85c9ffb044da6  ./skeleton/project.md
 86d88f085a22c1879850188758a47bce16efb46c8ed45507a9bc2056bb09be58  ./skeleton/verify-repository.md
 ec94c1189f1071bf59f9c20765667893b12a24881b6a68739d14f2ecbe0ff678  ./tests/action-advisories-test.sh
-075b8ec958e559c87838f4ab6dd49a0d7eccf4071a183180cf7ebac8639ddbf2  ./tests/agent-templates-test.sh
+d73ff3a48a09de17889258d83ebeb0f3c68f9677dfd20bc831f63c438e574477  ./tests/agent-templates-test.sh
 2c4dce6d55a2bec00a23cf829eb9939041a27c4bb78891f0aeb0d485ad1713c4  ./tests/ansi-to-png.py
 dfbb19bc0056d40e3259c72c68024a744c89987fbb8a18fdd593f6bbd9b8391b  ./tests/arg-limit-lib.sh
 4effb137e0876ad6cf25ccf0a3858c17e80fff848d6e5deb1b70405f7b2d3b8a  ./tests/audit-targets-test.sh

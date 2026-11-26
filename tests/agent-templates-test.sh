@@ -813,7 +813,7 @@ repro_heading='## バグの再現のテスト'
 for role in claude-implementer codex-implementer; do
 	file=$root/common/agents/$role.md
 	[[ $(grep -cx -- "$repro_heading" "$file") == 1 ]]
-	awk -v h="$repro_heading" '$0 == h {inside=1; print; next} inside && /^## / {exit} inside {print}' "$file" >"$test_dir/repro-$role"
+	LC_ALL=C awk -v h="$repro_heading" '$0 == h {inside=1; print; next} inside && /^## / {exit} inside {print}' "$file" >"$test_dir/repro-$role"
 	for line in '再現のテスト: `<コマンド>`。直す前: 落ちた（終了コード <数>、<落ちた出力の要点>）。直した後: 通った（終了コード <数>）' '再現のテスト: 書けない（<理由>）。代わりに確認したこと: <再現手順での確認と結果>'; do
 		[[ $(grep -cxF -- "$line" "$test_dir/repro-$role") == 1 ]]
 	done

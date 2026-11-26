@@ -558,7 +558,7 @@ ci_check() {
 	# 状態を読めないまま通知すると、同じブランチへ 2 つの役が push するので、失敗は通知にすり替えない。
 	if jq -e 'any(.[]; .author_type == "agent" and (.content | test("(^|\n)区切り:")))' <<<"$comments" >/dev/null; then
 		cuts=$(MULTICA_AGENT_ID=$id bash "${PR_WATCH_SCRIPT%/*}/squad-run-cut" state "$issue") || return "$?"
-		active=$(awk '$1 == "区切り:" && ($3 == "待ち" || $3 == "動いている") { print $2 }' <<<"$cuts")
+		active=$(LC_ALL=C awk '$1 == "区切り:" && ($3 == "待ち" || $3 == "動いている") { print $2 }' <<<"$cuts")
 		if [[ -n $active ]]; then
 			names=''
 			while IFS= read -r role; do
