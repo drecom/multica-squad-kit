@@ -14,6 +14,7 @@ tests/autopilot-targets-webhook-test.sh 81
 tests/build-assets-test.sh 21
 tests/capture-cli-fixtures-test.sh 3
 tests/ci-install-test.sh 17
+tests/codex-check-test.sh 2
 tests/completion-colors-test.sh 1
 tests/confirmation-test.sh 12
 tests/content-test.sh 1

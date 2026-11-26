@@ -146,73 +146,10 @@ PY
 
 # 設定を Codex の厳しい検証にかける。知らないキーなどで 0 以外なら止まる。
 # 古い Codex（引数を知らない）と時間切れは、確認できなかったと警告して先へ進む。
+# 時間切れの停止の手順は lib/codex-check.py が持つ。停止を確認できなければ、固定の診断で止まる。
 host_codex_validate() {
 	local config=$agent_home/codex/config.toml result status detail
-	if ! result=$(python3 - "$agent_home/codex" "${codex_check_seconds:-30}" "${codex_grace_seconds:-5}" <<'PY'
-import os
-import signal
-import subprocess
-import sys
-import tempfile
-import time
-
-home, seconds, grace = sys.argv[1], float(sys.argv[2]), float(sys.argv[3])
-environment = dict(os.environ, CODEX_HOME=home)
-command = ["codex", "app-server", "--strict-config", "--listen", "stdio://"]
-
-def finish(status, detail=""):
-    # Codex の出力は、人の設定の秘密値を含みうるので、状態と終了コードだけを返す。
-    print(status)
-    print(detail)
-    sys.exit(0)
-
-with tempfile.TemporaryFile() as errors:
-    try:
-        # 標準入力を閉じ、子のプロセスのグループだけを時間切れで止める。
-        child = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                 stderr=errors, env=environment, start_new_session=True)
-    except OSError:
-        finish("failed", "Codex を起動できません。")
-    try:
-        code = child.wait(timeout=seconds)
-    except subprocess.TimeoutExpired:
-        # TERM を送った時刻から、グループ全体へ猶予を与える。猶予の間は、親が先に終わっても、残る子孫を待つ。
-        # グループが空になれば KILL は送らず、猶予が過ぎてもグループが残るときだけ KILL を送る。
-        # docs/agent-settings.md の「時間切れの扱い」の表と、tests/host-test.sh の表が、この規則を決める。
-        def group_alive():
-            child.poll()
-            try:
-                os.killpg(child.pid, 0)
-            except ProcessLookupError:
-                return False
-            return True
-
-        try:
-            os.killpg(child.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
-        deadline = time.monotonic() + grace
-        while group_alive() and time.monotonic() < deadline:
-            time.sleep(0.05)
-        if group_alive():
-            try:
-                os.killpg(child.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            try:
-                child.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                pass
-        finish("timeout")
-    errors.seek(0)
-    text = errors.read().decode("utf-8", errors="replace")
-    if code == 0:
-        finish("ok")
-    if code == 2 and "unexpected argument '--strict-config'" in text:
-        finish("old")
-    finish("failed", str(code))
-PY
-	); then
+	if ! result=$(python3 "$root/lib/codex-check.py" "$agent_home/codex" "${codex_check_seconds:-30}" "${codex_grace_seconds:-5}" "${codex_confirm_seconds:-5}"); then
 		die 'Codex の設定の検証を実行できませんでした。python3 を確認して流し直してください。'
 	fi
 	status=${result%%$'\n'*}
@@ -222,6 +159,7 @@ PY
 	ok) ;;
 	old) ui_notice warn "$config" "この Codex は --strict-config を受け付けないため、設定を検証できませんでした" || ui_warning "この Codex は --strict-config を受け付けないため、設定を検証できませんでした: $config" ;;
 	timeout) ui_notice warn "$config" "設定の検証が ${codex_check_seconds:-30} 秒で終わらず、確認できませんでした" || ui_warning "設定の検証が ${codex_check_seconds:-30} 秒で終わらず、確認できませんでした: $config" ;;
+	unconfirmed) die "設定の検証が ${codex_check_seconds:-30} 秒で終わらず、検証のプロセスの停止を確認できませんでした（グループ ${detail:-不明}）。ps -A -o pid,pgid,stat,command で、グループ番号が同じプロセスのうち状態が Z で始まらないものを確認して止めてから、セットアップを流し直してください。" ;;
 	*) die "Codex の設定が厳しい検証を通りません（終了コード ${detail:-不明}）: ${config}。Codex の出力は秘密値を含みうるので表示しません。端末で CODEX_HOME=$(printf '%q' "$agent_home/codex") codex app-server --strict-config --listen stdio:// </dev/null を流して、出力の行のキーを直すか消してから、セットアップを流し直してください。" ;;
 	esac
 }

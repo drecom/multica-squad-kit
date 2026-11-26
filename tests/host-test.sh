@@ -40,6 +40,8 @@ STUB
 cat >"$test_dir/bin/ps" <<'STUB'
 #!/bin/bash
 base=${0%/*}/..
+# Codex の検証が、停止の確認に読む一覧は、本物の ps から返す。
+[[ $* != '-A -o pid,pgid,stat,command' ]] || PATH=/bin:/usr/bin exec ps "$@"
 cat "$base/process-env"
 STUB
 cat >"$test_dir/bin/claude" <<'STUB'
@@ -133,6 +135,7 @@ if [[ ${TEST_HOST_STEPS:-no} == yes ]]; then
 fi
 [[ -z ${TEST_CODEX_SECONDS:-} ]] || codex_check_seconds=$TEST_CODEX_SECONDS
 [[ -z ${TEST_CODEX_GRACE:-} ]] || codex_grace_seconds=$TEST_CODEX_GRACE
+[[ -z ${TEST_CODEX_CONFIRM:-} ]] || codex_confirm_seconds=$TEST_CODEX_CONFIRM
 prepare_host
 RUN
 run() { /bin/bash "$test_dir/run.sh" "$root" >"$test_dir/out" 2>"$test_dir/err"; }
@@ -798,13 +801,13 @@ grep -qF '警告: この Codex は --strict-config を受け付けないため�
 grep -q '^daemon status' "$test_dir/calls"
 # 時間切れの扱い。docs/agent-settings.md の「時間切れの扱い」の表と同じ行を、次の表から流す。
 # 列: 名前|最短（ミリ秒）|最長（ミリ秒）|子孫の終了処理の印。上限 1 秒、猶予 3 秒で流す。
-# 親が先に終わる行は、子孫が残る間だけ待つ。親が残る行と、子孫が TERM を無視する行は、猶予の 3 秒が過ぎてから KILL を送る。
-timeout_rows='term-exit-none|0|2500|-
-term-exit-finish|1400|3000|あり
-term-exit-ignore|3800|8000|-
-term-ignore-none|3800|8000|-
-term-ignore-finish|3800|8000|あり
-term-ignore-ignore|3800|8000|-'
+# 親が先に終わる行も、グループが早く空になる行も、猶予の 3 秒を待ってから KILL を送る。最短は、上限と猶予の和から決める。
+timeout_rows='term-exit-none|3900|8000|-
+term-exit-finish|3900|8000|あり
+term-exit-ignore|3900|8000|-
+term-ignore-none|3900|8000|-
+term-ignore-finish|3900|8000|あり
+term-ignore-ignore|3900|8000|-'
 process_gone() { [[ $1 =~ ^[0-9]+$ ]] || return 1; ! kill -0 "$1" 2>/dev/null; }
 # 判定が、生きた子と空の PID で失敗することを先に確認する。
 /bin/sleep 30 &
@@ -828,8 +831,40 @@ while IFS='|' read -r row min max marker; do
  [[ ! -f $test_dir/desc-pid ]] || process_gone "$(cat "$test_dir/desc-pid")"
  if [[ $marker == あり ]]; then [[ -f $test_dir/desc-done ]]; else [[ ! -f $test_dir/desc-done ]]; fi
 done <<<"$timeout_rows"
+echo 'PASS host: 古い Codex と時間切れは警告して進み、時間切れの表の 6 行で、猶予をすべて待ってから KILL を送り、子のプロセスの後始末が決めたとおりになる'
+# 停止を確認できないとき。ps を差し替えて、グループの状態を読めない場合と、実行中のプロセスが残る場合を作る。
+# 固定の診断で止まり、設定の誤りや python3 の不足と別の文になる。止まっても、KILL は送って直接の子は回収している。
+mkdir "$test_dir/ps-bin"
+cat >"$test_dir/ps-bin/ps" <<'STUB'
+#!/bin/bash
+base=${0%/*}/..
+case $(cat "$base/ps-mode") in
+fail) exit 1 ;;
+garbage) echo 'not a process table' ;;
+running) printf '  PID  PGID STAT COMMAND\n  %s   %s S    codex app-server\n' "$(cat "$base/codex-pid")" "$(cat "$base/codex-pid")" ;;
+esac
+STUB
+chmod +x "$test_dir/ps-bin/ps"
+echo term-ignore-none >"$test_dir/codex-strict"
+for ps_mode in fail garbage running; do
+ echo "$ps_mode" >"$test_dir/ps-mode"
+ rm -f "$test_dir/codex-pid"
+ set_mode running
+ agent_env
+ started=$(python3 -c 'import time; print(int(time.time() * 1000))')
+ PATH="$test_dir/ps-bin:$PATH" TEST_CODEX_SECONDS=1 TEST_CODEX_GRACE=2 TEST_CODEX_CONFIRM=2 deny
+ elapsed=$(( $(python3 -c 'import time; print(int(time.time() * 1000))') - started ))
+ [[ $elapsed -ge 4900 && $elapsed -le 9000 ]] || { echo "停止を確認できない行 $ps_mode: ${elapsed} ミリ秒（期待 4900〜9000）" >&2; exit 1; }
+ grep -qF '検証のプロセスの停止を確認できませんでした' "$test_dir/err"
+ grep -qF "グループ $(cat "$test_dir/codex-pid")" "$test_dir/err"
+ grep -qF 'ps -A -o pid,pgid,stat,command' "$test_dir/err"
+ ! grep -qF 'Codex の設定が厳しい検証を通りません' "$test_dir/err"
+ ! grep -qF 'python3 を確認して' "$test_dir/err"
+ [[ ! -s $test_dir/calls ]]
+ process_gone "$(cat "$test_dir/codex-pid")"
+done
 echo ok >"$test_dir/codex-strict"
-echo 'PASS host: 古い Codex と時間切れは警告して進み、時間切れの表の 6 行で、猶予の長さと KILL を送る条件と、子のプロセスの後始末が決めたとおりになる'
+echo 'PASS host: 停止を確認できないとき、ps が失敗する・読めない・実行中が残る場合のどれでも、設定の誤りや python3 の不足と別の固定の診断で止まる'
 # ID を受け取る関数を、実際の bash と zsh の起動ファイルで確認する。
 cat >"$test_dir/project.sh" <<'RUN'
 #!/bin/bash
