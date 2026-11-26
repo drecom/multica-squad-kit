@@ -127,7 +127,8 @@ tests/squad-review-next-decide-rework-record-test.sh 31
 tests/squad-review-next-decide-final-test.sh 100
 tests/squad-review-next-decide-pr-test.sh 35
 tests/squad-review-next-decide-unlinked-test.sh 55
-tests/squad-review-next-decide-merge-test.sh 55
+tests/squad-review-next-decide-merge-test.sh 75
+tests/squad-review-next-decide-merge-note-test.sh 98
 tests/squad-review-next-decide-merge-short-test.sh 25
 tests/squad-review-next-decide-ciwait-test.sh 45
 tests/squad-review-wait-report-test.sh 30
