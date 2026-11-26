@@ -70,15 +70,15 @@ e09d29a0dc17a3ffb46c1caf2d864153cacdf5acc1fd32e9e8c58809eb6d31ac  ./common/skill
 eef33255fb11f5a350bd499acab86f982faf3205ca7f0f88eaa5fb602c26a082  ./common/skills/squad-handoff/references/leader-fix-request.md
 63a7b33a876e26d51be1ac9ab3b5caca5ff53ea5e52a5ba3fd46be8aeb96ed34  ./common/skills/squad-handoff/references/leader-pr-ci.md
 949b100f552c141a8fa1f8c5ee9dafe75ed42869b3d2b0ee51e7f72d48fa4365  ./common/skills/squad-handoff/references/leader-pr-link.md
-e682ce663279dddbcff3381e2f565abec683259ef4d76cf366b2a39c4d1fce3e  ./common/skills/squad-handoff/references/leader-pr-merge.md
+efa1f3753bb69c31c8164bb3187f00a01537312968e618c27cc767663afc6428  ./common/skills/squad-handoff/references/leader-pr-merge.md
 76440f903aa8de096d069953a1f82e27a8bc086a07eef47a3658d707258e9d4b  ./common/skills/squad-handoff/references/leader-principal-design.md
 b1bfbd3eb3d2b3145afd12c96c5230bc90d136d379e5e4fb8b3c3d3a9083af40  ./common/skills/squad-handoff/references/leader-principal-diagnose.md
-df4e5270107e612460cedef889e3f793a471dbe0ce9d839ee21487b312dc437c  ./common/skills/squad-handoff/references/leader-principal-final.md
+446a2cea9fbcdcbcc9dc26c0c06214decd67e582bfc7e47be50ce7a0d7db7a63  ./common/skills/squad-handoff/references/leader-principal-final.md
 5d29eee7bdf5594ba2aa6525d3b7b16dd4e829738505a94d4a6adeb7c8f85040  ./common/skills/squad-handoff/references/leader-principal-pick.md
 11ed2cd2189a9410ad9c877a8b5735506a70fc23967a232e84270549742a02c5  ./common/skills/squad-handoff/references/leader-principal-reshow.md
 defcb73c53327f21bca16182034126e616326bf0febe501417b0d9905366514d  ./common/skills/squad-handoff/references/leader-principal.md
 925e3b5ea849421bc7f389a7caa237f898446c52a049966503944a4379d2bd89  ./common/skills/squad-handoff/references/leader-repeat.md
-6b031d175b907e8d02f7468b5b785ac3985f83a80f3404707e226eeb729f96e8  ./common/skills/squad-handoff/references/leader-request.md
+d02745a026fae71cf4ea099ea7015f83c177f5b01d4721340eda62de33cb8fca  ./common/skills/squad-handoff/references/leader-request.md
 184f83242981b876f4c714445ebf14aad957ff2317bc6329e93e33a9e6a92a36  ./common/skills/squad-handoff/references/leader-review-reply.md
 25756f6dff82a6ee41966217e318fddeb826913a85e29d9bbcd672a1c2dddf6b  ./common/skills/squad-handoff/references/leader-review-request.md
 ad475eb97d493b3ec65873a821e506d6950aab1744cb76c768ccbcf9f7414700  ./common/skills/squad-handoff/references/leader-review-stuck.md
@@ -117,7 +117,7 @@ a58a91809ea09df148c193b451ff8955d8b9c9a7b702cace304633e1673c4b43  ./docs/procedu
 29fe97cb493ffe208a7fd6de93e446bb965f5d5ed881a51196cbd0862ef62525  ./docs/release.md
 87253fa66c18fc19620dac36e018e6e477368f8479e6700c4ffdfb5947293aae  ./docs/reread-followups.md
 e56ffb892fe18d7e9b8d777cba11d0afc71c5b1ef4ff6e4fe708abb95088e621  ./docs/review-eval.md
-585f8e13b08bfd64b7933cf1c230613f939dfb9dc7dc51526a4d10fdf17b726d  ./docs/review-next-step.md
+bb3145f6f56ed71bc6ac2af28e44811b20995f4bdfd3fe10938383eeac6470f9  ./docs/review-next-step.md
 ec9e148fd1b63d9314b4845e41e79cc58be28b916ad9d25df2ed571edd0e10d6  ./docs/review-rework.md
 ea489bd6b37ccef2488c766eee998ce62198247d71b54dab7e30d4105283f7fb  ./docs/screens.md
 532250eb72bfbc789cb82f2cf527bcdeb21dfbdb38bfc1184b75e62a23373030  ./docs/setup-completion.md
@@ -177,7 +177,7 @@ be9a67eb3b8da9a4012424d8ab5a9c61beecba7f11afcae4595541fbb56257de  ./skeleton/.ag
 18454e4d0424a4c4e9474140fc9d5b0b3854a1b4f59d10258cd85c9ffb044da6  ./skeleton/project.md
 86d88f085a22c1879850188758a47bce16efb46c8ed45507a9bc2056bb09be58  ./skeleton/verify-repository.md
 ec94c1189f1071bf59f9c20765667893b12a24881b6a68739d14f2ecbe0ff678  ./tests/action-advisories-test.sh
-ed8ba2bcd2db7967963e5a123c403a172bdf90b0084ad22957a7321e652f7db5  ./tests/agent-templates-test.sh
+c5c44c37f4c3d7bb44bebd704f2b59ef6d156bb0f8c3bf53ddc2319f45f1eb59  ./tests/agent-templates-test.sh
 2c4dce6d55a2bec00a23cf829eb9939041a27c4bb78891f0aeb0d485ad1713c4  ./tests/ansi-to-png.py
 dfbb19bc0056d40e3259c72c68024a744c89987fbb8a18fdd593f6bbd9b8391b  ./tests/arg-limit-lib.sh
 4effb137e0876ad6cf25ccf0a3858c17e80fff848d6e5deb1b70405f7b2d3b8a  ./tests/audit-targets-test.sh
@@ -226,7 +226,7 @@ a93ec953ed91e0bb6a4bef26cbdea74e62c0b75145b277678b648b7adcb00ac5  ./tests/extens
 b1cef9be9ef1716ab0f0aac354b07666619e016b4eb43ef30559f91e5a58c86f  ./tests/fixtures/action-advisories/v7.0.1.sha
 6068673b6433036118150662d09d0dc81f88cf887595ca9f0a8a306975c77d2b  ./tests/fixtures/action-advisories/vulnerable.json
 abaca9d5a7838dbb0da8b01b831308d2a08928e72b03496b9b30a77658ba1573  ./tests/fixtures/base-size/baseline.tsv
-8317917453caafe58b0ed559fea7f643874f99d11637edd9458c7f779c91ba97  ./tests/fixtures/base-size/rule-lines-changed.tsv
+5f4ff8186357d823a36021b0687bb8271887c7e4ba391f9f94729a75baaedd9e  ./tests/fixtures/base-size/rule-lines-changed.tsv
 0dcf1d10fec195e9084e496568872c37cc15d5f1a83ac0df182ac92c6c302daf  ./tests/fixtures/base-size/rule-lines.txt
 ec5cef23dc19fbcc621e52a3a5fd5d7604484515ff48b435163724ddad02fb43  ./tests/fixtures/ci-install/InRelease
 5da2715152d18bfb6bbbecb7f35a2537a23cb70982838668ee40d41661254cad  ./tests/fixtures/ci-install/InRelease.attacker

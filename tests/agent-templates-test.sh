@@ -897,33 +897,82 @@ grep -qF 'レビューと E2E、人間のマージの判断の順に進める。
 grep -qF '`道: 短い` の行を置き' <<<"$short_request"
 echo 'PASS templates: 短い道の実装の依頼は、設計の役と最上位の役を呼ばず、実装、レビューと E2E、人間のマージの判断の順に進める'
 
-# 最終レビューの head の照合の表: 道・重要のマークの入力の種類ごとに、照合先と、一致しないときの動きを 1 行で決める。
-# 表のどの行も、文と食い違わない。短い道の不一致は最終レビューではなく、レビューと E2E の頼み直しにする。
-head_table=$(grep -E '^\| (通常|短い) \|' "$refs/leader-principal-final.md")
-[[ $(grep -c . <<<"$head_table") == 3 ]]
-while IFS='|' read -r _ road mark target match mismatch _; do
-	road=${road// /} mark=${mark// /}
-	case "$road $mark" in
-	'通常 問わない')
-		grep -qF '最終レビューの `確認したコミット:`' <<<"$target"
-		grep -qF '最終レビューをもう一度頼み' <<<"$mismatch" ;;
-	'短い なし')
-		grep -qF 'レビューと E2E の組の `確認するコミット:`' <<<"$target"
-		grep -qF 'レビューと E2E を頼み直す' <<<"$mismatch"
-		absent -qF '最終レビューをもう一度頼み' <<<"$mismatch" ;;
-	'短い あり')
-		grep -qF '短い道にしない' <<<"$target"
-		grep -qF '通常の道へ戻す' <<<"$match" ;;
-	*) echo "表にない入力の行: $road $mark" >&2; exit 1 ;;
-	esac
-	grep -qF 'マージの前の確認へ進む' <<<"$match" || [[ $road == 短い && $mark == あり ]]
-done <<<"$head_table"
-# 表の外の文が、短い道の不一致で最終レビューへ戻す書き方を持たない。短い道の例外を、照合の文と完了の文が同じに持つ。
-refs_final="$refs/leader-principal-final.md"
-absent -qF '一致しなければ、コンフリクトの解消など理由を問わず' "$refs_final"
-grep -qF '短い道を除く。短い道は、レビューと E2E を頼み直す' "$refs_final"
-grep -qF '同じ参照の表のとおりにする（短い道は、今の head でレビューと E2E を頼み直し、最終レビューは頼まない）' "$refs/leader-pr-merge.md"
-echo 'PASS templates: 最終レビューの head の照合の表が、入力の種類ごとの照合先と不一致の動きを持ち、短い道の不一致は最終レビューへ戻さない'
+# head の照合の表（leader-pr-merge.md の「マージの前の確認」）: 軸の値の組み合わせをすべて並べ、ちょうど 1 行に当たることを表駆動で確認する。
+# 軸は、道・重要のマーク・レビューと E2E の役・最上位の役。経路と head が変わった理由は、行も行き先も変えないので組に入れない。
+merge_check=$(awk '/^## マージの前の確認$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$refs/leader-pr-merge.md")
+head_rows=$(grep -E '^\| [1-5] \|' <<<"$merge_check")
+[[ $(grep -c . <<<"$head_rows") == 5 ]]
+expected_row() { # 道 重要のマーク レビューと E2E の役 最上位の役 → 当たるはずの行
+	if [[ $1 == 短い ]]; then
+		if [[ $2 == ある ]]; then echo 1; elif [[ $3 == ない ]]; then echo 2; else echo 3; fi
+	elif [[ $4 == ある ]]; then echo 4; else echo 5; fi
+}
+combos=0
+for road in 通常 短い; do for mark in ある ない; do for roles in ある ない; do for principal in ある ない; do
+	hits=''
+	while IFS='|' read -r _ row c_road c_mark c_roles c_principal _ _ _ _; do
+		matched=1
+		for pair in "$road:$c_road" "$mark:$c_mark" "$roles:$c_roles" "$principal:$c_principal"; do
+			value=${pair%%:*} cell=${pair#*:}
+			cell=${cell// /}
+			[[ $cell == 問わない || $cell == "$value" ]] || matched=0
+		done
+		if ((matched)); then hits="$hits${row// /} "; fi
+	done <<<"$head_rows"
+	want=$(expected_row "$road" "$mark" "$roles" "$principal")
+	[[ ${hits% } == "$want" ]] || { echo "表の当たり方が違う: $road $mark $roles $principal → ${hits:-なし}（期待 $want）" >&2; exit 1; }
+	# head の 3 つの値は、一致なら「一致」の列、一致しない・読めないなら「一致しない・読めない」の列に進む。どちらの列も空にしない。
+	row_text=$(grep -E "^\| $want \|" <<<"$head_rows")
+	IFS='|' read -r _ _ _ _ _ _ _ c_match c_mismatch _ <<<"$row_text"
+	[[ -n ${c_match// /} && -n ${c_mismatch// /} ]]
+	combos=$((combos + 1))
+done; done; done; done
+((combos == 16))
+row_cells() { grep -E "^\| $1 \|" <<<"$head_rows"; }
+grep -qF '通常の道へ戻す' <<<"$(row_cells 1)"
+grep -qF '`道: 通常` を書き' <<<"$(row_cells 2)"
+grep -qF '短い道にしない' <<<"$(row_cells 2)"
+grep -qF '組の `確認するコミット:`' <<<"$(row_cells 3)"
+grep -qF '前の組と同じ役にレビューと E2E を頼み直す。最終レビューは頼まない' <<<"$(row_cells 3)"
+absent -qF '最終レビューをもう一度頼' <<<"$(row_cells 3)"
+grep -qF '最終レビューの `確認したコミット:`' <<<"$(row_cells 4)"
+grep -qF '今の head で最終レビューをもう一度頼み' <<<"$(row_cells 4)"
+grep -qF '照合しない' <<<"$(row_cells 5)"
+# 手動の入口: 確認の 2 は、最上位の役の有無によらず通る。条件に最上位の役を置かず、最上位の役の参照の表を指さない。
+merge_step2=$(grep -E '^2\. ' <<<"$merge_check")
+grep -qF '最上位の役の有無によらず' <<<"$merge_step2"
+absent -qF '最上位の役があれば' <<<"$merge_step2"
+absent -qF 'leader-principal-final.md' <<<"$merge_step2"
+# 最上位の役の参照は、表を持たず、確認の 2 の表を指す 1 文だけを持つ。
+absent -qE '^\| (通常|短い|[1-5]) \|' "$refs/leader-principal-final.md"
+grep -qF '`leader-pr-merge.md` の「マージの前の確認」の 2 の表のとおりにする' "$refs/leader-principal-final.md"
+# 役がない構成は短い道にしない。道の記録の確認の 5 つ目が、表の 2 の行を指す。
+road_record=$(awk '/^### 道の記録$/ {inside=1; next} inside && /^#/ {exit} inside {print}' "$refs/leader-request.md")
+road_item5=$(grep -E '^5\. ' <<<"$road_record")
+grep -qF '有効なレビューと E2E の役が 1 つ以上ある' <<<"$road_item5"
+grep -qF '表の 2 の行' <<<"$road_item5"
+grep -qF '短い道にしない' <<<"$road_item5"
+# 最終レビューをもう一度頼む文・head の頼み直す文・レビューを回し直さない文は、表を指すか、通常の道だけの文（表の 4・5 の行）にする。
+# 通常の道だけの文は、最上位の役を主語にするか、設計の承認し直しの場面（短い道に設計の承認はない）にある。表そのものの行は上で照合した。
+sentence_files=("$root"/docs/*.md "$refs"/leader-*.md)
+for f in "${sentence_files[@]}"; do
+	awk -v file="$f" '
+		/^\| 承認し直したあと \|/ {ctx = 1; next_ctx = 1}
+		!/^\|/ {ctx = 0}
+		{
+			hit = ($0 ~ /最終レビューをもう一度頼/ || $0 ~ /レビューを回し直さず/)
+			if (!hit && $0 ~ /頼み直す/ && $0 ~ /(^|[^_A-Za-z])head([^_A-Za-z]|$)/) hit = 1
+			if (!hit) next
+			if ($0 ~ /^\| [1-5] \|/ && (file ~ /usage-reduction\.md$/ || file ~ /leader-pr-merge\.md$/)) next
+			if ($0 ~ /head の照合の表/ || $0 ~ /の 2 の表/ || $0 ~ /表の [345]/) next
+			if ($0 ~ /最上位の役/ || $0 ~ /承認し直し/ || ctx) next
+			printf "表を指さず、通常の行だけにも当たらない文: %s:%d\n", file, NR
+			bad = 1
+		}
+		END {exit bad}
+	' "$f" >&2
+done
+echo 'PASS templates: head の照合の表が、軸の値の組み合わせごとにちょうど 1 行に当たり、入口に最上位の役の条件がなく、再依頼の文が表を指すか通常の行だけに当たる'
 
 # 要件を決める役があるときは、同意の行がなければ `道: 短い` を書かない。ないときは、リーダーが 4 つの基準で決める。
 consent=$(awk '/^### 同意の記録$/ {inside=1; next} inside && /^#/ {exit} inside {print}' "$refs/leader-request.md")
