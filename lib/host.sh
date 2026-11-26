@@ -156,7 +156,7 @@ PY
 }
 
 # 役に渡すフックの信頼を、Codex の設定へ書く。値は、役と同じ引数で起こした app-server の hooks/list から読む。
-# マークのある設定とない設定は、ひな形に値を埋めて書く。マークのない人の設定は上書きせず、信頼があるかだけを読む。
+# マークのある設定と、まだない設定は、ひな形に値を埋めて書く。マークのない人の設定は上書きせず、信頼があるかだけを読む。
 # 信頼がないときは、足す行を codex_trust_lines に残す。止めるかは、Codex の役の有無を知る prepare_project が決める。
 host_codex_config() {
 	local config=$agent_home/codex/config.toml existing='' result status detail trust
