@@ -80,6 +80,7 @@ STUB
    else
     cat <<'STUB'
 case "$*" in
+'app-server --listen stdio:// -c '*) exec python3 "$fixture_root/tests/codex-hooks-stub.py" "$scenario_dir" "$@" ;;
 'app-server --strict-config --listen stdio://') [[ $CODEX_HOME == "$scenario_dir/host/codex" ]] ;;
 'login status') [[ $CODEX_HOME == "$scenario_dir/host/codex" ]] ;;
 '--version') jq -r '.versions.codex' "$fixture_root/tests/fixtures/cli/USAGE-CAPTURE.json" ;;
@@ -194,6 +195,10 @@ assert value == ' '.join(runtimes)
 assert (scenario / 'host/codex/config.toml').exists() == ('codex' in runtimes)
 assert (scenario / 'host/allowed-repos.d/projects-1').read_text() == 'example/project\n'
 calls = (scenario / 'runtime-calls').read_text().splitlines()
+# hooks/list の読み取りは、設定の検証より前に 1 回流れる。
+hook_reads = [call for call in calls if call.startswith('codex app-server --listen stdio:// -c ')]
+assert len(hook_reads) == (1 if 'codex' in runtimes else 0), calls
+calls = [call for call in calls if call not in hook_reads]
 # Codex の設定の検証は、設定ファイルの配置のあとで、ログインの確認より前に 1 回流れる。
 expected = (['codex app-server --strict-config --listen stdio://'] if 'codex' in runtimes else []) + [r + (' auth status' if r == 'claude' else ' login status') for r in runtimes]
 assert calls == expected, calls

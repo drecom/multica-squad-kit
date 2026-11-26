@@ -99,9 +99,12 @@ time.sleep(300)' "$base/desc-pid" "$base/codex-pid" ;;
   esac ;;
  esac
 fi
+# 役と同じ引数で起こした app-server が hooks/list を返す。応答は codex-hooks-stub.py が作る。
+if [[ $1 == app-server && $2 == --listen ]]; then exec python3 "$base/codex-hooks-stub.py" "$base" "$@"; fi
 [[ $* == 'login status' && $CODEX_HOME == */codex ]] || exit 92
 [[ ! -f $base/no-codex-auth ]]
 STUB
+cp "$root/tests/codex-hooks-stub.py" "$test_dir/codex-hooks-stub.py"
 printf '#!/bin/bash\nexit 0\n' >"$test_dir/bin/sleep"
 chmod +x "$test_dir/bin/"*
 export PATH="$test_dir/bin:$PATH" TEMPLATE_AGENT_HOME="$test_dir/agent's home" TEMPLATE_DAEMON_ID_FILE="$test_dir/daemon.id"
@@ -147,11 +150,28 @@ fi
 [[ -z ${TEST_CODEX_GRACE:-} ]] || codex_grace_seconds=$TEST_CODEX_GRACE
 [[ -z ${TEST_CODEX_CONFIRM:-} ]] || codex_confirm_seconds=$TEST_CODEX_CONFIRM
 prepare_host
+[[ -z ${TEST_TRUST_OUT:-} ]] || printf '%s' "${codex_trust_lines:-}" >"$TEST_TRUST_OUT"
 RUN
 run() { /bin/bash "$test_dir/run.sh" "$root" >"$test_dir/out" 2>"$test_dir/err"; }
 deny() { if run; then exit 1; fi; [[ -s $test_dir/err ]]; }
 set_mode() { printf '%s\n' "$1" >"$test_dir/mode"; : >"$test_dir/calls"; }
 agent_env() { printf 'CODEX_HOME=%s/codex PATH=%s/bin:/usr/bin\n' "$TEMPLATE_AGENT_HOME" "$TEMPLATE_AGENT_HOME" >"$test_dir/process-env"; }
+# ひな形に、スタブが返す hooks/list の値（役と同じ定義から決まる）を埋めた、書かれるはずの設定。
+expected_codex_config() {
+ python3 - "$root/common/codex/config.toml" "$TEMPLATE_AGENT_HOME" >"$test_dir/expected-config" <<'PY'
+import hashlib
+import sys
+
+template = open(sys.argv[1], encoding="utf-8").read()
+guard = sys.argv[2] + "/guard"
+matcher = "^(Bash|shell|exec_command|local_shell)$"
+lines = []
+for event, snake, script, value in (("preToolUse", "pre_tool_use", "pre-tool-use", matcher), ("stop", "stop", "stop", None)):
+    digest = hashlib.sha256(("%s|%s/%s|%s" % (event, guard, script, value)).encode()).hexdigest()
+    lines += ['[hooks.state."/<session-flags>/config.toml:%s:0:0"]' % snake, 'trusted_hash = "sha256:%s"' % digest]
+sys.stdout.write(template.replace("{{HOOKS_STATE}}", "\n".join(lines)))
+PY
+}
 set_mode stopped
 run
 for file in "$root/common/monitor/"squad-*; do
@@ -174,7 +194,8 @@ done
 # 役の GH_CONFIG_DIR に渡す空の置き場。人だけが入れる権限で、中は空である。
 [[ -d $TEMPLATE_AGENT_HOME/guard/gh-empty && -z $(ls -A "$TEMPLATE_AGENT_HOME/guard/gh-empty") ]]
 [[ $(python3 -c 'import os,sys; print(oct(os.stat(sys.argv[1]).st_mode & 0o777)[2:])' "$TEMPLATE_AGENT_HOME/guard/gh-empty") == 700 ]]
-cmp "$root/common/codex/config.toml" "$TEMPLATE_AGENT_HOME/codex/config.toml"
+expected_codex_config
+cmp "$test_dir/expected-config" "$TEMPLATE_AGENT_HOME/codex/config.toml"
 [[ -d $TEMPLATE_AGENT_HOME/claude && ! -e $TEMPLATE_AGENT_HOME/allowed-repos ]]
 grep -qx 'daemon start' "$test_dir/calls"
 grep -qx 'https://example.test' "$test_dir/started-server"
@@ -194,7 +215,11 @@ import tomllib
 
 with open(sys.argv[1], "rb") as source:
     config = tomllib.load(source)
+state = config.pop("hooks")["state"]
 assert config == {"allow_login_shell": False, "check_for_update_on_startup": False, "analytics": {"enabled": False}}, config
+# 信頼は、hooks/list が返した 2 つのフックの鍵と currentHash である。
+assert sorted(state) == ["/<session-flags>/config.toml:pre_tool_use:0:0", "/<session-flags>/config.toml:stop:0:0"], state
+assert all(set(value) == {"trusted_hash"} and value["trusted_hash"].startswith("sha256:") for value in state.values()), state
 PY
 ! grep -qF 'マークのない設定に' "$test_dir/err"
 echo 'PASS host: 新しいホストで Codex の設定に 2 つのキーを足し、専用の置き場で厳しい検証に 1 回かける'
@@ -716,7 +741,8 @@ for selected in claude codex; do
    [[ ! -s $test_dir/codex-checks ]]
    printf 'invalid existing config\n' >"$TEMPLATE_AGENT_HOME/codex/config.toml"
   else
-   cmp "$root/common/codex/config.toml" "$TEMPLATE_AGENT_HOME/codex/config.toml"
+   expected_codex_config
+   cmp "$test_dir/expected-config" "$TEMPLATE_AGENT_HOME/codex/config.toml"
    [[ ! -e $TEMPLATE_AGENT_HOME/claude/settings.json ]]
   fi
   set_mode busy
@@ -812,7 +838,8 @@ done
 run
 cmp "$root/common/guard/gh" "$TEMPLATE_AGENT_HOME/bin/gh"
 cmp "$root/common/guard/pre-push" "$TEMPLATE_AGENT_HOME/git-hooks/pre-push"
-cmp "$root/common/codex/config.toml" "$TEMPLATE_AGENT_HOME/codex/config.toml"
+expected_codex_config
+cmp "$test_dir/expected-config" "$TEMPLATE_AGENT_HOME/codex/config.toml"
 echo 'PASS host: マークのある共有ファイルは 原本の内容へ更新する'
 
 # マークのない設定に 2 つのキーがないときは、警告して書き換えずに先へ進む。
@@ -839,6 +866,88 @@ printf '%s\n' $'allow_login_shell = false\ncheck_for_update_on_startup = false\n
 run
 ! grep -qF 'マークのない設定に' "$test_dir/err"
 echo 'PASS host: マークのない Codex の設定に 2 つのキーがないときだけ、書き換えずに警告して進む'
+
+# フックの信頼。hooks/list の値を設定に書き、読めないときは何も書かずに止まる。
+hooks_calls=$test_dir/codex-hooks-calls
+rm -f "$config"
+: >"$hooks_calls"
+echo ok >"$test_dir/codex-hooks"
+set_mode running
+agent_env
+run
+expected_codex_config
+cmp "$test_dir/expected-config" "$config"
+# app-server は、役と同じフックの -c の引数と、役と同じ CODEX_HOME で起こす。
+python3 - "$hooks_calls" "$TEMPLATE_AGENT_HOME" <<'PY'
+import json
+import sys
+
+calls = [json.loads(line) for line in open(sys.argv[1], encoding="utf-8")]
+guard = sys.argv[2] + "/guard"
+assert len(calls) == 1, calls
+assert calls[0]["home"] == sys.argv[2] + "/codex", calls
+assert calls[0]["args"] == [
+    "app-server", "--listen", "stdio://",
+    "-c", 'hooks.PreToolUse=[{matcher="^(Bash|shell|exec_command|local_shell)$",hooks=[{type="command",command="%s/pre-tool-use"}]}]' % guard,
+    "-c", 'hooks.Stop=[{hooks=[{type="command",command="%s/stop"}]}]' % guard], calls
+PY
+# 人の設定のフック（source が人の設定）は、キットのフックと取り違えない。
+! grep -q 'human' "$config"
+# 同じ入力の流し直しは、同じ設定を保つ。
+cp "$config" "$test_dir/trusted-config"
+run
+cmp "$test_dir/trusted-config" "$config"
+# 古い信頼の値は、hooks/list の今の値に更新する。
+sed 's/trusted_hash = "sha256:[0-9a-f]*"/trusted_hash = "sha256:old"/' "$test_dir/trusted-config" >"$config"
+run
+cmp "$test_dir/trusted-config" "$config"
+echo 'PASS host: hooks/list が返した 2 つのフックの鍵と currentHash を、役と同じ引数で起こした app-server から読んで設定に書く'
+
+# 読めない・足りないときは、何も書かず、Codex の出力も写さずに止まる。
+for failure in unreadable garbled exit empty pre-only stop-only other-command hang; do
+ rm -f "$config"
+ : >"$hooks_calls"
+ echo "$failure" >"$test_dir/codex-hooks"
+ set_mode running
+ agent_env
+ TEST_CODEX_SECONDS=1 deny
+ [[ ! -e $config ]]
+ grep -qE 'hooks/list|フックの一覧' "$test_dir/err"
+ ! grep -q 'SYNTHETIC_SECRET_VALUE' "$test_dir/out" "$test_dir/err"
+ ! grep -Eq '^daemon (stop|start)$' "$test_dir/calls"
+done
+echo ok >"$test_dir/codex-hooks"
+echo 'PASS host: hooks/list を読めない・応答が壊れている・フックが足りないとき、設定を書かず、Codex の出力を写さずに止まる'
+
+# マークのない設定は書き換えない。信頼が合うときは先へ進み、足りないときは足す行を出して役の登録で止まる。
+unmarked_keys=$'allow_login_shell = false\ncheck_for_update_on_startup = false\n[analytics]\nenabled = false'
+export TEST_TRUST_OUT="$test_dir/trust-lines"
+printf '%s\n' "$unmarked_keys" >"$config"
+cp "$config" "$test_dir/unmarked-config"
+set_mode running
+agent_env
+run
+cmp "$config" "$test_dir/unmarked-config"
+# 信頼がないと、足す行（2 つの鍵と trusted_hash）をプロジェクトの準備に渡す。
+[[ $(grep -c '^\[hooks\.state\.' "$test_dir/trust-lines") == 2 && $(grep -c '^trusted_hash = "sha256:' "$test_dir/trust-lines") == 2 ]]
+# 信頼の行を足した設定は、書き換えず、止めない。
+rm -f "$config"
+run
+{ printf '%s\n' "$unmarked_keys"; grep -E '^\[hooks\.state\.|^trusted_hash' "$config"; } >"$test_dir/unmarked-trusted"
+cp "$test_dir/unmarked-trusted" "$config"
+run
+cmp "$config" "$test_dir/unmarked-trusted"
+[[ ! -s $test_dir/trust-lines ]]
+# 信頼の値が hooks/list と違うときは、合っていないものとして扱う。
+sed 's/trusted_hash = "sha256:[0-9a-f]*"/trusted_hash = "sha256:old"/' "$test_dir/unmarked-trusted" >"$config"
+cp "$config" "$test_dir/unmarked-stale"
+run
+cmp "$config" "$test_dir/unmarked-stale"
+grep -qF 'trusted_hash = "sha256:' "$test_dir/trust-lines"
+! grep -qF 'sha256:old' "$test_dir/trust-lines"
+printf '%s\n' "$unmarked_keys" >"$config"
+unset TEST_TRUST_OUT
+echo 'PASS host: マークのない設定は信頼があってもなくても書き換えず、ホストの準備では止めない'
 
 # 設定の検証。0 で進み、0 以外で止まり、古い Codex と時間切れは警告して進む。
 cp "$test_dir/original/codex/config.toml" "$config"

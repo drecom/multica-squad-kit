@@ -38,7 +38,7 @@ d8da18d3a04f221a485f3d92601576b988035ae567f26a74d5c3150c39ae646c  ./common/agent
 4bd8d7c6f55e67878469ab0d4e071d32755102558100f98d6a1765ae1ea826a1  ./common/agents/usage-monitor.md
 de3ef79d2b46fc63d00f2ef43ec4eb4817f7c337ba21c74ea8ff934cebdb5392  ./common/agents/ux-reviewer.md
 786b2afc8e950505313c1956d2d53d954d15a70c80909a551e2eafcf4ceaba9d  ./common/autopilots.md
-baf24e68f69115e254139bd20bcd769e5677ad3f7882e582f10b3e1f4eeb12b9  ./common/codex/config.toml
+951034e0dc8bc2419c8ce58b373749ca4565d47f1f45eec646d596a973722bb8  ./common/codex/config.toml
 595238e096b02d7ddd01a1ba8416a8114544f4ef8697c4a80c8dbabf1512e5bb  ./common/guard/gh
 b8a475b0195505a111faa460b9966acac8b9d47661b9780bb76899792dcf36a0  ./common/guard/git-credential
 27731885b528a036ea93d5e2b5664c58e96ad4a056a501a59f2233173ebf2e7f  ./common/guard/git-ssh
@@ -120,12 +120,13 @@ b9a45cd63da0d056163d453d727352a611c2515299627c097ce072f28fc7f8b7  ./lib/autopilo
 512b0931741f70f708f2238fdac29efff235d7557c707511680359ac593cef54  ./lib/check.sh
 833e6d591ac67ca1b7e459f8e21efff237e9460c454cadcfd9ca7e0c8a8e5031  ./lib/clock.sh
 0dc2c64aee3da59bdabbe373e1322ac507196e512429114f573acd84903627b9  ./lib/codex-check.py
+5e02c346fe44b1a4724c7a7fe7a3ce9db132ad97a3a31a092f59eb6e0b6e86e3  ./lib/codex-hooks.py
 2d1ddbe078e69260fa06aaf0af9169dd68aff118151dcebe615059714a3dd674  ./lib/extensions.py
 10cd0eaaddfd83b11ff48f1fd07d4fd3b029a93afd0504449017603559529589  ./lib/extensions.sh
-d3b01ec75100cb7cc0f00e8b9b5190c6449f39c077021c453dcdc0600bc30f2e  ./lib/host.sh
+b32e74735a194be22ef40f4610de46c67f192b907df94de05ad363b5926a4514  ./lib/host.sh
 23d61cb270e4f571520a230918feccc00e8b5b09cbcf430108e0a424244b5a96  ./lib/installation.sh
 98823f1dc43473fe56a1a8f1e37e3d5a3fc3e8dd2389a7dff8c71f0b4c40f6a1  ./lib/project-changes.sh
-463face9bd9789809bf4d7f73fc3d8ed624994b81af0cea82bb20989815644b6  ./lib/project.sh
+920139cf1713711c6852b558548e6e4ac2e8ebebce1a80876435db36eea6b121  ./lib/project.sh
 3dc076c27a91520974f0ac714c904b6304e6bfcb47f9a739054b9857ddb69203  ./lib/questions.sh
 ae4eac4a5f72d78dc0e311ec42a6ef3a9d1973f91a1aefe14ab32d8982f7b2a1  ./lib/render.sh
 586f3aa9bc5bfa9df551ff1e1be82b5adf9e671933b86341dde46bf9b804ca67  ./lib/setup-issues.sh
@@ -184,6 +185,7 @@ d7a1cf28a40b9bd94cf5896aa080206642a3e9b4682294e8a7995a0e2f916ae0  ./tests/check-
 a1fdad4709b96eaf291e362acb0752f8cd1c78d10e784211ff77f58828164d66  ./tests/clock-stub.sh
 52a347e979c65198f0a4488973c48387f844aa1111c65564c015db05271732c1  ./tests/clock-test.sh
 44cb5191e0c04347eed0710be78be758e46c4b48a3fb379204f691b4e3ee6255  ./tests/codex-check-test.sh
+007549cc257133d22f13918cd8ff225d88319f69539b203140699b70738f70d3  ./tests/codex-hooks-stub.py
 1e3f6c23d619e0f4bde1f42167ea3a8d8b98d5aeaf2db590ed65a28aa151a327  ./tests/command-forms-check.py
 a256b745cddd74c59582d7c33fcc21162c0153b7b6087765a883ecc7031cbf2f  ./tests/command-forms-table.tsv
 621ef758d32c4ae3a91e66302cc8b26311be21708d74342e67faf8c54225f853  ./tests/completion-colors-test.sh
@@ -288,7 +290,7 @@ c485d04a06ca5b2e1759c42d83c333199c3ddafe331031e377d34d669353970d  ./tests/guard-
 f17c2425bda6e02228814065e35be1b1d61a68a92e8b4b0f667e4d563d74f1c9  ./tests/guard-git-test.sh
 b6435343d8e686a3f6430d399b498b72edda19586cb3061969481cea4f8aacdc  ./tests/guard-hook-test.sh
 172ee5343c2d134522a4fbd00c7df066612331acc7b669d732c8cf3c0352cd3b  ./tests/host-daemon-test.sh
-09777b7d021065c28d8c43d246e30b74132d47b45971b9a813e12e2674bad97c  ./tests/host-test.sh
+40aba1b6968fee27dbf864384e10ae05be66ad5b0c3d6c839dba860d30e4cdf6  ./tests/host-test.sh
 c8532b22f7a86ec6590a5cde3f64a6295148663e9f9893255209fca16fdea5b0  ./tests/install-command-test.sh
 539275b12edb26069fca5bedf9bb83abf3a73a7f68dc3c3ed5456c2ce19228f8  ./tests/install-test.sh
 f1213037642326b587fadb22e6a05923d656ed63570e526e52a8f7444b7e08e4  ./tests/installation-fixture.py
@@ -633,7 +635,7 @@ e2c2da5c20cc0a7ef5d2f04015270a5d7beaf188c6b9bfba94ead57341272480  ./tests/projec
 29f1e6218e5d1b8809f4f27f3645238ebeea0708ed97aa64482084ae82fa3022  ./tests/project-issues-test.sh
 e2141527ff9e7280bce9dd9dd161bec702edca9d55658c078e487cae802c9ab2  ./tests/project-linking-test.sh
 59c17b27dd840bfb577695d5bca491c7ccd0bfecd452cbd9b413838e2e4bef9c  ./tests/project-progress-test.sh
-7637125f4ccb5ea5cfdaa003e56a5445c3c55f95fee269345abc311054d96a28  ./tests/project-runtimes-first-test.sh
+ba7077a2619fb684924accf89b8b92f05a3170486faebea243e614213bb2f814  ./tests/project-runtimes-first-test.sh
 5e82fd8779c744a73a61cac8bb9bd51a89327862fce769c224758c0a29012c9a  ./tests/project-runtimes-test.sh
 c2ceb8dd3561ee8adeaca790ebc1594cb1ad442522bb2a39334276306999f1ad  ./tests/project-select-test.sh
 ec9de96e97cdcc127134bbf27afc54886d68aa8a96889a8c85c4cdf7a9c60191  ./tests/project-test-lib.sh
@@ -673,7 +675,7 @@ fcccbb9e0648dd9d7fc4aac8faf9872bdc8bc7d69dfd625b20182e9baf90e285  ./tests/setup-
 a6c5bb9c0b064cc3d59d1c27500f66d22f5ba52839afa1dbbdcde6d532f82fe5  ./tests/setup-runtimes-both-changes-test.sh
 aa03f77f85dc73a75048a50267d331ce66338f2d54745c758e7d5d309a7fdddd  ./tests/setup-runtimes-both-issues-test.sh
 bebfff3bc6b1fda21b88f36dfcd50878711c0609ccc205d7643f80d524f331a7  ./tests/setup-runtimes-both-test.sh
-303a528a74d42d3bd7dbb7d9745ce73313bf0244be3a53a00f930644b4991f33  ./tests/setup-runtimes-test-lib.sh
+72695659881931478e5a3d91febbc0b43ba3dc415357370c27c0ebeec30917a6  ./tests/setup-runtimes-test-lib.sh
 6b6369063bad32faa4ed17590f2078773e7db36fc09ff67eeed02109a1a997f4  ./tests/setup-tag-test.sh
 e21574a9e6bf9dd12e207a5a5f472661de040ceb6e112bc4eedcd9bfa3658f9c  ./tests/setup-test.sh
 988a7f34189829bf2801c6177c00ffff55ae472c7f8fa0783978dcd52cf13764  ./tests/setup-version-cache-check.sh

@@ -155,6 +155,46 @@ PY
 	ui_notice warn "$config" "マークのない設定に、更新の確認と利用状況の送信を切るキーがありません: $missing" || ui_warning "マークのない設定に、更新の確認と利用状況の送信を切るキーがありません（${missing}）: $config"
 }
 
+# 役に渡すフックの信頼を、Codex の設定へ書く。値は、役と同じ引数で起こした app-server の hooks/list から読む。
+# マークのある設定とない設定は、ひな形に値を埋めて書く。マークのない人の設定は上書きせず、信頼があるかだけを読む。
+# 信頼がないときは、足す行を codex_trust_lines に残す。止めるかは、Codex の役の有無を知る prepare_project が決める。
+host_codex_config() {
+	local config=$agent_home/codex/config.toml existing='' result status detail trust
+	codex_trust_lines=
+	if [[ -e $config ]] && ! grep -qx '# multica-squad-kit-managed' "$config"; then existing=$config; fi
+	if ! result=$(python3 "$root/lib/codex-hooks.py" "$agent_home/codex" "$agent_home/guard" "${codex_check_seconds:-30}" ${existing:+"$existing"}); then
+		die 'Codex のフックの信頼の値を読む処理を実行できませんでした。python3 を確認して流し直してください。'
+	fi
+	status=${result%%$'\n'*}
+	result=${result#*$'\n'}
+	detail=${result%%$'\n'*}
+	trust=
+	[[ $result != *$'\n'* ]] || trust=${result#*$'\n'}
+	case $status in
+	ok) ;;
+	launch) die "Codex を起動できませんでした。信頼の値を読めないので、何も書いていません。PATH に codex があり実行できることを確認して、セットアップを流し直してください。" ;;
+	missing) die "Codex が返したフックの一覧に、キットのフックがありません（${detail}）。信頼の値を読めないので、何も書いていません。codex --version で Codex が新しいことを確認し、$config がフックを無効にしていないか確認してから、セットアップを流し直してください。" ;;
+	*) die "Codex の hooks/list を読めませんでした。信頼の値を読めないので、何も書いていません。時間切れ、応答の誤り、Codex が古いことのどれかが考えられます。codex --version で Codex が新しいことを確認してから、セットアップを流し直してください。Codex の出力は秘密値を含みうるので表示しません。" ;;
+	esac
+	if [[ -n $existing ]]; then
+		[[ $detail == trusted ]] || codex_trust_lines=$trust
+		host_shared_file "$root/common/codex/config.toml" "$config" no
+	else
+		host_codex_template "$trust"
+	fi
+}
+
+host_codex_template() (
+	local trust=$1 generated content marker='{{HOOKS_STATE}}'
+	mkdir -p "$root/tmp" || die 'Codex の設定の作業場所を作れませんでした。'
+	generated=$(mktemp "$root/tmp/codex-config.XXXXXX") || die 'Codex の設定の一時ファイルを作れませんでした。'
+	trap 'rm -f -- "$generated"' EXIT
+	content=$(<"$root/common/codex/config.toml") || die 'Codex の設定のひな形を読めませんでした。'
+	[[ $content == *"$marker"* ]] || die 'Codex の設定のひな形に、信頼の値を埋める場所がありません。'
+	printf '%s\n' "${content%%"$marker"*}$trust${content#*"$marker"}" >"$generated" || die 'Codex の設定を書けませんでした。'
+	host_shared_file "$generated" "$agent_home/codex/config.toml" no
+)
+
 # 設定を Codex の厳しい検証にかける。知らないキーなどで 0 以外なら止まる。
 # 古い Codex（引数を知らない）と時間切れは、確認できなかったと警告して先へ進む。
 # 時間切れの停止の手順は lib/codex-check.py が持つ。停止を確認できなければ、固定の診断で止まる。
@@ -392,7 +432,7 @@ prepare_host() {
 	ui_phase_active || printf '使用する gh のガード: %s\n使用する git push のガード: %s\n' "$agent_home/bin/gh" "$agent_home/git-hooks/pre-push" >&2
 	[[ -f $agent_home/bin/gh && -x $agent_home/bin/gh && -f $agent_home/git-hooks/pre-push && -x $agent_home/git-hooks/pre-push ]] || die '既存のガードを利用できません。表示したファイルの実行権限・読み取り権限を管理者に確認してもらい、流し直してください。既存のファイルは上書きしません。'
 	if uses_runtime codex; then
-		host_shared_file "$root/common/codex/config.toml" "$agent_home/codex/config.toml" no
+		host_codex_config
 		ui_phase_active || printf '使用する Codex の設定: %s\n' "$agent_home/codex/config.toml" >&2
 		[[ -r $agent_home/codex/config.toml ]] || die 'Codex の設定を利用できません。表示したファイルの読み取り権限を管理者に確認してもらい、流し直してください。既存の設定は上書きしません。'
 		# ログインシェルでは別の起動ファイルが効くため、確認した環境とそろえる。

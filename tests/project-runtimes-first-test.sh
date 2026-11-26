@@ -99,3 +99,29 @@ assert ('CODEX_HOME=' in display) == (selected == 'codex')
 print(f'PASS project runtimes first: {selected} だけの完了の ✔ の行数とログインの案内を表示する')
 PY
 done
+
+# マークのない人の設定にフックの信頼がないとき、Codex の役があれば、役を登録・更新する前に止まる。Codex の役がなければ止まらない。
+no_role_change() {
+ jq -es 'all(.[]; (.[0:2]==["agent","create"] or .[0:2]==["agent","update"] or .[0:2]==["squad","create"]) | not)' "$TEST_DB/calls" >/dev/null
+}
+export codex_trust_lines=$'[hooks.state."/<session-flags>/config.toml:pre_tool_use:0:0"]\ntrusted_hash = "sha256:aaa"'
+for selected in '["codex"]' '["claude","codex"]'; do
+ export TEST_RUNTIMES=$selected TEST_ROLE_COUNT=17
+ reset_db
+ deny
+ grep -qF "$TEMPLATE_AGENT_HOME/codex/config.toml" "$test_dir/err"
+ grep -qF 'の行を足してから' "$test_dir/err"
+ grep -qF 'trusted_hash = "sha256:aaa"' "$test_dir/err"
+ grep -qF '役はまだ登録も更新もしていません' "$test_dir/err"
+ no_role_change
+done
+export TEST_RUNTIMES='["claude"]' TEST_ROLE_COUNT=14
+reset_db
+run
+grep -q '^\["agent","create"' "$TEST_DB/calls"
+unset codex_trust_lines
+export TEST_RUNTIMES='["codex"]'
+reset_db
+run
+grep -q '^\["agent","create"' "$TEST_DB/calls"
+echo 'PASS project runtimes first: マークのない設定に信頼がないとき、Codex の役があれば登録・更新の前に止まり、なければ止まらない'
