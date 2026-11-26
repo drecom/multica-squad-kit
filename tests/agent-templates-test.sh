@@ -62,6 +62,7 @@ dependabot-merger|!runtime-codex
 dependabot-merger|orchestrator
 designer|runtime-claude
 designer|!runtime-claude
+designer|runtime-claude
 designer|planner
 designer|!planner
 designer|orchestrator
@@ -851,6 +852,35 @@ for role in claude-principal codex-principal; do
 	done
 done
 echo 'PASS templates: security-reviewer と設計の役は 12KB 以内、最上位の役は 16KB 以内に収まる'
+
+# 区切りの行: Claude の実装・修正の役はすべての構成で、設計の役は Claude の構成で持ち、Codex の実装・修正の役は持たない。
+cut_ref='references/run-cut.md'
+for dir in "$test_dir/"*/; do
+	for role in claude-implementer claude-fixer; do
+		[[ -f $dir/$role ]] || continue
+		grep -qF -- "$cut_ref" "$dir/$role"
+	done
+	for role in codex-implementer codex-fixer; do
+		[[ -f $dir/$role ]] || continue
+		absent -F -- "$cut_ref" "$dir/$role"
+	done
+done
+grep -qF -- "$cut_ref" "$test_dir/all/designer"
+[[ ! -f $test_dir/runtime-codex-only/designer ]] || absent -F -- "$cut_ref" "$test_dir/runtime-codex-only/designer"
+echo 'PASS templates: 区切りの行は、Claude の実装・修正・設計の役にあり、Codex の実装・修正の役にない'
+
+# 区切りの手順の終了コード 1: check は区切らずに続け、post は通常の引き継ぎで返す。
+run_cut="$root/common/skills/squad-handoff/references/run-cut.md"
+grep -qF '`check` が終了コード 1 で終わったときは、値を読めていない。区切らずに作業を続け、最後の引き継ぎに `check` の出力と終了コードを書く。' "$run_cut"
+post_exit1=$(awk -F'|' '/^\| 1 \| 値のファイルの誤り/ {print $4}' "$run_cut")
+[[ $post_exit1 == *'通常の引き継ぎでリーダーへ返し'* ]]
+[[ $post_exit1 == *'区切れなかったことを書く'* ]]
+echo 'PASS templates: 区切りの手順は、check の終了コード 1 では区切らずに続け、post の終了コード 1 では通常の引き継ぎで返す'
+
+# リーダーの場面の表に、区切りの続きの確認の行があり、その参照が読む参照にある。
+grep -qF '| 区切りの続きの確認で起きた |' "$test_dir/all/orchestrator"
+[[ -f $refs/leader-run-cut.md ]]
+echo 'PASS templates: リーダーの場面の表に区切りの続きの確認の行があり、leader-run-cut.md がある'
 
 # 設計の役が返す記録の行。読む側は、`直したあとの返し先:` と `重要のマーク:` を読む leader-principal.md の手順。
 grep -qF '直したあとの返し先: スクワッド' "$test_dir/all/designer"

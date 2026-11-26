@@ -24,7 +24,7 @@ case "${1-} ${2-} ${3-}" in
 "issue comment add")
 	flag post-fail && { echo 'multica: 投稿できません' >&2; exit 1; }
 	[[ -f $4 || $* == *"--content-file "* ]] || exit 99
-	echo '{"id":"c-new"}' ;;
+	if flag id-unreadable; then echo '{"ok":true}'; else echo '{"id":"c-new"}'; fi ;;
 "issue status "*)
 	if flag status-fail; then echo 'multica: 状態を変えられません' >&2; exit 1; fi ;;
 *)
@@ -119,6 +119,22 @@ expect_status 3 '状態の失敗'
 [[ $out == '投稿: c-new' ]] || fail "状態の失敗: 投稿の行だけが出るはずです: $out"
 [[ $err == *'multica issue status だけを流し直して'* ]] || fail "状態の失敗: 流し直しの案内が標準エラーにありません: $err"
 [[ $(calls | grep -c 'issue comment add') == 1 ]] || fail '状態の失敗: 投稿は 1 回だけです'
+
+# ---- 投稿はできたが ID を読めない: 状態は変える ----
+reset
+touch "$stub_dir/id-unreadable"
+run "$TASK" --status in_review --content-file "$body"
+expect_status 0 'ID を読めない'
+[[ $out == $'投稿: 未確認\n状態: in_progress -> in_review' ]] || fail "ID を読めない: 出力が違います: $out"
+[[ $err == *'コメントの ID を読めません'* ]] || fail "ID を読めない: 理由が標準エラーにありません: $err"
+expect_calls "multica issue status $TASK in_review" 'ID を読めない: 状態の変更'
+[[ $(calls | grep -c 'issue comment add') == 1 ]] || fail 'ID を読めない: 投稿は 1 回だけです'
+reset
+touch "$stub_dir/id-unreadable" "$stub_dir/status-fail"
+run "$TASK" --status in_review --content-file "$body"
+expect_status 3 'ID を読めず状態も変えられない'
+[[ $out == '投稿: 未確認' ]] || fail "ID を読めず状態も変えられない: 出力が違います: $out"
+[[ $err == *'multica issue status だけを流し直して'* ]] || fail "ID を読めず状態も変えられない: 流し直しの案内がありません: $err"
 
 # ---- 使い方の誤り: 2、CLI は呼ばない ----
 usage_error() { # 引数: 名前 引数...

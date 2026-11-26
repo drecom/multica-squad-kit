@@ -2,9 +2,10 @@
 # multica-squad-kit-managed
 # リーダーが、コメントを投稿してから、タスクの状態を変える。状態を変えた理由が、いつもコメントに残る。
 # 使い方: squad-task-post <タスク> --status <状態> --content-file <ファイル> [--parent <コメントの ID>]
-# 出力: 投稿: <コメントの ID>、状態: <前> -> <後>
+# 出力: 投稿: <コメントの ID>、状態: <前> -> <後>。応答から ID を読めないときは、投稿: 未確認 にして理由を標準エラーに出す。
 # 終了コード: 0 は両方できた、1 は投稿できない（状態は変えない）、2 は使い方の誤り、
 # 3 は投稿のあと状態を変えられない（投稿は流し直さず、状態だけ multica issue status で流し直す）。
+# 投稿ができたのに ID を読めないときも、状態は変える。投稿は流し直さない。
 set -euo pipefail
 here=$(dirname "${BASH_SOURCE[0]}")
 source "$here/squad-cli-lib"
@@ -50,7 +51,11 @@ if [[ -n $parent ]]; then
 else
 	response=$(multica issue comment add "$task" --content-file "$file" --output json) || { echo 'コメントを投稿できません。状態は変えていません' >&2; exit 1; }
 fi
-comment=$(jq -er .id <<<"$response") || { echo 'コメントの ID を読めません。状態は変えていません' >&2; exit 1; }
+# 投稿はできている。ID を読めなくても、状態は変えて、理由を標準エラーに残す。
+if ! comment=$(jq -er .id <<<"$response" 2>/dev/null); then
+	comment=未確認
+	echo '投稿の応答からコメントの ID を読めません。投稿はできたので、状態は変えます。投稿は流し直さないでください' >&2
+fi
 printf '投稿: %s\n' "$comment"
 
 if ! multica issue status "$task" "$state" >/dev/null; then

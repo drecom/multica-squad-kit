@@ -176,3 +176,23 @@ copy_root "$d.3"
 printf '%s\t存在しない後の行\t理由\n' "$lost" >>"$d.3/fixture/rule-lines-changed.tsv"
 expect_fail '後の行が見つからない' lines "$d.3" '後の行が分けたあとにない'
 echo 'PASS base-size: 消えた行、数が減った行と増えた行、理由のない行、後の行のない行は、行を添えて落ちる'
+
+# 読み方の 3 つの決まりは、共通スキルの本体に 1 か所だけある。役の指示と参照には写さない。
+skill="$root/common/skills/squad-handoff/SKILL.md"
+for rule in '約 300 行を超えるファイルは' '同じファイルを、1 回の実行の中で読み直さない' '`multica` の出力は、`--compact`、`--summary`、`jq` で絞る'; do
+	n=$(cat "$skill" "$root"/common/skills/squad-handoff/references/*.md "$root"/common/agents/*.md | grep -cF -- "$rule" || true)
+	[[ $n == 1 ]] || { echo "FAIL base-size: 読み方の決まりが ${n} か所にある（1 か所だけのはず）: $rule" >&2; exit 1; }
+	grep -qF -- "$rule" "$skill" || { echo "FAIL base-size: 読み方の決まりが共通スキルの本体にない: $rule" >&2; exit 1; }
+done
+[[ $(grep -c '^## 読み方$' "$skill") == 1 ]] || { echo 'FAIL base-size: 共通スキルの本体の「読み方」の節が 1 つでない' >&2; exit 1; }
+# 共通スキルを読む役は、見張りの 3 役を除くすべてである。
+for f in "$root"/common/agents/*.md; do
+	name=$(basename "$f" .md)
+	case $name in
+	ci-monitor | dependabot-merger | usage-monitor)
+		! grep -q '^skills: squad-handoff' "$f" || { echo "FAIL base-size: 見張りの役 ${name} が共通スキルを読んでいる" >&2; exit 1; } ;;
+	*)
+		grep -q '^skills: squad-handoff' "$f" || { echo "FAIL base-size: 役 ${name} が共通スキルを読んでいない" >&2; exit 1; } ;;
+	esac
+done
+echo 'PASS base-size: 読み方の 3 つの決まりは共通スキルの本体に 1 か所だけあり、見張りの 3 役を除くすべての役が共通スキルを読む'
