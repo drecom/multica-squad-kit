@@ -3,7 +3,8 @@
 # PreToolUse のフックを確認する。
 # 前半は、Bash とシェルの入力を 1 つずつのコマンドに分ける部品（common/guard/shell_split.py）を、
 # 設計の docs/agent-guards.md「Bash とシェルの入力は、次の順に読む」の 1〜6 の順に確認する。
-# 後半は、PreToolUse のスクリプト（common/guard/pre-tool-use）が、照合の例と分離の例を、Claude と Codex の入力の形で同じに判定することを確認する。
+# 次に、PreToolUse のスクリプト（common/guard/pre-tool-use）が、照合の例と分離の例を、Claude と Codex の入力の形で同じに判定することを確認する。
+# 最後に、Stop のスクリプト（common/guard/stop）が、仮の multica で、コメントの有無・CLI の失敗・残る処理・連続の上限を判定することを確認する。
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -475,4 +476,260 @@ extra_env=()
 echo 'PASS 認証の分離: 仮のトークンと空の置き場の仮のファイルで、multica だけを通し、二重引用符とバッククォートと引用していない区切りの展開を止める'
 rm -f "$work/sub/link.json"
 
-echo 'PASS guard-hook: PreToolUse のスクリプトの照合と分離の確認'
+# --- Stop のスクリプト（common/guard/stop） ---
+
+stop_hook="$root/common/guard/stop"
+stop_bin="$test_dir/stop-bin"
+stop_state="$test_dir/stop-state"
+mkdir -p "$stop_bin"
+# 仮の multica。実行の一覧（agent tasks）とタスクのコメントの一覧（comment list）の出力と終了コードを、環境変数で決める。呼ばれた引数は FAKE_LOG に残す。
+cat >"$stop_bin/multica" <<'FAKE'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$FAKE_LOG"
+case "$1 $2" in
+'agent tasks')
+	[[ -f ${FAKE_TASKS_FILE:-} ]] && cat "$FAKE_TASKS_FILE"
+	exit "${FAKE_TASKS_RC:-0}"
+	;;
+'issue comment')
+	[[ -f ${FAKE_COMMENTS_FILE:-} ]] && cat "$FAKE_COMMENTS_FILE"
+	exit "${FAKE_COMMENTS_RC:-0}"
+	;;
+esac
+exit 64
+FAKE
+chmod +x "$stop_bin/multica"
+
+stop_task=run-1
+stop_started='2026-11-26T09:00:00Z'
+fake_log="$test_dir/fake.log"
+set_run() { # 実行の一覧（issue_id を渡す。空なら null）
+	local issue=$1
+	jq -n --arg id "$stop_task" --arg issue "$issue" --arg started "$stop_started" \
+		'[{id: "other-run", issue_id: "issue-x", started_at: "2026-11-26T08:00:00Z"},
+		  {id: $id, issue_id: (if $issue == "" then null else $issue end), started_at: $started, created_at: $started}]' >"$test_dir/tasks.json"
+}
+set_comments() { # コメントの一覧（JSON をそのまま渡す）
+	printf '%s' "$1" >"$test_dir/comments.json"
+}
+own_comment='[{"id":"c1","source_task_id":"run-1","created_at":"2026-11-26T09:05:00Z"}]'
+stop_env=()
+stop_count_file() { printf '%s/stop-%s' "$stop_state" "$1"; }
+# Stop のスクリプトを流す。終了コードを stop_rc に、標準出力と標準エラーを $test_dir/stop-out と stop-err に置く。
+run_stop() {
+	local json=$1
+	stop_rc=0
+	: >"$fake_log"
+	env -i PATH="$stop_bin:$PATH" HOME="$home" ${task_id:+MULTICA_TASK_ID="$task_id"} MULTICA_AGENT_ID=agent-1 \
+		SQUAD_KIT_STATE_DIR="$stop_state" FAKE_LOG="$fake_log" FAKE_TASKS_FILE="$test_dir/tasks.json" \
+		FAKE_COMMENTS_FILE="$test_dir/comments.json" ${stop_env[@]+"${stop_env[@]}"} \
+		"$stop_hook" <<<"$json" >"$test_dir/stop-out" 2>"$test_dir/stop-err" || stop_rc=$?
+}
+stop_fail() {
+	printf 'FAIL Stop: %s\n' "$1" >&2
+	printf '  終了コード: %s\n  標準出力: %s\n  標準エラー: %s\n' "$stop_rc" "$(cat "$test_dir/stop-out")" "$(cat "$test_dir/stop-err")" >&2
+	exit 1
+}
+expect_stop_pass() { # ラベル 入力
+	run_stop "$2"
+	if [[ $stop_rc -ne 0 || -s $test_dir/stop-out ]]; then stop_fail "通すはず（$1）"; fi
+}
+expect_stop_block_counting() { # ラベル 入力 [理由に含む語]。回数のファイルを引き継ぐ
+	run_stop "$2"
+	if [[ $stop_rc -ne 0 ]] || ! jq -e '.decision == "block" and (.reason | length > 0)' "$test_dir/stop-out" >/dev/null 2>&1; then
+		stop_fail "続けさせるはず（$1）"
+	fi
+	if [[ -n ${3:-} ]] && ! jq -e --arg w "$3" '.reason | contains($w)' "$test_dir/stop-out" >/dev/null; then
+		stop_fail "理由に「${3}」があるはず（$1）"
+	fi
+}
+# 回数を引き継がず、毎回 0 回から続けさせることを確認する。
+expect_stop_block() {
+	rm -rf "$stop_state"
+	expect_stop_block_counting "$@"
+}
+stop_count() { # セッション ID の回数のファイルの中身（なければ none）
+	local file
+	file=$(stop_count_file "$1")
+	if [[ -f $file ]]; then tr -d '\n' <"$file"; else printf none; fi
+}
+expect_count() {
+	local actual
+	actual=$(stop_count "$1")
+	if [[ $actual != "$2" ]]; then printf 'FAIL Stop: セッション %s の回数が %s（期待 %s）\n' "$1" "$actual" "$2" >&2; exit 1; fi
+}
+reset_stop() {
+	rm -rf "$stop_state"
+	stop_env=()
+	task_id=$stop_task
+	set_run issue-1
+	set_comments '[]'
+}
+
+input='{"session_id":"s1","hook_event_name":"Stop","stop_hook_active":false}'
+
+# 自分の実行のコメントが始めの時刻より後にあれば通し、回数のファイルを消す
+reset_stop
+mkdir -p "$stop_state"
+printf '2\n' >"$(stop_count_file s1)"
+set_comments "$own_comment"
+expect_stop_pass 'コメントあり' "$input"
+expect_count s1 none
+if ! grep -qx 'agent tasks agent-1 --output json' "$fake_log" ||
+	! grep -qx "issue comment list issue-1 --since $stop_started --output json" "$fake_log"; then
+	printf 'FAIL Stop: multica の呼び方が設計と違う\n' >&2
+	cat "$fake_log" >&2
+	exit 1
+fi
+# 時刻の表記が違っても、始めの時刻と比べる（小数部とオフセット）
+set_comments '[{"source_task_id":"run-1","created_at":"2026-11-26T18:00:00.500+09:00"}]'
+expect_stop_pass '時刻のオフセットと小数部' "$input"
+# コメントがない
+reset_stop
+expect_stop_block 'コメントなし' "$input" '最後のコメント'
+expect_count s1 1
+# 別の実行が書いたコメントは数えない
+set_comments '[{"source_task_id":"other-run","created_at":"2026-11-26T09:05:00Z"},{"created_at":"2026-11-26T09:05:00Z"}]'
+expect_stop_block '別の実行のコメント' "$input"
+# 始めの時刻より前、同じ時刻、読めない時刻のコメントは数えない
+set_comments '[{"source_task_id":"run-1","created_at":"2026-11-26T08:59:59Z"},{"source_task_id":"run-1","created_at":"2026-11-26T09:00:00.000Z"},{"source_task_id":"run-1","created_at":"yesterday"},{"source_task_id":"run-1"}]'
+expect_stop_block '数えないコメント' "$input"
+# 使えない形のコメントの一覧は、飛ばして足りなければ続けさせる
+set_comments '[1,"x",null,[],{"source_task_id":["run-1"],"created_at":"2026-11-26T09:05:00Z"}]'
+expect_stop_block '使えないコメントの形' "$input"
+set_comments '"nothing"'
+expect_stop_block 'コメントの一覧が配列でない' "$input"
+echo 'PASS Stop: コメントがあれば通し、自分の実行の始めより後のコメントだけを数える'
+
+# CLI の失敗と読み違いは、確認できなかったとして続けさせ、理由に失敗の事実を書く
+reset_stop
+set_comments "$own_comment"
+stop_env=(FAKE_TASKS_RC=1)
+expect_stop_block 'agent tasks の失敗' "$input" 'CLI が失敗'
+stop_env=(FAKE_COMMENTS_RC=1)
+expect_stop_block 'comment list の失敗' "$input" 'CLI が失敗'
+stop_env=()
+printf 'not json' >"$test_dir/tasks.json"
+expect_stop_block 'agent tasks が JSON でない' "$input" 'JSON ではなく'
+printf '{"id":"run-1"}' >"$test_dir/tasks.json"
+expect_stop_block '実行の一覧が配列でない' "$input"
+set_run issue-1
+printf 'not json' >"$test_dir/comments.json"
+expect_stop_block 'comment list が JSON でない' "$input" 'JSON ではなく'
+set_comments "$own_comment"
+jq -n '[{id: "other-run", issue_id: "issue-x", started_at: "2026-11-26T08:00:00Z"}]' >"$test_dir/tasks.json"
+expect_stop_block '自分の実行が一覧にない' "$input" 'この実行'
+jq -n '[{id: "run-1", issue_id: "issue-1"}]' >"$test_dir/tasks.json"
+expect_stop_block '始めの時刻がない' "$input" '始めの時刻'
+set_run issue-1
+stop_env=(MULTICA_AGENT_ID=)
+# 空の MULTICA_AGENT_ID は、run_stop が先に渡す値を上書きする
+expect_stop_block 'MULTICA_AGENT_ID が空' "$input" 'MULTICA_AGENT_ID'
+stop_env=()
+# multica が PATH にない
+stop_rc=0
+env -i PATH=/nonexistent HOME="$home" MULTICA_TASK_ID="$stop_task" MULTICA_AGENT_ID=agent-1 SQUAD_KIT_STATE_DIR="$stop_state" \
+	"$(command -v python3)" -I "$stop_hook" <<<"$input" >"$test_dir/stop-out" 2>"$test_dir/stop-err" || stop_rc=$?
+if [[ $stop_rc -ne 0 ]] || ! jq -e '.decision == "block" and (.reason | contains("見つからず"))' "$test_dir/stop-out" >/dev/null; then
+	stop_fail 'multica が PATH にないとき続けさせるはず'
+fi
+# Stop の入力が読めない
+reset_stop
+set_comments "$own_comment"
+expect_stop_block '入力が JSON でない' 'not json' '入力を JSON として読めず'
+expect_stop_block '入力が空' '' '入力を JSON として読めず'
+expect_stop_block '入力が配列' '[]' '入力を JSON として読めず'
+echo 'PASS Stop: CLI の失敗・出力の読み違い・実行が見つからないこと・入力が読めないことを、確認できなかったとして続けさせる'
+
+# バックグラウンドの処理と定期実行の一覧が空でなければ、コメントがあっても続けさせる（Claude の入力）
+reset_stop
+set_comments "$own_comment"
+expect_stop_pass '空の一覧' '{"session_id":"s1","background_tasks":[],"scheduled_tasks":[]}'
+expect_stop_block 'バックグラウンドが残る' '{"session_id":"s1","background_tasks":[{"id":"b1"}]}' 'バックグラウンド'
+expect_stop_block '定期実行が残る' '{"session_id":"s2","scheduled_tasks":[{"id":"j1"}]}' 'scheduled_tasks'
+# Codex の入力には一覧がないので、コメントだけを見る
+expect_stop_pass 'Codex の入力' '{"session_id":"019a-x","turn_id":"t1","stop_hook_active":false,"last_assistant_message":"done"}'
+echo 'PASS Stop: 残る処理があれば続けさせ、Codex の入力はコメントだけで判定する'
+
+# タスクのない実行（チャット）と、MULTICA_TASK_ID がない実行は通す
+reset_stop
+set_run ''
+expect_stop_pass 'タスクのない実行' "$input"
+expect_stop_pass 'タスクのない実行の残る処理も見ない' '{"session_id":"s1","background_tasks":[{"id":"b1"}]}'
+reset_stop
+task_id=
+expect_stop_pass 'MULTICA_TASK_ID がない' "$input"
+if [[ -s $fake_log ]]; then printf 'FAIL Stop: MULTICA_TASK_ID がないのに multica を呼んだ\n' >&2; exit 1; fi
+expect_stop_pass 'MULTICA_TASK_ID がなく入力も読めない' 'not json'
+task_id=$stop_task
+echo 'PASS Stop: タスクのない実行と MULTICA_TASK_ID がない実行は通す'
+
+# 連続 3 回まで続けさせ、4 回目は終わらせて標準エラーに警告を書く。確認が通れば回数を消す
+reset_stop
+expect_stop_block_counting '1 回目' "$input"
+expect_count s1 1
+expect_stop_block_counting '2 回目' "$input"
+expect_count s1 2
+expect_stop_block_counting '3 回目' "$input"
+expect_count s1 3
+run_stop "$input"
+if [[ $stop_rc -ne 0 || -s $test_dir/stop-out ]] || ! grep -q '^Stop のガード: .*上限' "$test_dir/stop-err"; then stop_fail '4 回目は終わらせて警告を書くはず'; fi
+expect_count s1 none
+# 回数は、セッションの ID ごとに数える
+expect_stop_block_counting '別のセッションの 1 回目' '{"session_id":"s2"}'
+expect_count s2 1
+expect_count s1 none
+# 回数のあとに確認が通れば、回数を消し、次は 1 から数える
+expect_stop_block_counting 's1 の 1 回目' "$input"
+set_comments "$own_comment"
+expect_stop_pass 'コメントを書いた' "$input"
+expect_count s1 none
+set_comments '[]'
+expect_stop_block_counting 'やり直しの 1 回目' "$input"
+expect_count s1 1
+# CLI の失敗が続いても 4 回目は終わらせる
+reset_stop
+stop_env=(FAKE_TASKS_RC=1)
+expect_stop_block_counting 'CLI 失敗 1' "$input"
+expect_stop_block_counting 'CLI 失敗 2' "$input"
+expect_stop_block_counting 'CLI 失敗 3' "$input"
+run_stop "$input"
+if [[ $stop_rc -ne 0 || -s $test_dir/stop-out ]] || ! grep -q 'CLI が失敗' "$test_dir/stop-err"; then stop_fail 'CLI の失敗が続いても 4 回目は終わらせるはず'; fi
+echo 'PASS Stop: 連続 3 回まで続けさせ、4 回目で終わらせる'
+
+# 回数のファイルが数字だけの 1 行でなければ、0 回として数え直す
+reset_stop
+mkdir -p "$stop_state"
+for bad in 'abc' '2 3' $'1\n2' '' '-1' '3x' '99999999999'; do
+	printf '%s' "$bad" >"$(stop_count_file s1)"
+	expect_stop_block_counting "回数のファイルが「${bad}」" "$input"
+	expect_count s1 1
+done
+printf '3\n' >"$(stop_count_file s1)"
+run_stop "$input"
+if [[ $stop_rc -ne 0 || -s $test_dir/stop-out ]]; then stop_fail '回数が 3 なら 4 回目として終わらせるはず'; fi
+# 回数のファイルが、通常のファイルでない（ディレクトリ・リンク）
+mkdir -p "$stop_state/stop-s3"
+run_stop '{"session_id":"s3"}'
+if [[ $stop_rc -ne 0 || -s $test_dir/stop-out ]] || ! grep -q '回数を書けない' "$test_dir/stop-err"; then stop_fail '回数のファイルの場所がディレクトリなら、書けないので終わらせるはず'; fi
+rm -rf "$stop_state/stop-s3"
+printf '3\n' >"$test_dir/outside-count"
+ln -s "$test_dir/outside-count" "$(stop_count_file s4)"
+expect_stop_block_counting '回数のファイルがリンク' '{"session_id":"s4"}'
+if [[ $(tr -d '\n' <"$test_dir/outside-count") != 3 ]]; then printf 'FAIL Stop: リンクの先を書き換えた\n' >&2; exit 1; fi
+# セッションの ID が使えない値のときは、タスクの ID で数える
+reset_stop
+expect_stop_block_counting 'セッション ID が ../x' '{"session_id":"../x"}'
+expect_count task-run-1 1
+expect_stop_block_counting 'セッション ID がない' '{}'
+expect_count task-run-1 2
+if [[ -e $test_dir/x || -e $root/tmp/x ]]; then printf 'FAIL Stop: セッション ID でパスを外れた\n' >&2; exit 1; fi
+# 回数を書けないときは、上限を守れないので終わらせる
+reset_stop
+printf 'file' >"$test_dir/not-a-dir"
+stop_env=("SQUAD_KIT_STATE_DIR=$test_dir/not-a-dir/state")
+run_stop "$input"
+if [[ $stop_rc -ne 0 || -s $test_dir/stop-out ]] || ! grep -q '^Stop のガード: 回数を書けない' "$test_dir/stop-err"; then stop_fail '回数を書けないときは終わらせるはず'; fi
+echo 'PASS Stop: 回数のファイルが数字だけの 1 行でなければ数え直し、書けないときは終わらせる'
+
+echo 'PASS guard-hook: PreToolUse と Stop のスクリプトの確認'

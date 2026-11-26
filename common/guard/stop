@@ -1,0 +1,247 @@
+#!/usr/bin/env python3
+# multica-squad-kit-managed
+"""Multica のエージェントの実行で、実行を終える前に、タスクへ最後のコメントを書いたかを確認するフック（Stop）。
+
+Claude Code と Codex が、標準入力に JSON で Stop の入力を渡す。同じスクリプトを両方の役で使う。
+  1. multica agent tasks で自分の実行（id が MULTICA_TASK_ID）を探し、タスクの ID と始めの時刻を読む
+  2. タスクのない実行（チャットなど）は、何もせずに終わらせる
+  3. multica issue comment list で始めの時刻より後のコメントを読み、書いた実行が自分のものを探す
+  4. 入力にバックグラウンドの処理と定期実行の一覧があれば（Claude Code）、それが空かも見る
+  5. どちらかが足りなければ、標準出力に {"decision": "block", "reason": ...} を書いて終了コード 0 で終わり、実行を続けさせる
+
+CLI の失敗・入力や出力の読み違い・実行が見つからないことは、確認できなかったとして続けさせる。
+続けさせるのは、同じセッションで連続 3 回までにする。4 回目は終わらせ、標準エラーに警告を書く。回数は、セッションの ID ごとに
+状態の置き場（SQUAD_KIT_STATE_DIR。なければこのスクリプトと同じディレクトリの state/）のファイルに書き、確認が通れば消す。
+回数のファイルは、数字だけの 1 行のときだけ読み、ほかは 0 回として数え直す。回数を書けないときは、上限を守れないので終わらせる。
+
+`multica issue wakeup checkin` で終える実行は、見分けない。コメントがないので、上限の 3 回まで続けさせる（設計の「決まっていないこと」の決まるまでの扱い）。
+Codex の入力にはバックグラウンドの一覧がないので、Codex の役ではコメントだけを見る。
+
+MULTICA_TASK_ID がない実行（人が端末で使う Claude Code など）は、何もせずに通す。
+"""
+import json
+import os
+import re
+import subprocess
+import sys
+
+sys.dont_write_bytecode = True
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+MAX_CONTINUE = 3
+CLI_SECONDS = 60
+MARK = "Stop のガード"
+SESSION_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+COUNT_RE = re.compile(r"^[0-9]{1,9}\n?$")
+TIME_RE = re.compile(r"^(\d{4})-(\d\d)-(\d\d)[Tt ](\d\d):(\d\d):(\d\d)(?:\.(\d+))?(Z|z|[+-]\d\d:?\d\d)$")
+# Claude Code の Stop の入力にある、バックグラウンドの処理と定期実行の一覧のキー。名前は実機で確認していないので、語で広く拾う
+PENDING_KEY_RE = re.compile(r"background|scheduled|cron|bg_|pending_task", re.IGNORECASE)
+
+
+class Unconfirmed(Exception):
+    """確認できなかった。理由を、続けさせる文に書く。"""
+
+
+def parse_time(text):
+    """RFC 3339 の時刻を、(UTC の秒, 小数部の桁をそろえた文字列) にする。読めなければ None。"""
+    if not isinstance(text, str):
+        return None
+    m = TIME_RE.match(text.strip())
+    if m is None:
+        return None
+    year, month, day, hour, minute, second = (int(m.group(i)) for i in range(1, 7))
+    if not (1 <= month <= 12 and 1 <= day <= 31 and hour < 24 and minute < 60 and second < 61):
+        return None
+    zone = m.group(8)
+    offset = 0
+    if zone not in ("Z", "z"):
+        digits = zone[1:].replace(":", "")
+        offset = (int(digits[:2]) * 60 + int(digits[2:])) * 60
+        if zone[0] == "-":
+            offset = -offset
+    # 1970-01-01 からの日数（暦の計算で、標準ライブラリの版による違いを避ける）
+    y = year - (1 if month <= 2 else 0)
+    era = y // 400
+    yoe = y - era * 400
+    doy = (153 * (month + (-3 if month > 2 else 9)) + 2) // 5 + day - 1
+    doe = yoe * 365 + yoe // 4 - yoe // 100 + doy
+    days = era * 146097 + doe - 719468
+    seconds = days * 86400 + hour * 3600 + minute * 60 + second - offset
+    fraction = (m.group(7) or "").ljust(9, "0")[:9]
+    return (seconds, fraction)
+
+
+def run_cli(args, what):
+    try:
+        done = subprocess.run(["multica"] + args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, timeout=CLI_SECONDS)
+    except FileNotFoundError:
+        raise Unconfirmed("multica の CLI が見つからず、%sを読めませんでした" % what)
+    except subprocess.TimeoutExpired:
+        raise Unconfirmed("multica の CLI が %d 秒で終わらず、%sを読めませんでした" % (CLI_SECONDS, what))
+    except OSError as e:
+        raise Unconfirmed("multica の CLI を呼べず、%sを読めませんでした（%s）" % (what, e.__class__.__name__))
+    if done.returncode != 0:
+        raise Unconfirmed("multica の CLI が失敗し（終了コード %d）、%sを読めませんでした" % (done.returncode, what))
+    try:
+        return json.loads(done.stdout.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        raise Unconfirmed("multica の CLI の出力が JSON ではなく、%sを読めませんでした" % what)
+
+
+def find_run(task_id, agent_id):
+    if not agent_id:
+        raise Unconfirmed("MULTICA_AGENT_ID がなく、自分の実行を探せませんでした")
+    runs = run_cli(["agent", "tasks", agent_id, "--output", "json"], "自分の実行の一覧を")
+    if isinstance(runs, dict):
+        runs = runs.get("tasks") or runs.get("items") or []
+    if not isinstance(runs, list):
+        raise Unconfirmed("実行の一覧の形が想定と違い、自分の実行を探せませんでした")
+    for run in runs:
+        if isinstance(run, dict) and run.get("id") == task_id:
+            return run
+    raise Unconfirmed("実行の一覧に、この実行（%s）がありませんでした" % task_id)
+
+
+def wrote_final_comment(task_id, issue_id, started_at):
+    start = parse_time(started_at)
+    if start is None:
+        raise Unconfirmed("実行の始めの時刻を読めず、コメントを照合できませんでした")
+    comments = run_cli(["issue", "comment", "list", issue_id, "--since", started_at, "--output", "json"],
+                       "タスクのコメントを")
+    if isinstance(comments, dict):
+        comments = comments.get("comments") or comments.get("items") or []
+    if not isinstance(comments, list):
+        raise Unconfirmed("コメントの一覧の形が想定と違い、コメントを照合できませんでした")
+    for comment in comments:
+        if not isinstance(comment, dict) or comment.get("source_task_id") != task_id:
+            continue
+        created = parse_time(comment.get("created_at"))
+        if created is not None and created > start:
+            return True
+    return False
+
+
+def pending_items(stop_input):
+    """入力のバックグラウンドの処理と定期実行の一覧のうち、残っているものの名前を返す。"""
+    names = []
+    if isinstance(stop_input, dict):
+        for key, value in stop_input.items():
+            if PENDING_KEY_RE.search(str(key)) and isinstance(value, (list, dict)) and len(value) > 0:
+                names.append(str(key))
+    return names
+
+
+def session_key(stop_input, task_id):
+    session = stop_input.get("session_id") if isinstance(stop_input, dict) else None
+    if isinstance(session, str) and SESSION_RE.match(session) and session not in (".", ".."):
+        return session
+    return "task-" + re.sub(r"[^A-Za-z0-9._-]", "_", task_id)[:120]
+
+
+def state_dir():
+    return os.environ.get("SQUAD_KIT_STATE_DIR") or os.path.join(HERE, "state")
+
+
+def count_path(key):
+    return os.path.join(state_dir(), "stop-" + key)
+
+
+def read_count(path):
+    try:
+        if os.path.islink(path) or not os.path.isfile(path):
+            return 0
+        with open(path, "rb") as f:
+            data = f.read(32)
+        text = data.decode("ascii")
+    except (OSError, UnicodeDecodeError):
+        return 0
+    if not COUNT_RE.match(text):
+        return 0
+    return int(text)
+
+
+def write_count(path, count):
+    directory = os.path.dirname(path)
+    old_umask = os.umask(0o077)
+    try:
+        os.makedirs(directory, mode=0o700, exist_ok=True)
+        temp = "%s.%d.tmp" % (path, os.getpid())
+        try:
+            with open(temp, "w") as f:
+                f.write("%d\n" % count)
+            os.replace(temp, path)
+        except OSError:
+            clear_count(temp)
+            raise
+    finally:
+        os.umask(old_umask)
+
+
+def clear_count(path):
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+def main():
+    task_id = os.environ.get("MULTICA_TASK_ID", "")
+    if not task_id:
+        return 0
+
+    problems = []
+    stop_input = None
+    try:
+        raw = sys.stdin.buffer.read()
+        stop_input = json.loads(raw.decode("utf-8"))
+        if not isinstance(stop_input, dict):
+            raise ValueError("object ではない")
+    except (ValueError, OSError):
+        stop_input = None
+        problems.append("Stop の入力を JSON として読めず、バックグラウンドの処理を確認できませんでした")
+
+    path = count_path(session_key(stop_input, task_id))
+
+    try:
+        run = find_run(task_id, os.environ.get("MULTICA_AGENT_ID", ""))
+        issue_id = run.get("issue_id")
+        if not isinstance(issue_id, str) or not issue_id:
+            # タスクのない実行（チャットなど）は、そのまま終わらせる
+            clear_count(path)
+            return 0
+        if not wrote_final_comment(task_id, issue_id, run.get("started_at")):
+            problems.append("この実行は、まだタスクに最後のコメントを書いていません")
+    except Unconfirmed as e:
+        problems.append(str(e))
+
+    pending = pending_items(stop_input)
+    if pending:
+        problems.append("バックグラウンドの処理か定期実行が残っています（%s）" % "、".join(pending))
+
+    if not problems:
+        clear_count(path)
+        return 0
+
+    count = read_count(path)
+    if count >= MAX_CONTINUE:
+        clear_count(path)
+        sys.stderr.write("%s: 続けさせる上限（連続 %d 回）に達したので、実行を終わらせます。確認できなかったこと: %s\n"
+                         % (MARK, MAX_CONTINUE, "。".join(problems)))
+        return 0
+    try:
+        write_count(path, count + 1)
+    except OSError:
+        sys.stderr.write("%s: 回数を書けないので、上限を守れず、実行を終わらせます。確認できなかったこと: %s\n"
+                         % (MARK, "。".join(problems)))
+        return 0
+
+    reason = "%s: %s。" % (MARK, "。".join(problems))
+    reason += "最後のコメントをタスクに書いてください。バックグラウンドの処理や定期実行が残っていれば、先に終えてください。"
+    json.dump({"decision": "block", "reason": reason}, sys.stdout, ensure_ascii=False)
+    sys.stdout.write("\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
