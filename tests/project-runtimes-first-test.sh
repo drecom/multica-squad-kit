@@ -52,6 +52,14 @@ for role, agent in agents.items():
         ('credential.https://github.com.helper', str(guard / 'git-credential')),
         ('credential.https://github.com.useHttpPath', 'true'),
         ('core.sshCommand', str(guard / 'git-ssh'))], role
+    hook_args = [a for a in agent['custom_args'] if a.startswith('hooks.')]
+    if selected == 'codex':
+        assert hook_args == [
+            'hooks.PreToolUse=[{matcher="^(Bash|shell|exec_command|local_shell)$",hooks=[{type="command",command=' + json.dumps(str(guard / 'pre-tool-use')) + '}]}]',
+            'hooks.Stop=[{hooks=[{type="command",command=' + json.dumps(str(guard / 'stop')) + '}]}]'], role
+    else:
+        assert agent['custom_args'] == [] and hook_args == [], role
+    assert agent['mcp_config'] == ({} if selected == 'claude' else None), role
     claude_env = {key: value for key, value in env.items() if key.startswith('CLAUDE_')}
     if selected == 'claude':
         assert claude_env == {'CLAUDE_CONFIG_DIR': str(home / 'claude'),

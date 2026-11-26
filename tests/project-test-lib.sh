@@ -7,6 +7,8 @@ exec 8>&2
 trap 'test_exit=$?; if [[ $test_exit != 0 ]]; then cat "$test_dir/out" "$test_dir/err" >&8; fi; rm -rf -- "$test_dir"' EXIT
 # 人の gh の置き場。役の SQUAD_KIT_GH_CONFIG_DIR に渡る値を、手元の環境から切り離す。
 export GH_CONFIG_DIR="$test_dir/human-gh"
+# Codex の役の引数の期待値。スタブと各テストの jq が同じ定義を使う。$g はガードの置き場。
+export HOOK_ARGS_DEF='def codex_args($g): ["-c","allow_login_shell=false","-c","features.shell_snapshot=false","-c","project_doc_max_bytes=65536","-c","hooks.PreToolUse=[{matcher=\"^(Bash|shell|exec_command|local_shell)$\",hooks=[{type=\"command\",command=\"\($g)/pre-tool-use\"}]}]","-c","hooks.Stop=[{hooks=[{type=\"command\",command=\"\($g)/stop\"}]}]"];'
 mkdir -p "$test_dir/bin" "$test_dir/package"
 cp "$root/VERSION" "$test_dir/package/VERSION"
 cp -R "$root/lib" "$root/common" "$root/skeleton" "$test_dir/package/"
@@ -77,7 +79,7 @@ case "$event" in
  jq -e --arg g "$TEMPLATE_AGENT_HOME/guard" --arg h "$TEMPLATE_AGENT_HOME/git-hooks" --arg human "$GH_CONFIG_DIR" '.GH_CONFIG_DIR==($g+"/gh-empty") and .SQUAD_KIT_GH_CONFIG_DIR==$human and .GIT_CONFIG_COUNT=="6" and ([range(0;6) as $n|[.["GIT_CONFIG_KEY_\($n)"],.["GIT_CONFIG_VALUE_\($n)"]]]==[["core.hooksPath",$h],["credential.helper",""],["credential.https://github.com.helper",""],["credential.https://github.com.helper",($g+"/git-credential")],["credential.https://github.com.useHttpPath","true"],["core.sshCommand",($g+"/git-ssh")]])' "$envfile" >/dev/null
  jq -e --arg model "$(option --model "$@")" --arg z "$TEMPLATE_AGENT_HOME/template/shell/project-a" 'if ($model|startswith("claude-")) then .CLAUDE_ENV_FILE==($z+"/env.sh") else .CLAUDE_ENV_FILE==null end' "$envfile" >/dev/null
  custom_args=$(option --custom-args "$@")
- jq -ne --arg model "$(option --model "$@")" --argjson args "$custom_args" '$args == (if ($model|startswith("gpt-")) then ["-c","allow_login_shell=false","-c","features.shell_snapshot=false","-c","project_doc_max_bytes=65536"] else [] end)' >/dev/null
+ jq -ne --arg model "$(option --model "$@")" --arg g "$TEMPLATE_AGENT_HOME/guard" --argjson args "$custom_args" "$HOOK_ARGS_DEF"'$args == (if ($model|startswith("gpt-")) then codex_args($g) else [] end)' >/dev/null
  cp "$envfile" "$TEST_DB/env/$id.json"
  jq -n --arg id "$id" --arg name "$name" --arg model "$(option --model "$@")" --arg runtime "$(option --runtime-id "$@")" --arg thinking "$(option --thinking-level "$@")" --arg instructions "$(option --instructions "$@")" --argjson max "$(option --max-concurrent-tasks "$@")" --argjson args "$custom_args" '{id:$id,name:$name,owner_id:"actor",model:$model,runtime_id:$runtime,thinking_level:$thinking,instructions:$instructions,max_concurrent_tasks:$max,permission_mode:"private",invocation_targets:[],skills:[],custom_args:$args}' >"$TEST_DB/agents/$id.json"
  cat "$TEST_DB/agents/$id.json" ;;

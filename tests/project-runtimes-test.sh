@@ -35,7 +35,8 @@ for selected in claude codex; do
   jq -e --arg selected "$selected" --arg env "$TEMPLATE_AGENT_HOME/template/shell/project-a/env.sh" 'if $selected=="claude" then .CLAUDE_ENV_FILE==$env else .CLAUDE_ENV_FILE==null end' "$TEST_DB/env/agent-demo-$role-owner.json" >/dev/null
   role_args='[]'
   if [[ $role == orchestrator ]]; then role_args='["--keep","value"]'; fi
-  jq -e --arg selected "$selected" --argjson prefix "$role_args" '.custom_args==($prefix+(if $selected=="codex" then ["-c","allow_login_shell=false","-c","features.shell_snapshot=false","-c","project_doc_max_bytes=65536"] else [] end))' "$TEST_DB/agents/agent-demo-$role-owner.json" >/dev/null
+  jq -e --arg selected "$selected" --arg g "$TEMPLATE_AGENT_HOME/guard" --argjson prefix "$role_args" "$HOOK_ARGS_DEF"'.custom_args==($prefix+(if $selected=="codex" then codex_args($g) else [] end))' "$TEST_DB/agents/agent-demo-$role-owner.json" >/dev/null
+  jq -e --arg selected "$selected" 'if $selected=="claude" then .mcp_config=={} else .mcp_config==null end' "$TEST_DB/agents/agent-demo-$role-owner.json" >/dev/null
  done
  jq -e --arg selected "$selected" --arg model "$(if [[ $selected == claude ]]; then echo claude-fable-5-2; else echo gpt-6.2-astra; fi)" '.model==$model and .runtime_id==("runtime-"+$selected) and .thinking_level=="xhigh"' "$TEST_DB/agents/agent-demo-$selected-principal-owner.json" >/dev/null
  jq -e '.EXTRA=="keep"' "$TEST_DB/env/agent-demo-orchestrator-owner.json" >/dev/null

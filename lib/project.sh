@@ -211,9 +211,9 @@ prepare_project() (
 		fi
 		value=$(template_field "$project_work/$role.rendered" description)
 		custom_args=$(project_desired_args "$model" <<<"$(jq -c '.custom_args // []' <<<"$current")") || die '追加の引数の応答が不正です。'
-		desired=$(jq -c --arg role "$role" --arg description "$value" --argjson mcp "$(project_mcp "$role")" --argjson args "$custom_args" --rawfile instructions "$project_work/$role.body" '.[$role] | del(.id,.name) | .+{description:$description,instructions:($instructions|sub("\n+$";"")),mcp_config:$mcp,custom_args:$args}' <<<"$records")
+		desired=$(jq -c --arg role "$role" --arg description "$value" --argjson mcp "$(project_mcp "$role" "$model")" --argjson args "$custom_args" --rawfile instructions "$project_work/$role.body" '.[$role] | del(.id,.name) | .+{description:$description,instructions:($instructions|sub("\n+$";"")),mcp_config:$mcp,custom_args:$args}' <<<"$records")
 		if ! printf '%s\n%s\n' "$desired" "$current" | jq -se '.[0] as $desired | .[1] | .custom_args=(.custom_args // []) | . as $current | all($desired|to_entries[]; $current[.key]==.value)' >/dev/null; then
-			mc agent update "$id" --runtime-id "$runtime" --model "$model" --thinking-level "$thinking" --max-concurrent-tasks "$max" --description "$value" --instructions "$(cat "$project_work/$role.body")" --mcp-config "$(project_mcp "$role")" --custom-args "$custom_args" --output json >/dev/null || die "本指示を反映できませんでした: $name"
+			mc agent update "$id" --runtime-id "$runtime" --model "$model" --thinking-level "$thinking" --max-concurrent-tasks "$max" --description "$value" --instructions "$(cat "$project_work/$role.body")" --mcp-config "$(project_mcp "$role" "$model")" --custom-args "$custom_args" --output json >/dev/null || die "本指示を反映できませんでした: $name"
 		fi
 		desired=$(cat "$project_work/$role.skills")
 		if [[ $(jq -r '[.skills[]?.id] | sort | join(",")' <<<"$current") != "$desired" ]]; then
@@ -411,8 +411,8 @@ project_role() {
 	max=$(jq -r --arg role "$1" '.[$role].max_concurrent_tasks' <<<"$records")
 }
 project_desired_args() {
-	jq -c --arg model "$1" '
-		def managed: test("^(allow_login_shell|features[.]shell_snapshot|project_doc_max_bytes)[[:space:]]*=");
+	jq -c --arg model "$1" --arg g "$agent_home/guard" '
+		def managed: test("^(allow_login_shell|features[.]shell_snapshot|project_doc_max_bytes|hooks[.]PreToolUse|hooks[.]Stop)[[:space:]]*=");
 		if type=="array" and all(.[]; type=="string") then . else error("引数は文字列の配列が必要です") end |
 		. as $args |
 		reduce range(0; length) as $i ({args:[],skip:false};
@@ -422,7 +422,7 @@ project_desired_args() {
 			elif ($args[$i]=="--enable" and $args[$i+1]=="shell_snapshot") then .skip=true
 			elif $args[$i]=="--enable=shell_snapshot" then .
 			else .args+=[$args[$i]] end) |
-		.args + (if ($model|startswith("gpt-")) then ["-c","allow_login_shell=false","-c","features.shell_snapshot=false","-c","project_doc_max_bytes=65536"] else [] end)'
+		.args + (if ($model|startswith("gpt-")) then ["-c","allow_login_shell=false","-c","features.shell_snapshot=false","-c","project_doc_max_bytes=65536","-c",("hooks.PreToolUse=[{matcher=\"^(Bash|shell|exec_command|local_shell)$\",hooks=[{type=\"command\",command="+(($g+"/pre-tool-use")|tojson)+"}]}]"),"-c",("hooks.Stop=[{hooks=[{type=\"command\",command="+(($g+"/stop")|tojson)+"}]}]")] else [] end)'
 }
 
 project_desired_env() {
@@ -488,6 +488,9 @@ project_skills() {
 	done
 }
 
+# Claude の役は、拡張の MCP がなければ空の {} にする。Multica が --strict-mcp-config を付け、作業ディレクトリの .mcp.json を読まなくなる。
 project_mcp() {
-	if [[ -f $root/extension-mcp.json ]]; then jq -c --arg role "$1" '.[$role] // null' "$root/extension-mcp.json"; else printf 'null\n'; fi
+	local fallback=null
+	[[ $2 == claude-* ]] && fallback='{}'
+	if [[ -f $root/extension-mcp.json ]]; then jq -c --arg role "$1" --argjson fallback "$fallback" '.[$role] // $fallback' "$root/extension-mcp.json"; else printf '%s\n' "$fallback"; fi
 }
