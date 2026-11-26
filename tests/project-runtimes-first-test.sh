@@ -48,11 +48,14 @@ for role, agent in agents.items():
         assert claude_env == {'CLAUDE_CONFIG_DIR': str(home / 'claude'),
                               'CLAUDE_CODE_SHELL': '/bin/zsh',
                               'CLAUDE_CODE_AUTO_COMPACT_WINDOW': '150000',
-                              'CLAUDE_ENV_FILE': str(home / 'template/shell/project-a/env.sh')}, role
+                              'CLAUDE_ENV_FILE': str(home / 'template/shell/project-a/env.sh'),
+                              'CLAUDE_CODE_DISABLE_BACKGROUND_TASKS': '1',
+                              'CLAUDE_CODE_DISABLE_CRON': '1'}, role
+        assert env['DISABLE_AUTOUPDATER'] == '1', role
         assert env['ENABLE_CLAUDEAI_MCP_SERVERS'] == 'false'
         assert env['CLAUDE_ENV_FILE'] == env['BASH_ENV']
     else:
-        assert claude_env == {} and 'ENABLE_CLAUDEAI_MCP_SERVERS' not in env, role
+        assert claude_env == {} and 'ENABLE_CLAUDEAI_MCP_SERVERS' not in env and 'DISABLE_AUTOUPDATER' not in env, role
     assert ('SQUAD_KIT_GH_DEPENDABOT_MERGE' in env) == (role == 'dependabot-merger')
     assert bool(agent['skills']) == (role not in monitors), role
 print(f'PASS project runtimes first: {selected} だけの役の組・モデル・runtime_id・環境を初回登録する')

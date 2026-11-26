@@ -17,6 +17,18 @@ run round-1
 expect_posted 修正 "$(fix_body claude-fixer 1 'code-reviewer、qa')"
 expect_calls pick-calls 'pick test-issue fix --round round-1'
 expect_no_calls watch-calls
+# 2-1: ✅ の結果に前からある不具合の件数だけがあるときは、修正の依頼を書かず、マージの依頼へ進む。
+reset
+set_roster orchestrator code-reviewer qa
+base_round
+result round-1 code-reviewer ✅ "$sha" なし '前からある不具合 2 件'
+result round-1 qa ✅ "$sha" なし
+merge_depth='読む深さ: このコメントと PR の注意（重要でない。注意なし、残した指摘 0 件、前からある不具合 2 件）'
+merge_pre='前からある不具合: 2 件（demo-code-reviewer-test 2 件）'
+run round-1
+expect_merge_posted "$(merge_body round-1 "$sha" "コンフリクト: MERGEABLE head: $sha" '✅ demo-code-reviewer-test: 前からある不具合 2 件' '✅ demo-qa-test: 結果')"
+expect_no_calls pick-calls
+echo 'PASS review-next-decide: ✅ で前からある不具合の件数だけの結果は、修正の依頼を書かずマージの依頼へ進む'
 # 自動で書くのは、タスクに 修正の依頼: の行がないときの 1 回目だけ。1 つ以上あれば、2 回目からとして書かずにリーダーを起こす。
 second_reason='修正の依頼が 2 回目から（同じ誤りと同じ部品はリーダーが判断する）'
 reset
@@ -254,22 +266,24 @@ human_head+=$'「待つ」は、下の行の再開の時刻まで、人間を呼
 human_head+=$'「進める」は、上限に近いまま役を選んで頼みます。使用上限に達すると、役の実行が止まることがあります。\n'
 human_head+=$'「利用枠を足した」は、使用率を読み直して続けます。\n'
 human_head+=$'「待つ」と「進める」は、このスクワッドのすべてのタスクに、上限に近い枠のリセット時刻まで効きます。\n'
-[[ $body == "$human_head"$'前の回: round-1\n使用率の待ち: fix を通算 24 時間待った。\n'* ]] || fail "人間の呼びの先頭が違う: $body"
+[[ $body == "$human_head"$'前の回: round-1\n使用率の待ち: fix を通算 24 時間待った。' ]] || fail "人間の呼びの先頭が違う: $body"
 # 字下げ・引用・入れ子の項目を使わない（読める本文）。
 if grep -qE '^[[:space:]>]|^[-*+] ' <<<"$body"; then fail "人間の呼びに字下げ・引用・項目がある: $body"; fi
-[[ $body == *$'\n紐付けの失敗: PR をタスクに紐付けられませんでした。\nGitHub 連携が見つかりません。\n'* ]] || fail "紐付けの失敗の段落がない: $body"
-[[ $body == *'ワークスペースの設定のコードの画面で、作業先のリポジトリが GitHub 連携につながっていることを確認してください。'* ]] || fail "連携の案内がない: $body"
-[[ $body != *'PR がタスクに紐付いていません'* ]] || fail "紐付いているのに、紐付いていない案内がある: $body"
+# 紐付いているときは、紐付けの依頼の行も、紐付けの失敗の段落も、連携の案内も付けない。
+[[ $body != *'紐付けの失敗:'* && $body != *'GitHub 連携'* && $body != *'ワークスペースの設定'* && $body != *'PR がタスクに紐付いていません'* ]] || fail "紐付いているのに、紐付けの依頼か段落か連携の案内がある: $body"
 expect_no_calls watch-calls
-# 紐付いていないときは、紐付ける PR の案内を足す。
+# 紐付いていないときは、紐付ける PR の案内、紐付けの失敗の段落、連携の案内を付ける。
 human_setup
 printf '紐付け: 紐付いていない pr: %s\n' "$pr_url" >"$test_dir/link-out"
 run round-1
 expect_status 0
 body=$(posted_body)
 [[ $body == *$'\nPR がタスクに紐付いていません。タスクの画面の PR の欄で `'"$pr_url"$'` を紐付けてください。\n'* ]] || fail "紐付けの案内がない: $body"
-# 紐付けの失敗の段落がなければ、段落も連携の案内も付けない。
+[[ $body == *$'\n紐付けの失敗: PR をタスクに紐付けられませんでした。\nGitHub 連携が見つかりません。\n'* ]] || fail "紐付けの失敗の段落がない: $body"
+[[ $body == *'ワークスペースの設定のコードの画面で、作業先のリポジトリが GitHub 連携につながっていることを確認してください。'* ]] || fail "連携の案内がない: $body"
+# 紐付いていなくても、紐付けの失敗の段落がなければ、段落も連携の案内も付けない。
 human_setup
+printf '紐付け: 紐付いていない pr: %s\n' "$pr_url" >"$test_dir/link-out"
 add pr-made2 orchestrator "PR の確認 ${pr_url}" ""
 jq 'map(if .id == "pr-made" then .content = "PR を作りました https://github.com/demo/project/pull/7" else . end)' "$test_dir/comments.json" >"$test_dir/comments.new" && mv "$test_dir/comments.new" "$test_dir/comments.json"
 run round-1
@@ -278,6 +292,7 @@ body=$(posted_body)
 [[ $body != *'紐付けの失敗:'* && $body != *'GitHub 連携'* ]] || fail "段落がないのに案内がある: $body"
 # 連携に触れない段落だけなら、段落だけを付ける。
 human_setup
+printf '紐付け: 紐付いていない pr: %s\n' "$pr_url" >"$test_dir/link-out"
 jq 'map(if .id == "pr-made" then .content = "PR を作りました https://github.com/demo/project/pull/7\n紐付けの失敗: タイムアウトでした。\n再実行してください。" else . end)' "$test_dir/comments.json" >"$test_dir/comments.new" && mv "$test_dir/comments.new" "$test_dir/comments.json"
 run round-1
 body=$(posted_body)

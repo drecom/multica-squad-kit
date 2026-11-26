@@ -14,6 +14,7 @@ tests/autopilot-targets-webhook-test.sh 81
 tests/build-assets-test.sh 21
 tests/capture-cli-fixtures-test.sh 3
 tests/ci-install-test.sh 17
+tests/codex-check-test.sh 2
 tests/completion-colors-test.sh 1
 tests/confirmation-test.sh 12
 tests/content-test.sh 1
@@ -24,7 +25,7 @@ tests/extensions-test.sh 2
 tests/gh-test.sh 5
 tests/guard-check-test.sh 9
 tests/host-daemon-test.sh 35
-tests/host-test.sh 70
+tests/host-test.sh 135
 tests/install-command-test.sh 7
 tests/install-test.sh 30
 tests/installation-test.sh 82
@@ -62,6 +63,7 @@ tests/release-failure-test.sh 69
 tests/release-screens-test.sh 27
 tests/release-test.sh 70
 tests/release-workflow-test.sh 3
+tests/review-note-table-test.sh 2
 tests/role-choices-test.sh 1
 tests/runtime-selection-test.sh 13
 tests/setup-extension-test.sh 16
@@ -101,6 +103,7 @@ tests/squad-pr-watch-ci-handoff-test.sh 38
 tests/squad-pr-watch-ci-now-test.sh 25
 tests/squad-pr-watch-ci-test.sh 41
 tests/squad-pr-watch-ci-wait-test.sh 101
+tests/squad-pr-watch-link-retry-test.sh 97
 tests/squad-pr-watch-register-test.sh 30
 tests/squad-pr-watch-unlinked-check-test.sh 40
 tests/squad-pr-watch-unlinked-concurrent-test.sh 5

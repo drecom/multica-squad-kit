@@ -21,6 +21,16 @@
       "--json",
       "headRefOid"
     ],
+    "gh-pr-body": [
+      "gh",
+      "pr",
+      "view",
+      "2599",
+      "--repo",
+      "actions/checkout",
+      "--json",
+      "body"
+    ],
     "gh-pr-mergeable": [
       "gh",
       "pr",
@@ -173,6 +183,12 @@
         "count": 1
       }
     ],
+    "gh-pr-body": [
+      {
+        "name": "element",
+        "count": 1
+      }
+    ],
     "gh-pr-mergeable": [
       {
         "name": "element",
@@ -275,6 +291,13 @@
       "version": "gh version 2.105.0 (2026-11-17)",
       "entries": [
         "gh-default-branch"
+      ]
+    },
+    {
+      "date": "2026-11-25",
+      "version": "gh version 2.105.0 (2026-11-17)",
+      "entries": [
+        "gh-pr-body"
       ]
     }
   ]

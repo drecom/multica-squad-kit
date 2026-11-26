@@ -17,7 +17,7 @@
 形	common/skills/squad-handoff/references/leader-run-stop.md	multica issue cancel-task <実行の ID> --issue <タスク>	multica issue cancel-task <実行の ID> --task <タスク>	落ちる	見る	Multica の CLI が読む。引数の形を変えると、実行を止める操作が失敗する
 説明文	common/skills/squad-handoff/references/leader-run-status.md	-	-	通る	見る	バッククォートの外を言い換えても通る。説明文は固定しない
 名前	common/skills/squad-handoff/references/leader-run-stop.md	squad-pr-watch link-check	squad-pr-watch link-chek	落ちる	見る	ホストの squad-pr-watch が読む。サブコマンドの綴りを誤ると、使い方の誤りで終わり、紐付けの判定が出ない
-形	common/skills/squad-handoff/references/leader-run-stop.md	squad-pr-watch link-check <タスク>	squad-pr-watch link-check <PR の URL>	落ちる	見る	ホストの squad-pr-watch が読む。引数にタスクでなく PR を渡すと、紐付けの判定が出ない
+形	common/skills/squad-handoff/references/leader-run-stop.md	squad-pr-watch link-check <タスク> <きっかけのコメント>	squad-pr-watch link-check <PR の URL> <きっかけのコメント>	落ちる	見る	ホストの squad-pr-watch が読む。引数にタスクでなく PR を渡すと、紐付けの判定が出ない
 名前	common/skills/squad-handoff/references/leader-principal.md	multica issue label add	multica issue label ad	落ちる	見る	Multica の CLI が読む。ラベルが付かない
 名前	common/skills/squad-handoff/references/leader-principal-design.md	multica issue get	multica issue gett	落ちる	見る	Multica の CLI が読む。タスクの本文が取れない
 名前	common/skills/squad-handoff/references/leader-principal-pick.md	multica issue runs	multica issue runz	落ちる	見る	Multica の CLI が読む。実行の一覧が取れない

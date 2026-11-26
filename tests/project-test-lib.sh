@@ -74,7 +74,7 @@ case "$event" in
  jq -e --arg z "$TEMPLATE_AGENT_HOME/template/shell/project-a" '.ZDOTDIR==$z and .BASH_ENV==($z+"/env.sh") and (.SQUAD_KIT_ALLOWED_REPOS|endswith("/allowed-repos.d/project-a"))' "$envfile" >/dev/null
  jq -e --arg model "$(option --model "$@")" --arg z "$TEMPLATE_AGENT_HOME/template/shell/project-a" 'if ($model|startswith("claude-")) then .CLAUDE_ENV_FILE==($z+"/env.sh") else .CLAUDE_ENV_FILE==null end' "$envfile" >/dev/null
  custom_args=$(option --custom-args "$@")
- jq -ne --arg model "$(option --model "$@")" --argjson args "$custom_args" '$args == (if ($model|startswith("gpt-")) then ["-c","allow_login_shell=false","-c","features.shell_snapshot=false"] else [] end)' >/dev/null
+ jq -ne --arg model "$(option --model "$@")" --argjson args "$custom_args" '$args == (if ($model|startswith("gpt-")) then ["-c","allow_login_shell=false","-c","features.shell_snapshot=false","-c","project_doc_max_bytes=65536"] else [] end)' >/dev/null
  cp "$envfile" "$TEST_DB/env/$id.json"
  jq -n --arg id "$id" --arg name "$name" --arg model "$(option --model "$@")" --arg runtime "$(option --runtime-id "$@")" --arg thinking "$(option --thinking-level "$@")" --arg instructions "$(option --instructions "$@")" --argjson max "$(option --max-concurrent-tasks "$@")" --argjson args "$custom_args" '{id:$id,name:$name,owner_id:"actor",model:$model,runtime_id:$runtime,thinking_level:$thinking,instructions:$instructions,max_concurrent_tasks:$max,permission_mode:"private",invocation_targets:[],skills:[],custom_args:$args}' >"$TEST_DB/agents/$id.json"
  cat "$TEST_DB/agents/$id.json" ;;

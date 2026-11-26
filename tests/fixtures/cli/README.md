@@ -70,6 +70,8 @@ Multica と合わせた取り込みでは、外部で採取した応答のディ
 
 `gh-default-branch.json` は、2026-11-24 に公開の `actions/checkout` から追加採取した。コマンドは `gh api repos/actions/checkout --jq 'with_entries(select(.key == "default_branch"))'` で、空でない `default_branch` の文字列だけを読む。採取時の gh のバージョンは、`GH-CAPTURE.json` の `additional_captures` に記録した。既存の見本のバージョンは同じファイルの `version` のままである。
 
+`gh-pr-body.json` は、2026-11-25 に公開の `actions/checkout` の PR から追加採取した。コマンドは `gh pr view 2599 --repo actions/checkout --json body` で、`body` だけを読む。本文は匿名化の規則で `fixture` に置き換わる。採取時の gh のバージョンは、`GH-CAPTURE.json` の `additional_captures` に記録した。
+
 欄の `validate` は、その欄の値に当てる jq の式である。値が存在し、null でないときに検証し、式が真にならなければ応答を返さず失敗する。`gh-default-branch` は `type == "string" and length > 0` で空文字と文字列以外を拒否する。
 
 PR・コメントの `user`、チェックの `app` は、[GitHub の公開 OpenAPI](https://github.com/github/rest-api-description/blob/main/descriptions/api.github.com/api.github.com.json)で null 可の必須欄である。PR の `author` も [GraphQL の仕様](https://docs.github.com/en/graphql/reference/pulls)では null 可である。公開元で null の形は取れなかったため「見本なし」と記録し、子の欄を条件付きとしてテストする。

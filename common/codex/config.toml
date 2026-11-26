@@ -3,3 +3,8 @@
 # ログイン時の個人の設定を読まず、プロジェクトのシェルの起動ファイルを使う。
 # zsh は ZDOTDIR の .zshenv、bash は BASH_ENV を読む。
 allow_login_shell = false
+# 無人の実行で、起動のたびの更新の確認と、利用のデータの送信を止める。
+check_for_update_on_startup = false
+
+[analytics]
+enabled = false

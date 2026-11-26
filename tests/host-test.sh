@@ -40,6 +40,8 @@ STUB
 cat >"$test_dir/bin/ps" <<'STUB'
 #!/bin/bash
 base=${0%/*}/..
+# Codex の検証が、停止の確認に読む一覧は、本物の ps から返す。
+[[ $* != '-A -o pid,pgid,stat' && $* != '-A -o pid,pgid,stat,command' ]] || PATH=/bin:/usr/bin exec ps "$@"
 cat "$base/process-env"
 STUB
 cat >"$test_dir/bin/claude" <<'STUB'
@@ -61,6 +63,42 @@ STUB
 cat >"$test_dir/bin/codex" <<'STUB'
 #!/bin/bash
 base=${0%/*}/..
+if [[ $* == 'app-server --strict-config --listen stdio://' ]]; then
+ [[ $CODEX_HOME == */codex && ! -t 0 ]] || exit 93
+ printf '%s\n' "$CODEX_HOME" >>"$base/codex-checks"
+ mode=$(cat "$base/codex-strict" 2>/dev/null || echo ok)
+ case $mode in
+ ok) exit 0 ;;
+ fail) echo 'Error: /agent/codex/config.toml:3:1: unknown configuration field `bogus`' >&2; exit 1 ;;
+ silent) exit 1 ;;
+ old) echo "error: unexpected argument '--strict-config' found" >&2; exit 2 ;;
+ other2) echo 'error: another usage error' >&2; exit 2 ;;
+ secret) echo 'invalid type: string "SYNTHETIC_SECRET_VALUE", expected a map' >&2; exit 1 ;;
+ zombie-desc)
+  # 子孫が先に終わり、TERM を無視する親が回収しない。子孫はゾンビのまま、親が動き続ける。子孫の PID は親が記録する。
+  exec python3 -c 'import os, signal, sys, time
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+pid = os.fork()
+if pid == 0:
+    os._exit(0)
+open(sys.argv[1], "w").write("%d\n" % pid)
+open(sys.argv[2], "w").write("%d\n" % os.getpid())
+time.sleep(300)' "$base/desc-pid" "$base/codex-pid" ;;
+ term-*)
+  # term-<親>-<子孫>。親は TERM で終わる（exit）か無視する（ignore）。子孫は、なし（none）、TERM のあと 0.5 秒で終わる（finish）、無視する（ignore）。
+  spec=${mode#term-}; p=${spec%-*}; d=${spec#*-}
+  case $d in
+  finish) ( trap '/bin/sleep 0.5; echo done >"$base/desc-done"; exit 0' TERM; /bin/sleep 300 & wait ) & ;;
+  ignore) ( trap '' TERM; exec /bin/sleep 300 ) & ;;
+  esac
+  [[ $d == none ]] || printf '%s\n' "$!" >"$base/desc-pid"
+  printf '%s\n' "$$" >"$base/codex-pid"
+  case $p in
+  exit) trap 'exit 0' TERM; /bin/sleep 300 & wait $! ;;
+  ignore) trap '' TERM; exec /bin/sleep 300 ;;
+  esac ;;
+ esac
+fi
 [[ $* == 'login status' && $CODEX_HOME == */codex ]] || exit 92
 [[ ! -f $base/no-codex-auth ]]
 STUB
@@ -105,6 +143,9 @@ if [[ ${TEST_HOST_STEPS:-no} == yes ]]; then
  ui_steps_begin err 2 'ホストを準備'
  ui_phase_start 1
 fi
+[[ -z ${TEST_CODEX_SECONDS:-} ]] || codex_check_seconds=$TEST_CODEX_SECONDS
+[[ -z ${TEST_CODEX_GRACE:-} ]] || codex_grace_seconds=$TEST_CODEX_GRACE
+[[ -z ${TEST_CODEX_CONFIRM:-} ]] || codex_confirm_seconds=$TEST_CODEX_CONFIRM
 prepare_host
 RUN
 run() { /bin/bash "$test_dir/run.sh" "$root" >"$test_dir/out" 2>"$test_dir/err"; }
@@ -131,6 +172,166 @@ cmp "$root/common/codex/config.toml" "$TEMPLATE_AGENT_HOME/codex/config.toml"
 grep -qx 'daemon start' "$test_dir/calls"
 grep -qx 'https://example.test' "$test_dir/started-server"
 echo 'PASS host: 新しいホストへ共有ファイルと見張りを配置し、専用環境で一つのデーモンを起動する'
+[[ $(cat "$test_dir/codex-checks") == "$TEMPLATE_AGENT_HOME/codex" ]]
+python3 - "$TEMPLATE_AGENT_HOME/codex/config.toml" <<'PY'
+import sys
+import tomllib
+
+with open(sys.argv[1], "rb") as source:
+    config = tomllib.load(source)
+assert config == {"allow_login_shell": False, "check_for_update_on_startup": False, "analytics": {"enabled": False}}, config
+PY
+! grep -qF 'マークのない設定に' "$test_dir/err"
+echo 'PASS host: 新しいホストで Codex の設定に 2 つのキーを足し、専用の置き場で厳しい検証に 1 回かける'
+settings=$TEMPLATE_AGENT_HOME/claude/settings.json
+python3 - "$settings" "$test_dir/kit-settings.json" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+settings = Path(sys.argv[1])
+actual = json.loads(settings.read_text())
+assert actual == {
+    "syncClaudeAiSkills": False,
+    "syncClaudeAiPlugins": False,
+    "pluginConfigs": {"cc-plugin-agents-md@builtin": {"options": {"instructionFiles": "claude-md"}}},
+    "disableWorkflows": True,
+    "autoMemoryEnabled": False,
+    "cleanupPeriodDays": 30,
+    "skillOverrides": {key: "off" for key in (
+        "batch", "loop", "schedule", "deep-research", "workflow-authoring",
+        "design", "design-sync", "dataviz", "debug", "doctor", "update-config",
+        "fewer-permission-prompts", "plugin-authoring", "run-skill-generator",
+    )},
+    "permissions": {"deny": ["Monitor", "ScheduleWakeup", "RemoteTrigger"]},
+}, actual
+assert settings.stat().st_mode & 0o777 == 0o600
+Path(sys.argv[2]).write_bytes(settings.read_bytes())
+PY
+echo 'PASS host: Claude の共有の設定をキットの 8 つのキーだけで作り、権限を 600 にする'
+
+cat >"$test_dir/settings-run.sh" <<'RUN'
+#!/bin/bash
+set -euo pipefail
+source "$1/lib/ui.sh"
+source "${TEST_SETTINGS_HOST:-$1/lib/host.sh}"
+die() { ui_error "$*"; exit 1; }
+host_paths
+host_claude_settings
+RUN
+settings_run() { /bin/bash "$test_dir/settings-run.sh" "$root" >"$test_dir/out" 2>"$test_dir/err"; }
+python3 - "$settings" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+settings = Path(sys.argv[1])
+config = json.loads(settings.read_text())
+config.update(theme="dark", custom={"nested": [True, None, "人の値"]}, syncClaudeAiSkills=True, cleanupPeriodDays=7)
+config["pluginConfigs"]["personal-plugin"] = {"options": {"enabled": True}}
+config["pluginConfigs"]["cc-plugin-agents-md@builtin"]["options"]["instructionFiles"] = "agents-md"
+config["skillOverrides"].update(batch="on", **{"personal-skill": "on", "code-review": "on"})
+config["permissions"] = {"allow": ["Read"], "deny": ["Bash(secret)", "Monitor"]}
+settings.write_text(json.dumps(config, ensure_ascii=False))
+settings.chmod(0o644)
+PY
+settings_run
+for key in syncClaudeAiSkills cleanupPeriodDays pluginConfigs.cc-plugin-agents-md@builtin skillOverrides.batch; do
+ grep -qF "$key" "$test_dir/err"
+done
+grep -q '警告:' "$test_dir/err"
+python3 - "$settings" "$test_dir/kit-settings.json" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+settings = Path(sys.argv[1])
+actual = json.loads(settings.read_text())
+expected = json.loads(Path(sys.argv[2]).read_text())
+expected.update(theme="dark", custom={"nested": [True, None, "人の値"]})
+expected["pluginConfigs"]["personal-plugin"] = {"options": {"enabled": True}}
+expected["skillOverrides"].update({"personal-skill": "on", "code-review": "on"})
+expected["permissions"] = {"allow": ["Read"], "deny": ["Bash(secret)", "Monitor", "ScheduleWakeup", "RemoteTrigger"]}
+assert actual == expected, actual
+assert settings.stat().st_mode & 0o777 == 0o600
+# 空白とキーの順番だけが違うときも書かない。
+settings.write_text(json.dumps(actual, ensure_ascii=False, sort_keys=True))
+settings.chmod(0o640)
+stat = settings.stat()
+Path(str(settings) + ".before").write_text(json.dumps([stat.st_ino, stat.st_mtime_ns, stat.st_mode, settings.read_text()]))
+PY
+settings_run
+[[ ! -s $test_dir/err ]]
+python3 - "$settings" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+settings = Path(sys.argv[1])
+stat = settings.stat()
+assert [stat.st_ino, stat.st_mtime_ns, stat.st_mode, settings.read_text()] == json.loads(Path(str(settings) + ".before").read_text())
+assert not list(settings.parent.glob(".settings.*"))
+PY
+echo 'PASS host: 人のキー・プラグイン・スキル・権限を残し、キットの値を警告して戻し、同じ中身は書かない'
+
+# やめるキーがまだないため、将来その一覧に移した場合を作業用のコピーで確認する。
+python3 - "$root/lib/host.sh" "$test_dir/retired-host.sh" "$settings" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+host = Path(sys.argv[1]).read_text()
+host = host.replace("retired_keys = ()", 'retired_keys = ("formerKitKey",)')
+host = host.replace("retired_items = {}", 'retired_items = {("pluginConfigs",): ("formerKitPlugin",), ("skillOverrides",): ("formerKitSkill",), ("permissions", "deny"): ("FormerKitTool",)}')
+Path(sys.argv[2]).write_text(host)
+settings = Path(sys.argv[3])
+config = json.loads(settings.read_text())
+config["formerKitKey"] = True
+config["pluginConfigs"]["formerKitPlugin"] = {}
+config["skillOverrides"]["formerKitSkill"] = "off"
+config["permissions"]["deny"].append("FormerKitTool")
+settings.write_text(json.dumps(config))
+PY
+TEST_SETTINGS_HOST="$test_dir/retired-host.sh" settings_run
+python3 - "$settings" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+settings = Path(sys.argv[1])
+actual = json.loads(settings.read_text())
+expected = json.loads(json.loads(Path(str(settings) + ".before").read_text())[-1])
+assert actual == expected, actual
+PY
+echo 'PASS host: やめたキーとキットの項目だけを消し、人の項目を残す'
+
+for invalid in '{' '[]' 'null' 'true' '"text"' '30' '{"permissions":[]}' '{"permissions":null}' '{"permissions":{"deny":{}}}' '{"permissions":{"deny":null}}' '{"pluginConfigs":[]}' '{"pluginConfigs":null}' '{"skillOverrides":[]}'; do
+ printf '%s\n' "$invalid" >"$settings"
+ cp "$settings" "$test_dir/invalid-settings"
+ if settings_run; then exit 1; fi
+ cmp "$settings" "$test_dir/invalid-settings"
+ grep -qF '設定を直してから流し直してください' "$test_dir/err"
+done
+# 準備全体でも、形の違いをデーモン操作の前に止める。
+set_mode running
+deny
+[[ ! -s $test_dir/calls ]]
+echo 'PASS host: 壊れた JSON と最上位・permissions・deny・pluginConfigs・skillOverrides の形の違いで書かずに止まる'
+
+rm "$settings"
+for target in "$test_dir/kit-settings.json" "$test_dir/missing-settings.json"; do
+ ln -s "$target" "$settings"
+ if settings_run; then exit 1; fi
+ [[ -L $settings && $(readlink "$settings") == "$target" ]]
+ grep -qF 'シンボリックリンクを実体のファイルに置き換えてください' "$test_dir/err"
+ rm "$settings"
+done
+[[ ! -e $test_dir/missing-settings.json ]]
+cp "$test_dir/kit-settings.json" "$settings"
+settings_run
+[[ ! -s $test_dir/err ]]
+echo 'PASS host: 実体の有無によらずシンボリックリンクを拒み、リンク先を書き換えない'
+
 cmp "$root/common/host/start-daemon" "$TEMPLATE_AGENT_HOME/start-daemon"
 [[ $(sed -n '2p' "$TEMPLATE_AGENT_HOME/start-daemon") == '# multica-squad-kit-managed' ]]
 [[ -x $TEMPLATE_AGENT_HOME/start-daemon && ! -e $TEMPLATE_AGENT_HOME/bin/start-daemon ]]
@@ -428,6 +629,7 @@ for selected in claude codex; do
   export TEMPLATE_AGENT_HOME="$test_dir/$selected-only"
   if [[ $selected == claude ]]; then export TEST_MISSING_RUNTIME=codex; else export TEST_MISSING_RUNTIME=claude; fi
   touch "$test_dir/no-$TEST_MISSING_RUNTIME-auth"
+  : >"$test_dir/codex-checks"
   printf '[{"id":"runtime-%s","owner_id":"member-a","daemon_id":"daemon-a","provider":"%s","status":"online"}]\n' "$selected" "$selected" >"$TEST_RUNTIME_LIST"
   set_mode stopped
   run
@@ -435,9 +637,11 @@ for selected in claude codex; do
   if [[ $selected == claude ]]; then
    [[ ! -e $TEMPLATE_AGENT_HOME/codex/config.toml ]]
    ! grep -q '使用する Codex の設定' "$test_dir/err"
+   [[ ! -s $test_dir/codex-checks ]]
    printf 'invalid existing config\n' >"$TEMPLATE_AGENT_HOME/codex/config.toml"
   else
    cmp "$root/common/codex/config.toml" "$TEMPLATE_AGENT_HOME/codex/config.toml"
+   [[ ! -e $TEMPLATE_AGENT_HOME/claude/settings.json ]]
   fi
   set_mode busy
   agent_env
@@ -534,6 +738,290 @@ cmp "$root/common/guard/gh" "$TEMPLATE_AGENT_HOME/bin/gh"
 cmp "$root/common/guard/pre-push" "$TEMPLATE_AGENT_HOME/git-hooks/pre-push"
 cmp "$root/common/codex/config.toml" "$TEMPLATE_AGENT_HOME/codex/config.toml"
 echo 'PASS host: マークのある共有ファイルは 原本の内容へ更新する'
+
+# マークのない設定に 2 つのキーがないときは、警告して書き換えずに先へ進む。
+config=$TEMPLATE_AGENT_HOME/codex/config.toml
+for unmarked in $'allow_login_shell = false' $'allow_login_shell = false\ncheck_for_update_on_startup = true\n[analytics]\nenabled = false' $'allow_login_shell = false\ncheck_for_update_on_startup = false\n[analytics]\nenabled = "false"' $'allow_login_shell = false\ncheck_for_update_on_startup = false\n[analytics]\nother = false'; do
+ printf '%s\n' "$unmarked" >"$config"
+ cp "$config" "$test_dir/unmarked-config"
+ set_mode running
+ agent_env
+ run
+ cmp "$config" "$test_dir/unmarked-config"
+ grep -qF '警告: マークのない設定に、更新の確認と利用状況の送信を切るキーがありません' "$test_dir/err"
+ grep -q '^daemon status' "$test_dir/calls"
+done
+printf '%s\n' $'allow_login_shell = false\ncheck_for_update_on_startup = false' >"$config"
+run
+grep -qF '[analytics] の enabled = false' "$test_dir/err"
+! grep -qF 'check_for_update_on_startup' "$test_dir/err"
+printf '%s\n' $'allow_login_shell = false\n[analytics]\nenabled = false' >"$config"
+run
+grep -qF 'check_for_update_on_startup = false' "$test_dir/err"
+! grep -qF 'analytics' "$test_dir/err"
+printf '%s\n' $'allow_login_shell = false\ncheck_for_update_on_startup = false\n[analytics]\nenabled = false' >"$config"
+run
+! grep -qF 'マークのない設定に' "$test_dir/err"
+echo 'PASS host: マークのない Codex の設定に 2 つのキーがないときだけ、書き換えずに警告して進む'
+
+# 設定の検証。0 で進み、0 以外で止まり、古い Codex と時間切れは警告して進む。
+cp "$test_dir/original/codex/config.toml" "$config"
+cp "$root/common/codex/config.toml" "$config"
+: >"$test_dir/codex-checks"
+echo ok >"$test_dir/codex-strict"
+set_mode running
+agent_env
+run
+[[ $(wc -l <"$test_dir/codex-checks") -eq 1 ]]
+! grep -qF 'strict-config' "$test_dir/err"
+for failure in fail silent other2 secret; do
+ echo "$failure" >"$test_dir/codex-strict"
+ cp "$config" "$test_dir/strict-config"
+ set_mode running
+ agent_env
+ deny
+ grep -qF 'Codex の設定が厳しい検証を通りません' "$test_dir/err"
+ grep -qF 'キーを直すか消してから、セットアップを流し直してください' "$test_dir/err"
+ grep -qF '終了コード' "$test_dir/err"
+ grep -qF -- '--strict-config --listen stdio:// </dev/null' "$test_dir/err"
+ # Codex の出力は、秘密値を含みうるので表示しない。
+ ! grep -qF 'bogus' "$test_dir/err"
+ ! grep -qF 'another usage error' "$test_dir/err"
+ ! grep -qF 'SYNTHETIC_SECRET_VALUE' "$test_dir/err"
+ cmp "$config" "$test_dir/strict-config"
+ [[ ! -s $test_dir/calls ]]
+done
+# Codex を起動できないときは、設定の誤りと別の表示にし、設定のキーを直す案内を出さない。
+# 検証の処理が「起動できない」と返す。実際に起動できない場合は tests/codex-check-test.sh が確認する。
+mkdir -p "$test_dir/py-bin"
+cat >"$test_dir/py-bin/python3" <<'STUB'
+#!/bin/bash
+if [[ ${1:-} == */lib/codex-check.py ]]; then printf 'launch\n\n'; exit 0; fi
+PATH=${PATH#*py-bin:} exec python3 "$@"
+STUB
+chmod +x "$test_dir/py-bin/python3"
+PATH="$test_dir/py-bin:$PATH" deny
+grep -qF 'Codex を起動できませんでした' "$test_dir/err"
+grep -qF 'PATH に codex があり実行できることを確認' "$test_dir/err"
+! grep -qF '設定が厳しい検証を通りません' "$test_dir/err"
+! grep -qF 'キーを直すか消して' "$test_dir/err"
+! grep -qF '終了コード' "$test_dir/err"
+# 検証はログインの確認より前にあり、ログイン切れでも設定の誤りを先に出す。
+echo fail >"$test_dir/codex-strict"
+touch "$test_dir/no-codex-auth"
+deny
+grep -qF 'Codex の設定が厳しい検証を通りません' "$test_dir/err"
+! grep -qF 'codex login' "$test_dir/err"
+echo ok >"$test_dir/codex-strict"
+deny
+grep -qF 'codex login' "$test_dir/err"
+rm "$test_dir/no-codex-auth"
+echo 'PASS host: Codex の検証が 0 以外で書き換えずに止まり、ログインの確認より前に設定の誤りを出す'
+
+echo old >"$test_dir/codex-strict"
+set_mode running
+agent_env
+run
+grep -qF '警告: この Codex は --strict-config を受け付けないため、設定を検証できませんでした' "$test_dir/err"
+grep -q '^daemon status' "$test_dir/calls"
+# 時間切れの扱い。docs/agent-settings.md の「時間切れの扱い」の表と同じ行を、実際のプロセスで、次の表から流す。
+# 列: 名前|子孫の終了処理の印。上限 1 秒、猶予 3 秒で流し、どの行も猶予をすべて待ってから KILL を送る。
+# term-<親>-<子孫>: 親は TERM で終わる（exit）か無視する（ignore）。子孫は、なし（none）、終了処理をする（finish）、無視する（ignore）。
+# term-exit-none は、親だけがゾンビのグループになる。zombie-desc は、子孫がゾンビのまま親が動き続け、KILL のあとに親だけがゾンビになる。
+timeout_rows='term-exit-none|-
+term-exit-finish|あり
+term-exit-ignore|-
+term-ignore-none|-
+term-ignore-finish|あり
+term-ignore-ignore|-
+zombie-desc|-'
+# 生存は ps の状態で読む。kill -0 は、ゾンビを生きたプロセスと同じに返すので使わない。本物の ps を使う。
+proc_state() {
+ local state
+ state=$(/bin/ps -o stat= -p "$1" 2>/dev/null) || state=
+ state=${state//[[:space:]]/}
+ case $state in
+ '') echo gone ;;
+ Z*) echo zombie ;;
+ *) echo running ;;
+ esac
+}
+# PID が数値でなければ失敗にする。空の PID を「いない」と読んで通さない。
+is_pid() { [[ $1 =~ ^[0-9]+$ ]]; }
+not_running() { is_pid "$1" && [[ $(proc_state "$1") != running ]]; }
+is_gone() { is_pid "$1" && [[ $(proc_state "$1") == gone ]]; }
+# 判定が、生きたプロセス・ゾンビ・回収済み・空の PID を分けることを先に確認する。
+/bin/sleep 30 &
+live=$!
+[[ $(proc_state "$live") == running ]]
+! not_running "$live"
+! not_running ''
+! is_gone ''
+! not_running 'abc'
+python3 -c 'import os, sys, time
+pid = os.fork()
+if pid == 0:
+    os._exit(0)
+print(pid, flush=True)
+time.sleep(30)' >"$test_dir/zombie-pid" &
+zombie_parent=$!
+for _ in $(seq 1 100); do [[ -s $test_dir/zombie-pid ]] && break; /bin/sleep 0.1; done
+zombie=$(cat "$test_dir/zombie-pid")
+is_pid "$zombie"
+[[ $(proc_state "$zombie") == zombie ]]
+not_running "$zombie"
+! is_gone "$zombie"
+kill "$zombie_parent" "$live"
+wait "$zombie_parent" "$live" 2>/dev/null || true
+# 親が死ぬと、ゾンビはシステムが回収する。
+for _ in $(seq 1 100); do [[ $(proc_state "$zombie") == gone ]] && break; /bin/sleep 0.1; done
+is_gone "$zombie"
+# 別のプロセスのグループにいる対照のプロセスは、どの行でも残る。
+/bin/sleep 300 &
+control=$!
+while IFS='|' read -r row marker; do
+ echo "$row" >"$test_dir/codex-strict"
+ rm -f "$test_dir/desc-pid" "$test_dir/desc-done" "$test_dir/codex-pid"
+ set_mode running
+ agent_env
+ started=$(python3 -c 'import time; print(int(time.time() * 1000))')
+ TEST_CODEX_SECONDS=1 TEST_CODEX_GRACE=3 TEST_CODEX_CONFIRM=2 run
+ elapsed=$(( $(python3 -c 'import time; print(int(time.time() * 1000))') - started ))
+ grep -qF '警告: 設定の検証が 1 秒で終わらず、確認できませんでした' "$test_dir/err"
+ grep -q '^daemon status' "$test_dir/calls"
+ # 下限は待機 1 秒＋猶予 3 秒。上限は検証の許す 6 秒（待機 1＋猶予 3＋確認 2）に、準備全体の余裕 3 秒を足した 9 秒。
+ [[ $elapsed -ge 3900 && $elapsed -le 9000 ]] || { echo "時間切れの行 $row: ${elapsed} ミリ秒（期待 3900〜9000）" >&2; exit 1; }
+ # 直接の子は検証の処理が回収し、子孫は実行中で残らない。
+ is_gone "$(cat "$test_dir/codex-pid")"
+ if [[ $row == *-none ]]; then [[ ! -f $test_dir/desc-pid ]]; else not_running "$(cat "$test_dir/desc-pid")"; fi
+ if [[ $marker == あり ]]; then [[ -f $test_dir/desc-done ]]; else [[ ! -f $test_dir/desc-done ]]; fi
+ [[ $(proc_state "$control") == running ]]
+ [[ $(/bin/ps -o pgid= -p "$control" | tr -d ' ') != "$(cat "$test_dir/codex-pid")" ]]
+done <<<"$timeout_rows"
+kill "$control"
+wait "$control" 2>/dev/null || true
+echo 'PASS host: 古い Codex と時間切れは警告して進み、実際のプロセスの 7 行（親の終了・無視と子孫のなし・終了処理・無視、子孫だけのゾンビ）で、猶予をすべて待ち、子孫の終了処理を最後まで残し、実行中のプロセスと別のグループの対照のプロセスの扱いが決めたとおりになる'
+# ゾンビだけのグループを、本物のプロセスで作る。signal 0・TERM・KILL の結果は OS で違い、macOS では EPERM を確認し、Linux では観測した結果を出す。
+# どの状態も、停止の判定は ps の状態の読み取り（lib/codex-check.py の Operations.state）で分け、シグナルの結果から決めない。
+python3 -I - "$root/lib/codex-check.py" <<'PY'
+import importlib.util
+import os
+import signal
+import subprocess
+import sys
+import time
+
+sys.dont_write_bytecode = True
+spec = importlib.util.spec_from_file_location("codex_check", sys.argv[1])
+check = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(check)
+
+
+def stat(pid):
+    done = subprocess.run(["/bin/ps", "-o", "stat=", "-p", str(pid)], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    return done.stdout.decode().strip()
+
+
+def wait_for(predicate):
+    for _ in range(100):
+        if predicate():
+            return True
+        time.sleep(0.1)
+    return False
+
+
+def send(pgid, number):
+    try:
+        os.killpg(pgid, number)
+    except ProcessLookupError:
+        return "ESRCH"
+    except PermissionError:
+        return "EPERM"
+    return "ok"
+
+
+def start(script):
+    return subprocess.Popen(["/bin/bash", "-c", script], start_new_session=True)
+
+
+def read_state(proc):
+    return check.Operations(proc).state(proc.pid, 10)
+
+
+# 親だけがゾンビのグループ（子孫はいない）。
+parent = start("exit 0")
+assert wait_for(lambda: stat(parent.pid).startswith("Z")), "親がゾンビにならない"
+observed = [send(parent.pid, number) for number in (0, signal.SIGTERM, signal.SIGKILL)]
+assert read_state(parent) == check.STOPPED, "ゾンビだけのグループは停止済み"
+name = "macOS" if sys.platform == "darwin" else sys.platform
+print("観測 %s: ゾンビだけのグループへの signal 0・TERM・KILL の結果は %s" % (name, "・".join(observed)))
+if sys.platform == "darwin":
+    assert observed == ["EPERM"] * 3, observed
+else:
+    print("観測 %s: 設計の前提（成功）と%s" % (name, "一致する" if observed == ["ok"] * 3 else "違う"))
+# 直接の子を回収すると、グループは空になる。空のグループは ESRCH で、停止済みである。
+assert parent.wait() == 0
+assert [send(parent.pid, number) for number in (0, signal.SIGTERM, signal.SIGKILL)] == ["ESRCH"] * 3
+assert read_state(parent) == check.STOPPED, "空のグループは停止済み"
+
+# 親だけがゾンビで、子孫が動いているグループは、実行中である。
+mixed = start("/bin/sleep 300 & exit 0")
+assert wait_for(lambda: stat(mixed.pid).startswith("Z")), "親がゾンビにならない"
+assert read_state(mixed) == check.RUNNING
+assert send(mixed.pid, 0) == "ok", "動くプロセスがあれば、signal 0 は成功する"
+send(mixed.pid, signal.SIGKILL)
+mixed.wait()
+
+# 子孫だけがゾンビで、親が動いているグループは、実行中である。親が終われば、停止済みになる。
+descendant = subprocess.Popen([sys.executable, "-c", "import os, sys, time\n"
+                               "pid = os.fork()\n"
+                               "if pid == 0:\n"
+                               "    os._exit(0)\n"
+                               "print(pid, flush=True)\n"
+                               "time.sleep(300)"], stdout=subprocess.PIPE, start_new_session=True)
+zombie = int(descendant.stdout.readline())
+assert wait_for(lambda: stat(zombie).startswith("Z")), "子孫がゾンビにならない"
+assert read_state(descendant) == check.RUNNING
+send(descendant.pid, signal.SIGKILL)
+assert wait_for(lambda: stat(descendant.pid).startswith("Z"))
+assert read_state(descendant) == check.STOPPED
+descendant.wait()
+descendant.stdout.close()
+PY
+echo 'PASS host: ゾンビだけのグループが ps の状態で停止済みと読まれ、親だけ・子孫だけがゾンビで動くプロセスが残るグループは実行中と読まれ、macOS では signal 0・TERM・KILL が EPERM になる'
+# 停止を確認できないとき。ps を差し替えて、グループの状態を読めない場合と、実行中のプロセスが残る場合を作る。
+# 固定の診断で止まり、設定の誤りや python3 の不足と別の文になる。止まっても、KILL は送って直接の子は回収している。
+mkdir "$test_dir/ps-bin"
+cat >"$test_dir/ps-bin/ps" <<'STUB'
+#!/bin/bash
+base=${0%/*}/..
+case $(cat "$base/ps-mode") in
+fail) exit 1 ;;
+garbage) echo 'not a process table' ;;
+running) printf '  PID  PGID STAT COMMAND\n  %s   %s S    codex app-server\n' "$(cat "$base/codex-pid")" "$(cat "$base/codex-pid")" ;;
+esac
+STUB
+chmod +x "$test_dir/ps-bin/ps"
+echo term-ignore-none >"$test_dir/codex-strict"
+for ps_mode in fail garbage running; do
+ echo "$ps_mode" >"$test_dir/ps-mode"
+ rm -f "$test_dir/codex-pid"
+ set_mode running
+ agent_env
+ started=$(python3 -c 'import time; print(int(time.time() * 1000))')
+ PATH="$test_dir/ps-bin:$PATH" TEST_CODEX_SECONDS=1 TEST_CODEX_GRACE=2 TEST_CODEX_CONFIRM=2 deny
+ elapsed=$(( $(python3 -c 'import time; print(int(time.time() * 1000))') - started ))
+ [[ $elapsed -ge 4900 && $elapsed -le 9000 ]] || { echo "停止を確認できない行 $ps_mode: ${elapsed} ミリ秒（期待 4900〜9000）" >&2; exit 1; }
+ grep -qF '検証のプロセスの停止を確認できませんでした' "$test_dir/err"
+ grep -qF "グループ $(cat "$test_dir/codex-pid")" "$test_dir/err"
+ grep -qF 'ps -A -o pid,pgid,stat,command' "$test_dir/err"
+ ! grep -qF 'Codex の設定が厳しい検証を通りません' "$test_dir/err"
+ ! grep -qF 'python3 を確認して' "$test_dir/err"
+ [[ ! -s $test_dir/calls ]]
+ is_gone "$(cat "$test_dir/codex-pid")"
+done
+echo ok >"$test_dir/codex-strict"
+echo 'PASS host: 停止を確認できないとき、ps が失敗する・読めない・実行中が残る場合のどれでも、設定の誤りや python3 の不足と別の固定の診断で止まる'
 # ID を受け取る関数を、実際の bash と zsh の起動ファイルで確認する。
 cat >"$test_dir/project.sh" <<'RUN'
 #!/bin/bash

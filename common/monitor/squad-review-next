@@ -206,6 +206,98 @@ total = project_count + default_count
 result("select", roles, f"変えたファイル {total} 件が対応に当たった（プロジェクト {project_count} 件・既定 {default_count} 件）")
 MATCHPY
 
+# マージの依頼に写す文（PR の本文の注意と、役の返事の指摘の一覧）から、コードの囲みと HTML コメントを見分ける部品。
+# docs/merge-request-reading.md の「注意の入力の種類と写し方」の表の規則を持つ。DECIDE_PY と NOTE_PY の先頭に足して使う。
+read -r -d '' MARKUP_PY <<'MARKUPPY' || true
+import bisect
+import re
+
+FENCE = re.compile(r"(`{3,}|~{3,})")
+SPECIAL = re.compile(r"\\|`+|<!--")
+DROPPED = "（コードの囲みや HTML は PR の本文の注意を読む）"
+
+
+def fence_closes(line, fence):
+    """開いた囲みを閉じる行か。開きと同じ文字が、開きの長さ以上で並び、あとは空白だけ。"""
+    return re.fullmatch(re.escape(fence[0]) + "{" + str(len(fence)) + ",}[ ]*", line) is not None
+
+
+def comment_start(text, pos, index):
+    """pos 以降で、コードスパンとバックスラッシュの外にある最初の `<!--` の位置。なければ -1。
+    行の長さに比例する時間で終える。次に見る記号まで正規表現で飛び、閉じる逆引用符は、同じ長さの並びを行ごとに 1 回だけ集めた index から引く。
+    index は同じ行の呼び出しで使い回す空のリストで、最初に逆引用符を見たときに中身を作る。"""
+    while True:
+        found = SPECIAL.search(text, pos)
+        if not found:
+            return -1
+        mark = found.group(0)
+        if mark == "\\":
+            pos = found.start() + 2
+        elif mark == "<!--":
+            return found.start()
+        else:
+            if not index:
+                runs = {}
+                for run in re.finditer("`+", text):
+                    runs.setdefault(len(run.group(0)), []).append(run.start())
+                index.append(runs)
+            after = found.end()
+            starts = index[0].get(len(mark), [])
+            at = bisect.bisect_left(starts, after)
+            pos = starts[at] + len(mark) if at < len(starts) else after
+
+
+def markup_step(text, state):
+    """整えた 1 行を、状態 state から読む。(囲みやコメントに触れた行か, 次の状態) を返す。
+    state は、囲みやコメントの外なら None、コメントの中なら "comment"、囲みの中なら開きの記号（``` や ~~~）。
+    触れた行は、開く行・中の行・閉じる行・同じ行で開いて閉じる行で、見える文字が残っていても捨てる行にする。
+    囲みの中ではコメントの記号を、コメントの中では囲みの記号を見ない。"""
+    if state not in (None, "comment"):
+        return True, (None if fence_closes(text, state) else state)
+    if state is None:
+        opened = FENCE.match(text)
+        if opened:
+            return True, opened.group(1)
+    touched, pos, index = state == "comment", 0, []
+    while True:
+        if state == "comment":
+            end = text.find("-->", pos)
+            if end < 0:
+                return True, "comment"
+            pos, state = end + 3, None
+        else:
+            start = comment_start(text, pos, index)
+            if start < 0:
+                return touched, None
+            touched, pos, state = True, start + 2, "comment"
+
+
+MENTION_HEAD = re.compile(r"\]\(mention://", re.IGNORECASE)
+
+
+def unlink_mentions(text):
+    """メンションのリンク [名前](mention://…) を名前だけにし、残る mention:// は mention: // に直す。
+    ]( の位置から前へ戻って開きを探すので、[ が長く続く行でも行の長さに比例する時間で終える。"""
+    out, pos, end = [], 0, -1
+    for head in MENTION_HEAD.finditer(text):
+        if head.start() < pos:
+            continue
+        if end < head.end():
+            end = text.find(")", head.end())
+            if end < 0:
+                break
+        close = text.rfind("]", pos, head.start())
+        opened = text.find("[", pos if close < 0 else close + 1, head.start())
+        if opened < 0:
+            continue
+        out.append(text[pos:opened])
+        out.append(text[opened + 1:head.start()])
+        pos = end + 1
+    out.append(text[pos:])
+    return "".join(out).replace("mention://", "mention: //")
+
+MARKUPPY
+
 # decide の判定の中核。標準出力に JSON を 1 行だけ出す。
 #   python3 -I -c "$DECIDE_PY" lineage <ディレクトリ>   実装した系統: {"lineage": "Claude"|"Codex"|null}
 #   python3 -I -c "$DECIDE_PY" analyze <ディレクトリ>   行き先: {"action": leader|retry|fix|final|merge, ...}
@@ -427,7 +519,7 @@ def collect(comment, exclude, hops, found):
         if result is None:
             found["unread"].append(f"返事の結果が読めない: {name}")
             continue
-        got.append({"id": role_id, "round": comment, "result": result})
+        got.append({"id": role_id, "round": comment, "result": result, "reply": latest})
     info = rounds.get(comment.get("id")) or {}
     if info.get("prev_line") and not info.get("prev"):
         raise Unread("前の回: の行が読めない")
@@ -560,19 +652,115 @@ def final_pending(round_of):
     return None
 
 
+CONTROL = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+LEAD = re.compile(r"(?:[-*+]|[0-9]{1,9}\))(?=\s|\Z)")
+PRE_COUNT = re.compile(r"前からある不具合 ([0-9]+) 件")
+LIST_HEAD = re.compile(r"指摘の一覧:[ \t]*([0-9]+)[ \t]*件")
+MAX_ITEMS, MAX_ITEM_CHARS = 10, 200
+
+
+def tidy(text, mentions=True):
+    """写す文を整える。docs/merge-request-reading.md の「写す文の整え方」の 1・2・5。指摘の行の `<番号>.` は残す。4 は行の並びを見る finding_list が行う。
+    mentions を False にすると、5（メンションのリンクの置き換え）をしない。囲みとコメントを見分けるときは、置き換える前の文を読む。"""
+    text = CONTROL.sub("", text.replace("\t", " "))
+    pos = 0
+    while pos < len(text):  # 末尾全体を写さず、位置で進める。行の長さに比例する時間で終える
+        if text[pos].isspace() or text[pos] == ">":
+            pos += 1
+        else:
+            found = LEAD.match(text, pos)
+            if not found:
+                break
+            pos = found.end()
+    text = text[pos:]
+    if not mentions:
+        return text.strip()
+    return unlink_mentions(text.strip())
+
+
+def safe_name(name):
+    """マークの行の役の名前を、`- <役> ` の直後に置けるようにする。行頭が項目や囲みや HTML の記号に読まれないようにする。"""
+    return re.sub(r"^[<>`~#*+-]+", "", tidy(name)) or "役"
+
+
+def finding_list(reply):
+    """返事のコメントの `指摘の一覧:` を (件数, 項目の並び, 捨てた項目の数) で返す。1 つでなく、件数が 1 以上の数でなければ None。
+    コードの囲みの行と囲みの中、`<` で始まる項目は、「写す文の整え方」の 4 のとおり捨てる。"""
+    rows = lines_of(reply)
+    heads = [index for index, row in enumerate(rows) if row.startswith("指摘の一覧:")]
+    if len(heads) != 1:
+        return None
+    found = LIST_HEAD.fullmatch(rows[heads[0]])
+    if not found or int(found.group(1)) == 0:
+        return None
+    items, dropped, state = [], 0, None
+    for row in rows[heads[0] + 1:]:
+        if not re.match(r"-[ \t]", row):
+            break
+        touched, state = markup_step(tidy(row[2:], False), state)
+        if touched:
+            dropped += 1
+            continue
+        text = tidy(row[2:])
+        if text.startswith("<"):
+            dropped += 1
+            continue
+        if text:
+            items.append(text if len(text) <= MAX_ITEM_CHARS else text[:MAX_ITEM_CHARS] + "…")
+    return int(found.group(1)), items, dropped
+
+
+def reading(pairs):
+    """組の結果と最終レビューの結果（結果, 返事のコメント）から、残した指摘の件数と行、前からある不具合の件数と行を作る。"""
+    count, rows, shown, omitted, pre_total, pre_parts, dropped_any = 0, [], 0, 0, 0, [], False
+    for result, reply in pairs:
+        name = safe_name(result["name"])
+        found = PRE_COUNT.search(result["line"])
+        if found and int(found.group(1)):
+            pre_total += int(found.group(1))
+            pre_parts.append(f"{name} {int(found.group(1))} 件")
+        if result["mark"] != "warn":
+            continue
+        listed = finding_list(reply)
+        if listed is None:
+            count += 1
+            rows.append(f"- {name}: 指摘の行を読めない。結果を読む")
+            continue
+        declared, items, dropped = listed
+        dropped_any = dropped_any or dropped > 0
+        count += max(declared, len(items) + dropped)
+        for text in items:
+            if shown < MAX_ITEMS:
+                rows.append(f"- {name} {text}")
+                shown += 1
+            else:
+                omitted += 1
+        if declared > len(items) + dropped:
+            rows.append(f"- {name}: ほか {declared - len(items) - dropped} 件は結果を読む")
+    if dropped_any:
+        rows.append(f"- {DROPPED}")
+    if omitted:
+        rows.append(f"- ほか {omitted} 件は各役の結果を読む")
+    pre_line = f"前からある不具合: {pre_total} 件" + (f"（{'、'.join(pre_parts)}）" if pre_total else "")
+    return {"findings_count": count, "findings": rows, "pre_total": pre_total, "pre_line": pre_line}
+
+
 def merge(final_round):
     """マージの依頼へ進む。最終レビューの回があれば、その返事が確認したコミットと結論の行も添える。"""
-    confirmed, keys, lines = [], [], []
+    confirmed, keys, lines, pairs = [], [], [], []
     for entry in results:
         keys.append(key_of.get(entry["id"], entry["id"]))
         lines.append(entry["result"]["line"])
+        pairs.append((entry["result"], entry["reply"]))
     for role_id in waited(final_round) if final_round else []:
-        result = parse_result(latest_reply(final_round, role_id), final_round.get("id"))
+        reply = latest_reply(final_round, role_id)
+        result = parse_result(reply, final_round.get("id"))
         confirmed.append(hex_token(result["commit"]))
         if result["line"] not in lines:
             keys.append(key_of.get(role_id, role_id))
             lines.append(result["line"])
-    emit({"action": "merge", "commit": commit, "confirmed": confirmed, "keys": keys, "lines": lines, "short_path": short_path})
+            pairs.append((result, reply))
+    emit({"action": "merge", "commit": commit, "confirmed": confirmed, "keys": keys, "lines": lines, "short_path": short_path, **reading(pairs)})
 
 
 if short_path or not principal_ids:
@@ -608,6 +796,122 @@ if latest is not None:
         previous_commit = hex_token(result["commit"])
 emit({"action": "final", "commit": commit, "previous": previous_commit})
 DECIDEPY
+
+# マージの依頼の `マージの前に人間がすること:` の行を、PR の本文（標準入力）の `## 注意` の節から作る。
+# docs/merge-request-reading.md の「マージの前に人間がすること」と「写す文の整え方」。標準出力に、書く行をそのまま出す（1 行目が見出しの行）。
+read -r -d '' NOTE_PY <<'NOTEPY' || true
+import re
+import sys
+
+HEAD = "マージの前に人間がすること: "
+MAX_LINES, MAX_CHARS = 10, 800
+CONTROL = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+BULLET = re.compile(r"(?:[-*+]|[0-9]{1,9}[.)])(?=\s|\Z)")
+
+
+def section(body):
+    """見出しの行から次の `##` の見出しの前まで。見出しがなければ None。
+    コードの囲みと HTML コメントを本文の先頭から追い、どちらにも入っていない行の見出しだけを節の開始と終了に使う。"""
+    found = None
+    result = []
+    state = None
+    for line in body.splitlines():
+        if state is None:
+            if found is None:
+                if re.fullmatch(r"##[ \t]+注意[ \t]*", line):
+                    found = True
+                    continue
+            elif re.match(r"##(?:[ \t]|\Z)", line):
+                break
+        if found:
+            result.append(line)
+        _, state = markup_step(strip_marks(CONTROL.sub("", line.replace("\t", " "))), state)
+    return result if found else None
+
+
+def strip_marks(line):
+    """行頭の空白、`>`、箇条書きの記号を、なくなるまで外す。長い行でも、行の長さに比例する時間で終える。"""
+    pos = 0
+    while pos < len(line):
+        if line[pos].isspace():
+            pos += 1
+        elif line[pos] == ">":
+            pos += 1
+        else:
+            found = BULLET.match(line, pos)
+            if not found:
+                break
+            pos = found.end()
+    return line[pos:].strip()
+
+
+def heading_shaped(body):
+    """注意の見出しの形の行の数。本文のすべての行を、囲み・コメント・HTML ブロックの中も含めて数える。
+    各行を整える 1 と 2（制御文字を除き、タブを空白にし、行頭の記号を外す）で整え、`#` の並び、空白、`注意` の順で始まり、
+    あとが空白と `#` だけの行を 1 つと数える。"""
+    return sum(
+        re.fullmatch(r"#+[ ]*注意[ #]*", strip_marks(CONTROL.sub("", line.replace("\t", " ")))) is not None
+        for line in body.splitlines()
+    )
+
+
+def shape(raw_lines):
+    """整えた行の並びと、捨てた行があったかを返す。"""
+    kept, dropped, state = [], False, None
+    for raw in raw_lines:
+        line = strip_marks(CONTROL.sub("", raw.replace("\t", " ")))
+        touched, state = markup_step(line, state)
+        if touched:
+            dropped = True
+            continue
+        if line == "":
+            continue
+        if line.startswith("<"):
+            dropped = True
+            continue
+        kept.append(unlink_mentions(line))
+    if dropped:
+        kept.append(DROPPED)
+    return kept
+
+
+body = sys.stdin.read()
+raw = section(body)
+if raw is None:
+    print(HEAD + "読めない（PR の本文に注意の見出しがない）")
+    sys.exit(0)
+lines = shape(raw)
+if not lines:
+    print(HEAD + "読めない（PR の本文の注意が空）")
+elif lines in (["なし"], ["なし。"]):
+    # 「なし」と書く条件は、ここ 1 か所に置く。見出しの形の行が本文に 1 つだけのときに限る。
+    count = heading_shaped(body)
+    if count == 1:
+        print(HEAD + "なし")
+    else:
+        print(f"{HEAD}読めない（PR の本文に注意の見出しの形の行が {count} 個ある）")
+else:
+    shown, chars = [], 0
+    for line in lines:
+        if len(shown) >= MAX_LINES or chars + len(line) > MAX_CHARS:
+            break
+        shown.append(line)
+        chars += len(line)
+    if not shown:
+        shown = [lines[0][:MAX_CHARS - 1] + "…"]
+    if len(lines) == 1:
+        print(HEAD + shown[0])
+    else:
+        print(f"{HEAD}PR の注意の {len(lines)} 行")
+        for line in shown:
+            print("- " + line)
+        if len(shown) < len(lines):
+            print(f"- 続きは PR の本文の注意を読む（残り {len(lines) - len(shown)} 行）")
+NOTEPY
+
+# 囲みとコメントを見分ける部品を、2 つの処理の先頭に足す。
+DECIDE_PY="${MARKUP_PY}"$'\n'"${DECIDE_PY}"
+NOTE_PY="${MARKUP_PY}"$'\n'"${NOTE_PY}"
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/squad-cli-lib"
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -879,7 +1183,7 @@ pr_checks() {
 
 	for attempt in 1 2; do
 		status=0
-		out=$("$watch" link-check "$issue" 2>/dev/null) || status=$?
+		out=$("$watch" link-check "$issue" "$round" 2>/dev/null) || status=$?
 		line=$(grep -m1 '^紐付け:' <<<"$out" || true)
 		if [[ -z $line ]]; then
 			line='紐付け: 未確認 pr: 不明 理由: 判定の行が出なかった'
@@ -1063,12 +1367,44 @@ print_linkfail() {
 	fi
 }
 
-# マージを頼むコメントを書き、タスクを in_review にする。
-merge_request() {
-	local issue=$1 round=$2 res=$3 work=$4 body id
-	human_of_squad
-	mkdir -p tmp
-	body=$(mktemp tmp/squad-review-merge.XXXXXX) || dfail '本文のファイルを作れない'
+# PR の本文を 1 回だけ読み、マージの前に人間がすることの行（1 行目が見出しの行）を出す。読めないときは、読めない旨の行にする。
+# PR は、マージの依頼の確認の 2 で head を読んだのと同じ正規形の PR にする。
+pr_note() {
+	local repo number pr text
+	[[ $PR_URL =~ ^https://github\.com/([^/]+/[^/]+)/pull/([0-9]+)$ ]] || dfail "PR の正規形を読めない: ${PR_URL}"
+	repo=${BASH_REMATCH[1]} number=${BASH_REMATCH[2]}
+	if pr=$(squad_cli_read gh-pr-body "$number" "$repo" 2>/dev/null) && text=$(jq -er '.body | select(type == "string")' <<<"$pr" 2>/dev/null); then
+		printf '%s\n' "$text" | python3 -I -c "$NOTE_PY" || dfail 'PR の本文の注意を整えられない'
+	else
+		printf 'マージの前に人間がすること: 読めない（PR の本文を読めなかった）\n'
+	fi
+}
+
+# 読む深さの行を出す。docs/merge-request-reading.md の「読む深さ」。引数は、重要のラベル（true か false）、マージの前に人間がすることの行（1 行目）、残した指摘の件数、前からある不具合の件数。
+depth_line() {
+	local marked=$1 note=$2 findings=$3 pre=$4 state depth label
+	case ${note#マージの前に人間がすること: } in
+	なし) state=注意なし ;;
+	読めない（*) state=注意を読めない ;;
+	*) state=注意あり ;;
+	esac
+	if [[ $marked == true ]]; then
+		depth='PR の概要と設計文書まで' label=重要のタスク
+	else
+		label=重要でない
+		if [[ $state != 注意なし ]] || ((findings >= 1 || pre >= 1)); then
+			depth='このコメントと PR の注意'
+		else
+			depth='このコメントだけ'
+		fi
+	fi
+	printf '読む深さ: %s（%s。%s、残した指摘 %s 件、前からある不具合 %s 件）\n' "$depth" "$label" "$state" "$findings" "$pre"
+}
+
+# マージを頼むコメントの本文を、ファイルに書く。引数は、本文のファイル、前の回、結果、作業のディレクトリ、マージの前に人間がすることの行、重要のラベル（true か false）、
+# 指摘の行を件数の行だけにするか（short か full）。
+write_merge_body() {
+	local body=$1 round=$2 res=$3 work=$4 note=$5 marked=$6 form=${7:-full}
 	{
 		printf '[@%s](mention://member/%s) レビューと確認が済みました。PR のマージを判断してください。\n' "$HUMAN_NAME" "$HUMAN_ID"
 		printf 'マージの依頼: %s\n' "$MERGE_HEAD"
@@ -1076,6 +1412,11 @@ merge_request() {
 		[[ $(jq -r '.short_path' <<<"$res") != true ]] || printf '最終レビューなし（短い道）\n'
 		printf '%s\n' "$CONF_LINE"
 		[[ -z $CI_LINES ]] || printf '%s\n' "$CI_LINES"
+		depth_line "$marked" "$note" "$(jq -r .findings_count <<<"$res")" "$(jq -r .pre_total <<<"$res")"
+		printf '%s\n' "$note"
+		printf '直さずに残した指摘: %s 件\n' "$(jq -r .findings_count <<<"$res")"
+		[[ $form == short ]] || jq -r '.findings[]' <<<"$res"
+		jq -r .pre_line <<<"$res"
 		jq -r '.lines[]' <<<"$res"
 		if [[ $LINKED == false ]]; then
 			printf '紐付いていないので、マージのあとにタスクを `done` にしてほしい（または先に紐付けてほしい）。PR: `%s`\n' "$PR_URL"
@@ -1087,6 +1428,21 @@ merge_request() {
 			print_linkfail "$work"
 		fi
 	} >"$body"
+}
+
+# マージを頼むコメントを書き、タスクを in_review にする。
+merge_request() {
+	local issue=$1 round=$2 res=$3 work=$4 marked=$5 body id note read_why
+	human_of_squad
+	note=$(pr_note) || exit
+	mkdir -p tmp
+	body=$(mktemp tmp/squad-review-merge.XXXXXX) || dfail '本文のファイルを作れない'
+	write_merge_body "$body" "$round" "$res" "$work" "$note" "$marked"
+	# 写した行で本文が読めなくなったときは、注意の行を読めない旨に、指摘の行を件数の行だけに替えて、1 回だけ確認し直す。確認は post_request が流し、読めなければ何も書かない。
+	read_why=$(squad_cli_control body '[]' '[]' null "$(<"$body")") || dfail '書く本文を確認できない'
+	if [[ $read_why != ok ]]; then
+		write_merge_body "$body" "$round" "$res" "$work" 'マージの前に人間がすること: 読めない（写すと読めない本文になる）' "$marked" short
+	fi
 	id=$(post_request "$issue" "$round" "$body")
 	multica issue status "$issue" in_review >/dev/null || dfail 'タスクを in_review にできない（コメントは書いた）'
 	printf '次の依頼: マージの依頼\n依頼: %s\n' "$id"
@@ -1146,8 +1502,8 @@ human_call() {
 		printf '%s\n' "$wait_line"
 		if [[ $LINKED == false ]]; then
 			printf 'PR がタスクに紐付いていません。タスクの画面の PR の欄で `%s` を紐付けてください。\n' "$PR_URL"
+			print_linkfail "$work"
 		fi
-		print_linkfail "$work"
 	} >"$body"
 	id=$(post_request "$issue" "$round" "$body")
 	multica issue status "$issue" in_review >/dev/null || dfail 'タスクを in_review にできない（コメントは書いた）'
@@ -1229,7 +1585,7 @@ decide() {
 	case $action in
 	leader) stop_leader "$(jq -r .reason <<<"$res")" ;;
 	merge)
-		merge_request "$issue" "$round" "$res" "$work"
+		merge_request "$issue" "$round" "$res" "$work" "$marked"
 		return 0
 		;;
 	esac

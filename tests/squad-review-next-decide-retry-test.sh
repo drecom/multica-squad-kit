@@ -100,7 +100,7 @@ result round-1 code-reviewer ✅ "$sha" なし
 result round-1 qa ⚠️ "$sha" あり
 run round-1
 expect_leader '設計への指摘: あり（qa）'
-expect_call_has pr-watch-calls 'link-check test-issue'
+expect_call_has pr-watch-calls 'link-check test-issue round-1'
 # 設計への指摘: あり が ❌ と同じ回にあっても、修正より先にリーダーに任せる。
 reset
 base_round
