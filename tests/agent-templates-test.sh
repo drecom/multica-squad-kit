@@ -974,6 +974,15 @@ for f in "${sentence_files[@]}"; do
 done
 echo 'PASS templates: head の照合の表が、軸の値の組み合わせごとにちょうど 1 行に当たり、入口に最上位の役の条件がなく、再依頼の文が表を指すか通常の行だけに当たる'
 
+# 理由の表に、短い道に重要のマークが付いたときの行があり、通常の道へ戻す手順を指す。decide が出す理由の文字列と同じ語で探す。
+stuck_ref="$root/common/skills/squad-handoff/references/leader-review-stuck.md"
+stuck_row=$(grep -F '| `短い道に重要のマークがある` |' "$stuck_ref")
+[[ $(grep -c . <<<"$stuck_row") == 1 ]] || { echo 'FAIL templates: leader-review-stuck.md の理由の表に「短い道に重要のマークがある」の行が 1 つでない' >&2; exit 1; }
+[[ $stuck_row == *'[leader-request.md](leader-request.md) の「通常の道へ戻す」'* && $stuck_row == *'`道: 通常` を書いて設計を頼む'* ]] || { echo "FAIL templates: 「短い道に重要のマークがある」の行が通常の道へ戻す手順を指していない: $stuck_row" >&2; exit 1; }
+[[ $stuck_row != *最終レビューを頼む* ]] || { echo "FAIL templates: 「短い道に重要のマークがある」の行が最終レビューを頼む文になっている: $stuck_row" >&2; exit 1; }
+grep -qF '短い道に重要のマークがある' "$root/common/monitor/squad-review-next" || { echo 'FAIL templates: decide が出す理由と、理由の表の行の文字列が合わない' >&2; exit 1; }
+echo 'PASS templates: 短い道に重要のマークがあるときの理由の行が、通常の道へ戻す手順を指す'
+
 # 要件を決める役があるときは、同意の行がなければ `道: 短い` を書かない。ないときは、リーダーが 4 つの基準で決める。
 consent=$(awk '/^### 同意の記録$/ {inside=1; next} inside && /^#/ {exit} inside {print}' "$refs/leader-request.md")
 grep -qF '道: 短い（人間の同意を得た）' <<<"$consent"
