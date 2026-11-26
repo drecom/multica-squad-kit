@@ -13,7 +13,7 @@ e26217d9263a7ee07305e8624b87471bdf97acb3c4695c0046804fd6ffeb837a  ./.agents/rule
 413fd532816ee8052c4be65115622d62dffc68117c023ba598e9014c0553fbb1  ./.gitignore
 37feb6277999e20168efa6910ff4b72dcf7439b15ec664f04d67a6637f20506b  ./.markdownlint.json
 dfc7b81f937d5fb799b18ca4d9b7ac4ce58cee16f14edceb75bee2dfae80f53f  ./AGENTS.md
-d3753504bb8b7798ff2ad599592246ccf1a262bfbcc1d5d5107a4ca9d0bad325  ./CHANGELOG.md
+c7a754d759fc8a25dd890a96dee2a1e419113456d4ce59475b63022aad2f2e6d  ./CHANGELOG.md
 1eb99314d85723af288e50d11188f125f136b52e043917134038c50c02ef6a94  ./CONTRIBUTING.md
 35b6fce60988f9b9a34c897a147fc2304550a86189154497fd665bc8009dfc8e  ./EXTENSIONS.md
 c64ff136b0a19ba329f98b05b879ced23358f4863b7aa22d560c2359dba780a9  ./README.md
@@ -38,7 +38,7 @@ d8da18d3a04f221a485f3d92601576b988035ae567f26a74d5c3150c39ae646c  ./common/agent
 4bd8d7c6f55e67878469ab0d4e071d32755102558100f98d6a1765ae1ea826a1  ./common/agents/usage-monitor.md
 de3ef79d2b46fc63d00f2ef43ec4eb4817f7c337ba21c74ea8ff934cebdb5392  ./common/agents/ux-reviewer.md
 786b2afc8e950505313c1956d2d53d954d15a70c80909a551e2eafcf4ceaba9d  ./common/autopilots.md
-23be73f1ce7f4622de6a2c0a316e73720e9e6a603fc97f73ab4daa62b84e17a4  ./common/codex/config.toml
+baf24e68f69115e254139bd20bcd769e5677ad3f7882e582f10b3e1f4eeb12b9  ./common/codex/config.toml
 df2acf34199ccb21f6db596a8491bf8e11b59096b82a75b0851f2547cee09549  ./common/guard/gh
 15799b1ff7222641e44809664065d2b1b583d3d066db424d6a73f0cf67005106  ./common/guard/pre-push
 7c7afed97df65372d87d6ab58875f217f3f5d7329241e9c7838677887da0b889  ./common/host/start-daemon
@@ -67,8 +67,9 @@ b0e7a3279a4284756a60a54123b595a50e67522bb23ec18a8c0be187410e77d8  ./common/setup
 57693434623b5b8b4947ab836b372bfbfb50b910abfd296af162641a898f1a6b  ./common/skills/squad-handoff/references/leader-review-wait.md
 0e603565f0f6810c8d6bc105e6436298446fe9c3fbe70cea14160c95427c1b4c  ./common/skills/squad-handoff/references/leader-run-status.md
 1caa0a53bbaafea6d15e8105f94b22e1cd5b487b9891529111085f838bd88681  ./common/squad.md
-7ef78113c30f7d3d4a82a1acb985bf4616f9ece1044d42ecb39bc202d860dad9  ./docs/README.md
+067064d2cceb6e8977164c72e83a8b0346ea4ebcbcfe73f591487c0cdb31619b  ./docs/README.md
 c380ac8fd57091fa1d1ad80ff9724cba6667a7199b440a40b4be9b0e25f83623  ./docs/agent-path.md
+c2473e43861c12dc3733d0789b32e4e89c9a9d9827289f2c1968b6f2caaefb81  ./docs/agent-settings.md
 62062b7363a33eb140e814eeff5b3898d2d7d06aadc1ff95a07aa88aa001dbc7  ./docs/autopilot-targets.md
 3ca4ffccd35ce4ddcb26bc3c40ef34d2d2295eb27b8b0e08ea0522827b8bbb9c  ./docs/bug-repro-test.md
 ebdf260d83e27d572cf625fc1edb4b3ad30982a178e5848a00c4bc4d101d1167  ./docs/codex-models.md
@@ -112,12 +113,13 @@ f9976396457d968a6b10dc34235955d52889eaf20d46cc70c9785a748f2bb3bd  ./install.sh
 b9a45cd63da0d056163d453d727352a611c2515299627c097ce072f28fc7f8b7  ./lib/autopilots.sh
 512b0931741f70f708f2238fdac29efff235d7557c707511680359ac593cef54  ./lib/check.sh
 833e6d591ac67ca1b7e459f8e21efff237e9460c454cadcfd9ca7e0c8a8e5031  ./lib/clock.sh
+0dc2c64aee3da59bdabbe373e1322ac507196e512429114f573acd84903627b9  ./lib/codex-check.py
 2d1ddbe078e69260fa06aaf0af9169dd68aff118151dcebe615059714a3dd674  ./lib/extensions.py
 10cd0eaaddfd83b11ff48f1fd07d4fd3b029a93afd0504449017603559529589  ./lib/extensions.sh
-8f71ebecf2fb9ca1903e993a260d98608ecaa6dbd2215b02a6e4aef981209096  ./lib/host.sh
+9325c8a4b9e8c4f70428a124faba67cc0cf4ae40e9eb100238d81102f2ad624d  ./lib/host.sh
 23d61cb270e4f571520a230918feccc00e8b5b09cbcf430108e0a424244b5a96  ./lib/installation.sh
 98823f1dc43473fe56a1a8f1e37e3d5a3fc3e8dd2389a7dff8c71f0b4c40f6a1  ./lib/project-changes.sh
-53ee0c39a4c6b69df0c7c662859db934a0d0f9b2af8ecc5c28bb4d73353eac37  ./lib/project.sh
+350f6f6dd554d0aa4c32302a45d459aeab8750e4b1fcf2dcbbed53b747930fbc  ./lib/project.sh
 3dc076c27a91520974f0ac714c904b6304e6bfcb47f9a739054b9857ddb69203  ./lib/questions.sh
 ae4eac4a5f72d78dc0e311ec42a6ef3a9d1973f91a1aefe14ab32d8982f7b2a1  ./lib/render.sh
 586f3aa9bc5bfa9df551ff1e1be82b5adf9e671933b86341dde46bf9b804ca67  ./lib/setup-issues.sh
@@ -127,7 +129,7 @@ b8145ced477ed48eb7c0f599f44fc85c3e15990085d6de4521f276286cee6ff8  ./lib/terminal
 f57a7a829cf4cac51462f7a2dc04912b57a99927b8541727faf70f7e4fa701a4  ./lib/version.sh
 405d6c439cb72b4f19d46452714e5ef46f3b9517a1ce8bea0cd57d24afcd2836  ./lib/webhooks.sh
 50c2bfd06e66458d38fe423d6f4c2bf3223efe098dde74b561e21105c807af40  ./lib/workspace.sh
-c637962ae27eb7417007cf089f1d26beb84024b339e855d195e3590b1049e8a4  ./manual.md
+117eddf7d68c2482c0a36a2297e41f57a16e93a8b51ade1e729798689fd33166  ./manual.md
 633f1030aafe88149effa1a7c3d64247fd6100f682ffbaae2c212d44b443a538  ./scripts/build-assets.sh
 58a7f0238d3b698745dba710637832fad1c4dc3c051353b4a04505f77c798202  ./scripts/check-links.py
 44f95ffd36dfaf4829e3ea7a6c81dd60c6569595754aff1e8285e6d654c45eb1  ./scripts/check-style.py
@@ -175,6 +177,7 @@ d7a1cf28a40b9bd94cf5896aa080206642a3e9b4682294e8a7995a0e2f916ae0  ./tests/check-
 3522c848fc03000de4a002afff98c5f8e0cf6941a79e09a758355ffa796e4426  ./tests/cli-stub.py
 a1fdad4709b96eaf291e362acb0752f8cd1c78d10e784211ff77f58828164d66  ./tests/clock-stub.sh
 52a347e979c65198f0a4488973c48387f844aa1111c65564c015db05271732c1  ./tests/clock-test.sh
+44cb5191e0c04347eed0710be78be758e46c4b48a3fb379204f691b4e3ee6255  ./tests/codex-check-test.sh
 1e3f6c23d619e0f4bde1f42167ea3a8d8b98d5aeaf2db590ed65a28aa151a327  ./tests/command-forms-check.py
 a256b745cddd74c59582d7c33fcc21162c0153b7b6087765a883ecc7031cbf2f  ./tests/command-forms-table.tsv
 621ef758d32c4ae3a91e66302cc8b26311be21708d74342e67faf8c54225f853  ./tests/completion-colors-test.sh
@@ -277,7 +280,7 @@ ecd6f37c326cf97ab4c60f934a3168f56fd6923862d4a1de6831dbe7e96d3e23  ./tests/fixtur
 e71707f3eb05dce9239214fb9419946902d078f95a874892f01bdf155e6ee5b0  ./tests/guard-backend.sh
 c485d04a06ca5b2e1759c42d83c333199c3ddafe331031e377d34d669353970d  ./tests/guard-check-test.sh
 172ee5343c2d134522a4fbd00c7df066612331acc7b669d732c8cf3c0352cd3b  ./tests/host-daemon-test.sh
-a4c5860ae776566084db1dc41fc6801091b2e0d7a39b0d491d5c86fb9b259aba  ./tests/host-test.sh
+3572ed52c8d76cfe0a70abd2c1f75294148d282f02db2e959dc568e8afa492ca  ./tests/host-test.sh
 c8532b22f7a86ec6590a5cde3f64a6295148663e9f9893255209fca16fdea5b0  ./tests/install-command-test.sh
 539275b12edb26069fca5bedf9bb83abf3a73a7f68dc3c3ed5456c2ce19228f8  ./tests/install-test.sh
 f1213037642326b587fadb22e6a05923d656ed63570e526e52a8f7444b7e08e4  ./tests/installation-fixture.py
@@ -608,7 +611,7 @@ dc25895fd5677a8e06601ee32d44ccb93025e9097869f3b44f9d27f9ac95aa14  ./tests/pr-wat
 590390ee5eaf165b30acb680c7f2a7bc37123272f816d818b5cdac7b7d19e7c3  ./tests/pr-watch-test-lib.sh
 5a1e26a157c41cc1e8cfb3c0458c80fbf3174f183d0ad0d723f5605d8191f984  ./tests/pre-push-test.sh
 32bdfe52ae6a0e5949e26846ad289256ea94603c7d697af78dfb978e61d3b971  ./tests/project-changes-test.sh
-f07f7c2bd123320169b8c93f6502a02f91eb50b0f6dee67823a1cba306b0726e  ./tests/project-create-test.sh
+56e5aff4ba2247761f4963c341160b24875380f8e47c387e0be5a1fcaf1fa622  ./tests/project-create-test.sh
 03695b7195d4e55a905c477dbeff96fb6164d5b44795d557fba54ef1844b1fc3  ./tests/project-environment-test.sh
 2bc955be3acc4de17ba7fc030f4499ead32e87f7748bbcff52cd929e4a3fa21a  ./tests/project-failure-render-cache-check.sh
 e90a5edb6b1b0b97bcb8cb5e220f789d1148904978bf0b20f8d37e0541f5ef96  ./tests/project-failure-render-cache.sh
@@ -622,10 +625,10 @@ e2c2da5c20cc0a7ef5d2f04015270a5d7beaf188c6b9bfba94ead57341272480  ./tests/projec
 29f1e6218e5d1b8809f4f27f3645238ebeea0708ed97aa64482084ae82fa3022  ./tests/project-issues-test.sh
 e2141527ff9e7280bce9dd9dd161bec702edca9d55658c078e487cae802c9ab2  ./tests/project-linking-test.sh
 59c17b27dd840bfb577695d5bca491c7ccd0bfecd452cbd9b413838e2e4bef9c  ./tests/project-progress-test.sh
-bb890d6870a6f24d25a30f729ca1d314d0a780678bd08d75a765aefeba927fd4  ./tests/project-runtimes-first-test.sh
-49a2952f4ee19cd32654c5efa1f5c62dec4798c1dc224922db78c3d1cd9d8399  ./tests/project-runtimes-test.sh
+d0cd7e8a751619335411308ce9d5e57e7b118d468556e69430836af2ec1e259c  ./tests/project-runtimes-first-test.sh
+37a22b28f1f00c2e8789a4f17c25ad18dc5449da0c926f91b40fa46b1b57a1c8  ./tests/project-runtimes-test.sh
 c2ceb8dd3561ee8adeaca790ebc1594cb1ad442522bb2a39334276306999f1ad  ./tests/project-select-test.sh
-731a3fb2f3da59f50a313e0239b8789527dd2107c37771eb84d7606cc56b5663  ./tests/project-test-lib.sh
+63ad6769865e5444c970861a409f571272e549c2750ce69a89459b05e9e93062  ./tests/project-test-lib.sh
 5a6e6016e455b9837aaa4a2f9eb2beb31b865302d416a52421a8270dff432d14  ./tests/questions-fold-test.sh
 dc0b28093ee7de45ba672084ceb520a493f34f57faaacf9685f8d094bb883690  ./tests/questions-ui-test.sh
 301a11f2a4ce0520cf6b0da1f97e86ddc55aec1ce92385f2074f89365869ba22  ./tests/release-assertions.sh
@@ -662,7 +665,7 @@ fcccbb9e0648dd9d7fc4aac8faf9872bdc8bc7d69dfd625b20182e9baf90e285  ./tests/setup-
 a6c5bb9c0b064cc3d59d1c27500f66d22f5ba52839afa1dbbdcde6d532f82fe5  ./tests/setup-runtimes-both-changes-test.sh
 aa03f77f85dc73a75048a50267d331ce66338f2d54745c758e7d5d309a7fdddd  ./tests/setup-runtimes-both-issues-test.sh
 bebfff3bc6b1fda21b88f36dfcd50878711c0609ccc205d7643f80d524f331a7  ./tests/setup-runtimes-both-test.sh
-2a2a03210b6d6c82df33e8b91a2c0b2157cd756f1019cfe2e52bd1a9534ff6c8  ./tests/setup-runtimes-test-lib.sh
+e009edf54278979d7a9f1bc7336d64459d78cee9a7ceaa6b0e0310c21e22f5fd  ./tests/setup-runtimes-test-lib.sh
 6b6369063bad32faa4ed17590f2078773e7db36fc09ff67eeed02109a1a997f4  ./tests/setup-tag-test.sh
 e21574a9e6bf9dd12e207a5a5f472661de040ceb6e112bc4eedcd9bfa3658f9c  ./tests/setup-test.sh
 988a7f34189829bf2801c6177c00ffff55ae472c7f8fa0783978dcd52cf13764  ./tests/setup-version-cache-check.sh
@@ -756,7 +759,7 @@ c98729878e6706f5780a10fbbdd9246ef49a12182fb27d46624296d335659336  ./tests/termin
 c0509d732b2b3fa99f882283848bc2ba1c82ed3a6d0a90ac8263045dfee07010  ./tests/terminal-test.sh
 bb7b764515248a871ceb26e80ed0d7a543675fe39a1813d3355767cb94475dc7  ./tests/terms-test.sh
 70b930e2847c9b0174993617f714cab72a321fa0483e64d0c73b4ead24e3a97c  ./tests/test-runner-test.sh
-6bf6b584e92acf7a9e050572a468c27e40716df1d2fb623c316dbb5f96f3292a  ./tests/test-weights
+c492fb0b130a91d0d881d12ce03bedc56605b00665426a62988315bda419d610  ./tests/test-weights
 26c5ee5af12334788f56bf13d7912c59770691d19efffeef2c59ad5be01d7bc9  ./tests/tty-session-cases.py
 a0e2424125413c1c5bc44b0dba0b9c391785e81466da212529b51a8fbfe10013  ./tests/tty-session-test.sh
 a75552e9ce73a6a9face4c56e1a318d10150c76383b5c88d4f0de705dc9cde2f  ./tests/tty-session.py
