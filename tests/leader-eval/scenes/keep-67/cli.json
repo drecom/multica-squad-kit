@@ -71,6 +71,102 @@
       }
     },
     {
+      "match": "squad-task-read issue-shop-1",
+      "stdout": {
+        "schema_version": 1,
+        "task": {
+          "id": "issue-shop-1",
+          "identifier": "SHOP-1",
+          "title": "カートに商品数を出す",
+          "status": "in_progress",
+          "labels": [],
+          "metadata": {
+            "repository": "example/shop",
+            "branch": "feat/cart-badge",
+            "pr_url": "https://github.com/example/shop/pull/7"
+          },
+          "assignee_type": "squad",
+          "assignee_id": "squad-shop"
+        },
+        "comments": [
+          {
+            "id": "c-impl",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-claude-implementer",
+            "created_at": "2026-01-10T11:45:00Z",
+            "content": "[@SQUAD-SHOP](mention://squad/squad-shop) 実装を push しました。PR: https://github.com/example/shop/pull/7\n\n確認したこと:\n- 単体テストが通った\n\n残っていること:\n- レビュー"
+          },
+          {
+            "id": "c-round1",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T11:50:00Z",
+            "content": "[@shop-code-reviewer-member1](mention://agent/agent-code-reviewer) レビューをお願いします。\n確認するコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567\n返事を待つ役: [@shop-code-reviewer-member1](mention://agent/agent-code-reviewer)\n観点: コードレビュー（実装の中心がロジック）\n対象の PR: https://github.com/example/shop/pull/7"
+          },
+          {
+            "id": "c-rev1",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-code-reviewer",
+            "created_at": "2026-01-10T11:55:00Z",
+            "content": "返事の回: c-round1\n確認したコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567\n❌ code-reviewer: 必須 1 件\n- src/cart/Badge.tsx:formatCount: 負の数を渡すと `-3` と表示される\n設計への指摘: なし\n詳細は PR のコメントにあります。"
+          },
+          {
+            "id": "c-auto1",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-code-reviewer",
+            "created_at": "2026-01-10T11:56:00Z",
+            "content": "[@shop-claude-fixer-member1](mention://agent/agent-claude-fixer) PR の ❌ の指摘を直してください。\n前の回: c-impl\n修正の依頼: 1 回目\n振り分け: Claude。Claude 週 42%（使ってよい量 60%）・5 時間 23%、Codex 週 6%（使ってよい量 10%）\n直す指摘: code-reviewer（結果は、この回の返事のコメントと PR のコメントにある）\n対象の PR: https://github.com/example/shop/pull/7"
+          },
+          {
+            "id": "c-fix1",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-claude-fixer",
+            "created_at": "2026-01-10T12:00:00Z",
+            "content": "[@SQUAD-SHOP](mention://squad/squad-shop) 負の数の扱いを直して push しました。単体テストが通りました。"
+          },
+          {
+            "id": "c-round2",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T12:05:00Z",
+            "content": "[@shop-code-reviewer-member1](mention://agent/agent-code-reviewer) レビューをお願いします。\n確認するコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567\n返事を待つ役: [@shop-code-reviewer-member1](mention://agent/agent-code-reviewer)\n観点: コードレビュー（実装の中心がロジック）\n対象の PR: https://github.com/example/shop/pull/7"
+          },
+          {
+            "id": "c-rev2",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-code-reviewer",
+            "created_at": "2026-01-10T12:10:00Z",
+            "content": "返事の回: c-round2\n確認したコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567\n❌ code-reviewer: 必須 1 件\n- src/cart/Badge.tsx:formatCount: 小数を渡すと `2.5` と表示される\n設計への指摘: なし\n詳細は PR のコメントにあります。"
+          }
+        ],
+        "pr": {
+          "url": "https://github.com/example/shop/pull/7",
+          "state": "OPEN",
+          "draft": true,
+          "head_sha": "3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567",
+          "mergeable": "MERGEABLE"
+        },
+        "ci": null,
+        "runs": [
+          {
+            "id": "run-1",
+            "agent_id": "agent-claude-implementer",
+            "status": "completed",
+            "created_at": null
+          }
+        ],
+        "cuts": [],
+        "errors": []
+      }
+    },
+    {
       "match": "multica issue comment list issue-shop-1",
       "stdout": [
         {

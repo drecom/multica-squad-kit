@@ -382,8 +382,11 @@ task = load("task.json")
 judge = load("judge.json")
 rounds, finals = judge["rounds"], judge["finals"]
 rework_reviewed = judge["rework_reviewed"] is True
+if not isinstance(judge["short_path"], bool):
+    die("short_path の欄が真偽でない")
 round_id = params["round_id"]
 marked = bool(params.get("marked"))
+short_path = judge["short_path"] and not marked
 
 
 def when(comment):
@@ -597,8 +600,10 @@ if mismatched:
 flagged = [key_of.get(entry["id"], entry["id"]) for entry in results if entry["result"]["design"]]
 if flagged:
     stop(f"設計への指摘: あり（{'、'.join(flagged)}）")
+if judge["short_path"] and marked:
+    stop("短い道に重要のマークがある（通常の道へ戻して設計を頼む）")
 
-failed = [entry for entry in results if entry["result"]["mark"] == "ng"]
+failed =[entry for entry in results if entry["result"]["mark"] == "ng"]
 if failed:
     count = sum(1 for comment in comments for line in lines_of(comment) if line.startswith("修正の依頼:"))
     if count + 1 == 4:
@@ -755,10 +760,10 @@ def merge(final_round):
             keys.append(key_of.get(role_id, role_id))
             lines.append(result["line"])
             pairs.append((result, reply))
-    emit({"action": "merge", "commit": commit, "confirmed": confirmed, "keys": keys, "lines": lines, **reading(pairs)})
+    emit({"action": "merge", "commit": commit, "confirmed": confirmed, "keys": keys, "lines": lines, "short_path": short_path, **reading(pairs)})
 
 
-if not principal_ids:
+if short_path or not principal_ids:
     merge(None)
 if judge.get("blocked_final"):
     stop(judge["blocked_final"], True)
@@ -1287,12 +1292,15 @@ merge_checks() {
 	CI_LINES='' WATCH_LINE='' WATCH_FAILED=false
 	watcher=$(jq -r '.roles["ci-monitor"].id // empty' <<<"$roster")
 
-	# 2: PR の今の head。紐付けの行の pr: の正規形で読む。最上位の役があれば、最終レビューの確認したコミットと照合する。
+	# 2: PR の今の head。短い道では組のコミット、それ以外は最上位の役があれば最終レビューの確認したコミットと照合する。
 	[[ $PR_URL =~ ^https://github\.com/([^/]+/[^/]+)/pull/([0-9]+)$ ]] || dfail "PR の正規形を読めない: ${PR_URL}"
 	repo=${BASH_REMATCH[1]} number=${BASH_REMATCH[2]}
 	pr=$(squad_cli_read gh-pr-head "$number" "$repo" 2>/dev/null) || dfail 'PR の今の head を読めない'
 	MERGE_HEAD=$(jq -er '.headRefOid | select(type == "string" and test("^[0-9a-fA-F]{40}$"))' <<<"$pr") || dfail 'PR の今の head を読めない（headRefOid が 40 桁の SHA でない）'
-	if jq -e '.roles["claude-principal"] or .roles["codex-principal"]' <<<"$roster" >/dev/null; then
+	if [[ $(jq -r '.short_path' <<<"$res") == true ]]; then
+		same=$(jq -rn --arg head "$MERGE_HEAD" --arg commit "$(jq -r '.commit' <<<"$res")" '$head | ascii_downcase == ($commit | ascii_downcase)')
+		[[ $same == true ]] || stop_leader "PR の今の head（${MERGE_HEAD}）が組の確認するコミット（$(jq -r '.commit' <<<"$res")）と違う。今の head でレビューと E2E を頼み直す"
+	elif jq -e '.roles["claude-principal"] or .roles["codex-principal"]' <<<"$roster" >/dev/null; then
 		same=$(jq -rn --arg head "$MERGE_HEAD" --argjson confirmed "$(jq -c '.confirmed' <<<"$res")" \
 			'($confirmed | length) > 0 and all($confirmed[]; . as $token | ($head | ascii_downcase) | startswith($token | ascii_downcase))')
 		[[ $same == true ]] || stop_leader "PR の今の head（${MERGE_HEAD}）が最終レビューの確認したコミット（$(jq -r '.confirmed | join("、")' <<<"$res")）と違う。今の head で最終レビューを頼み直す"
@@ -1401,6 +1409,7 @@ write_merge_body() {
 		printf '[@%s](mention://member/%s) レビューと確認が済みました。PR のマージを判断してください。\n' "$HUMAN_NAME" "$HUMAN_ID"
 		printf 'マージの依頼: %s\n' "$MERGE_HEAD"
 		printf '前の回: %s\n' "$round"
+		[[ $(jq -r '.short_path' <<<"$res") != true ]] || printf '最終レビューなし（短い道）\n'
 		printf '%s\n' "$CONF_LINE"
 		[[ -z $CI_LINES ]] || printf '%s\n' "$CI_LINES"
 		depth_line "$marked" "$note" "$(jq -r .findings_count <<<"$res")" "$(jq -r .pre_total <<<"$res")"

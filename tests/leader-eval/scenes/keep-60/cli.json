@@ -56,6 +56,112 @@
       "stdout": "{\n  \"id\": \"issue-shop-1\",\n  \"identifier\": \"SHOP-1\",\n  \"title\": \"ログインの有効期限を延ばす\",\n  \"status\": \"in_progress\",\n  \"assignee_type\": \"squad\",\n  \"assignee_id\": \"squad-shop\",\n  \"project_id\": \"project-shop\",\n  \"labels\": [\n    {\n      \"id\": \"label-important\",\n      \"name\": \"重要\"\n    }\n  ],\n  \"metadata\": {\n    \"repository\": \"example/shop\",\n    \"branch\": \"feat/login-expiry\",\n    \"pr_url\": \"https://github.com/example/shop/pull/7\"\n  },\n  \"description\": \"ログインの有効期限を延ばす。更新のトークンの扱いも変える。\"\n}"
     },
     {
+      "match": "squad-task-read issue-shop-1",
+      "stdout": {
+        "schema_version": 1,
+        "task": {
+          "id": "issue-shop-1",
+          "identifier": "SHOP-1",
+          "title": "ログインの有効期限を延ばす",
+          "status": "in_progress",
+          "labels": [
+            "重要"
+          ],
+          "metadata": {
+            "repository": "example/shop",
+            "branch": "feat/login-expiry",
+            "pr_url": "https://github.com/example/shop/pull/7"
+          },
+          "assignee_type": "squad",
+          "assignee_id": "squad-shop"
+        },
+        "comments": [
+          {
+            "id": "c-1",
+            "parent_id": null,
+            "author_type": "member",
+            "author_id": "member1",
+            "created_at": "2026-01-10T08:00:00Z",
+            "content": "ログインの有効期限を延ばしたい"
+          },
+          {
+            "id": "c-2",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T08:10:00Z",
+            "content": "設計を承認されたので、マークを付けます。\n\n重要のマーク: 付けた。基準: 共通 2（安全の仕組みに触れる）。理由: ログインの有効期限と、トークンの更新の扱いを変える"
+          },
+          {
+            "id": "c-3",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-claude-implementer",
+            "created_at": "2026-01-10T09:00:00Z",
+            "content": "[@SQUAD-SHOP](mention://squad/squad-shop) 実装を push しました。PR: https://github.com/example/shop/pull/7\n\n確認したこと:\n- 単体テストが通った\n\n残っていること:\n- レビュー"
+          },
+          {
+            "id": "c-4",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-code-reviewer",
+            "created_at": "2026-01-10T09:10:00Z",
+            "content": "確認したコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567\n❌ code-reviewer: 必須 1 件\n- src/auth/expiry.ts:isExpired: 期限ちょうどの時刻で有効と判定する\n詳細は PR のコメントにあります。"
+          },
+          {
+            "id": "c-5",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T09:20:00Z",
+            "content": "[@shop-claude-principal-member1](mention://agent/agent-claude-principal) [@shop-security-reviewer-member1](mention://agent/agent-security-reviewer) 見直しをお願いします。\n\n見直しの種類: 設計と PR の見直し\n返事を待つ役: [@shop-claude-principal-member1](mention://agent/agent-claude-principal) [@shop-security-reviewer-member1](mention://agent/agent-security-reviewer)\n確認するコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567"
+          },
+          {
+            "id": "c-6",
+            "parent_id": "c-5",
+            "author_type": "agent",
+            "author_id": "agent-claude-principal",
+            "created_at": "2026-01-10T09:30:00Z",
+            "content": "/note\n✅ shop-claude-principal-member1: 指摘なし（設計と PR の見直し）\n設計の抜けも、コードの指摘もない\n確認したコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567"
+          },
+          {
+            "id": "c-7",
+            "parent_id": "c-5",
+            "author_type": "agent",
+            "author_id": "agent-security-reviewer",
+            "created_at": "2026-01-10T09:35:00Z",
+            "content": "/note\n❌ shop-security-reviewer-member1: 必須 1 件（設計 0、コード 1）\n- コード: src/auth/session.ts:refresh: 更新のとき、古いトークンを無効にしていない\n確認したコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567"
+          },
+          {
+            "id": "c-8",
+            "parent_id": "c-5",
+            "author_type": "agent",
+            "author_id": "agent-security-reviewer",
+            "created_at": "2026-01-10T09:35:00Z",
+            "content": "[@shop-orchestrator-member1](mention://agent/agent-orchestrator) 返事がそろいました。"
+          }
+        ],
+        "pr": {
+          "url": "https://github.com/example/shop/pull/7",
+          "state": "OPEN",
+          "draft": true,
+          "head_sha": "3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567",
+          "mergeable": "MERGEABLE"
+        },
+        "ci": null,
+        "runs": [
+          {
+            "id": "run-1",
+            "agent_id": "agent-claude-implementer",
+            "status": "completed",
+            "created_at": null
+          }
+        ],
+        "cuts": [],
+        "errors": []
+      }
+    },
+    {
       "match": "multica issue comment list issue-shop-1",
       "stdout": "[\n  {\n    \"id\": \"c-1\",\n    \"author_type\": \"member\",\n    \"author_id\": \"member1\",\n    \"parent_id\": null,\n    \"content\": \"ログインの有効期限を延ばしたい\",\n    \"created_at\": \"2026-01-10T08:00:00Z\"\n  },\n  {\n    \"id\": \"c-2\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-orchestrator\",\n    \"parent_id\": null,\n    \"content\": \"設計を承認されたので、マークを付けます。\\n\\n重要のマーク: 付けた。基準: 共通 2（安全の仕組みに触れる）。理由: ログインの有効期限と、トークンの更新の扱いを変える\",\n    \"created_at\": \"2026-01-10T08:10:00Z\"\n  },\n  {\n    \"id\": \"c-3\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-claude-implementer\",\n    \"parent_id\": null,\n    \"content\": \"[@SQUAD-SHOP](mention://squad/squad-shop) 実装を push しました。PR: https://github.com/example/shop/pull/7\\n\\n確認したこと:\\n- 単体テストが通った\\n\\n残っていること:\\n- レビュー\",\n    \"created_at\": \"2026-01-10T09:00:00Z\"\n  },\n  {\n    \"id\": \"c-4\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-code-reviewer\",\n    \"parent_id\": null,\n    \"content\": \"確認したコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567\\n❌ code-reviewer: 必須 1 件\\n- src/auth/expiry.ts:isExpired: 期限ちょうどの時刻で有効と判定する\\n詳細は PR のコメントにあります。\",\n    \"created_at\": \"2026-01-10T09:10:00Z\"\n  },\n  {\n    \"id\": \"c-5\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-orchestrator\",\n    \"parent_id\": null,\n    \"content\": \"[@shop-claude-principal-member1](mention://agent/agent-claude-principal) [@shop-security-reviewer-member1](mention://agent/agent-security-reviewer) 見直しをお願いします。\\n\\n見直しの種類: 設計と PR の見直し\\n返事を待つ役: [@shop-claude-principal-member1](mention://agent/agent-claude-principal) [@shop-security-reviewer-member1](mention://agent/agent-security-reviewer)\\n確認するコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567\",\n    \"created_at\": \"2026-01-10T09:20:00Z\"\n  },\n  {\n    \"id\": \"c-6\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-claude-principal\",\n    \"parent_id\": \"c-5\",\n    \"content\": \"/note\\n✅ shop-claude-principal-member1: 指摘なし（設計と PR の見直し）\\n設計の抜けも、コードの指摘もない\\n確認したコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567\",\n    \"created_at\": \"2026-01-10T09:30:00Z\"\n  },\n  {\n    \"id\": \"c-7\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-security-reviewer\",\n    \"parent_id\": \"c-5\",\n    \"content\": \"/note\\n❌ shop-security-reviewer-member1: 必須 1 件（設計 0、コード 1）\\n- コード: src/auth/session.ts:refresh: 更新のとき、古いトークンを無効にしていない\\n確認したコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567\",\n    \"created_at\": \"2026-01-10T09:35:00Z\"\n  },\n  {\n    \"id\": \"c-8\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-security-reviewer\",\n    \"parent_id\": \"c-5\",\n    \"content\": \"[@shop-orchestrator-member1](mention://agent/agent-orchestrator) 返事がそろいました。\",\n    \"created_at\": \"2026-01-10T09:35:00Z\"\n  }\n]"
     },

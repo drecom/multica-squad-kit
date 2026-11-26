@@ -1,0 +1,200 @@
+#!/usr/bin/env bash
+# multica-squad-kit-managed
+# 長い実行の区切りを、判定（check）と引き継ぎの投稿（post）で支える。値は同じ場所の squad-run-cut-values にある。
+# check: 区切るかを 1 行で出す。終了コードは 0（使い方の誤りは 2）。
+# post: 引き継ぎのコメントを投稿し、リーダーの見張りと自分の続きの起こしを作る。
+#   終了コード 0 は完了、1 は読み書きの失敗、2 は使い方か行の誤り、3 は起こしを作れない、4 は続けて区切れる回数の超過。
+# resume: 続きの実行の始めに、自分の実行の見張りを作り、post が作ったリーダーの見張りを消す。
+#   終了コード 0 は続けられる、1 は区切りのコメントを確かな形で読めない、2 は使い方の誤り、3 は見張りを作れない。
+# state: 役ごとに、区切りの続きの状態（待ち・動いている・始まらない・失敗した・終わった）を出す。
+#   終了コード 0 は完了、1 は読めない、2 は使い方の誤り。
+set -euo pipefail
+here=$(dirname "${BASH_SOURCE[0]}")
+source "$here/squad-cli-lib"
+source "$here/squad-run-cut-values"
+
+usage() {
+	{
+		echo '使い方:'
+		echo '  squad-run-cut check <タスク> <自分のエージェントの ID> <圧縮の回数>'
+		echo '  squad-run-cut post <タスク> <ファイル> <自分のエージェントの ID> <リーダーのエージェントの ID>'
+		echo '  squad-run-cut resume <タスク> <区切りのコメントの ID> <自分のエージェントの ID> <リーダーのエージェントの ID>'
+		echo '  squad-run-cut state <タスク>'
+	} >&2
+	exit 2
+}
+
+value_ok() {
+	local name
+	for name in CALLS COMPACTIONS MAX_CONSECUTIVE START_WAIT; do
+		if [[ ! ${!name-} =~ ^[1-9][0-9]*$ ]]; then
+			echo "squad-run-cut-values の $name を正の整数で読めません" >&2
+			return 1
+		fi
+	done
+}
+
+check() {
+	[[ $# == 3 && -n $1 && -n $2 && $3 =~ ^[0-9]+$ ]] || usage
+	value_ok || exit 1
+	local task=$1 compactions=$3 messages calls=未確認 verdict=要らない
+	# 実行の ID がないか、記録を読めないときは、呼び出しを数えず、圧縮の数だけで決める。
+	if [[ -n ${MULTICA_TASK_ID-} ]] \
+		&& messages=$(multica issue run-messages "$MULTICA_TASK_ID" --issue "$task" --output json 2>/dev/null) \
+		&& calls=$(jq -er 'if type == "array" then [.[] | select(.type == "tool_use")] | length else error("array") end' <<<"$messages" 2>/dev/null); then
+		:
+	else
+		calls=未確認
+	fi
+	if ((compactions >= COMPACTIONS)); then verdict=要る; fi
+	if [[ $calls != 未確認 ]] && ((calls >= CALLS)); then verdict=要る; fi
+	printf '区切り: %s 呼び出し=%s 圧縮=%s\n' "$verdict" "$calls" "$compactions"
+}
+
+# 4 つの行が、行の頭から、空でない中身を持つかを確認する。
+lines_ok() {
+	local file=$1 key
+	for key in '区切り:' '済んだこと:' '残り:' '次に読む場所:'; do
+		if ! grep -Eq "^${key}[[:space:]]*[^[:space:]]" "$file"; then
+			echo "引き継ぎのファイルに、中身のある「${key}」の行がありません" >&2
+			return 1
+		fi
+	done
+}
+
+# 続けて区切った回数と、投稿先のスレッドを、{count, parent} の JSON で出す。
+# 起点は、自分のメンションを含む最も新しいコメントで、なければタスクの始めから数える。
+cut_state() {
+	jq -c --arg self "$1" '
+		sort_by(.created_at) as $all
+		| ("mention://agent/" + $self) as $mention
+		| ($all | to_entries | map(select(.value.content | contains($mention))) | last | .key) as $base
+		| def root($c):
+			if $c.parent_id == null then $c.id
+			else (($all | map(select(.id == $c.parent_id)) | first) as $p
+				| if $p == null then $c.parent_id else root($p) end)
+			end;
+		(if $base == null then $all else $all[$base + 1:] end
+			| map(select(.author_type == "agent" and .author_id == $self
+				and (.content | test("(^|\n)区切り:"))))
+			| length) as $own
+		| {count: ($own + 1), parent: (if $base == null then null else root($all[$base]) end)}
+	'
+}
+
+post() {
+	[[ $# == 4 && -n $1 && -n $2 && -n $3 && -n $4 ]] || usage
+	value_ok || exit 1
+	local task=$1 file=$2 self=$3 leader=$4 comments state count parent comment watch wake instruction
+	[[ -f $file && -r $file ]] || { echo "引き継ぎのファイルを読めません: $file" >&2; exit 2; }
+	lines_ok "$file" || exit 2
+	comments=$(squad_cli_read issue-comments "$task") || { echo 'タスクのコメントを読めません' >&2; exit 1; }
+	state=$(cut_state "$self" <<<"$comments") || { echo 'コメントから区切った回数を数えられません' >&2; exit 1; }
+	count=$(jq -r .count <<<"$state")
+	parent=$(jq -r '.parent // empty' <<<"$state")
+	if ((count > MAX_CONSECUTIVE)); then
+		echo "続けて区切れる回数（${MAX_CONSECUTIVE}）を超えます。区切らずに、通常の引き継ぎでリーダーへ返してください" >&2
+		exit 4
+	fi
+	# スクワッドとリーダーはメンションしない。起点があれば、そのスレッドへ、なければ最上位に書く。
+	if [[ -n $parent ]]; then
+		comment=$(squad_cli_read issue-comment-add "$task" "$parent" "$file" | jq -er .id) || { echo '区切りのコメントを投稿できません' >&2; exit 1; }
+	else
+		comment=$(multica issue comment add "$task" --content-file "$file" --output json | jq -er .id) || { echo '区切りのコメントを投稿できません' >&2; exit 1; }
+	fi
+	mkdir -p tmp
+	instruction=$(mktemp tmp/run-cut-wakeup.XXXXXX)
+	trap "$(printf 'rm -f -- %q' "$instruction")" EXIT
+	# 見張りを続きより先に作り、見張りのない続きを残さない。
+	printf '区切りの続きの確認: %s\n' "$comment" >"$instruction"
+	if ! watch=$(squad_cli_read issue-wakeup-create "$task" "$instruction" --kind at --after "${START_WAIT}m" --agent-id "$leader" | jq -er .id); then
+		echo "リーダーの見張りの起こしを作れません（区切りのコメント: ${comment}）" >&2
+		exit 3
+	fi
+	printf '区切りの続きで起きました。 %s\n' "$comment" >"$instruction"
+	if ! wake=$(squad_cli_read issue-wakeup-create "$task" "$instruction" --kind at --after 1m --agent-id "$self" | jq -er .id); then
+		# 続きのない見張りは、リーダーが起きたときに続きがないと読むので、消せなくてもよい。
+		multica issue wakeup delete "$task" "$watch" --output json >/dev/null 2>&1 || true
+		echo "続きの起こしを作れません（区切りのコメント: ${comment}）" >&2
+		exit 3
+	fi
+	printf '投稿: %s\n見張り: %s\n起こし: %s\n' "$comment" "$watch" "$wake"
+}
+
+# 続きの実行の始めに流す。見張りを自分の実行に付け替える。
+resume() {
+	[[ $# == 4 && -n $1 && -n $2 && -n $3 && -n $4 ]] || usage
+	local task=$1 cut=$2 self=$3 leader=$4 comments instruction ids id
+	comments=$(squad_cli_read issue-comments "$task") || { echo 'タスクのコメントを読めません' >&2; exit 1; }
+	if ! jq -e --arg id "$cut" --arg self "$self" '
+		type == "array" and any(.[]; .id == $id and .author_type == "agent" and .author_id == $self
+			and (.content | test("(^|\n)区切り:")))' <<<"$comments" >/dev/null 2>&1; then
+		echo "区切りのコメントを確認できません（コメント: ${cut}）。作者が自分でないか、区切りの行がありません" >&2
+		exit 1
+	fi
+	if [[ -z ${MULTICA_TASK_ID-} ]]; then
+		echo '実行の ID（MULTICA_TASK_ID）がないため、見張りを作れません' >&2
+		exit 3
+	fi
+	mkdir -p tmp
+	instruction=$(mktemp tmp/run-cut-wakeup.XXXXXX)
+	trap "$(printf 'rm -f -- %q' "$instruction")" EXIT
+	printf '区切りの続きの確認: %s\n' "$cut" >"$instruction"
+	if ! squad_cli_read issue-wakeup-create "$task" "$instruction" --kind event --event task.failed,task.cancelled \
+		--task-id "$MULTICA_TASK_ID" --agent-id "$leader" | jq -e .id >/dev/null; then
+		echo "実行の見張りの起こしを作れません（区切りのコメント: ${cut}）" >&2
+		exit 3
+	fi
+	# post が作った、時刻の見張りだけを消す。実行の見張りは、同じ指示で条件を持つので残る。消せなくても止まらない。
+	if ids=$(squad_cli_read issue-wakeups "$task" | jq -r --arg leader "$leader" --arg text "区切りの続きの確認: ${cut}" '
+		.[] | select(.agent_id == $leader and .condition == null and (.instruction | rtrimstr("\n")) == $text) | .id' 2>/dev/null); then
+		while IFS= read -r id; do
+			[[ -n $id ]] || continue
+			multica issue wakeup delete "$task" "$id" --output json >/dev/null 2>&1 || true
+		done <<<"$ids"
+	fi
+	printf '続き: %s\n' "$cut"
+}
+
+# 区切りを使う役ごとに、最も新しい区切りのコメントから、続きの状態を 1 行で出す。
+state() {
+	[[ $# == 1 && -n $1 ]] || usage
+	value_ok || exit 1
+	local task=$1 roster comments runs ids
+	roster=$(squad_cli_read_roster_for_caller "$task") || { echo '名簿を読めません' >&2; exit 1; }
+	comments=$(squad_cli_read issue-comments "$task") || { echo 'タスクのコメントを読めません' >&2; exit 1; }
+	runs=$(squad_cli_read issue-runs "$task") || { echo 'タスクの実行の一覧を読めません' >&2; exit 1; }
+	ids=$(jq -c '[.roles["claude-implementer"], .roles["claude-fixer"], .roles["designer"] | select(. != null) | .id]' <<<"$roster") \
+		|| { echo '名簿から役のエージェントを読めません' >&2; exit 1; }
+	# コメントと実行の一覧は大きくなるので、引数ではなくファイルとして渡す（引数の長さの上限を避ける）。
+	jq -nr --argjson ids "$ids" --slurpfile comments_f <(printf '%s' "$comments") --slurpfile runs_f <(printf '%s' "$runs") --argjson wait "$START_WAIT" '
+		$comments_f[0] as $comments | $runs_f[0] as $runs
+		| def ts: sub("\\.[0-9]+"; "") | sub("\\+00:00$"; "Z") | fromdateiso8601;
+		def is_cut: .content | test("(^|\n)区切り:");
+		def finished: . == "completed" or . == "failed" or . == "cancelled";
+		$ids[] as $id
+		| ($comments | map(select(.author_type == "agent" and .author_id == $id) | . + {t: (.created_at | ts)})) as $own
+		| ($own | map(select(is_cut)) | sort_by(.t) | last) as $cut
+		| select($cut != null)
+		# 区切りのあとに、区切りでないコメントを書いていれば、区切りを終えている。
+		| select($own | map(select(.t > $cut.t and (is_cut | not))) | length == 0)
+		| ($runs | map(select(.agent_id == $id) | . + {t: (.created_at | ts)}) | map(select(.t > $cut.t)) | sort_by(.t)) as $after
+		| (if ($after | length) == 0 then
+				(if now - $cut.t > $wait * 60 then "始まらない" else "待ち" end)
+			elif any($after[]; .status | finished | not) then "動いている"
+			elif ($after | last | .status) == "completed" then "終わった"
+			else "失敗した" end) as $state
+		| "区切り: \($id) \($state) \($cut.id)"' \
+		|| { echo '区切りの状態を決められません' >&2; exit 1; }
+}
+
+(($# > 0)) || usage
+command=$1
+shift
+case $command in
+check) check "$@" ;;
+post) post "$@" ;;
+resume) resume "$@" ;;
+state) state "$@" ;;
+*) usage ;;
+esac

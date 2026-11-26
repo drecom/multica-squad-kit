@@ -9,6 +9,84 @@
       "stdout": "{\n  \"id\": \"issue-shop-1\",\n  \"identifier\": \"SHOP-1\",\n  \"title\": \"カートに商品数を出す\",\n  \"status\": \"in_progress\",\n  \"assignee_type\": \"squad\",\n  \"assignee_id\": \"squad-shop\",\n  \"project_id\": \"project-shop\",\n  \"labels\": [],\n  \"metadata\": {\n    \"repository\": \"example/shop\",\n    \"branch\": \"feat/cart-badge\",\n    \"pr_url\": \"https://github.com/example/shop/pull/7\"\n  },\n  \"description\": \"カートのアイコンに、入っている商品の数を出す。\"\n}"
     },
     {
+      "match": "squad-task-read issue-shop-1",
+      "stdout": {
+        "schema_version": 1,
+        "task": {
+          "id": "issue-shop-1",
+          "identifier": "SHOP-1",
+          "title": "カートに商品数を出す",
+          "status": "in_progress",
+          "labels": [],
+          "metadata": {
+            "repository": "example/shop",
+            "branch": "feat/cart-badge",
+            "pr_url": "https://github.com/example/shop/pull/7"
+          },
+          "assignee_type": "squad",
+          "assignee_id": "squad-shop"
+        },
+        "comments": [
+          {
+            "id": "comment-1",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T09:10:00Z",
+            "content": "[@shop-claude-implementer-member1](mention://agent/agent-claude-implementer) 実装のフェーズ 1 を頼みます。"
+          },
+          {
+            "id": "comment-2",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-claude-implementer",
+            "created_at": "2026-01-10T09:20:00Z",
+            "content": "実装の役 shop-claude-implementer-member1 の実行が失敗しました（Ruby 3.3 is required but 3.1 was found）。"
+          },
+          {
+            "id": "comment-3",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T09:30:00Z",
+            "content": "[@shop-claude-fixer-member1](mention://agent/agent-claude-fixer) 実装の続きを頼みます。\n\n原因: Ruby 3.3 が要るが 3.1 で動いた（実装の役の実行が失敗した）。"
+          },
+          {
+            "id": "comment-4",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-claude-fixer",
+            "created_at": "2026-01-10T09:40:00Z",
+            "content": "修正の役 shop-claude-fixer-member1 の実行が失敗しました（Ruby 3.3 is required but 3.1 was found）。"
+          }
+        ],
+        "pr": {
+          "url": "https://github.com/example/shop/pull/7",
+          "state": "OPEN",
+          "draft": true,
+          "head_sha": "3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567",
+          "mergeable": "MERGEABLE"
+        },
+        "ci": null,
+        "runs": [
+          {
+            "id": "run-impl-1",
+            "agent_id": "agent-claude-implementer",
+            "status": "failed",
+            "created_at": null
+          },
+          {
+            "id": "run-fix-1",
+            "agent_id": "agent-claude-fixer",
+            "status": "failed",
+            "created_at": null
+          }
+        ],
+        "cuts": [],
+        "errors": []
+      }
+    },
+    {
       "match": "multica issue comment list issue-shop-1",
       "stdout": "[\n  {\n    \"id\": \"comment-1\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-orchestrator\",\n    \"parent_id\": null,\n    \"content\": \"[@shop-claude-implementer-member1](mention://agent/agent-claude-implementer) 実装のフェーズ 1 を頼みます。\",\n    \"created_at\": \"2026-01-10T09:10:00Z\"\n  },\n  {\n    \"id\": \"comment-2\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-claude-implementer\",\n    \"parent_id\": null,\n    \"content\": \"実装の役 shop-claude-implementer-member1 の実行が失敗しました（Ruby 3.3 is required but 3.1 was found）。\",\n    \"created_at\": \"2026-01-10T09:20:00Z\"\n  },\n  {\n    \"id\": \"comment-3\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-orchestrator\",\n    \"parent_id\": null,\n    \"content\": \"[@shop-claude-fixer-member1](mention://agent/agent-claude-fixer) 実装の続きを頼みます。\\n\\n原因: Ruby 3.3 が要るが 3.1 で動いた（実装の役の実行が失敗した）。\",\n    \"created_at\": \"2026-01-10T09:30:00Z\"\n  },\n  {\n    \"id\": \"comment-4\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-claude-fixer\",\n    \"parent_id\": null,\n    \"content\": \"修正の役 shop-claude-fixer-member1 の実行が失敗しました（Ruby 3.3 is required but 3.1 was found）。\",\n    \"created_at\": \"2026-01-10T09:40:00Z\"\n  }\n]"
     },

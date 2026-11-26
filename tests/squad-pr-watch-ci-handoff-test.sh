@@ -175,3 +175,87 @@ check_held $'CI / test\nexternal'
 assert_jq -s 'length == 1 and .[0][2] == "https://github.com/Example/Repo/pull/67"' "$test_dir/gh-calls.jsonl"
 assert_jq -s 'length == 1 and (.[0].body | startswith("/note\nCI abcdef0:"))' "$test_dir/posted.jsonl"
 echo 'PASS ci-held: 正規形でだけ読み、チェック名と取得記録を返す'
+
+# 区切りの途中は、動いている実行がなくても作業中として保留する。
+# スクワッド Demo-Test に、区切りを使う 3 役（claude-implementer・claude-fixer・designer）を置く。
+ago() { python3 -c 'import datetime as d, sys; print((d.datetime.now(d.timezone.utc) - d.timedelta(minutes=int(sys.argv[1]))).strftime("%Y-%m-%dT%H:%M:%SZ"))' "$1"; }
+cut_fixture() {
+	reset_fixture
+	jq '.[0].name = "Demo-Test"' "$test_dir/squads.json" >"$test_dir/updated.json"
+	mv "$test_dir/updated.json" "$test_dir/squads.json"
+	jq --slurpfile base <(fixture agent-get) '. + [
+		$base[0] + {id: "cimpl", name: "demo-claude-implementer-test"},
+		$base[0] + {id: "cfixer", name: "demo-claude-fixer-test"},
+		$base[0] + {id: "cdesigner", name: "demo-designer-test"}]' "$test_dir/agents.json" >"$test_dir/updated.json"
+	mv "$test_dir/updated.json" "$test_dir/agents.json"
+	fixture squad-member-list | jq '. as $base | ["cimpl", "cfixer", "cdesigner"] | map($base + {member_type: "agent", member_id: .})' >"$test_dir/members.json"
+}
+# add_comment <ファイル> <作者の ID> <作者の種類> <時刻> <内容>
+add_comment() {
+	jq --slurpfile base "$test_dir/comment-prototype.json" --arg author "$2" --arg type "$3" --arg at "$4" --arg content "$5" \
+		'. + [$base[0] + {author_type: $type, author_id: $author, created_at: $at, id: ("comment-" + $author + "-" + $at), content: $content}]' \
+		"$1" >"$test_dir/updated.json"
+	mv "$test_dir/updated.json" "$1"
+}
+add_run() { # <役の ID> <状態> <時刻>
+	jq --slurpfile base "$test_dir/run-prototype.json" --arg agent "$1" --arg status "$2" --arg at "$3" \
+		'. + [$base[0] + {id: ("run-" + $agent + "-" + $at), agent_id: $agent, status: $status, created_at: $at}]' \
+		"$test_dir/runs.json" >"$test_dir/updated.json"
+	mv "$test_dir/updated.json" "$test_dir/runs.json"
+}
+cut_body=$'/note\n区切り: 使用率が戻るまで待つ\n'
+
+# 区切りを書いた役は、続きの実行が始まるまで（待ち）、失敗を知らせず保留する。
+cut_fixture
+add_comment "$test_dir/comments.json" cimpl agent "$(ago 10)" "$cut_body"
+check_ci $'/note\nCI abcdef0: 失敗あり（demo-claude-implementer-test の区切りの途中なので保留）'
+[[ ! -s $test_dir/posted.jsonl ]]
+cut_fixture
+add_comment "$test_dir/comments.json" cimpl agent "$(ago 10)" "$cut_body"
+add_comment "$test_dir/comments.json" cdesigner agent "$(ago 5)" "$cut_body"
+check_ci $'/note\nCI abcdef0: 失敗あり（demo-claude-implementer-test、demo-designer-test の区切りの途中なので保留）'
+[[ ! -s $test_dir/posted.jsonl ]]
+echo 'PASS 区切りの途中: 続きの実行が始まる前の役の名前を挙げて保留し、知らせを投稿しない'
+
+# 続きの実行が動いていても、動いている実行の保留が先に働く。
+cut_fixture
+add_comment "$test_dir/comments.json" cimpl agent "$(ago 10)" "$cut_body"
+add_run cimpl running "$(ago 5)"
+check_ci $'/note\nCI abcdef0: 失敗あり（demo-claude-implementer-test の作業中なので保留）'
+[[ ! -s $test_dir/posted.jsonl ]]
+echo 'PASS 区切りの途中: 続きの実行が動いている間は、作業中の保留が先に働く'
+
+# 区切りの途中でないとき（始まらない・失敗した・終わった・区切りのあとのコメント）は、通常の通知に進む。
+for fixture in not-started failed finished commented; do
+	cut_fixture
+	add_comment "$test_dir/comments.json" cimpl agent "$(ago 120)" "$cut_body"
+	case $fixture in
+	failed) add_run cimpl failed "$(ago 100)" ;;
+	finished) add_run cimpl completed "$(ago 100)" ;;
+	commented)
+		jq '.[0].created_at |= sub("^.*$"; "'"$(ago 10)"'")' "$test_dir/comments.json" >"$test_dir/updated.json"
+		mv "$test_dir/updated.json" "$test_dir/comments.json"
+		add_comment "$test_dir/comments.json" cimpl agent "$(ago 5)" $'/note\n確認したコミット: abcdef0123456789\n続きを終えました'
+		;;
+	esac
+	check_ci $'/note\nCI abcdef0: 失敗をリーダーに知らせた'
+	assert_jq -s 'length == 1 and (.[0].body | startswith("head: abcdef0\n"))' "$test_dir/posted.jsonl"
+done
+echo 'PASS 区切りの途中でない: 始まらない・失敗した・終わった・区切りのあとのコメントがある役では、通常の通知に進む'
+
+# 区切りのコメントがなければ、名簿を読まない。人間の区切りの行は、区切りとして数えない。
+cut_fixture
+printf 'squad member list' >"$test_dir/fail"
+add_comment "$test_dir/comments.json" cimpl member "$(ago 10)" "$cut_body"
+add_comment "$test_dir/comments.json" cimpl agent "$(ago 10)" $'/note\n区切りではない記録\n'
+check_ci $'/note\nCI abcdef0: 失敗をリーダーに知らせた'
+assert_jq -s 'length == 1' "$test_dir/posted.jsonl"
+echo 'PASS 区切りの途中: 区切りのコメントがなければ状態を読まず、通常の通知に進む'
+
+# 区切りの状態を読めなければ、通知にすり替えず失敗する。
+cut_fixture
+add_comment "$test_dir/comments.json" cimpl agent "$(ago 10)" "$cut_body"
+printf 'squad member list' >"$test_dir/fail"
+if (cd "$test_dir" && bash "$script" ci-check test-issue orchestrator monitor) >"$test_dir/output" 2>"$test_dir/error"; then exit 1; fi
+[[ ! -s $test_dir/output && ! -s $test_dir/posted.jsonl ]]
+echo 'PASS 区切りの途中: 区切りの状態を読めなければ、知らせずに失敗する'

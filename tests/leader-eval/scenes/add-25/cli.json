@@ -99,6 +99,136 @@
       }
     },
     {
+      "match": "squad-task-read issue-shop-1",
+      "stdout": {
+        "schema_version": 1,
+        "task": {
+          "id": "issue-shop-1",
+          "identifier": "SHOP-1",
+          "title": "カートに商品数を出す",
+          "status": "in_review",
+          "labels": [
+            "重要"
+          ],
+          "metadata": {
+            "repository": "example/shop",
+            "branch": "feat/cart-badge",
+            "pr_url": "https://github.com/example/shop/pull/7"
+          },
+          "assignee_type": "squad",
+          "assignee_id": "squad-shop"
+        },
+        "comments": [
+          {
+            "id": "c-1",
+            "parent_id": null,
+            "author_type": "member",
+            "author_id": "member1",
+            "created_at": "2026-01-10T08:00:00Z",
+            "content": "カートに商品数を出したい"
+          },
+          {
+            "id": "c-2",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-claude-implementer",
+            "created_at": "2026-01-10T09:00:00Z",
+            "content": "[@SQUAD-SHOP](mention://squad/squad-shop) 実装を push しました。PR: https://github.com/example/shop/pull/7\n\n確認したこと:\n- 単体テストが通った\n\n残っていること:\n- レビュー"
+          },
+          {
+            "id": "c-3",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T09:11:00Z",
+            "content": "[@shop-claude-fixer-member1](mention://agent/agent-claude-fixer) 修正をお願いします。\n\n修正の依頼: 1 回目\n- src/cart/Badge.tsx:formatCount: 0 のときも 0 を表示している"
+          },
+          {
+            "id": "c-4",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T09:12:00Z",
+            "content": "[@shop-claude-fixer-member1](mention://agent/agent-claude-fixer) 修正をお願いします。\n\n修正の依頼: 2 回目\n- src/cart/Badge.tsx:formatCount: 負の数を表示している"
+          },
+          {
+            "id": "c-5",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T09:13:00Z",
+            "content": "[@shop-claude-fixer-member1](mention://agent/agent-claude-fixer) 修正をお願いします。\n\n修正の依頼: 3 回目\n- src/cart/Badge.tsx:render: 数が変わっても再描画されない"
+          },
+          {
+            "id": "c-6",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-code-reviewer",
+            "created_at": "2026-01-10T09:30:00Z",
+            "content": "確認したコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567\n❌ code-reviewer: 必須 1 件\n- src/cart/Badge.tsx:formatCount: 100 のときに 99+ にならない\n詳細は PR のコメントにあります。"
+          },
+          {
+            "id": "c-7",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T09:40:00Z",
+            "content": "[@shop-claude-principal-member1](mention://agent/agent-claude-principal) 見直しをお願いします。\n\n重要のマーク: 付けた。基準: 共通 4（修正の依頼が 4 回目になる）。理由: 修正が 3 回続いても部品が毎回変わり、設計の抜けを疑う\n見直しの種類: 設計と PR の見直し\n設計を用意した人: 人間\n返事を待つ役: [@shop-claude-principal-member1](mention://agent/agent-claude-principal)\n確認するコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567"
+          },
+          {
+            "id": "c-8",
+            "parent_id": "c-7",
+            "author_type": "agent",
+            "author_id": "agent-claude-principal",
+            "created_at": "2026-01-10T09:50:00Z",
+            "content": "/note\n❌ shop-claude-principal-member1: 必須 2 件（設計 1、コード 1）\n- 設計: 表示の仕様が `100 以上は 99+` と `99 を超えたら 99+` の 2 通りに読める\n- コード: src/cart/Badge.test.tsx: 境界の 99 と 100 のテストがない\n確認したコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567"
+          },
+          {
+            "id": "c-9",
+            "parent_id": "c-7",
+            "author_type": "agent",
+            "author_id": "agent-claude-principal",
+            "created_at": "2026-01-10T09:50:30Z",
+            "content": "返事がそろいました。\n次の依頼を決められません: 設計の見直しの回はリーダーが扱う"
+          },
+          {
+            "id": "c-10",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T10:00:00Z",
+            "content": "[@Owner](mention://member/member1) 設計と PR の見直しの結果をお知らせします。最上位の役の `設計` の指摘を直してください。\n\n最上位の役の結果: c-8（❌ 設計 1 件: 表示の仕様が `100 以上は 99+` と `99 を超えたら 99+` の 2 通りに読める。コード 1 件）\n設計の変更: 実装を始めたあと\n\n設計を直したら、PR に push して、設計とフェーズを承認し直してください。承認の返事をもらったら、止めた修正の依頼を再開します。`コード` の指摘は、そのとき修正の依頼に添えます。"
+          },
+          {
+            "id": "c-11",
+            "parent_id": null,
+            "author_type": "member",
+            "author_id": "member1",
+            "created_at": "2026-01-10T10:30:00Z",
+            "content": "設計を直して push した。設計とフェーズを承認し直します。"
+          }
+        ],
+        "pr": {
+          "url": "https://github.com/example/shop/pull/7",
+          "state": "OPEN",
+          "draft": true,
+          "head_sha": "8d4e1b7a9c2f5036b1e8d7a4c3f2e1d0b9a87654",
+          "mergeable": "MERGEABLE"
+        },
+        "ci": null,
+        "runs": [
+          {
+            "id": "run-1",
+            "agent_id": "agent-claude-implementer",
+            "status": "completed",
+            "created_at": null
+          }
+        ],
+        "cuts": [],
+        "errors": []
+      }
+    },
+    {
       "match": "multica issue comment list issue-shop-1",
       "stdout": [
         {

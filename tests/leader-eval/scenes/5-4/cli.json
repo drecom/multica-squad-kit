@@ -9,6 +9,109 @@
       "stdout": "{\n  \"id\": \"issue-shop-1\",\n  \"identifier\": \"SHOP-1\",\n  \"title\": \"カートに商品数を出す\",\n  \"status\": \"in_progress\",\n  \"assignee_type\": \"squad\",\n  \"assignee_id\": \"squad-shop\",\n  \"project_id\": \"project-shop\",\n  \"labels\": [],\n  \"metadata\": {\n    \"repository\": \"example/shop\",\n    \"branch\": \"feat/cart-badge\",\n    \"pr_url\": \"https://github.com/example/shop/pull/7\"\n  },\n  \"description\": \"カートのアイコンに、入っている商品の数を出す。\"\n}"
     },
     {
+      "match": "squad-task-read issue-shop-1",
+      "stdout": {
+        "schema_version": 1,
+        "task": {
+          "id": "issue-shop-1",
+          "identifier": "SHOP-1",
+          "title": "カートに商品数を出す",
+          "status": "in_progress",
+          "labels": [],
+          "metadata": {
+            "repository": "example/shop",
+            "branch": "feat/cart-badge",
+            "pr_url": "https://github.com/example/shop/pull/7"
+          },
+          "assignee_type": "squad",
+          "assignee_id": "squad-shop"
+        },
+        "comments": [
+          {
+            "id": "comment-1",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-claude-implementer",
+            "created_at": "2026-01-10T09:10:00Z",
+            "content": "[@SQUAD-SHOP](mention://squad/squad-shop) 実装を push しました。PR: https://github.com/example/shop/pull/7\n\n確認したこと:\n- 単体テストが通った\n\n残っていること:\n- レビュー"
+          },
+          {
+            "id": "comment-2",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T09:20:00Z",
+            "content": "[@shop-claude-fixer-member1](mention://agent/agent-claude-fixer) CI の失敗の修正を頼みます。\n\nCI 3f9a2c1: 失敗あり\n原因: 100 のときの表示が `99+` にならない（`src/cart/Badge.test.tsx` の失敗）。\n修正の依頼: 1 回目"
+          },
+          {
+            "id": "comment-3",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-claude-fixer",
+            "created_at": "2026-01-10T09:30:00Z",
+            "content": "[@SQUAD-SHOP](mention://squad/squad-shop) CI の test の失敗を直して push しました（head: 7d1e0b3）。\n\n表示の文字列を `99+` に直しました。"
+          },
+          {
+            "id": "comment-4",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T09:40:00Z",
+            "content": "[@shop-claude-principal-member1](mention://agent/agent-claude-principal) 診断を頼みます。\n\n見直しの種類: 診断\n診断の依頼: 1 回目。失敗: 同じ誤り テスト cart-badge-test\n返事を待つ役: [@shop-claude-principal-member1](mention://agent/agent-claude-principal)\n確認するコミット: 7d1e0b34a5c6d7e8f9012345a6b7c8d9e0f1a2b3\n振り分け: Claude。Claude 週 20%、Codex 週 30%\n\n1 回目: CI の test（head 3f9a2c1）で `Badge › 100 以上は 99+ と表示する` が失敗した。原因は、100 のときの表示が `99+` にならないこと。修正の役に表示の直しを頼んだ。\n2 回目: 修正の役が直したと返したあとの CI の test（head 7d1e0b3）で、同じテストが同じ値（期待 `99+`、実際 `100`）で失敗した。直しは表示の文字列だけで、判定の境界を直していなかった。"
+          },
+          {
+            "id": "comment-5",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-claude-principal",
+            "created_at": "2026-01-10T09:50:00Z",
+            "content": "[@SQUAD-SHOP](mention://squad/squad-shop) 診断: 表示の判定が `count > 100` で、100 ちょうどのときに `99+` にならない。1 回目の直しは表示の文字列だけを変え、判定の境界を直していなかった。\n直す役: 修正の役\n直し方: `src/cart/Badge.tsx` の判定を `count >= 100` に直す。\n確認したコミット: 7d1e0b34a5c6d7e8f9012345a6b7c8d9e0f1a2b3"
+          },
+          {
+            "id": "comment-6",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T10:00:00Z",
+            "content": "[@shop-claude-fixer-member1](mention://agent/agent-claude-fixer) 診断の直し方で修正を頼みます。`src/cart/Badge.tsx` の判定を `count >= 100` に直す。\n\n修正の依頼: 2 回目\n同じ誤り: テスト cart-badge-test 1 回目"
+          },
+          {
+            "id": "comment-7",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-claude-fixer",
+            "created_at": "2026-01-10T10:10:00Z",
+            "content": "[@SQUAD-SHOP](mention://squad/squad-shop) 診断のとおりに判定を `count >= 100` に直して push しました（head: b2c3d4e）。\n\n手元で単体テストが通りました。"
+          }
+        ],
+        "pr": {
+          "url": "https://github.com/example/shop/pull/7",
+          "state": "OPEN",
+          "draft": true,
+          "head_sha": "b2c3d4e5f60718293a4b5c6d7e8f9012a3b4c5d6",
+          "mergeable": "MERGEABLE"
+        },
+        "ci": {
+          "head_sha": "b2c3d4e5f60718293a4b5c6d7e8f9012a3b4c5d6",
+          "checks": [
+            {
+              "name": "test",
+              "status": "completed",
+              "conclusion": "failure"
+            },
+            {
+              "name": "lint",
+              "status": "completed",
+              "conclusion": "success"
+            }
+          ]
+        },
+        "runs": [],
+        "cuts": [],
+        "errors": []
+      }
+    },
+    {
       "match": "multica issue comment list issue-shop-1",
       "stdout": "[\n  {\n    \"id\": \"comment-1\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-claude-implementer\",\n    \"parent_id\": null,\n    \"content\": \"[@SQUAD-SHOP](mention://squad/squad-shop) 実装を push しました。PR: https://github.com/example/shop/pull/7\\n\\n確認したこと:\\n- 単体テストが通った\\n\\n残っていること:\\n- レビュー\",\n    \"created_at\": \"2026-01-10T09:10:00Z\"\n  },\n  {\n    \"id\": \"comment-2\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-orchestrator\",\n    \"parent_id\": null,\n    \"content\": \"[@shop-claude-fixer-member1](mention://agent/agent-claude-fixer) CI の失敗の修正を頼みます。\\n\\nCI 3f9a2c1: 失敗あり\\n原因: 100 のときの表示が `99+` にならない（`src/cart/Badge.test.tsx` の失敗）。\\n修正の依頼: 1 回目\",\n    \"created_at\": \"2026-01-10T09:20:00Z\"\n  },\n  {\n    \"id\": \"comment-3\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-claude-fixer\",\n    \"parent_id\": null,\n    \"content\": \"[@SQUAD-SHOP](mention://squad/squad-shop) CI の test の失敗を直して push しました（head: 7d1e0b3）。\\n\\n表示の文字列を `99+` に直しました。\",\n    \"created_at\": \"2026-01-10T09:30:00Z\"\n  },\n  {\n    \"id\": \"comment-4\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-orchestrator\",\n    \"parent_id\": null,\n    \"content\": \"[@shop-claude-principal-member1](mention://agent/agent-claude-principal) 診断を頼みます。\\n\\n見直しの種類: 診断\\n診断の依頼: 1 回目。失敗: 同じ誤り テスト cart-badge-test\\n返事を待つ役: [@shop-claude-principal-member1](mention://agent/agent-claude-principal)\\n確認するコミット: 7d1e0b34a5c6d7e8f9012345a6b7c8d9e0f1a2b3\\n振り分け: Claude。Claude 週 20%、Codex 週 30%\\n\\n1 回目: CI の test（head 3f9a2c1）で `Badge › 100 以上は 99+ と表示する` が失敗した。原因は、100 のときの表示が `99+` にならないこと。修正の役に表示の直しを頼んだ。\\n2 回目: 修正の役が直したと返したあとの CI の test（head 7d1e0b3）で、同じテストが同じ値（期待 `99+`、実際 `100`）で失敗した。直しは表示の文字列だけで、判定の境界を直していなかった。\",\n    \"created_at\": \"2026-01-10T09:40:00Z\"\n  },\n  {\n    \"id\": \"comment-5\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-claude-principal\",\n    \"parent_id\": null,\n    \"content\": \"[@SQUAD-SHOP](mention://squad/squad-shop) 診断: 表示の判定が `count > 100` で、100 ちょうどのときに `99+` にならない。1 回目の直しは表示の文字列だけを変え、判定の境界を直していなかった。\\n直す役: 修正の役\\n直し方: `src/cart/Badge.tsx` の判定を `count >= 100` に直す。\\n確認したコミット: 7d1e0b34a5c6d7e8f9012345a6b7c8d9e0f1a2b3\",\n    \"created_at\": \"2026-01-10T09:50:00Z\"\n  },\n  {\n    \"id\": \"comment-6\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-orchestrator\",\n    \"parent_id\": null,\n    \"content\": \"[@shop-claude-fixer-member1](mention://agent/agent-claude-fixer) 診断の直し方で修正を頼みます。`src/cart/Badge.tsx` の判定を `count >= 100` に直す。\\n\\n修正の依頼: 2 回目\\n同じ誤り: テスト cart-badge-test 1 回目\",\n    \"created_at\": \"2026-01-10T10:00:00Z\"\n  },\n  {\n    \"id\": \"comment-7\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-claude-fixer\",\n    \"parent_id\": null,\n    \"content\": \"[@SQUAD-SHOP](mention://squad/squad-shop) 診断のとおりに判定を `count >= 100` に直して push しました（head: b2c3d4e）。\\n\\n手元で単体テストが通りました。\",\n    \"created_at\": \"2026-01-10T10:10:00Z\"\n  }\n]"
     },

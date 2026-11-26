@@ -9,6 +9,61 @@
       "stdout": "{\n  \"id\": \"issue-shop-1\",\n  \"identifier\": \"SHOP-1\",\n  \"title\": \"カートに商品数を出す\",\n  \"status\": \"in_progress\",\n  \"assignee_type\": \"squad\",\n  \"assignee_id\": \"squad-shop\",\n  \"project_id\": \"project-shop\",\n  \"labels\": [],\n  \"metadata\": {\n    \"repository\": \"example/shop\",\n    \"branch\": \"feat/cart-badge\"\n  },\n  \"description\": \"カートのアイコンに、入っている商品の数を出す。\"\n}"
     },
     {
+      "match": "squad-task-read issue-shop-1",
+      "stdout": {
+        "schema_version": 1,
+        "task": {
+          "id": "issue-shop-1",
+          "identifier": "SHOP-1",
+          "title": "カートに商品数を出す",
+          "status": "in_progress",
+          "labels": [],
+          "metadata": {
+            "repository": "example/shop",
+            "branch": "feat/cart-badge"
+          },
+          "assignee_type": "squad",
+          "assignee_id": "squad-shop"
+        },
+        "comments": [
+          {
+            "id": "comment-1",
+            "parent_id": null,
+            "author_type": "member",
+            "author_id": "member1",
+            "created_at": "2026-01-10T10:10:00Z",
+            "content": "カートのアイコンに、入っている商品の数を出したい"
+          },
+          {
+            "id": "comment-2",
+            "parent_id": null,
+            "author_type": "member",
+            "author_id": "member1",
+            "created_at": "2026-01-10T10:30:00Z",
+            "content": "実装の役はいま何をしているか"
+          }
+        ],
+        "pr": null,
+        "ci": null,
+        "runs": [
+          {
+            "id": "run-leader-1",
+            "agent_id": "agent-orchestrator",
+            "status": "running",
+            "created_at": null
+          },
+          {
+            "id": "run-impl-1",
+            "agent_id": "agent-claude-implementer",
+            "status": "running",
+            "created_at": null
+          }
+        ],
+        "cuts": [],
+        "errors": []
+      }
+    },
+    {
       "match": "multica issue comment list issue-shop-1",
       "stdout": "[\n  {\n    \"id\": \"comment-1\",\n    \"author_type\": \"member\",\n    \"author_id\": \"member1\",\n    \"parent_id\": null,\n    \"content\": \"カートのアイコンに、入っている商品の数を出したい\",\n    \"created_at\": \"2026-01-10T10:10:00Z\"\n  },\n  {\n    \"id\": \"comment-2\",\n    \"author_type\": \"member\",\n    \"author_id\": \"member1\",\n    \"parent_id\": null,\n    \"content\": \"実装の役はいま何をしているか\",\n    \"created_at\": \"2026-01-10T10:30:00Z\"\n  }\n]"
     },

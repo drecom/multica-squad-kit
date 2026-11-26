@@ -9,6 +9,77 @@
       "stdout": "{\n  \"id\": \"issue-shop-2\",\n  \"identifier\": \"SHOP-2\",\n  \"title\": \"WSL では DNS の設定を置かない\",\n  \"status\": \"in_progress\",\n  \"assignee_type\": \"squad\",\n  \"assignee_id\": \"squad-shop\",\n  \"project_id\": \"project-shop\",\n  \"labels\": [],\n  \"metadata\": {\n    \"repository\": \"example/shop\",\n    \"branch\": \"fix/wsl-dns\",\n    \"pr_url\": \"https://github.com/example/shop/pull/8\"\n  },\n  \"description\": \"WSL では DNS の設定を置かず、`resolved` を呼ばない。Lima では、サービスの再起動に失敗したら、パッケージを入れずに終了コード 1 で止まる。\"\n}\n"
     },
     {
+      "match": "squad-task-read issue-shop-2",
+      "stdout": {
+        "schema_version": 1,
+        "task": {
+          "id": "issue-shop-2",
+          "identifier": "SHOP-2",
+          "title": "WSL では DNS の設定を置かない",
+          "status": "in_progress",
+          "labels": [],
+          "metadata": {
+            "repository": "example/shop",
+            "branch": "fix/wsl-dns",
+            "pr_url": "https://github.com/example/shop/pull/8"
+          },
+          "assignee_type": "squad",
+          "assignee_id": "squad-shop"
+        },
+        "comments": [
+          {
+            "id": "comment-1",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-12T09:00:00Z",
+            "content": "[@shop-claude-implementer-member1](mention://agent/agent-claude-implementer) 実装を頼みます。\n\nWSL では DNS の設定を置かず、`resolved` を呼ばない。Lima では、サービスの再起動に失敗したら、パッケージを入れずに終了コード 1 で止まる。"
+          },
+          {
+            "id": "comment-2",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-claude-implementer",
+            "created_at": "2026-01-12T10:00:00Z",
+            "content": "[@SQUAD-SHOP](mention://squad/squad-shop) 実装を push しました。PR: https://github.com/example/shop/pull/8\n\n確認したこと:\n- `bash tests/run.sh` が通った"
+          },
+          {
+            "id": "comment-3",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-12T10:10:00Z",
+            "content": "[@shop-code-reviewer-member1](mention://agent/agent-code-reviewer) 実装の PR のレビューを頼みます。\n\n返事を待つ役: [@shop-code-reviewer-member1](mention://agent/agent-code-reviewer)\n確認するコミット: 5c2f9a71b3d4e6f8091a2b3c4d5e6f708192a3b4\n振り分け: コードレビュー（使用率: 空いている）\n\nPR: https://github.com/example/shop/pull/8。差分は `gh pr diff` で読めます。"
+          }
+        ],
+        "pr": {
+          "url": "https://github.com/example/shop/pull/8",
+          "state": "OPEN",
+          "draft": true,
+          "head_sha": "5c2f9a71b3d4e6f8091a2b3c4d5e6f708192a3b4",
+          "mergeable": "MERGEABLE"
+        },
+        "ci": {
+          "head_sha": "5c2f9a71b3d4e6f8091a2b3c4d5e6f708192a3b4",
+          "checks": [
+            {
+              "name": "test",
+              "status": "completed",
+              "conclusion": "success"
+            },
+            {
+              "name": "lint",
+              "status": "completed",
+              "conclusion": "success"
+            }
+          ]
+        },
+        "runs": [],
+        "cuts": [],
+        "errors": []
+      }
+    },
+    {
       "match": "multica issue comment list issue-shop-2",
       "stdout": "[\n  {\n    \"id\": \"comment-1\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-orchestrator\",\n    \"parent_id\": null,\n    \"content\": \"[@shop-claude-implementer-member1](mention://agent/agent-claude-implementer) 実装を頼みます。\\n\\nWSL では DNS の設定を置かず、`resolved` を呼ばない。Lima では、サービスの再起動に失敗したら、パッケージを入れずに終了コード 1 で止まる。\",\n    \"created_at\": \"2026-01-12T09:00:00Z\"\n  },\n  {\n    \"id\": \"comment-2\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-claude-implementer\",\n    \"parent_id\": null,\n    \"content\": \"[@SQUAD-SHOP](mention://squad/squad-shop) 実装を push しました。PR: https://github.com/example/shop/pull/8\\n\\n確認したこと:\\n- `bash tests/run.sh` が通った\",\n    \"created_at\": \"2026-01-12T10:00:00Z\"\n  },\n  {\n    \"id\": \"comment-3\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-orchestrator\",\n    \"parent_id\": null,\n    \"content\": \"[@shop-code-reviewer-member1](mention://agent/agent-code-reviewer) 実装の PR のレビューを頼みます。\\n\\n返事を待つ役: [@shop-code-reviewer-member1](mention://agent/agent-code-reviewer)\\n確認するコミット: 5c2f9a71b3d4e6f8091a2b3c4d5e6f708192a3b4\\n振り分け: コードレビュー（使用率: 空いている）\\n\\nPR: https://github.com/example/shop/pull/8。差分は `gh pr diff` で読めます。\",\n    \"created_at\": \"2026-01-12T10:10:00Z\"\n  }\n]\n"
     },

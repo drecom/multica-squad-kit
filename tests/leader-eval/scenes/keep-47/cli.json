@@ -71,6 +71,150 @@
       }
     },
     {
+      "match": "squad-task-read issue-shop-1",
+      "stdout": {
+        "schema_version": 1,
+        "task": {
+          "id": "issue-shop-1",
+          "identifier": "SHOP-1",
+          "title": "カートに商品数を出す",
+          "status": "in_progress",
+          "labels": [],
+          "metadata": {
+            "repository": "example/shop",
+            "branch": "feat/cart-badge",
+            "pr_url": "https://github.com/example/shop/pull/7"
+          },
+          "assignee_type": "squad",
+          "assignee_id": "squad-shop"
+        },
+        "comments": [
+          {
+            "id": "c-mark",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T08:05:00Z",
+            "content": "設計の承認を受けて、実装を頼みます。\n\n重要のマーク: 付けた。基準: 共通 2（安全の仕組みに触れる）。理由: カートの数が決済の確認にも使われる"
+          },
+          {
+            "id": "c-impl",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-claude-implementer",
+            "created_at": "2026-01-10T08:10:00Z",
+            "content": "[@SQUAD-SHOP](mention://squad/squad-shop) 実装を push しました。PR: https://github.com/example/shop/pull/7\n\n確認したこと:\n- 単体テストが通った\n\n残っていること:\n- レビュー"
+          },
+          {
+            "id": "c-prin0",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-claude-principal",
+            "created_at": "2026-01-10T08:12:00Z",
+            "content": "確認したコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567\n✅ claude-principal: 指摘なし（設計と PR の見直し）\n設計と PR の差分を読み、設計の抜けも、コードの指摘もありません。"
+          },
+          {
+            "id": "c-rev1",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-code-reviewer",
+            "created_at": "2026-01-10T08:15:00Z",
+            "content": "確認したコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567\n❌ code-reviewer: 必須 1 件\n- src/cart/Badge.tsx:formatCount: 負の数を渡すと `-3` と表示される\n詳細は PR のコメントにあります。"
+          },
+          {
+            "id": "c-req1",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T08:20:00Z",
+            "content": "[@shop-claude-fixer-member1](mention://agent/agent-claude-fixer) レビューの指摘の修正を頼みます。\n\n同じ部品: src/cart/Badge.tsx:formatCount 1 回目\n修正の依頼: 1 回目"
+          },
+          {
+            "id": "c-fix1",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-claude-fixer",
+            "created_at": "2026-01-10T08:25:00Z",
+            "content": "[@SQUAD-SHOP](mention://squad/squad-shop) 指摘を直して push しました。単体テストが通りました。"
+          },
+          {
+            "id": "c-rev2",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-code-reviewer",
+            "created_at": "2026-01-10T08:30:00Z",
+            "content": "確認したコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567\n❌ code-reviewer: 必須 1 件\n- src/cart/CartIcon.tsx:CartIcon: 0 件のときに数が出る\n詳細は PR のコメントにあります。"
+          },
+          {
+            "id": "c-req2",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T08:35:00Z",
+            "content": "[@shop-claude-fixer-member1](mention://agent/agent-claude-fixer) レビューの指摘の修正を頼みます。\n\n同じ部品: src/cart/CartIcon.tsx:CartIcon 1 回目\n修正の依頼: 2 回目"
+          },
+          {
+            "id": "c-fix2",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-claude-fixer",
+            "created_at": "2026-01-10T08:40:00Z",
+            "content": "[@SQUAD-SHOP](mention://squad/squad-shop) 指摘を直して push しました。単体テストが通りました。"
+          },
+          {
+            "id": "c-rev3",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-code-reviewer",
+            "created_at": "2026-01-10T08:45:00Z",
+            "content": "確認したコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567\n❌ code-reviewer: 必須 1 件\n- src/cart/api.ts:fetchCount: 通信に失敗すると例外になる\n詳細は PR のコメントにあります。"
+          },
+          {
+            "id": "c-req3",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T08:50:00Z",
+            "content": "[@shop-claude-fixer-member1](mention://agent/agent-claude-fixer) レビューの指摘の修正を頼みます。\n\n同じ部品: src/cart/api.ts:fetchCount 1 回目\n修正の依頼: 3 回目"
+          },
+          {
+            "id": "c-fix3",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-claude-fixer",
+            "created_at": "2026-01-10T08:55:00Z",
+            "content": "[@SQUAD-SHOP](mention://squad/squad-shop) 指摘を直して push しました。単体テストが通りました。"
+          },
+          {
+            "id": "c-rev4",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-code-reviewer",
+            "created_at": "2026-01-10T09:00:00Z",
+            "content": "確認したコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567\n❌ code-reviewer: 必須 1 件\n- src/cart/store.ts:addItem: 同じ商品を足しても数が増えない\n詳細は PR のコメントにあります。"
+          }
+        ],
+        "pr": {
+          "url": "https://github.com/example/shop/pull/7",
+          "state": "OPEN",
+          "draft": true,
+          "head_sha": "3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567",
+          "mergeable": "MERGEABLE"
+        },
+        "ci": null,
+        "runs": [
+          {
+            "id": "run-1",
+            "agent_id": "agent-claude-implementer",
+            "status": "completed",
+            "created_at": null
+          }
+        ],
+        "cuts": [],
+        "errors": []
+      }
+    },
+    {
       "match": "multica issue comment list issue-shop-1",
       "stdout": [
         {

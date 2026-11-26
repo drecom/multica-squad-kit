@@ -1,0 +1,11 @@
+# multica-squad-kit-managed
+# 長い実行の区切りの値。squad-run-cut と squad-pr-watch が、同じディレクトリから読み込む。
+# 配られたファイルを手で直しても、セットアップを流し直すと原本の値に戻る。
+# 区切る呼び出し（tool_use）の回数
+CALLS=100
+# 区切る圧縮の回数
+COMPACTIONS=3
+# 続けて区切ってよい回数。超えたら区切らずリーダーへ返す
+MAX_CONSECUTIVE=5
+# 区切ってから続きの実行が始まるまで待つ分
+START_WAIT=30

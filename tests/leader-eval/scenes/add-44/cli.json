@@ -99,6 +99,150 @@
       }
     },
     {
+      "match": "squad-task-read issue-shop-1",
+      "stdout": {
+        "schema_version": 1,
+        "task": {
+          "id": "issue-shop-1",
+          "identifier": "SHOP-1",
+          "title": "カートに商品数を出す",
+          "status": "in_review",
+          "labels": [
+            "重要"
+          ],
+          "metadata": {
+            "repository": "example/shop",
+            "branch": "feat/cart-badge",
+            "pr_url": "https://github.com/example/shop/pull/7"
+          },
+          "assignee_type": "squad",
+          "assignee_id": "squad-shop"
+        },
+        "comments": [
+          {
+            "id": "comment-m1",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T08:00:00Z",
+            "content": "重要のマーク: 付けた。基準: 共通 1（導入済みのプロジェクトで、役の判断や手順が変わる）。理由: 表示の仕様の変更が、導入済みの画面の動作を変える"
+          },
+          {
+            "id": "comment-r1",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T08:20:00Z",
+            "content": "[@shop-claude-principal-member1](mention://agent/agent-claude-principal) 見直しをお願いします。\n\n見直しの種類: 設計の見直し\n確認するコミット: 0a1b2c3d4e5f60718293a4b5c6d7e8f901234567\n返事を待つ役: [@shop-claude-principal-member1](mention://agent/agent-claude-principal)"
+          },
+          {
+            "id": "comment-r2",
+            "parent_id": "comment-r1",
+            "author_type": "agent",
+            "author_id": "agent-claude-principal",
+            "created_at": "2026-01-10T08:30:00Z",
+            "content": "/note\n✅ shop-claude-principal-member1: 指摘なし（設計の見直し）\n確認したコミット: 0a1b2c3d4e5f60718293a4b5c6d7e8f901234567"
+          },
+          {
+            "id": "comment-1",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-claude-implementer",
+            "created_at": "2026-01-10T09:10:00Z",
+            "content": "[@SQUAD-SHOP](mention://squad/squad-shop) 実装を push しました。PR: https://github.com/example/shop/pull/7\n\n確認したこと:\n- 単体テストが通った\n\n残っていること:\n- レビュー"
+          },
+          {
+            "id": "comment-2",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T09:20:00Z",
+            "content": "[@shop-claude-fixer-member1](mention://agent/agent-claude-fixer) CI の失敗の修正を頼みます。\n\nCI 3f9a2c1: 失敗あり\n原因: 100 のときの表示が `99+` にならない（`src/cart/Badge.test.tsx` の失敗）。\n修正の依頼: 1 回目"
+          },
+          {
+            "id": "comment-3",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-claude-fixer",
+            "created_at": "2026-01-10T09:30:00Z",
+            "content": "[@SQUAD-SHOP](mention://squad/squad-shop) CI の test の失敗を直して push しました（head: 7d1e0b3）。\n\n表示の文字列を `99+` に直しました。"
+          },
+          {
+            "id": "comment-4",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T09:40:00Z",
+            "content": "[@shop-claude-principal-member1](mention://agent/agent-claude-principal) 診断を頼みます。\n\n見直しの種類: 診断\n診断の依頼: 1 回目。失敗: 同じ誤り テスト cart-badge-test\n返事を待つ役: [@shop-claude-principal-member1](mention://agent/agent-claude-principal)\n確認するコミット: 7d1e0b34a5c6d7e8f9012345a6b7c8d9e0f1a2b3\n振り分け: Claude。Claude 週 20%、Codex 週 30%\n\n1 回目: CI の test（head 3f9a2c1）で `Badge › 100 以上は 99+ と表示する` が失敗した。原因は、100 のときの表示が `99+` にならないこと。修正の役に表示の直しを頼んだ。\n2 回目: 修正の役が直したと返したあとの CI の test（head 7d1e0b3）で、同じテストが同じ値（期待 `99+`、実際 `100`）で失敗した。直しは表示の文字列だけで、判定の境界を直していなかった。"
+          },
+          {
+            "id": "comment-5",
+            "parent_id": "comment-4",
+            "author_type": "agent",
+            "author_id": "agent-claude-principal",
+            "created_at": "2026-01-10T09:50:00Z",
+            "content": "/note\n✅ shop-claude-principal-member1: 診断（設計と実装の食い違い）\n診断: 設計の表示の仕様が `100 以上は 99+` と `99 を超えたら 99+` の 2 通りに読め、実装と設計が食い違っている。\n直す役: 設計の役\n直し方: 設計の表示の仕様を `100 以上は 99+` に 1 つへ決める。\n確認したコミット: 7d1e0b34a5c6d7e8f9012345a6b7c8d9e0f1a2b3"
+          },
+          {
+            "id": "comment-6",
+            "parent_id": "comment-4",
+            "author_type": "agent",
+            "author_id": "agent-claude-principal",
+            "created_at": "2026-01-10T09:51:00Z",
+            "content": "返事がそろいました。\n次の依頼を決められません: 診断の回はリーダーが扱う"
+          },
+          {
+            "id": "comment-7",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T10:00:00Z",
+            "content": "[@shop-designer-member1](mention://agent/agent-designer) 診断の結果をお知らせします。設計の変更が要ります。設計の表示の仕様を直してください。\n\n最上位の役の診断: comment-5（直す役: 設計の役。設計の表示の仕様が `100 以上は 99+` と `99 を超えたら 99+` の 2 通りに読め、実装と設計が食い違っている。直し方: 表示の仕様を `100 以上は 99+` に 1 つへ決める）\n設計の変更: 実装を始めたあと\n\n直したら、PR に push して、人間に設計とフェーズの承認を頼んでください。"
+          },
+          {
+            "id": "comment-8",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-designer",
+            "created_at": "2026-01-10T10:20:00Z",
+            "content": "[@Owner](mention://member/member1) 設計の表示の仕様を `100 以上は 99+` に 1 つへ決め、PR に push しました。設計とフェーズの承認をお願いします。"
+          },
+          {
+            "id": "comment-9",
+            "parent_id": null,
+            "author_type": "member",
+            "author_id": "member1",
+            "created_at": "2026-01-10T10:30:00Z",
+            "content": "設計を直して push した。設計とフェーズを承認し直します。"
+          }
+        ],
+        "pr": {
+          "url": "https://github.com/example/shop/pull/7",
+          "state": "OPEN",
+          "draft": true,
+          "head_sha": "b2c3d4e5f60718293a4b5c6d7e8f9012a3b4c5d6",
+          "mergeable": "MERGEABLE"
+        },
+        "ci": null,
+        "runs": [
+          {
+            "id": "run-1",
+            "agent_id": "agent-claude-implementer",
+            "status": "completed",
+            "created_at": null
+          },
+          {
+            "id": "run-2",
+            "agent_id": "agent-designer",
+            "status": "completed",
+            "created_at": null
+          }
+        ],
+        "cuts": [],
+        "errors": []
+      }
+    },
+    {
       "match": "multica issue comment list issue-shop-1",
       "stdout": [
         {

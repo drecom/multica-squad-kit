@@ -9,6 +9,79 @@
       "stdout": "{\n  \"id\": \"issue-shop-1\",\n  \"identifier\": \"SHOP-1\",\n  \"title\": \"カートに商品数を出す\",\n  \"status\": \"in_review\",\n  \"assignee_type\": \"squad\",\n  \"assignee_id\": \"squad-shop\",\n  \"project_id\": \"project-shop\",\n  \"labels\": [],\n  \"metadata\": {\n    \"repository\": \"example/shop\",\n    \"branch\": \"feat/cart-badge\",\n    \"pr_url\": \"https://github.com/example/shop/pull/7\"\n  },\n  \"description\": \"カートのアイコンに、入っている商品の数を出す。\"\n}"
     },
     {
+      "match": "squad-task-read issue-shop-1",
+      "stdout": {
+        "schema_version": 1,
+        "task": {
+          "id": "issue-shop-1",
+          "identifier": "SHOP-1",
+          "title": "カートに商品数を出す",
+          "status": "in_review",
+          "labels": [],
+          "metadata": {
+            "repository": "example/shop",
+            "branch": "feat/cart-badge",
+            "pr_url": "https://github.com/example/shop/pull/7"
+          },
+          "assignee_type": "squad",
+          "assignee_id": "squad-shop"
+        },
+        "comments": [
+          {
+            "id": "comment-1",
+            "parent_id": null,
+            "author_type": "member",
+            "author_id": "member1",
+            "created_at": "2026-01-10T09:00:00Z",
+            "content": "設計と、2 フェーズの分け方を承認します。"
+          },
+          {
+            "id": "comment-2",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-code-reviewer",
+            "created_at": "2026-01-10T10:00:00Z",
+            "content": "確認したコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567\n❌ 必須 1 件。バッジが 100 以上で崩れます。"
+          },
+          {
+            "id": "comment-3",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T10:05:00Z",
+            "content": "使用率の待ち: fix を 2026-01-10T12:00:00Z まで待つ。待ち始め: 2026-01-10T10:05:00Z。Claude 週 96%、Codex 週 97%"
+          },
+          {
+            "id": "comment-4",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-11T10:10:00Z",
+            "content": "[@Owner](mention://member/member1) 使用率が上限に近く、再開の時刻まで待つと通算 24 時間を超えます。「待つ」「進める」「利用枠を足した」のどれかを返事してください。\n「待つ」は、下の行の再開の時刻まで、人間を呼ばずに待ちます。\n「進める」は、上限に近いまま役を選んで頼みます。使用上限に達すると、役の実行が止まることがあります。\n「利用枠を足した」は、使用率を読み直して続けます。\n「待つ」と「進める」は、このスクワッドのすべてのタスクに、上限に近い枠のリセット時刻まで効きます。\n使用率の待ち: fix は 2026-01-11T14:00:00Z まで待つと通算 24 時間を超える。待ち始め: 2026-01-10T10:05:00Z。Claude 週 96%、Codex 週 97%"
+          },
+          {
+            "id": "comment-5",
+            "parent_id": null,
+            "author_type": "member",
+            "author_id": "member1",
+            "created_at": "2026-01-11T12:00:00Z",
+            "content": "進めてください。"
+          }
+        ],
+        "pr": {
+          "url": "https://github.com/example/shop/pull/7",
+          "state": "OPEN",
+          "draft": true,
+          "head_sha": "3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567",
+          "mergeable": "MERGEABLE"
+        },
+        "ci": null,
+        "runs": [],
+        "cuts": [],
+        "errors": []
+      }
+    },
+    {
       "match": "multica issue comment list issue-shop-1",
       "stdout": [
         {
