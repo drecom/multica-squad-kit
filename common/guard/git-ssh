@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# multica-squad-kit-managed
+# Multica のエージェントの実行で、SSH の git push を、ワークスペースに紐付いたリポジトリだけに絞る SSH のコマンドの包み。
+# git の core.sshCommand に置く。git は SSH で、最後から 2 番目の引数に行き先、最後の引数にコマンドを渡す。
+#   SCP の形の URL: git-receive-pack 'OWNER/REPO.git'
+#   ssh:// の URL:   git-receive-pack '/OWNER/REPO.git'
+# receive-pack（push）のとき、行き先が github.com の許すリポジトリでなければ止める。それ以外は本物の ssh にそのまま渡す。
+# 許すリポジトリは gh のガードと同じく、SQUAD_KIT_ALLOWED_REPOS、未設定ならホストの既定のファイルから読む。
+set -euo pipefail
+
+ALLOWED_FILE=${SQUAD_KIT_ALLOWED_REPOS:-$HOME/.multica-agent/allowed-repos}
+
+deny() {
+	echo "git push のガード: ${1}。ワークスペースに紐付いたリポジトリ（$(tr '\n' ' ' <"$ALLOWED_FILE" 2>/dev/null)）にだけ SSH で push できる" >&2
+	exit 1
+}
+
+push=false
+for arg in "$@"; do
+	case $arg in
+	*receive-pack*) push=true ;;
+	esac
+done
+
+if $push; then
+	args=("$@")
+	count=${#args[@]}
+	(( count >= 2 )) || deny "SSH の push の行き先を判定できないので止めた"
+	host=${args[count - 2]}
+	command=${args[count - 1]}
+	[[ $host == github.com || $host == git@github.com ]] || deny "SSH の push の行き先 ${host} は止めた"
+	if [[ $command =~ ^git-receive-pack\ \'/?([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)\'$ ]]; then
+		repo="${BASH_REMATCH[1]}/${BASH_REMATCH[2]%.git}"
+	else
+		deny "SSH の push のコマンドを判定できないので止めた"
+	fi
+	[[ -f $ALLOWED_FILE ]] && grep -qxiF -- "$repo" "$ALLOWED_FILE" || deny "${repo} への SSH の push は止めた"
+fi
+
+exec ssh "$@"

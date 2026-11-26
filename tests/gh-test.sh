@@ -20,6 +20,8 @@ cat >"$test_dir/bin/gh" <<'EOF'
 set -euo pipefail
 dir=$GH_GUARD_TEST_DIR
 jq -cn --args '$ARGS.positional' -- "$@" >>"$dir/calls.jsonl"
+# 本物の gh が受け取った GH_CONFIG_DIR を、呼び出しごとに記録する。
+printf '%s\n' "${GH_CONFIG_DIR-unset}" >>"$dir/config-dirs"
 if [[ ${*: -1} == --help ]]; then
 	case "$1 ${2:-}" in
 	'pr merge')
@@ -108,6 +110,7 @@ chmod +x "$test_dir/bin/gh"
 reset_calls() {
 	: >"$test_dir/calls.jsonl"
 	: >"$test_dir/writes.jsonl"
+	: >"$test_dir/config-dirs"
 }
 
 allow() {
@@ -310,3 +313,49 @@ for shell in /bin/bash /bin/zsh; do
 	[[ ! -s $test_dir/error ]]
 	echo "PASS Claude PATH ($shell): 許可先への書き込みを本物に 1 回だけ渡す"
 done
+
+# SQUAD_KIT_GH_CONFIG_DIR があるときだけ、本物の gh（リポジトリの判定・help・末尾の実行のすべて）に人の置き場を渡す。
+human_dir="$test_dir/human-gh"
+empty_dir="$test_dir/gh-empty"
+unset_dirs() { unset GH_CONFIG_DIR SQUAD_KIT_GH_CONFIG_DIR; }
+only_dir() {
+	[[ -s $test_dir/config-dirs ]] || return 1
+	[[ $(sort -u "$test_dir/config-dirs") == "$1" ]]
+}
+export SQUAD_KIT_GH_DEPENDABOT_MERGE=1
+printf '%s\n' '{"author":{"is_bot":true,"login":"app/dependabot"}}' >"$test_dir/pr.json"
+(
+	export GH_CONFIG_DIR=$empty_dir SQUAD_KIT_GH_CONFIG_DIR=$human_dir
+	allow pr comment 367 --body test
+	only_dir "$human_dir"
+	allow pr merge --merge --match-head-commit abc123
+	only_dir "$human_dir"
+	allow api -X POST repos/example/template/issues -f title=test
+	only_dir "$human_dir"
+)
+echo 'PASS 置き場: SQUAD_KIT_GH_CONFIG_DIR があると、書き込みの実行・help・リポジトリの判定・作者の取得のすべてで本物の gh に人の置き場を渡す'
+
+(
+	unset_dirs
+	export GH_CONFIG_DIR=$empty_dir
+	allow pr comment 367 --body test
+	only_dir "$empty_dir"
+	allow pr merge --merge --match-head-commit abc123
+	only_dir "$empty_dir"
+)
+echo 'PASS 置き場: SQUAD_KIT_GH_CONFIG_DIR がなければ、渡された GH_CONFIG_DIR のまま本物の gh を呼ぶ'
+
+(
+	unset_dirs
+	allow pr comment 367 --body test
+	only_dir unset
+)
+echo 'PASS 置き場: どちらもなければ、GH_CONFIG_DIR を設定せずに本物の gh を呼ぶ'
+
+(
+	unset_dirs
+	export GH_CONFIG_DIR=$empty_dir SQUAD_KIT_GH_CONFIG_DIR=''
+	allow pr comment 367 --body test
+	only_dir "$empty_dir"
+)
+echo 'PASS 置き場: SQUAD_KIT_GH_CONFIG_DIR が空なら、ないときと同じに動く'

@@ -4,7 +4,10 @@
 # multica-squad-kit-managed
 # setup.sh が ~/.multica-agent/bin/gh に写し、デーモンの PATH の先頭に置く。
 # 許すリポジトリは SQUAD_KIT_ALLOWED_REPOS のファイルから読む。未設定ならホストの既定のファイルを使う。
-# 読むだけの操作は止めない。本物の gh を絶対パスで呼べばすり抜けられるので、指示（スキル squad-handoff）と合わせて使う。
+# 読むだけの操作は止めない。
+# 役の GH_CONFIG_DIR は空のディレクトリで、本物の gh を絶対パスで呼んでも未認証で止まる。
+# このガードは SQUAD_KIT_GH_CONFIG_DIR（人の gh の置き場）があるときだけ、その値を GH_CONFIG_DIR にして本物の gh を呼ぶ。
+# SQUAD_KIT_GH_CONFIG_DIR がなければ、渡された環境のまま呼ぶ。
 # macOS の bash 3.2 でも動くよう、連想配列は使わない。
 set -euo pipefail
 
@@ -25,6 +28,10 @@ real_gh() {
 	exit 1
 }
 GH=$(real_gh)
+# 本物の gh を呼ぶすべての箇所（リポジトリの判定、help、末尾の実行）が、この環境を使う。
+if [[ -n ${SQUAD_KIT_GH_CONFIG_DIR:-} ]]; then
+	export GH_CONFIG_DIR=$SQUAD_KIT_GH_CONFIG_DIR
+fi
 
 deny() {
 	echo "gh のガード: $1。ワークスペースに紐付いたリポジトリ（$(tr '\n' ' ' <"$ALLOWED_FILE" 2>/dev/null)）にだけ書き込める" >&2
