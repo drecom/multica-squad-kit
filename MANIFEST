@@ -68,7 +68,7 @@ b0e7a3279a4284756a60a54123b595a50e67522bb23ec18a8c0be187410e77d8  ./common/setup
 0e603565f0f6810c8d6bc105e6436298446fe9c3fbe70cea14160c95427c1b4c  ./common/skills/squad-handoff/references/leader-run-status.md
 1caa0a53bbaafea6d15e8105f94b22e1cd5b487b9891529111085f838bd88681  ./common/squad.md
 e4fb0bb129b8ce2c785513453bc21527402871dc6c9ddf1dc846b5b6d91ecb97  ./docs/README.md
-52f664192d63dc95e862d2ca39d6261faf01ab547c257ee8fc7457f2b6454034  ./docs/agent-guards.md
+5d5f0fe564a0699a924e4d1f057a295cd0e5a6477978435080dffa4bea8c82d3  ./docs/agent-guards.md
 c380ac8fd57091fa1d1ad80ff9724cba6667a7199b440a40b4be9b0e25f83623  ./docs/agent-path.md
 8ff8c31670debca0fe0217b708435ebc18b70e7b101949d3c5bbf2d6650674ea  ./docs/agent-settings.md
 62062b7363a33eb140e814eeff5b3898d2d7d06aadc1ff95a07aa88aa001dbc7  ./docs/autopilot-targets.md
