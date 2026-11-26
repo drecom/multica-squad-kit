@@ -8,6 +8,8 @@ runtime_part=${runtime_part:-all}
 unset BASH_ENV ZDOTDIR SQUAD_KIT_ALLOWED_REPOS
 mkdir -p "$root/tmp"
 test_dir=$(mktemp -d "$root/tmp/setup-runtimes.XXXXXX")
+# 人の gh の置き場。役の SQUAD_KIT_GH_CONFIG_DIR に渡る値を、手元の環境から切り離す。
+export GH_CONFIG_DIR="$test_dir/human-gh"
 scenario_dir=$test_dir
 # 標準エラーを err に向けたまま止まっても、trap が err 自身へ書き足し続けないよう、元の標準エラーを控えて出す。
 exec 8>&2
@@ -102,6 +104,7 @@ STUB
  grep -q '^✔ ' "$scenario_dir/out"
  "$python" - "$scenario_dir" <<'PY'
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -138,7 +141,16 @@ for role, agent in agents.items():
     assert agent['instructions'] and '{{' not in agent['instructions'] and '<!-- IF' not in agent['instructions']
     env = db['envs'][agent['id']]
     assert env['SQUAD_KIT_ALLOWED_REPOS'] == str(scenario / 'host/allowed-repos.d/projects-1')
-    assert env['GIT_CONFIG_VALUE_0'] == str(scenario / 'host/git-hooks')
+    guard = (scenario / 'host') / 'guard'
+    assert env['GH_CONFIG_DIR'] == str(guard / 'gh-empty') and env['SQUAD_KIT_GH_CONFIG_DIR'] == os.environ['GH_CONFIG_DIR'], role
+    assert env['GIT_CONFIG_COUNT'] == '6'
+    assert [(env['GIT_CONFIG_KEY_%d' % n], env['GIT_CONFIG_VALUE_%d' % n]) for n in range(6)] == [
+        ('core.hooksPath', str((scenario / 'host') / 'git-hooks')),
+        ('credential.helper', ''),
+        ('credential.https://github.com.helper', ''),
+        ('credential.https://github.com.helper', str(guard / 'git-credential')),
+        ('credential.https://github.com.useHttpPath', 'true'),
+        ('core.sshCommand', str(guard / 'git-ssh'))], role
     needs_claude = provider == 'claude' or (role == 'usage-monitor' and 'claude' in runtimes)
     assert ('CLAUDE_CONFIG_DIR' in env) == needs_claude, role
     assert ('CLAUDE_CODE_SHELL' in env) == (provider == 'claude'), role

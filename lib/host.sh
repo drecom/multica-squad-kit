@@ -5,6 +5,17 @@ host_paths() {
 	[[ $agent_home == /* && $agent_home != *$'\n'* ]] || die 'ホストの置き場は改行のない絶対パスにしてください。'
 }
 
+# 人の gh の置き場。gh 自身が使う順（GH_CONFIG_DIR、XDG_CONFIG_HOME の下、ホームの .config）と同じにする。
+host_human_gh_dir() {
+	if [[ -n ${GH_CONFIG_DIR:-} ]]; then
+		printf '%s\n' "$GH_CONFIG_DIR"
+	elif [[ -n ${XDG_CONFIG_HOME:-} ]]; then
+		printf '%s/gh\n' "$XDG_CONFIG_HOME"
+	else
+		printf '%s/.config/gh\n' "$HOME"
+	fi
+}
+
 host_install() {
 	local src=$1 dst=$2 executable=$3 dir
 	[[ ! -L $dst ]] || die "シンボリックリンクは上書きしません: $dst"
@@ -293,7 +304,11 @@ prepare_host() {
 	local file
 	host_paths
 	check_runtime_tools || die '選んだランタイムを導入してから流し直してください。'
-	(umask 077; mkdir -p "$agent_home/claude" "$agent_home/codex" "$agent_home/bin" "$agent_home/git-hooks") || die 'ホストの置き場を作れませんでした。'
+	(umask 077; mkdir -p "$agent_home/claude" "$agent_home/codex" "$agent_home/bin" "$agent_home/git-hooks" "$agent_home/guard/gh-empty") || die 'ホストの置き場を作れませんでした。'
+	# 役の GH_CONFIG_DIR に渡す空の置き場。ファイルがあると認証が成り立つので、権限を絞る。
+	chmod 700 "$agent_home/guard/gh-empty" || die '空の gh の置き場の権限を設定できませんでした。'
+	host_shared_file "$root/common/guard/git-credential" "$agent_home/guard/git-credential" yes
+	host_shared_file "$root/common/guard/git-ssh" "$agent_home/guard/git-ssh" yes
 	host_shared_file "$root/common/guard/gh" "$agent_home/bin/gh" yes
 	host_shared_file "$root/common/guard/pre-push" "$agent_home/git-hooks/pre-push" yes
 	host_shared_file "$root/common/host/start-daemon" "$agent_home/start-daemon" yes

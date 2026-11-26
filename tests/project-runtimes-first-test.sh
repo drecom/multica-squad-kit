@@ -12,6 +12,7 @@ for selected in claude codex; do
  run
  python3 - "$TEST_DB" "$TEMPLATE_AGENT_HOME" "$test_dir/out" "$selected" <<'PY'
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -41,7 +42,16 @@ for role, agent in agents.items():
     assert agent['instructions'] and '{{' not in agent['instructions'] and '<!-- IF' not in agent['instructions']
     env = json.loads((db / 'env' / (agent['id'] + '.json')).read_text())
     assert env['SQUAD_KIT_ALLOWED_REPOS'] == str(home / 'allowed-repos.d/project-a')
-    assert env['GIT_CONFIG_VALUE_0'] == str(home / 'git-hooks')
+    guard = home / 'guard'
+    assert env['GH_CONFIG_DIR'] == str(guard / 'gh-empty') and env['SQUAD_KIT_GH_CONFIG_DIR'] == os.environ['GH_CONFIG_DIR'], role
+    assert env['GIT_CONFIG_COUNT'] == '6'
+    assert [(env['GIT_CONFIG_KEY_%d' % n], env['GIT_CONFIG_VALUE_%d' % n]) for n in range(6)] == [
+        ('core.hooksPath', str(home / 'git-hooks')),
+        ('credential.helper', ''),
+        ('credential.https://github.com.helper', ''),
+        ('credential.https://github.com.helper', str(guard / 'git-credential')),
+        ('credential.https://github.com.useHttpPath', 'true'),
+        ('core.sshCommand', str(guard / 'git-ssh'))], role
     claude_env = {key: value for key, value in env.items() if key.startswith('CLAUDE_')}
     if selected == 'claude':
         assert claude_env == {'CLAUDE_CONFIG_DIR': str(home / 'claude'),

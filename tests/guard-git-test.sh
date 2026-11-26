@@ -160,7 +160,7 @@ reset_calls
 silent
 echo 'PASS ヘルパー: 本物の gh がなければ、ガードの gh を呼ばずに何も返さない'
 
-# 実際の git が、ヘルパーを git-remote-https の下で呼ぶことを確かめる。
+# 実際の git が、ヘルパーを git-remote-https の下で呼ぶことを確認する。
 # ネットワークは使わず、接続の前に認証情報を問い合わせる環境がないので、プロセスの親子の形だけを確認する。
 cat >"$test_dir/bin/gh" <<'EOF'
 #!/usr/bin/env bash
@@ -267,7 +267,7 @@ ssh_allow -V
 ssh_allow git@github.com
 echo 'PASS ssh: push でない呼び出し（-G・-V・コマンドなし）は、そのまま本物の ssh に渡す'
 
-# 実際の git の push が、ssh のコマンドに送る引数の形を確かめる。ssh のコマンドの差し替えが、受け取った引数を記録する。
+# 実際の git の push が、ssh のコマンドに送る引数の形を確認する。ssh のコマンドの差し替えが、受け取った引数を記録する。
 if command -v git >/dev/null; then
 	reset_calls
 	cat >"$test_dir/record-ssh" <<'EOF'

@@ -167,11 +167,26 @@ for file in "$root/common/monitor/"squad-*; do
 done
 cmp "$root/common/guard/gh" "$TEMPLATE_AGENT_HOME/bin/gh"
 cmp "$root/common/guard/pre-push" "$TEMPLATE_AGENT_HOME/git-hooks/pre-push"
+for file in git-credential git-ssh; do
+ cmp "$root/common/guard/$file" "$TEMPLATE_AGENT_HOME/guard/$file"
+ [[ -x $TEMPLATE_AGENT_HOME/guard/$file ]]
+done
+# 役の GH_CONFIG_DIR に渡す空の置き場。人だけが入れる権限で、中は空である。
+[[ -d $TEMPLATE_AGENT_HOME/guard/gh-empty && -z $(ls -A "$TEMPLATE_AGENT_HOME/guard/gh-empty") ]]
+[[ $(python3 -c 'import os,sys; print(oct(os.stat(sys.argv[1]).st_mode & 0o777)[2:])' "$TEMPLATE_AGENT_HOME/guard/gh-empty") == 700 ]]
 cmp "$root/common/codex/config.toml" "$TEMPLATE_AGENT_HOME/codex/config.toml"
 [[ -d $TEMPLATE_AGENT_HOME/claude && ! -e $TEMPLATE_AGENT_HOME/allowed-repos ]]
 grep -qx 'daemon start' "$test_dir/calls"
 grep -qx 'https://example.test' "$test_dir/started-server"
 echo 'PASS host: 新しいホストへ共有ファイルと見張りを配置し、専用環境で一つのデーモンを起動する'
+
+# 人の gh の置き場は、gh 自身が使う順（GH_CONFIG_DIR、XDG_CONFIG_HOME の下、ホームの .config）で決める。
+human_gh() { env -u GH_CONFIG_DIR -u XDG_CONFIG_HOME "$@" bash -c 'source "$1"; host_human_gh_dir' -- "$root/lib/host.sh"; }
+[[ $(human_gh HOME=/home/h GH_CONFIG_DIR=/set/gh XDG_CONFIG_HOME=/xdg) == /set/gh ]]
+[[ $(human_gh HOME=/home/h XDG_CONFIG_HOME=/xdg) == /xdg/gh ]]
+[[ $(human_gh HOME=/home/h) == /home/h/.config/gh ]]
+[[ $(human_gh HOME=/home/h GH_CONFIG_DIR= XDG_CONFIG_HOME=) == /home/h/.config/gh ]]
+echo 'PASS host: 人の gh の置き場を、端末の GH_CONFIG_DIR、XDG_CONFIG_HOME の下、ホームの順で決める'
 [[ $(cat "$test_dir/codex-checks") == "$TEMPLATE_AGENT_HOME/codex" ]]
 python3 - "$TEMPLATE_AGENT_HOME/codex/config.toml" <<'PY'
 import sys

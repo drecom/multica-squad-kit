@@ -5,6 +5,8 @@ test_dir=$(mktemp -d "$root/tmp/project-test.XXXXXX")
 # 標準エラーを err に向けたまま止まっても、trap が err 自身へ書き足し続けないよう、元の標準エラーを控えて出す。
 exec 8>&2
 trap 'test_exit=$?; if [[ $test_exit != 0 ]]; then cat "$test_dir/out" "$test_dir/err" >&8; fi; rm -rf -- "$test_dir"' EXIT
+# 人の gh の置き場。役の SQUAD_KIT_GH_CONFIG_DIR に渡る値を、手元の環境から切り離す。
+export GH_CONFIG_DIR="$test_dir/human-gh"
 mkdir -p "$test_dir/bin" "$test_dir/package"
 cp "$root/VERSION" "$test_dir/package/VERSION"
 cp -R "$root/lib" "$root/common" "$root/skeleton" "$test_dir/package/"
@@ -72,6 +74,7 @@ case "$event" in
  envfile=$(option --custom-env-file "$@")
  [[ $(python3 -c 'import os,sys; print(oct(os.stat(sys.argv[1]).st_mode & 0o777)[2:])' "$envfile") == 600 ]]
  jq -e --arg z "$TEMPLATE_AGENT_HOME/template/shell/project-a" '.ZDOTDIR==$z and .BASH_ENV==($z+"/env.sh") and (.SQUAD_KIT_ALLOWED_REPOS|endswith("/allowed-repos.d/project-a"))' "$envfile" >/dev/null
+ jq -e --arg g "$TEMPLATE_AGENT_HOME/guard" --arg h "$TEMPLATE_AGENT_HOME/git-hooks" --arg human "$GH_CONFIG_DIR" '.GH_CONFIG_DIR==($g+"/gh-empty") and .SQUAD_KIT_GH_CONFIG_DIR==$human and .GIT_CONFIG_COUNT=="6" and ([range(0;6) as $n|[.["GIT_CONFIG_KEY_\($n)"],.["GIT_CONFIG_VALUE_\($n)"]]]==[["core.hooksPath",$h],["credential.helper",""],["credential.https://github.com.helper",""],["credential.https://github.com.helper",($g+"/git-credential")],["credential.https://github.com.useHttpPath","true"],["core.sshCommand",($g+"/git-ssh")]])' "$envfile" >/dev/null
  jq -e --arg model "$(option --model "$@")" --arg z "$TEMPLATE_AGENT_HOME/template/shell/project-a" 'if ($model|startswith("claude-")) then .CLAUDE_ENV_FILE==($z+"/env.sh") else .CLAUDE_ENV_FILE==null end' "$envfile" >/dev/null
  custom_args=$(option --custom-args "$@")
  jq -ne --arg model "$(option --model "$@")" --argjson args "$custom_args" '$args == (if ($model|startswith("gpt-")) then ["-c","allow_login_shell=false","-c","features.shell_snapshot=false","-c","project_doc_max_bytes=65536"] else [] end)' >/dev/null
