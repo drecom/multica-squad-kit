@@ -74,6 +74,16 @@ if [[ $* == 'app-server --strict-config --listen stdio://' ]]; then
  old) echo "error: unexpected argument '--strict-config' found" >&2; exit 2 ;;
  other2) echo 'error: another usage error' >&2; exit 2 ;;
  secret) echo 'invalid type: string "SYNTHETIC_SECRET_VALUE", expected a map' >&2; exit 1 ;;
+ zombie-desc)
+  # 子孫が先に終わり、TERM を無視する親が回収しない。子孫はゾンビのまま、親が動き続ける。子孫の PID は親が記録する。
+  exec python3 -c 'import os, signal, sys, time
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+pid = os.fork()
+if pid == 0:
+    os._exit(0)
+open(sys.argv[1], "w").write("%d\n" % pid)
+open(sys.argv[2], "w").write("%d\n" % os.getpid())
+time.sleep(300)' "$base/desc-pid" "$base/codex-pid" ;;
  term-*)
   # term-<親>-<子孫>。親は TERM で終わる（exit）か無視する（ignore）。子孫は、なし（none）、TERM のあと 0.5 秒で終わる（finish）、無視する（ignore）。
   spec=${mode#term-}; p=${spec%-*}; d=${spec#*-}
@@ -799,24 +809,62 @@ agent_env
 run
 grep -qF '警告: この Codex は --strict-config を受け付けないため、設定を検証できませんでした' "$test_dir/err"
 grep -q '^daemon status' "$test_dir/calls"
-# 時間切れの扱い。docs/agent-settings.md の「時間切れの扱い」の表と同じ行を、次の表から流す。
-# 列: 名前|最短（ミリ秒）|最長（ミリ秒）|子孫の終了処理の印。上限 1 秒、猶予 3 秒で流す。
-# 親が先に終わる行も、グループが早く空になる行も、猶予の 3 秒を待ってから KILL を送る。最短は、上限と猶予の和から決める。
-timeout_rows='term-exit-none|3900|8000|-
-term-exit-finish|3900|8000|あり
-term-exit-ignore|3900|8000|-
-term-ignore-none|3900|8000|-
-term-ignore-finish|3900|8000|あり
-term-ignore-ignore|3900|8000|-'
-process_gone() { [[ $1 =~ ^[0-9]+$ ]] || return 1; ! kill -0 "$1" 2>/dev/null; }
-# 判定が、生きた子と空の PID で失敗することを先に確認する。
+# 時間切れの扱い。docs/agent-settings.md の「時間切れの扱い」の表と同じ行を、実際のプロセスで、次の表から流す。
+# 列: 名前|子孫の終了処理の印。上限 1 秒、猶予 3 秒で流し、どの行も猶予をすべて待ってから KILL を送る。
+# term-<親>-<子孫>: 親は TERM で終わる（exit）か無視する（ignore）。子孫は、なし（none）、終了処理をする（finish）、無視する（ignore）。
+# term-exit-none は、親だけがゾンビのグループになる。zombie-desc は、子孫がゾンビのまま親が動き続け、KILL のあとに親だけがゾンビになる。
+timeout_rows='term-exit-none|-
+term-exit-finish|あり
+term-exit-ignore|-
+term-ignore-none|-
+term-ignore-finish|あり
+term-ignore-ignore|-
+zombie-desc|-'
+# 生存は ps の状態で読む。kill -0 は、ゾンビを生きたプロセスと同じに返すので使わない。本物の ps を使う。
+proc_state() {
+ local state
+ state=$(/bin/ps -o stat= -p "$1" 2>/dev/null) || state=
+ state=${state//[[:space:]]/}
+ case $state in
+ '') echo gone ;;
+ Z*) echo zombie ;;
+ *) echo running ;;
+ esac
+}
+# PID が数値でなければ失敗にする。空の PID を「いない」と読んで通さない。
+is_pid() { [[ $1 =~ ^[0-9]+$ ]]; }
+not_running() { is_pid "$1" && [[ $(proc_state "$1") != running ]]; }
+is_gone() { is_pid "$1" && [[ $(proc_state "$1") == gone ]]; }
+# 判定が、生きたプロセス・ゾンビ・回収済み・空の PID を分けることを先に確認する。
 /bin/sleep 30 &
 live=$!
-! process_gone "$live"
-! process_gone ''
-kill "$live"
-wait "$live" 2>/dev/null || true
-while IFS='|' read -r row min max marker; do
+[[ $(proc_state "$live") == running ]]
+! not_running "$live"
+! not_running ''
+! is_gone ''
+! not_running 'abc'
+python3 -c 'import os, sys, time
+pid = os.fork()
+if pid == 0:
+    os._exit(0)
+print(pid, flush=True)
+time.sleep(30)' >"$test_dir/zombie-pid" &
+zombie_parent=$!
+for _ in $(seq 1 100); do [[ -s $test_dir/zombie-pid ]] && break; /bin/sleep 0.1; done
+zombie=$(cat "$test_dir/zombie-pid")
+is_pid "$zombie"
+[[ $(proc_state "$zombie") == zombie ]]
+not_running "$zombie"
+! is_gone "$zombie"
+kill "$zombie_parent" "$live"
+wait "$zombie_parent" "$live" 2>/dev/null || true
+# 親が死ぬと、ゾンビはシステムが回収する。
+for _ in $(seq 1 100); do [[ $(proc_state "$zombie") == gone ]] && break; /bin/sleep 0.1; done
+is_gone "$zombie"
+# 別のプロセスのグループにいる対照のプロセスは、どの行でも残る。
+/bin/sleep 300 &
+control=$!
+while IFS='|' read -r row marker; do
  echo "$row" >"$test_dir/codex-strict"
  rm -f "$test_dir/desc-pid" "$test_dir/desc-done" "$test_dir/codex-pid"
  set_mode running
@@ -826,12 +874,105 @@ while IFS='|' read -r row min max marker; do
  elapsed=$(( $(python3 -c 'import time; print(int(time.time() * 1000))') - started ))
  grep -qF '警告: 設定の検証が 1 秒で終わらず、確認できませんでした' "$test_dir/err"
  grep -q '^daemon status' "$test_dir/calls"
- [[ $elapsed -ge $min && $elapsed -le $max ]] || { echo "時間切れの行 $row: ${elapsed} ミリ秒（期待 $min〜$max）" >&2; exit 1; }
- process_gone "$(cat "$test_dir/codex-pid")"
- [[ ! -f $test_dir/desc-pid ]] || process_gone "$(cat "$test_dir/desc-pid")"
+ [[ $elapsed -ge 3900 && $elapsed -le 8000 ]] || { echo "時間切れの行 $row: ${elapsed} ミリ秒（期待 3900〜8000）" >&2; exit 1; }
+ # 直接の子は検証の処理が回収し、子孫は実行中で残らない。
+ is_gone "$(cat "$test_dir/codex-pid")"
+ if [[ $row == *-none ]]; then [[ ! -f $test_dir/desc-pid ]]; else not_running "$(cat "$test_dir/desc-pid")"; fi
  if [[ $marker == あり ]]; then [[ -f $test_dir/desc-done ]]; else [[ ! -f $test_dir/desc-done ]]; fi
+ [[ $(proc_state "$control") == running ]]
+ [[ $(/bin/ps -o pgid= -p "$control" | tr -d ' ') != "$(cat "$test_dir/codex-pid")" ]]
 done <<<"$timeout_rows"
-echo 'PASS host: 古い Codex と時間切れは警告して進み、時間切れの表の 6 行で、猶予をすべて待ってから KILL を送り、子のプロセスの後始末が決めたとおりになる'
+kill "$control"
+wait "$control" 2>/dev/null || true
+echo 'PASS host: 古い Codex と時間切れは警告して進み、実際のプロセスの 7 行（親の終了・無視と子孫のなし・終了処理・無視、子孫だけのゾンビ）で、猶予をすべて待ち、子孫の終了処理を最後まで残し、実行中のプロセスと別のグループの対照のプロセスの扱いが決めたとおりになる'
+# ゾンビだけのグループを、本物のプロセスで作る。signal 0・TERM・KILL の結果は OS で違い、macOS では EPERM を確認し、Linux では観測した結果を出す。
+# どの状態も、停止の判定は ps の状態の読み取り（lib/codex-check.py の Operations.state）で分け、シグナルの結果から決めない。
+python3 -I - "$root/lib/codex-check.py" <<'PY'
+import importlib.util
+import os
+import signal
+import subprocess
+import sys
+import time
+
+sys.dont_write_bytecode = True
+spec = importlib.util.spec_from_file_location("codex_check", sys.argv[1])
+check = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(check)
+
+
+def stat(pid):
+    done = subprocess.run(["/bin/ps", "-o", "stat=", "-p", str(pid)], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    return done.stdout.decode().strip()
+
+
+def wait_for(predicate):
+    for _ in range(100):
+        if predicate():
+            return True
+        time.sleep(0.1)
+    return False
+
+
+def send(pgid, number):
+    try:
+        os.killpg(pgid, number)
+    except ProcessLookupError:
+        return "ESRCH"
+    except PermissionError:
+        return "EPERM"
+    return "ok"
+
+
+def start(script):
+    return subprocess.Popen(["/bin/bash", "-c", script], start_new_session=True)
+
+
+def read_state(proc):
+    return check.Operations(proc).state(proc.pid, 10)
+
+
+# 親だけがゾンビのグループ（子孫はいない）。
+parent = start("exit 0")
+assert wait_for(lambda: stat(parent.pid).startswith("Z")), "親がゾンビにならない"
+observed = [send(parent.pid, number) for number in (0, signal.SIGTERM, signal.SIGKILL)]
+assert read_state(parent) == check.STOPPED, "ゾンビだけのグループは停止済み"
+name = "macOS" if sys.platform == "darwin" else sys.platform
+print("観測 %s: ゾンビだけのグループへの signal 0・TERM・KILL の結果は %s" % (name, "・".join(observed)))
+if sys.platform == "darwin":
+    assert observed == ["EPERM"] * 3, observed
+else:
+    print("観測 %s: 設計の前提（成功）と%s" % (name, "一致する" if observed == ["ok"] * 3 else "違う"))
+# 直接の子を回収すると、グループは空になる。空のグループは ESRCH で、停止済みである。
+assert parent.wait() == 0
+assert [send(parent.pid, number) for number in (0, signal.SIGTERM, signal.SIGKILL)] == ["ESRCH"] * 3
+assert read_state(parent) == check.STOPPED, "空のグループは停止済み"
+
+# 親だけがゾンビで、子孫が動いているグループは、実行中である。
+mixed = start("/bin/sleep 300 & exit 0")
+assert wait_for(lambda: stat(mixed.pid).startswith("Z")), "親がゾンビにならない"
+assert read_state(mixed) == check.RUNNING
+assert send(mixed.pid, 0) == "ok", "動くプロセスがあれば、signal 0 は成功する"
+send(mixed.pid, signal.SIGKILL)
+mixed.wait()
+
+# 子孫だけがゾンビで、親が動いているグループは、実行中である。親が終われば、停止済みになる。
+descendant = subprocess.Popen([sys.executable, "-c", "import os, sys, time\n"
+                               "pid = os.fork()\n"
+                               "if pid == 0:\n"
+                               "    os._exit(0)\n"
+                               "print(pid, flush=True)\n"
+                               "time.sleep(300)"], stdout=subprocess.PIPE, start_new_session=True)
+zombie = int(descendant.stdout.readline())
+assert wait_for(lambda: stat(zombie).startswith("Z")), "子孫がゾンビにならない"
+assert read_state(descendant) == check.RUNNING
+send(descendant.pid, signal.SIGKILL)
+assert wait_for(lambda: stat(descendant.pid).startswith("Z"))
+assert read_state(descendant) == check.STOPPED
+descendant.wait()
+descendant.stdout.close()
+PY
+echo 'PASS host: ゾンビだけのグループが ps の状態で停止済みと読まれ、親だけ・子孫だけがゾンビで動くプロセスが残るグループは実行中と読まれ、macOS では signal 0・TERM・KILL が EPERM になる'
 # 停止を確認できないとき。ps を差し替えて、グループの状態を読めない場合と、実行中のプロセスが残る場合を作る。
 # 固定の診断で止まり、設定の誤りや python3 の不足と別の文になる。止まっても、KILL は送って直接の子は回収している。
 mkdir "$test_dir/ps-bin"
@@ -861,7 +1002,7 @@ for ps_mode in fail garbage running; do
  ! grep -qF 'Codex の設定が厳しい検証を通りません' "$test_dir/err"
  ! grep -qF 'python3 を確認して' "$test_dir/err"
  [[ ! -s $test_dir/calls ]]
- process_gone "$(cat "$test_dir/codex-pid")"
+ is_gone "$(cat "$test_dir/codex-pid")"
 done
 echo ok >"$test_dir/codex-strict"
 echo 'PASS host: 停止を確認できないとき、ps が失敗する・読めない・実行中が残る場合のどれでも、設定の誤りや python3 の不足と別の固定の診断で止まる'

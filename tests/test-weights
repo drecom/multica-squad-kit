@@ -25,7 +25,7 @@ tests/extensions-test.sh 2
 tests/gh-test.sh 5
 tests/guard-check-test.sh 9
 tests/host-daemon-test.sh 35
-tests/host-test.sh 70
+tests/host-test.sh 135
 tests/install-command-test.sh 7
 tests/install-test.sh 30
 tests/installation-test.sh 82
