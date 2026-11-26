@@ -13,7 +13,10 @@ cp -R "$root/common/shell" "$test_dir/package/common/"
 cp "$root/tests/guard-backend.sh" "$test_dir/bin/gh"
 chmod +x "$test_dir/bin/gh"
 export PATH="$test_dir/bin:$PATH"
-unset GH_HOST
+unset GH_HOST GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN
+# 人の gh の置き場と、役が使う空の置き場。人の置き場は、本物の gh が認証を読む場所の代わりである。
+export GH_CONFIG_DIR="$test_dir/human-gh"
+mkdir -p "$GH_CONFIG_DIR" "$TEMPLATE_AGENT_HOME/guard/gh-empty"
 sed '/^# multica-squad-kit-managed$/d' "$root/common/guard/gh" >"$test_dir/shared-gh"
 sed '/^# multica-squad-kit-managed$/d' "$root/common/guard/pre-push" >"$test_dir/shared-push"
 reset_guards() {
@@ -187,3 +190,76 @@ deny
 grep -q '通常の gh がガードを選びません' "$test_dir/err"
 [[ ! -s $TEST_GUARD_CALLS ]]
 echo 'PASS guard-check: 通常の gh が本物を先に選ぶと、通信せず既存の許可と起動ファイルを保って止まる'
+
+# 役の gh の認証の分離を確認できないときは、通信もファイルの反映もせずに止まり、直し方を出す。
+cp "$root/common/shell/.zshenv" "$root/common/shell/env.sh" "$test_dir/package/common/shell/"
+# 成功した実行が書き換えた許可と起動ファイルを、従来の内容へ戻す。
+restore_old() {
+ printf 'example/old\n' >"$TEMPLATE_AGENT_HOME/allowed-repos.d/project-a"
+ printf 'old shell\n' >"$TEMPLATE_AGENT_HOME/template/shell/project-a/.zshenv"
+ printf 'old bash\n' >"$TEMPLATE_AGENT_HOME/template/shell/project-a/env.sh"
+}
+restore_old
+reset_guards
+run
+restore_old
+echo 'PASS guard-check: 分離の確認がそろっていれば、続けて通る'
+
+for token in GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN; do
+ reset_guards
+ export "$token=secret-test-value"
+ deny
+ unset "$token"
+ grep -q "セットアップを流した端末に ${token} があります" "$test_dir/err"
+ grep -q '新しい端末でセットアップを流し直してください' "$test_dir/err"
+ ! grep -q 'secret-test-value' "$test_dir/err" "$test_dir/out"
+ [[ ! -s $TEST_GUARD_CALLS ]]
+done
+reset_guards
+export GH_TOKEN=secret-a GITHUB_TOKEN=secret-b
+deny
+unset GH_TOKEN GITHUB_TOKEN
+grep -q 'セットアップを流した端末に GH_TOKEN、GITHUB_TOKEN があります' "$test_dir/err"
+# 空の値は、gh も設定ありとして扱わない。
+reset_guards
+GH_TOKEN= run
+restore_old
+echo 'PASS guard-check: トークンの変数があると、名前（値は出さない）と直し方を出し、通信せず従来の設定を保って止まる'
+
+reset_guards
+printf 'token\n' >"$TEMPLATE_AGENT_HOME/guard/gh-empty/hosts.yml"
+touch "$TEMPLATE_AGENT_HOME/guard/gh-empty/.hidden"
+deny
+rm -f "$TEMPLATE_AGENT_HOME/guard/gh-empty/hosts.yml" "$TEMPLATE_AGENT_HOME/guard/gh-empty/.hidden"
+grep -q '空の gh の置き場にファイルがあります' "$test_dir/err"
+grep -q 'hosts.yml' "$test_dir/err"
+grep -q '.hidden' "$test_dir/err"
+grep -q '中のファイルを消してから、セットアップを流し直してください' "$test_dir/err"
+[[ ! -s $TEST_GUARD_CALLS ]]
+reset_guards
+rmdir "$TEMPLATE_AGENT_HOME/guard/gh-empty"
+deny
+mkdir "$TEMPLATE_AGENT_HOME/guard/gh-empty"
+grep -q '空の gh の置き場がありません' "$test_dir/err"
+echo 'PASS guard-check: 空の置き場にファイルがあるか、置き場がないと、直し方を出して止まる'
+
+# 置き場の外の認証（キーチェーンなど）が残っていて、空の置き場でも gh が認証済みなら止まる。
+reset_guards
+TEST_GH_AUTH=yes TEST_GH_AUTH_CALLS="$test_dir/auth-calls" deny
+grep -q '空の gh の置き場でも、本物の gh' "$test_dir/err"
+grep -q 'gh auth status の表示から認証の置き場' "$test_dir/err"
+grep -q 'Logged in (test)' "$test_dir/err"
+# 確認は、役と同じ空の置き場を指して行う。
+[[ $(cat "$test_dir/auth-calls") == "$TEMPLATE_AGENT_HOME/guard/gh-empty" ]]
+[[ ! -s $TEST_GUARD_CALLS ]]
+echo 'PASS guard-check: 空の置き場でも本物の gh が認証済みなら、認証の置き場を探す案内を出して止まる'
+
+# 人の gh の置き場が見つからなければ、gh auth login を案内して止まる。
+reset_guards
+saved_config=$GH_CONFIG_DIR
+export GH_CONFIG_DIR="$test_dir/no-human-gh"
+deny
+export GH_CONFIG_DIR=$saved_config
+grep -q '人の gh の置き場が見つかりません' "$test_dir/err"
+grep -q 'gh auth login' "$test_dir/err"
+echo 'PASS guard-check: 人の gh の置き場がなければ、gh auth login を案内して止まる'

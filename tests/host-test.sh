@@ -110,6 +110,9 @@ chmod +x "$test_dir/bin/"*
 export PATH="$test_dir/bin:$PATH" TEMPLATE_AGENT_HOME="$test_dir/agent's home" TEMPLATE_DAEMON_ID_FILE="$test_dir/daemon.id"
 export VSCODE_TEST_MARKER=must-not-be-inherited GH_CONFIG_DIR="$test_dir/human-gh"
 printf daemon-a >"$TEMPLATE_DAEMON_ID_FILE"
+# 人の gh の置き場は、セットアップが見つけられる場所に置く。端末のトークンは、手元の環境から切り離す。
+mkdir -p "$GH_CONFIG_DIR"
+unset GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN
 cat >"$test_dir/run.sh" <<'RUN'
 #!/bin/bash
 set -euo pipefail

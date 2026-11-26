@@ -524,6 +524,26 @@ prepare_project_host() {
 	done
 }
 
+# 役の gh の認証の分離を確認できないときに止める。変数の名前だけを出し、値は出さない。
+# 引数は、ガードの外にある本物の gh の置き場。
+host_check_isolation() {
+	local real_gh_dir=$1 name set_names='' human_gh empty entries status_output
+	for name in GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN; do
+		[[ -z ${!name:-} ]] || set_names+=${set_names:+、}$name
+	done
+	[[ -z $set_names ]] || die "セットアップを流した端末に ${set_names} があります。gh はこの変数を保存した認証より先に使うので、空の置き場でも役の gh が認証されます。端末の設定（シェルの起動ファイルなど）から変数を消し、新しい端末でセットアップを流し直してください。何も変更していません。"
+	human_gh=$(host_human_gh_dir) || die '人の gh の置き場を決められませんでした。'
+	[[ -d $human_gh ]] || die "人の gh の置き場が見つかりません: ${human_gh}。このホストで gh auth login を済ませてから、セットアップを流し直してください。何も変更していません。"
+	empty=$agent_home/guard/gh-empty
+	[[ -d $empty ]] || die "空の gh の置き場がありません: ${empty}。セットアップを流し直してください。"
+	entries=$(cd "$empty" && shopt -s dotglob nullglob && files=(*) && printf '%s\n' ${files[@]+"${files[@]}"}) || die "空の gh の置き場を読めませんでした: ${empty}"
+	[[ -z $entries ]] || die "空の gh の置き場にファイルがあります: ${empty}（$(printf '%s' "$entries" | tr '\n' ' ')）。中のファイルを消してから、セットアップを流し直してください。何も変更していません。"
+	# 役と同じ空の置き場で、本物の gh が未認証を返すかを見る。
+	if status_output=$(env -u GH_HOST -u GH_TOKEN -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN -u GITHUB_ENTERPRISE_TOKEN GH_CONFIG_DIR="$empty" GH_PROMPT_DISABLED=1 "$real_gh_dir/gh" auth status 2>&1); then
+		die "空の gh の置き場でも、本物の gh（${real_gh_dir}/gh）が認証されています。gh auth status の表示から認証の置き場（環境変数、キーチェーン、設定ファイルなど）を探して外し、セットアップを流し直してください。何も変更していません。表示: $(printf '%s' "$status_output" | tr '\n' ' ')"
+	fi
+}
+
 host_check_guards() (
 	umask 077
 	local content=$1 probe file escaped escaped_bin needle='{{ALLOWED_REPOS_FILE}}' bin_needle='{{AGENT_BIN_DIR}}' repo shell mode allowed shell_content
@@ -539,6 +559,7 @@ host_check_guards() (
 		break
 	done
 	[[ -n $real_gh_dir ]] || die '本物の gh がガードの外の PATH に見つかりません。gh の導入と PATH を確認してください。'
+	host_check_isolation "$real_gh_dir"
 	probe_path="$real_gh_dir:$PATH"
 	mkdir -p "$root/tmp" || die 'ガードの確認の作業場所を作れませんでした。'
 	probe=$(mktemp -d "$root/tmp/guard-check.XXXXXX") || die 'ガードの確認の作業場所を作れませんでした。'

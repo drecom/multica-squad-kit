@@ -10,6 +10,8 @@ mkdir -p "$root/tmp"
 test_dir=$(mktemp -d "$root/tmp/setup-runtimes.XXXXXX")
 # 人の gh の置き場。役の SQUAD_KIT_GH_CONFIG_DIR に渡る値を、手元の環境から切り離す。
 export GH_CONFIG_DIR="$test_dir/human-gh"
+mkdir -p "$GH_CONFIG_DIR"
+unset GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN
 scenario_dir=$test_dir
 # 標準エラーを err に向けたまま止まっても、trap が err 自身へ書き足し続けないよう、元の標準エラーを控えて出す。
 exec 8>&2

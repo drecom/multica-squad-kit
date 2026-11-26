@@ -7,6 +7,8 @@ exec 8>&2
 trap 'test_exit=$?; if [[ $test_exit != 0 ]]; then cat "$test_dir/out" "$test_dir/err" >&8; fi; rm -rf -- "$test_dir"' EXIT
 # 人の gh の置き場。役の SQUAD_KIT_GH_CONFIG_DIR に渡る値を、手元の環境から切り離す。
 export GH_CONFIG_DIR="$test_dir/human-gh"
+mkdir -p "$GH_CONFIG_DIR"
+unset GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN
 # Codex の役の引数の期待値。スタブと各テストの jq が同じ定義を使う。$g はガードの置き場。
 export HOOK_ARGS_DEF='def codex_args($g): ["-c","allow_login_shell=false","-c","features.shell_snapshot=false","-c","project_doc_max_bytes=65536","-c","hooks.PreToolUse=[{matcher=\"^(Bash|shell|exec_command|local_shell)$\",hooks=[{type=\"command\",command=\"\($g)/pre-tool-use\"}]}]","-c","hooks.Stop=[{hooks=[{type=\"command\",command=\"\($g)/stop\"}]}]"];'
 mkdir -p "$test_dir/bin" "$test_dir/package"
@@ -217,7 +219,7 @@ export TEST_DB="$test_dir/db" TEMPLATE_AGENT_HOME="$test_dir/host"
 export TEST_EXCLUDED='[]' TEST_ROLE_COUNT=17
 reset_db() {
  rm -rf "$TEST_DB" "$TEMPLATE_AGENT_HOME"
- mkdir -p "$TEST_DB/projects" "$TEST_DB/agents" "$TEST_DB/skills" "$TEST_DB/env" "$TEMPLATE_AGENT_HOME/bin" "$TEMPLATE_AGENT_HOME/git-hooks"
+ mkdir -p "$TEST_DB/projects" "$TEST_DB/agents" "$TEST_DB/skills" "$TEST_DB/env" "$TEMPLATE_AGENT_HOME/bin" "$TEMPLATE_AGENT_HOME/git-hooks" "$TEMPLATE_AGENT_HOME/guard/gh-empty"
  cp "$root/common/guard/gh" "$TEMPLATE_AGENT_HOME/bin/gh"
  cp "$root/common/guard/pre-push" "$TEMPLATE_AGENT_HOME/git-hooks/pre-push"
  chmod +x "$TEMPLATE_AGENT_HOME/bin/gh" "$TEMPLATE_AGENT_HOME/git-hooks/pre-push"
