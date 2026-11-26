@@ -435,6 +435,15 @@ check_isolation_examples() {
 	run_hook "$(json_claude 'gh pr create')" >/dev/null
 	grep -q '認証の分離が成り立っていません' "$test_dir/err" || { echo "FAIL ($mode) 分離の理由が出ない" >&2; cat "$test_dir/err" >&2; exit 1; }
 	grep -q '呼ぶ人間' "$test_dir/err" || { echo "FAIL ($mode) 人間に知らせる文が出ない" >&2; exit 1; }
+	# 照合にも当たるコマンドは、分離の理由を先に返し、環境の直しを頼む。
+	local command json
+	for command in 'git push --no-verify origin HEAD' 'echo "$(git push --no-verify origin HEAD)"'; do
+		for json in "$(json_claude "$command")" "$(json_codex_shell "$command")" "$(json_codex_exec "$command")"; do
+			expect_verdict stop "($mode) 分離を先に確認: $command" "$json"
+			grep -q '認証の分離が成り立っていません' "$test_dir/err" || { echo "FAIL ($mode) 照合より先に分離の理由が出ない" >&2; cat "$test_dir/err" >&2; exit 1; }
+			grep -q '呼ぶ人間に、環境の直しを頼んでください' "$test_dir/err" || { echo "FAIL ($mode) 環境の直しを頼む文が出ない" >&2; exit 1; }
+		done
+	done
 	# 追加の確認: 複数のコマンドは、すべてが multica のときだけ通す。Write・Edit は、通常の照合のまま
 	expect_command pass 'multica issue get X | multica issue get Y'
 	expect_command pass 'multica issue get X && multica issue comment add X --content "done"'

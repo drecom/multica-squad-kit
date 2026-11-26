@@ -440,18 +440,18 @@ def main():
     except RecursionError:
         stop("コマンドの入れ子が深すぎて、確認できません")
 
-    places = protected_places()
-    for cmd in commands:
-        reason = check_command(cmd, cwd, places, settings)
-        if reason:
-            stop(reason)
-
     problem = isolation_problem()
     if problem:
         other = not_multica(commands)
         if other is not None:
             stop("認証の分離が成り立っていません（%s）。実行するコマンド %s は multica でないので止めます" % (problem, other),
                  "multica のコマンドだけ通します。このガードを避ける呼び方や設定の変更はしないでください。タスクのコメントで呼ぶ人間に、環境の直しを頼んでください")
+
+    places = protected_places()
+    for cmd in commands:
+        reason = check_command(cmd, cwd, places, settings)
+        if reason:
+            stop(reason)
     return 0
 
 

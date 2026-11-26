@@ -43,7 +43,7 @@ cc72a3cc20af68637f083a62af5de56d7d437dcd3fd56660a49203873d32ee85  ./common/agent
 b8a475b0195505a111faa460b9966acac8b9d47661b9780bb76899792dcf36a0  ./common/guard/git-credential
 27731885b528a036ea93d5e2b5664c58e96ad4a056a501a59f2233173ebf2e7f  ./common/guard/git-ssh
 15799b1ff7222641e44809664065d2b1b583d3d066db424d6a73f0cf67005106  ./common/guard/pre-push
-2a3f3beb5519a5ce925c23d0c41be09cbc8f26f2257d8756fce4752f8a25d5f9  ./common/guard/pre-tool-use
+ac6dfe55ad40cfe9f55e05b986ca9149c0439c480e2721723cc88397aed8eaa8  ./common/guard/pre-tool-use
 065176d32549e4757d0ba85e6105f57e8592bfe91a71d2333030cda2200e02ac  ./common/guard/shell_split.py
 003d274f0e18b662fe11322a620d5498a66f56ca3a3f1b118d32f8078f173ea8  ./common/guard/stop
 cbfb45a119121c0449fe4bf6569ed7e9dacb7a618550575db7c2feaa873802e1  ./common/host/start-daemon
@@ -321,7 +321,7 @@ ecd6f37c326cf97ab4c60f934a3168f56fd6923862d4a1de6831dbe7e96d3e23  ./tests/fixtur
 e130f9bc18aa689d33e0037b125018ad756623a8a7665397d1d2bd663b56bc3c  ./tests/guard-backend.sh
 ff84bdcc71eb4ad5500ecb57b1a0bdcf7a4d1ecb0a63723354444c80c5b30803  ./tests/guard-check-test.sh
 f17c2425bda6e02228814065e35be1b1d61a68a92e8b4b0f667e4d563d74f1c9  ./tests/guard-git-test.sh
-b6435343d8e686a3f6430d399b498b72edda19586cb3061969481cea4f8aacdc  ./tests/guard-hook-test.sh
+46306c3c5da9c057f8e01d22a4a96160c8eb8344b6b918c5870c308a64541d79  ./tests/guard-hook-test.sh
 7096a01774fa75f7d1643482ccbae548f8e9bb1471fbeaf8b185b69433fe8321  ./tests/host-daemon-test.sh
 1b8c7ce9d6f0a49dcbf4abb2f015604d07be508d40a7a3dc9e59824fa56deb9d  ./tests/host-test.sh
 c8532b22f7a86ec6590a5cde3f64a6295148663e9f9893255209fca16fdea5b0  ./tests/install-command-test.sh
