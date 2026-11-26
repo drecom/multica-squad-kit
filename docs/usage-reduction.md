@@ -249,7 +249,7 @@ flowchart TD
 | `common/agents/claude-principal.md`、`common/agents/codex-principal.md` | front matter の `description` と `role`、本文の始めの最終レビューの文 |
 | `lib/questions.sh` | セットアップが出す最上位の役の選択肢の説明 |
 | `common/agents/orchestrator.md` | 場面と手順の表の、最終レビューを頼む行の手順から「全タスクの」を除く。有効な最上位の役の行は「短い道を除く全タスクで最終レビュー」にする |
-| `manual.md` | 目次の最上位の役の項目・役の選択肢の説明・タスクが進む流れの 8・最上位の役の最終レビューの節の始め・最上位の役の節の「呼ぶところ」 |
+| `manual.md` | 目次の最上位の役の項目・役の選択肢の説明・タスクが進む流れの 9・最上位の役の最終レビューの節の始め・最上位の役の節の「呼ぶところ」 |
 | `common/skills/squad-handoff/references/leader-principal.md` | 「重要のマークと最上位の役」の始め、「最上位の役を呼ぶところ」の 3 |
 
 本文の始めの文は、「最終レビューは、文書だけのものも含むすべてのタスクで行います。」のすぐあとに、「人間が同意した小さいタスク（短い道）では行いません。」を足す。始めの文そのものは変えない。要件を決める役の文書が、この文を名前で指しているためである。
@@ -855,6 +855,7 @@ high にした理由は、原則の判断に考える量を回すためだった
 | `common/monitor/squad-preflight` | 確認する一覧に `squad-run-cut`・`squad-run-cut-values`・`squad-task-read`・`squad-task-post` を足す。終了コードの決め方は変えない |
 | `common/monitor/squad-cli-lib` | `issue-get` の読み取りの約束に、`squad-task-read` が出すタイトル・ラベル・metadata の `branch` を、省略を許す欄として足す。採取の条件と、`analyze` の欄 `short_path` の実体も足す |
 | `common/squad.md`・`common/agents/claude-principal.md`・`common/agents/codex-principal.md`・`lib/questions.sh`・`manual.md` | [最終レビューの範囲の言い回し](#最終レビューの範囲の言い回し)のとおり直す |
+| `manual.md`（短い道の工程図） | タスクが進む流れの図に、`道: 通常` と `道: 短い` の分岐と、短い道がレビューと E2E から CI の確認へ進む線を足す。流れの箇条書きの 8 に短い道の項目を足して[小さいタスクの短い道](#小さいタスクの短い道)へつなぎ、続く項目の番号を 1 つずつ下げる |
 | `common/agents/orchestrator.md` | [最終レビューの範囲の言い回し](#最終レビューの範囲の言い回し)・思考の深さ・場面と手順の表・短い道の確認・区切りの続きの確認の場面。始めの確認と人間を待つところでまとめた呼び出しを使い、[リーダーの指示の大きさ](#リーダーの指示の大きさ)のとおり上限に収める |
 | `common/agents/claude-fixer.md` | 思考の深さ、区切りの行 |
 | `common/agents/claude-implementer.md` | 区切りの行、短い道の実装と `設計の判断:` の行。短い道では、PR がなければ自分で作り、push の前の照合を受け入れ条件に照らす |
