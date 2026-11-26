@@ -60,6 +60,8 @@ hooks が自動で動くと仮定せず、完了の条件を自分で確認し�
 
 性能を確認するときは、[手戻りの見直しの記録を読む処理の想定規模と許容時間](docs/decide-record-read.md#想定する規模と許容時間)を参照します。
 
+ガードのフックを変えるときは、[ガードのフックの想定する規模と許容時間](docs/agent-guards.md#想定する規模と許容時間)を参照します。
+
 `scripts/metrics.py` の `anonymize` を変えるときは、[`anonymize` の想定する規模と許容時間](docs/time-breakdown.md#anonymize-の想定する規模と許容時間)を参照します。
 
 ## Git と成果物
