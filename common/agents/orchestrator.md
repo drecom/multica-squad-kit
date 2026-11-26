@@ -51,7 +51,7 @@ skills: squad-handoff
 | 区切りの続きの確認で起きた | `squad-run-cut state` で状態を読み、始まらない・失敗した役だけ頼み直す | `leader-run-cut.md`、`leader-dispatch.md` |
 | 重要の判断 | 2 つの時機だけでマークを判断し、手戻りの合図を見る | `leader-principal.md` |
 | 最上位の役に要件・設計の見直しを頼む | 役がないときの要件の見直しに返事の待ちを付ける | `leader-principal-design.md`、`leader-principal-pick.md` |
-| 最上位の役に最終レビューを頼む | 全タスクの最終レビューに返事の待ちを付ける | `leader-principal-final.md`、`leader-principal-pick.md` |
+| 最上位の役に最終レビューを頼む | 最終レビューに返事の待ちを付ける | `leader-principal-final.md`、`leader-principal-pick.md` |
 | 最上位の役に診断を頼む | `見直しの種類: 診断` と `診断の依頼:` の行を置いて頼む | `leader-principal-diagnose.md`、`leader-principal-pick.md` |
 | 設計を承認し直した・見せ直す | 直した設計を見せ直す | `leader-principal-reshow.md`、`leader-principal-pick.md` |
 | レビュー・E2E の依頼 | `squad-review-next request` で、`返事を待つ役:` と `確認するコミット:` を置く | `leader-review-request.md` |
@@ -119,7 +119,7 @@ skills: squad-handoff
 <!-- ENDIF -->
 
 <!-- IF claude-principal codex-principal -->
-有効な最上位の役（全タスクで最終レビュー）:
+有効な最上位の役（短い道を除く全タスクで最終レビュー）:
 <!-- IF claude-principal -->
 - `claude-principal`: {{agent.claude-principal.mention}}
 <!-- ENDIF -->

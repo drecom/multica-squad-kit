@@ -30,7 +30,7 @@ ab7e4668f1d258ce7c83dbc743985fae28ccd28aa2f8c8dc273dd1292fc54f2f  ./common/agent
 3de2b044aa87de412ddab031a8e0a7560c37a70354f10733f5f014f888a148a2  ./common/agents/codex-principal.md
 2a622042d94668586f048aa92f893a8f3f9e396c83300622fa7b2ec657804b89  ./common/agents/dependabot-merger.md
 49731351502e865ecda4d0e51fb016bb36f339ef07a5023d350997db4926b50e  ./common/agents/designer.md
-2ca1714caadc23dfb3298e5db72ec9e964739fed25312b8c4f1b53bc1f78a817  ./common/agents/orchestrator.md
+5a4c480b6a201c043bc260531be717d7590b39daa16f1aab22612ebbba193d3b  ./common/agents/orchestrator.md
 97aee7289e953080cdbaa419e8fac7eb7c48ffd3bcc6fb5e8864265cc11e6226  ./common/agents/performance-reviewer.md
 b734b3d02637be0659246f4dc0ac8ec7bd1febce5a1d5c9b42aeaab71c258238  ./common/agents/planner.md
 85376c8fa4991ecd60e10e2101ce9fae3b5f0691e34d0f3a2a9dce833afed307  ./common/agents/qa.md
@@ -108,10 +108,10 @@ ce01904b58b09ea957686673d8f9883b1e59f5e84dbdb74bd7ab30759d1a1797  ./docs/host-st
 69c64f94fb80736ebc4f659805510155715a0d8b78510aa9ab40aeb284d87a12  ./docs/install.md
 ea7ebff44ce2dfa5cf4c68c764dde731c5c34514ea14fe1009369476511df8b0  ./docs/instruction-reread.md
 369c5b96674d47f949a255bb28643e07bb2a623a6b1c24628805724591a94b50  ./docs/leader-eval-picks.md
-bfbaa6e9f69845e25bb1a3928f221cae1af68237daf60813b6eae8d014a116aa  ./docs/leader-principles.md
+c87cc9bfe056434281fb54a7da958d76d8d08dc4c17a73b402283f2e37239067  ./docs/leader-principles.md
 f3e7834c16bb59c09a819b29a92ccea1d2ba7bdbe50505af4e1912167369d653  ./docs/metrics.md
 fc4ec5836bb4c9b565596c63b7e0255ce645fb797e1a9bbb07b3b68e3e1f521b  ./docs/own-review-paths.md
-a3f07304a293238075c2c05530cb54bc58b18dc26bcfc11e43547520b34e4668  ./docs/planner-requirements.md
+50cf4e276cc4493aa7342eec05ccdc15afb666d22e17106e4a3d19ecd599355b  ./docs/planner-requirements.md
 5a2b998b3ba79f2e89a03d89bb01c0df664d3003a7fc55da2f4792427b66cffc  ./docs/principal-review.md
 a58a91809ea09df148c193b451ff8955d8b9c9a7b702cace304633e1673c4b43  ./docs/procedure-review.md
 29fe97cb493ffe208a7fd6de93e446bb965f5d5ed881a51196cbd0862ef62525  ./docs/release.md
