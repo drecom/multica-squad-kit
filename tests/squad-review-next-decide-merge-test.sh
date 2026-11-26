@@ -254,3 +254,22 @@ run final-1
 expect_failure 'コメントの投稿に失敗した'
 expect_no_calls status-calls
 echo 'PASS review-next-decide: 書けないときはタスクの状態を変えない'
+
+# 短い道の head は、最上位の役の有無によらず、組の確認するコミットと照合する。
+for with_principal in yes no; do
+	reset
+	if [[ $with_principal == yes ]]; then set_merge_roster; else set_roster orchestrator code-reviewer qa; fi
+	ok_round
+	add path orchestrator '道: 短い'
+	run round-1
+	expect_merge_posted "$(merge_body round-1 "$sha" '道: 短い（最終レビューなし）' "$conf_line" '✅ demo-code-reviewer-test: 結果' '✅ demo-qa-test: 結果')"
+	expect_no_calls pick-calls
+	expect_calls pr-watch-calls $'link-check test-issue\nconflicts-check test-issue\nconflicts test-issue --leader orchestrator'
+	# head が進んだときはマージを頼まず、古い組を根拠に進めない。
+	: >"$test_dir/posted.jsonl"
+	: >"$test_dir/status-calls"
+	printf '{"headRefOid": "%s"}\n' "$old" >"$test_dir/head.json"
+	run round-1
+	expect_leader "PR の今の head（${old}）が組の確認するコミット（${sha}）と違う"
+done
+echo 'PASS review-next-decide: 短い道は組のコミットと head が合うときだけ進み、最終レビューなしの行を添える'
