@@ -117,7 +117,7 @@ a58a91809ea09df148c193b451ff8955d8b9c9a7b702cace304633e1673c4b43  ./docs/procedu
 29fe97cb493ffe208a7fd6de93e446bb965f5d5ed881a51196cbd0862ef62525  ./docs/release.md
 87253fa66c18fc19620dac36e018e6e477368f8479e6700c4ffdfb5947293aae  ./docs/reread-followups.md
 e56ffb892fe18d7e9b8d777cba11d0afc71c5b1ef4ff6e4fe708abb95088e621  ./docs/review-eval.md
-bb3145f6f56ed71bc6ac2af28e44811b20995f4bdfd3fe10938383eeac6470f9  ./docs/review-next-step.md
+f25c08ca78ab9e45865fe6b458a69c71a71bee81ee77ec1c23708c2f8112809c  ./docs/review-next-step.md
 ec9e148fd1b63d9314b4845e41e79cc58be28b916ad9d25df2ed571edd0e10d6  ./docs/review-rework.md
 ea489bd6b37ccef2488c766eee998ce62198247d71b54dab7e30d4105283f7fb  ./docs/screens.md
 532250eb72bfbc789cb82f2cf527bcdeb21dfbdb38bfc1184b75e62a23373030  ./docs/setup-completion.md
@@ -129,7 +129,7 @@ a2367b63ddcabe6b407ced872701305e8ba9303890d4d47829b9a36b01469037  ./docs/terms.m
 42cf0ae622a4d61b9c9ca60fc3597043294929d3fc06b5f1118ad6cbdc47f636  ./docs/test-trim.md
 4788958c0c608fdfe5e9c299b8fbce2fd761f2840563748f24cb191acdee0746  ./docs/time-breakdown.md
 6627002e845486bb04bb091dda5e2b83b42fbe08434ab46f492385a375c8cc2c  ./docs/usage-answer.md
-59530c31de05f15b1b67595a693de7183e3f13c3cb6b40c33ae7f3de7e5c2197  ./docs/usage-reduction.md
+98ec0743a62cf200c2618df88bbddca8c2c8bc0f06148e90f71fd53b6a583745  ./docs/usage-reduction.md
 b29efd7c2adf1f0b2d7554c0c3a90059156bfd8717105cc156de5bcf871e1cca  ./docs/vm.md
 f9976396457d968a6b10dc34235955d52889eaf20d46cc70c9785a748f2bb3bd  ./install.sh
 18e95b2049d107d250d48f6c8453cffc0c93344aa88246dba97595ed90f0e15d  ./lib/answers.sh
