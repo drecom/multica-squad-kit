@@ -69,7 +69,7 @@ b0e7a3279a4284756a60a54123b595a50e67522bb23ec18a8c0be187410e77d8  ./common/setup
 1caa0a53bbaafea6d15e8105f94b22e1cd5b487b9891529111085f838bd88681  ./common/squad.md
 067064d2cceb6e8977164c72e83a8b0346ea4ebcbcfe73f591487c0cdb31619b  ./docs/README.md
 c380ac8fd57091fa1d1ad80ff9724cba6667a7199b440a40b4be9b0e25f83623  ./docs/agent-path.md
-95e17354e12b4ef763655ff7eba171c4cc53dbbd3d10dec9e82f7ae3b8e09163  ./docs/agent-settings.md
+98bc3f807e194936a5eb96cfe325ee07bcf7ff453dc9c7ada95d651b7541a4b6  ./docs/agent-settings.md
 62062b7363a33eb140e814eeff5b3898d2d7d06aadc1ff95a07aa88aa001dbc7  ./docs/autopilot-targets.md
 3ca4ffccd35ce4ddcb26bc3c40ef34d2d2295eb27b8b0e08ea0522827b8bbb9c  ./docs/bug-repro-test.md
 ebdf260d83e27d572cf625fc1edb4b3ad30982a178e5848a00c4bc4d101d1167  ./docs/codex-models.md
@@ -115,7 +115,7 @@ b9a45cd63da0d056163d453d727352a611c2515299627c097ce072f28fc7f8b7  ./lib/autopilo
 833e6d591ac67ca1b7e459f8e21efff237e9460c454cadcfd9ca7e0c8a8e5031  ./lib/clock.sh
 2d1ddbe078e69260fa06aaf0af9169dd68aff118151dcebe615059714a3dd674  ./lib/extensions.py
 10cd0eaaddfd83b11ff48f1fd07d4fd3b029a93afd0504449017603559529589  ./lib/extensions.sh
-570616f681ec84b2c6f8da82223d93aa638c78b7bfc38cb526a24f49008013e6  ./lib/host.sh
+3ef5344f8e0ea45ec4cf7cfb90be68198b6de3d9680af08baeb73694304fa761  ./lib/host.sh
 23d61cb270e4f571520a230918feccc00e8b5b09cbcf430108e0a424244b5a96  ./lib/installation.sh
 98823f1dc43473fe56a1a8f1e37e3d5a3fc3e8dd2389a7dff8c71f0b4c40f6a1  ./lib/project-changes.sh
 350f6f6dd554d0aa4c32302a45d459aeab8750e4b1fcf2dcbbed53b747930fbc  ./lib/project.sh
@@ -128,7 +128,7 @@ b8145ced477ed48eb7c0f599f44fc85c3e15990085d6de4521f276286cee6ff8  ./lib/terminal
 f57a7a829cf4cac51462f7a2dc04912b57a99927b8541727faf70f7e4fa701a4  ./lib/version.sh
 405d6c439cb72b4f19d46452714e5ef46f3b9517a1ce8bea0cd57d24afcd2836  ./lib/webhooks.sh
 50c2bfd06e66458d38fe423d6f4c2bf3223efe098dde74b561e21105c807af40  ./lib/workspace.sh
-e0bcba827c4a1657709d472dfae8b4ee0b9970f713d8cfd2f6407235a6befb18  ./manual.md
+e676a14f5890defed8b896c20c991d6b5cd10cde8335c52a64e3c410ea2a392a  ./manual.md
 633f1030aafe88149effa1a7c3d64247fd6100f682ffbaae2c212d44b443a538  ./scripts/build-assets.sh
 58a7f0238d3b698745dba710637832fad1c4dc3c051353b4a04505f77c798202  ./scripts/check-links.py
 44f95ffd36dfaf4829e3ea7a6c81dd60c6569595754aff1e8285e6d654c45eb1  ./scripts/check-style.py
@@ -278,7 +278,7 @@ ecd6f37c326cf97ab4c60f934a3168f56fd6923862d4a1de6831dbe7e96d3e23  ./tests/fixtur
 e71707f3eb05dce9239214fb9419946902d078f95a874892f01bdf155e6ee5b0  ./tests/guard-backend.sh
 c485d04a06ca5b2e1759c42d83c333199c3ddafe331031e377d34d669353970d  ./tests/guard-check-test.sh
 172ee5343c2d134522a4fbd00c7df066612331acc7b669d732c8cf3c0352cd3b  ./tests/host-daemon-test.sh
-c324d0afa87a2772793075ebf0341effd7ab53a67cb8952f82bb0a6cab3a210e  ./tests/host-test.sh
+b0a5c836177dcb9b12f8a7b32ab1bf00cfc4831a5e60cb822d96285e0307e25a  ./tests/host-test.sh
 c8532b22f7a86ec6590a5cde3f64a6295148663e9f9893255209fca16fdea5b0  ./tests/install-command-test.sh
 539275b12edb26069fca5bedf9bb83abf3a73a7f68dc3c3ed5456c2ce19228f8  ./tests/install-test.sh
 f1213037642326b587fadb22e6a05923d656ed63570e526e52a8f7444b7e08e4  ./tests/installation-fixture.py

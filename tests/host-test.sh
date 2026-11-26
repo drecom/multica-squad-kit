@@ -70,6 +70,8 @@ if [[ $* == 'app-server --strict-config --listen stdio://' ]]; then
  silent) exit 1 ;;
  old) echo "error: unexpected argument '--strict-config' found" >&2; exit 2 ;;
  other2) echo 'error: another usage error' >&2; exit 2 ;;
+ secret) echo 'invalid type: string "SYNTHETIC_SECRET_VALUE", expected a map' >&2; exit 1 ;;
+ orphan) (trap '' TERM; printf '%s\n' "$BASHPID" >"$base/codex-child-pid"; exec /bin/sleep 300) & printf '%s\n' "$$" >"$base/codex-pid"; wait ;;
  hang) printf '%s\n' "$$" >"$base/codex-pid"; exec /bin/sleep 300 ;;
  esac
 fi
@@ -746,16 +748,20 @@ agent_env
 run
 [[ $(wc -l <"$test_dir/codex-checks") -eq 1 ]]
 ! grep -qF 'strict-config' "$test_dir/err"
-for failure in fail silent other2; do
+for failure in fail silent other2 secret; do
  echo "$failure" >"$test_dir/codex-strict"
  cp "$config" "$test_dir/strict-config"
  set_mode running
  agent_env
  deny
  grep -qF 'Codex の設定が厳しい検証を通りません' "$test_dir/err"
- grep -qF 'キーを直すか消してから流し直してください' "$test_dir/err"
- [[ $failure != fail ]] || grep -qF 'unknown configuration field `bogus`' "$test_dir/err"
- [[ $failure != other2 ]] || grep -qF 'another usage error' "$test_dir/err"
+ grep -qF 'キーを直すか消してから、セットアップを流し直してください' "$test_dir/err"
+ grep -qF '終了コード' "$test_dir/err"
+ grep -qF -- '--strict-config --listen stdio:// </dev/null' "$test_dir/err"
+ # Codex の出力は、秘密値を含みうるので表示しない。
+ ! grep -qF 'bogus' "$test_dir/err"
+ ! grep -qF 'another usage error' "$test_dir/err"
+ ! grep -qF 'SYNTHETIC_SECRET_VALUE' "$test_dir/err"
  cmp "$config" "$test_dir/strict-config"
  [[ ! -s $test_dir/calls ]]
 done
@@ -784,8 +790,16 @@ TEST_CODEX_SECONDS=1 run
 grep -qF '警告: 設定の検証が 1 秒で終わらず、確認できませんでした' "$test_dir/err"
 grep -q '^daemon status' "$test_dir/calls"
 ! kill -0 "$(cat "$test_dir/codex-pid")" 2>/dev/null
+# 親が先に終わり、TERM を無視する子孫がグループに残っても、猶予のあとに KILL で止める。
+echo orphan >"$test_dir/codex-strict"
+rm -f "$test_dir/codex-child-pid"
+set_mode running
+agent_env
+TEST_CODEX_SECONDS=1 run
+grep -qF '警告: 設定の検証が 1 秒で終わらず、確認できませんでした' "$test_dir/err"
+! kill -0 "$(cat "$test_dir/codex-child-pid")" 2>/dev/null
 echo ok >"$test_dir/codex-strict"
-echo 'PASS host: 古い Codex と時間切れは警告して進み、時間切れでは起動した子のプロセスを止める'
+echo 'PASS host: 古い Codex と時間切れは警告して進み、時間切れでは起動した子のプロセスと、TERM を無視する子孫を止める'
 # ID を受け取る関数を、実際の bash と zsh の起動ファイルで確認する。
 cat >"$test_dir/project.sh" <<'RUN'
 #!/bin/bash

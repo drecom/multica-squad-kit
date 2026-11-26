@@ -160,9 +160,9 @@ environment = dict(os.environ, CODEX_HOME=home)
 command = ["codex", "app-server", "--strict-config", "--listen", "stdio://"]
 
 def finish(status, detail=""):
-    printable = "".join(c for c in detail if c in "\n\t" or c.isprintable())
+    # Codex の出力は、人の設定の秘密値を含みうるので、状態と終了コードだけを返す。
     print(status)
-    print("\n".join(printable.strip().splitlines()[-20:])[-2000:])
+    print(detail)
     sys.exit(0)
 
 with tempfile.TemporaryFile() as errors:
@@ -175,16 +175,23 @@ with tempfile.TemporaryFile() as errors:
     try:
         code = child.wait(timeout=seconds)
     except subprocess.TimeoutExpired:
-        for sent in (signal.SIGTERM, signal.SIGKILL):
-            try:
-                os.killpg(child.pid, sent)
-            except ProcessLookupError:
-                break
-            try:
-                child.wait(timeout=5)
-                break
-            except subprocess.TimeoutExpired:
-                continue
+        # 親が先に終わっても、TERM を無視する子孫がグループに残りうる。猶予のあとに必ずグループへ KILL を送る。
+        try:
+            os.killpg(child.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            child.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
+        try:
+            os.killpg(child.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        try:
+            child.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
         finish("timeout")
     errors.seek(0)
     text = errors.read().decode("utf-8", errors="replace")
@@ -192,7 +199,7 @@ with tempfile.TemporaryFile() as errors:
         finish("ok")
     if code == 2 and "unexpected argument '--strict-config'" in text:
         finish("old")
-    finish("failed", text)
+    finish("failed", str(code))
 PY
 	); then
 		die 'Codex の設定の検証を実行できませんでした。python3 を確認して流し直してください。'
@@ -204,7 +211,7 @@ PY
 	ok) ;;
 	old) ui_notice warn "$config" "この Codex は --strict-config を受け付けないため、設定を検証できませんでした" || ui_warning "この Codex は --strict-config を受け付けないため、設定を検証できませんでした: $config" ;;
 	timeout) ui_notice warn "$config" "設定の検証が ${codex_check_seconds:-30} 秒で終わらず、確認できませんでした" || ui_warning "設定の検証が ${codex_check_seconds:-30} 秒で終わらず、確認できませんでした: $config" ;;
-	*) die "Codex の設定が厳しい検証を通りません: ${config}。${detail:+出力: $detail }出力の行のキーを直すか消してから流し直してください。" ;;
+	*) die "Codex の設定が厳しい検証を通りません（終了コード ${detail:-不明}）: ${config}。Codex の出力は秘密値を含みうるので表示しません。端末で CODEX_HOME=$(printf '%q' "$agent_home/codex") codex app-server --strict-config --listen stdio:// </dev/null を流して、出力の行のキーを直すか消してから、セットアップを流し直してください。" ;;
 	esac
 }
 
