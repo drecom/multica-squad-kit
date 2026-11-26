@@ -47,6 +47,7 @@ WRITE_PREFIXES = [
     "multica issue wakeup trigger",
     "multica issue wakeup checkin",
     "squad-review-wait report",
+    "squad-task-post",
 ]
 FILE_FLAGS = ("--content-file", "--description-file")
 VALUE_FLAGS = ("--content", "--description")
@@ -354,6 +355,22 @@ def match_command(table, line):
     return best
 
 
+def task_post_args(argv):
+    """`squad-task-post <タスク> --status <状態> --content-file <ファイル> [--parent <ID>]` の値を読む。"""
+    task, status, parent, i = "", "", "", 0
+    while i < len(argv):
+        a = argv[i]
+        if a == "--status" and i + 1 < len(argv):
+            status, i = argv[i + 1], i + 2
+        elif a == "--parent" and i + 1 < len(argv):
+            parent, i = argv[i + 1], i + 2
+        elif a == "--content-file" and i + 1 < len(argv):
+            i += 2
+        else:
+            task, i = task or a, i + 1
+    return task, status, parent
+
+
 def stub(name, argv):
     cli_path = os.environ["LEADER_EVAL_CLI"]
     calls_path = os.environ["LEADER_EVAL_CALLS"]
@@ -403,9 +420,18 @@ def stub(name, argv):
     record = {"command": line, "kind": kind, "exit": code}
     if bodies:
         record["bodies"] = bodies
+    records = [record]
+    if name == "squad-task-post" and code == 0:
+        # 実物は、投稿のあとに状態を変える。この 2 つの呼び出しも記録し、`multica issue comment add` と
+        # `multica issue status` で書いた場面の判定が、そのまま使えるようにする
+        task, status, parent = task_post_args(argv)
+        post = f"multica issue comment add {task}" + (f" --parent {parent}" if parent else "")
+        records.append({"command": post, "kind": "write", "exit": 0})
+        records.append({"command": f"multica issue status {task} {status}", "kind": "write", "exit": 0})
     with open(calls_path, "a", encoding="utf-8") as f:
         fcntl.flock(f, fcntl.LOCK_EX)
-        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        for rec in records:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
     if out:
         sys.stdout.write(out if out.endswith("\n") else out + "\n")
     if err:
@@ -416,7 +442,7 @@ def stub(name, argv):
 # ---- 1 回の実行 ----
 
 SHIMS = ["multica", "gh", "squad-preflight", "squad-pr-link", "squad-pr-watch", "squad-review-wait",
-         "squad-dispatch-pick", "squad-usage-read", "squad-review-next", "squad-usage-wait", "git"]
+         "squad-dispatch-pick", "squad-usage-read", "squad-review-next", "squad-usage-wait", "squad-task-read", "squad-task-post", "git"]
 # 使える道具は、スタブのコマンドの Bash と、作業ディレクトリの中の読み書きに、次の 2 つを足したものにする。
 # - エージェントは `cmd; echo "exit=$?"` や `cmd | head` のようにコマンドをつなぐ。dontAsk では、つないだ
 #   部分が許可に無いと全体が拒否されるので、読むだけの標準のコマンドも許可する（書き込みや通信はできない）
@@ -548,7 +574,7 @@ def agent_command(runtime, model, thinking, prompt, executable=None, extra_tools
 
 def posted_comments(calls):
     # gh pr comment と gh pr review の本文は、code-reviewer の評価だけで記録される（stub の REVIEWER_*）
-    posts = ("multica issue comment add", "squad-review-wait report", "gh pr comment", "gh pr review")
+    posts = ("multica issue comment add", "squad-review-wait report", "squad-task-post", "gh pr comment", "gh pr review")
     return [b for c in calls if c["command"].startswith(posts) for b in c.get("bodies", [])]
 
 

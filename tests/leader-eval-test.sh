@@ -1036,6 +1036,8 @@ multica no-such-command >/dev/null 2>&1 || true
 printf '確認します [@member1](mention://member/member1)\n' >tmp/c.md
 multica issue comment add issue-shop-1 --parent comment-2 --content-file tmp/c.md >/dev/null
 multica issue status issue-shop-1 in_review >/dev/null
+printf '結果を書きます [@member1](mention://member/member1)\n' >tmp/c2.md
+squad-task-post issue-shop-1 --status in_review --content-file tmp/c2.md --parent comment-2 >/dev/null
 echo '{"type":"result","result":"done","is_error":false,"permission_denials":[]}'
 EOF2
 chmod +x "$stub_bin/claude"
@@ -1062,14 +1064,17 @@ echo "PASS leader-eval: 今と新しい指示を展開し、squad-handoff と一
 
 # 新しい指示と一緒に配る手順には、判断と受け渡しに使う行の決まりを残す。
 refs="$out/instructions/new/skills/squad-handoff/references"
-for phrase in '同じ誤り:' '同じ部品:' '同じ部品の確認:' '頼む範囲:' '列挙を頼む部品:' '自動の依頼の確認:' '設計との差:' '設計との差の扱い:'; do
-	grep -qF -- "$phrase" "$refs/leader-flow.md"
+for phrase in '同じ誤り:' '同じ部品:' '同じ部品の確認:' '頼む範囲:' '列挙を頼む部品:'; do
+	grep -qF -- "$phrase" "$refs/leader-repeat.md"
 done
-for phrase in '修正の続行の確認:' '共通 2 の判断:' '入力と信頼の表の確認:'; do
-	grep -qF -- "$phrase" "$refs/leader-principal.md"
+for phrase in '自動の依頼の確認:' '修正の続行の確認:'; do
+	grep -qF -- "$phrase" "$refs/leader-fix-request.md"
 done
 for phrase in '設計との差:' '設計との差の扱い:'; do
-	grep -qF -- "$phrase" "$refs/leader-dispatch.md"
+	grep -qF -- "$phrase" "$refs/leader-design-diff.md"
+done
+for phrase in '共通 2 の判断:' '入力と信頼の表の確認:'; do
+	grep -qF -- "$phrase" "$refs/leader-principal-final.md"
 done
 echo 'PASS leader-eval: 配る手順に、同じ誤り・同じ部品・続行と安全の確認・設計との差の行の決まりがある'
 
@@ -1083,9 +1088,15 @@ jq -e -s 'all(.[]; .response == "done" and .exit_code == 0 and (.duration_ms >= 
 jq -e -s 'all(.[]; .criteria | all(.[]; has("n") and has("kind") and has("pass") and has("reason")))' "$out/runs.jsonl" >/dev/null
 grep -q '^| keep-2 | 保 | 2/2 | 2/2 | - |$' "$out/summary.md"
 grep -q '^| 1-1 | 1 | 2/2 | 2/2 | - |$' "$out/summary.md"
+# squad-task-post は、本文を持つ書き込みとして記録し、実物が続けて行う投稿と状態の変更も、同じ形で記録する
+jq -e -s 'all(.[]; any(.calls[]; .command == "squad-task-post issue-shop-1 --status in_review --content-file tmp/c2.md --parent comment-2"
+	and .kind == "write" and .exit == 0 and (.bodies[0] | contains("結果を書きます"))))' "$out/runs.jsonl" >/dev/null
+jq -e -s 'all(.[]; [.calls[].command] as $c | ($c | index("squad-task-post issue-shop-1 --status in_review --content-file tmp/c2.md --parent comment-2")) as $i
+	| $c[$i + 1] == "multica issue comment add issue-shop-1 --parent comment-2" and $c[$i + 2] == "multica issue status issue-shop-1 in_review")' "$out/runs.jsonl" >/dev/null
+jq -e -s 'all(.[]; .comments | any(contains("結果を書きます")))' "$out/runs.jsonl" >/dev/null
 echo "PASS leader-eval: スタブのコマンドが呼び出しを記録し、runs.jsonl と summary.md が決まった形で出る"
 
-grep -q '^leader claude-sonnet-5-5 high' "$test_dir/stub.log"
+grep -q '^leader claude-sonnet-5-5 medium' "$test_dir/stub.log"
 grep -q '^scorer claude-opus-5-5 high' "$test_dir/stub.log"
 echo "PASS leader-eval: モデルと思考の深さは展開した front matter から、採点は opus の high で流す"
 

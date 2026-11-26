@@ -71,6 +71,126 @@
       }
     },
     {
+      "match": "squad-task-read issue-shop-1",
+      "stdout": {
+        "schema_version": 1,
+        "task": {
+          "id": "issue-shop-1",
+          "identifier": "SHOP-1",
+          "title": "カートに商品数を出す",
+          "status": "in_progress",
+          "labels": [],
+          "metadata": {
+            "repository": "example/shop",
+            "branch": "feat/cart-badge",
+            "pr_url": "https://github.com/example/shop/pull/7"
+          },
+          "assignee_type": "squad",
+          "assignee_id": "squad-shop"
+        },
+        "comments": [
+          {
+            "id": "c-impl",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-claude-implementer",
+            "created_at": "2026-01-10T11:05:00Z",
+            "content": "[@SQUAD-SHOP](mention://squad/squad-shop) 実装を push しました。PR: https://github.com/example/shop/pull/7\n\n確認したこと:\n- 単体テストが通った\n\n残っていること:\n- レビュー"
+          },
+          {
+            "id": "c-round1",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T11:10:00Z",
+            "content": "[@shop-code-reviewer-member1](mention://agent/agent-code-reviewer)、[@shop-qa-member1](mention://agent/agent-qa) レビューをお願いします。\n確認するコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567\n返事を待つ役: [@shop-code-reviewer-member1](mention://agent/agent-code-reviewer)、[@shop-qa-member1](mention://agent/agent-qa)\n観点: コードレビューと QA（画面の動き）\n対象の PR: https://github.com/example/shop/pull/7"
+          },
+          {
+            "id": "c-rev1",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-code-reviewer",
+            "created_at": "2026-01-10T11:15:00Z",
+            "content": "返事の回: c-round1\n確認したコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567\n❌ code-reviewer: 必須 1 件\n- src/cart/Badge.tsx:formatCount: 負の数を渡すと `-3` と表示される\n設計への指摘: なし\n詳細は PR のコメントにあります。"
+          },
+          {
+            "id": "c-qa1",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-qa",
+            "created_at": "2026-01-10T11:16:00Z",
+            "content": "返事の回: c-round1\n確認したコミット: 9d8c7b6a5f4e3d2c1b0a99887766554433221100\n✅ qa: 画面の動きに指摘なし\n設計への指摘: なし"
+          },
+          {
+            "id": "c-round2",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-code-reviewer",
+            "created_at": "2026-01-10T11:17:00Z",
+            "content": "[@shop-qa-member1](mention://agent/agent-qa) 確認するコミットが合わなかったので、頼み直します。\n確認するコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567\n返事を待つ役: [@shop-qa-member1](mention://agent/agent-qa)\nコミットが合わず頼み直す役: qa\n前の回: c-round1\n対象の PR: https://github.com/example/shop/pull/7"
+          },
+          {
+            "id": "c-qa2",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-qa",
+            "created_at": "2026-01-10T11:18:00Z",
+            "content": "返事の回: c-round2\n確認したコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567\n✅ qa: 画面の動きに指摘なし\n設計への指摘: なし"
+          },
+          {
+            "id": "c-auto1",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-code-reviewer",
+            "created_at": "2026-01-10T11:20:00Z",
+            "content": "[@shop-claude-fixer-member1](mention://agent/agent-claude-fixer) PR の ❌ の指摘を直してください。\n前の回: c-round2\n修正の依頼: 1 回目\n振り分け: Claude。Claude 週 42%（使ってよい量 60%）・5 時間 23%、Codex 週 6%（使ってよい量 10%）\n直す指摘: code-reviewer（結果は、この回の返事のコメントと PR のコメントにある）\n対象の PR: https://github.com/example/shop/pull/7"
+          },
+          {
+            "id": "c-fix1",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-claude-fixer",
+            "created_at": "2026-01-10T11:25:00Z",
+            "content": "[@SQUAD-SHOP](mention://squad/squad-shop) 負の数の扱いを直して push しました。単体テストが通りました。"
+          },
+          {
+            "id": "c-round3",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T11:30:00Z",
+            "content": "[@shop-code-reviewer-member1](mention://agent/agent-code-reviewer) レビューをお願いします。\n確認するコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567\n返事を待つ役: [@shop-code-reviewer-member1](mention://agent/agent-code-reviewer)\n観点: コードレビュー（実装の中心がロジック）\n対象の PR: https://github.com/example/shop/pull/7"
+          },
+          {
+            "id": "c-rev3",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-code-reviewer",
+            "created_at": "2026-01-10T11:35:00Z",
+            "content": "返事の回: c-round3\n確認したコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567\n❌ code-reviewer: 必須 1 件\n- src/cart/Badge.tsx:formatCount: 小数を渡すと `2.5` と表示される\n設計への指摘: なし\n詳細は PR のコメントにあります。"
+          }
+        ],
+        "pr": {
+          "url": "https://github.com/example/shop/pull/7",
+          "state": "OPEN",
+          "draft": true,
+          "head_sha": "3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567",
+          "mergeable": "MERGEABLE"
+        },
+        "ci": null,
+        "runs": [
+          {
+            "id": "run-1",
+            "agent_id": "agent-claude-implementer",
+            "status": "completed",
+            "created_at": null
+          }
+        ],
+        "cuts": [],
+        "errors": []
+      }
+    },
+    {
       "match": "multica issue comment list issue-shop-1",
       "stdout": [
         {

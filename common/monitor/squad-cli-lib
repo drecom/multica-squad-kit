@@ -59,6 +59,21 @@ squad_cli_contracts() {
           "nullable": true
         },
         {
+          "path": "title",
+          "class": "optional",
+          "nullable": true
+        },
+        {
+          "path": "labels",
+          "class": "optional",
+          "nullable": true
+        },
+        {
+          "path": "metadata.branch",
+          "class": "optional",
+          "nullable": true
+        },
+        {
           "path": "metadata.ci_wait_head",
           "class": "optional",
           "nullable": true
@@ -122,6 +137,24 @@ squad_cli_contracts() {
           "name": "metadata.ci_wait_rule-present",
           "where": ".metadata | has(\"ci_wait_rule\")",
           "unavailable": "CI 待ちが作るアプリケーションの metadata。導入前の採取にはないため、契約で宣言した欄を待ちのテストで設定する。"
+        },
+        {
+          "name": "title-absent",
+          "where": ". | has(\"title\") | not",
+          "unavailable": "Multica は title を常に返すため、採取にはない。契約は、欄のない応答（テストの代用品）を読める形にしておく。"
+        },
+        {
+          "name": "labels-absent",
+          "where": ". | has(\"labels\") | not",
+          "unavailable": "Multica は labels を常に返すため、採取にはない。契約は、欄のない応答（テストの代用品）を読める形にしておく。"
+        },
+        {
+          "name": "branch-present",
+          "where": ".metadata | has(\"branch\")"
+        },
+        {
+          "name": "branch-absent",
+          "where": ".metadata | has(\"branch\") | not"
         },
         {
           "name": "ci_watch_thread-present",
@@ -2127,7 +2160,7 @@ squad_cli_squad_for_round() {
 # 制御記録と認める回の判定。review-next・review-wait・pr-watch が同じ判定を使う（docs/review-next-step.md の「制御記録の読み方」）。
 # 名簿は読まない。リーダーの ID の一覧と、必要なら名簿の最上位の役の ID の一覧を、呼び出し側が渡す。
 # 標準入力に {comments, leaders, principals} を渡し、モードで出すものを変える。
-#   analyze: 各コメントの {rounds, controls, finals} と rework_reviewed。finals は principals があるときだけ。
+#   analyze: 各コメントの {rounds, controls, finals} と rework_reviewed・short_path。finals は principals があるときだけ。
 #   merge_requested <head>: その head のマージの依頼があれば yes、なければ no。
 #   state: 認める回のうち最も新しいものの状態（なければ何も出さない）。
 read -r -d '' SQUAD_CLI_CONTROL_PY <<'SQUADCLICONTROLPY' || true
@@ -2561,9 +2594,12 @@ def blocked_final(r):
 if mode == "analyze":
     rounds, controls, finals = {}, [], {}
     rework_reviewed = False
+    short_path = False
     for i in sequence:
         if parsed[i]["agent"] and parsed[i]["author"] in leaders and has(i, "手戻りの見直し:"):
             rework_reviewed = True
+        if parsed[i]["agent"] and parsed[i]["author"] in leaders and has(i, "道:"):
+            short_path = field(i, "道:") == "短い"
         ok, why, _ = recognize(i)
         pid, present = prev_of(i)
         rounds[i] = {
@@ -2580,6 +2616,7 @@ if mode == "analyze":
     emit({
         "rounds": rounds, "controls": controls, "finals": finals,
         "rework_reviewed": rework_reviewed,
+        "short_path": short_path,
         "blocked": blocked_round(target) if target in parsed else None,
         "blocked_final": blocked_final(target) if target in parsed else None,
     })

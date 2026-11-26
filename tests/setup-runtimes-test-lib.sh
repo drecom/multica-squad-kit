@@ -137,7 +137,8 @@ for role, agent in agents.items():
     if role == 'designer':
         model = 'claude-opus-5-5' if provider == 'claude' else 'gpt-6.2-sol'
     assert agent['model'] == model and agent['runtime_id'] == 'runtime-' + provider, role
-    assert agent['thinking_level'] == ('low' if role in {'ci-monitor', 'usage-monitor'} else 'medium' if role in medium else 'xhigh' if role.endswith('-principal') else 'high'), role
+    claude_medium = provider == 'claude' and role in {'orchestrator', 'claude-fixer'}
+    assert agent['thinking_level'] == ('low' if role in {'ci-monitor', 'usage-monitor'} else 'medium' if role in medium or claude_medium else 'xhigh' if role.endswith('-principal') else 'high'), role
     assert agent['max_concurrent_tasks'] == (1 if role in monitors else 6), role
     assert agent['permission_mode'] == 'public_to'
     assert agent['invocation_targets'] == [{'target_type': 'workspace'}]

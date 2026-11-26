@@ -9,6 +9,55 @@
       "stdout": "{\n  \"id\": \"issue-shop-1\",\n  \"identifier\": \"SHOP-1\",\n  \"title\": \"カートに商品数を出す\",\n  \"status\": \"in_progress\",\n  \"assignee_type\": \"squad\",\n  \"assignee_id\": \"squad-shop\",\n  \"project_id\": \"project-shop\",\n  \"labels\": [],\n  \"metadata\": {\n    \"repository\": \"example/shop\",\n    \"branch\": \"feat/cart-badge\"\n  },\n  \"description\": \"カートのアイコンに、入っている商品の数を出す。\"\n}"
     },
     {
+      "match": "squad-task-read issue-shop-1",
+      "stdout": {
+        "schema_version": 1,
+        "task": {
+          "id": "issue-shop-1",
+          "identifier": "SHOP-1",
+          "title": "カートに商品数を出す",
+          "status": "in_progress",
+          "labels": [],
+          "metadata": {
+            "repository": "example/shop",
+            "branch": "feat/cart-badge"
+          },
+          "assignee_type": "squad",
+          "assignee_id": "squad-shop"
+        },
+        "comments": [
+          {
+            "id": "comment-1",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-10T09:55:00Z",
+            "content": "[@shop-claude-implementer-member1](mention://agent/agent-claude-implementer) 実装のフェーズ 1 を頼みます。カートに商品数を出す部分だけです。"
+          },
+          {
+            "id": "comment-2",
+            "parent_id": null,
+            "author_type": "system",
+            "author_id": "multica",
+            "created_at": "2026-01-10T10:41:05Z",
+            "content": "実装の役 shop-claude-implementer-member1 の実行が失敗しました（agent run exceeded the context limit）。"
+          }
+        ],
+        "pr": null,
+        "ci": null,
+        "runs": [
+          {
+            "id": "run-impl-1",
+            "agent_id": "agent-claude-implementer",
+            "status": "failed",
+            "created_at": null
+          }
+        ],
+        "cuts": [],
+        "errors": []
+      }
+    },
+    {
       "match": "multica issue comment list issue-shop-1",
       "stdout": "[\n  {\n    \"id\": \"comment-1\",\n    \"author_type\": \"agent\",\n    \"author_id\": \"agent-orchestrator\",\n    \"parent_id\": null,\n    \"content\": \"[@shop-claude-implementer-member1](mention://agent/agent-claude-implementer) 実装のフェーズ 1 を頼みます。カートに商品数を出す部分だけです。\",\n    \"created_at\": \"2026-01-10T09:55:00Z\"\n  },\n  {\n    \"id\": \"comment-2\",\n    \"author_type\": \"system\",\n    \"author_id\": \"multica\",\n    \"parent_id\": null,\n    \"content\": \"実装の役 shop-claude-implementer-member1 の実行が失敗しました（agent run exceeded the context limit）。\",\n    \"created_at\": \"2026-01-10T10:41:05Z\"\n  }\n]"
     },

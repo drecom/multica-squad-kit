@@ -62,6 +62,7 @@ dependabot-merger|!runtime-codex
 dependabot-merger|orchestrator
 designer|runtime-claude
 designer|!runtime-claude
+designer|runtime-claude
 designer|planner
 designer|!planner
 designer|orchestrator
@@ -345,7 +346,6 @@ for dir in "$test_dir/"*/; do
 	[[ $(wc -c <"$file") -le 12288 ]]
 	awk '/^## 判断の優先の原則$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$file" >"$test_dir/principles"
 	[[ $(grep -cE '^[1-7]\. \*\*' "$test_dir/principles") -eq 7 ]]
-	grep -qx 'thinking_level: high' "$file"
 	# 原則 7 に数え方の行は書かない。数え方は参照のファイルだけに書く。
 	absent -qF '往復' "$test_dir/principles"
 	absent -qF '同じ失敗' "$test_dir/principles"
@@ -357,7 +357,19 @@ for dir in "$test_dir/"*/; do
 		[[ -s $root/common/skills/squad-handoff/references/$ref ]]
 	done
 done
-echo 'PASS templates: 全構成のリーダーは見出しの並び・索引の参照先・12KB 以内・high を保つ'
+echo 'PASS templates: 全構成のリーダーは見出しの並び・索引の参照先・12KB 以内を保つ'
+# 思考の深さ: Claude で動くリーダーと修正の役は medium、Codex で動くリーダーは high、QA は medium、Codex の修正の役は high のまま。
+for dir in "$test_dir/"*/; do
+	scenario=$(basename "$dir")
+	[[ -f $dir/orchestrator ]] || continue
+	if [[ $scenario == runtime-codex-only ]]; then want=high; else want=medium; fi
+	[[ $(template_field "$dir/orchestrator" thinking_level) == "$want" ]]
+	[[ $(template_field "$dir/orchestrator" model) == "$(if [[ $want == high ]]; then echo gpt-6.2-sol; else echo claude-sonnet-5-5; fi)" ]]
+	[[ ! -f $dir/claude-fixer ]] || [[ $(template_field "$dir/claude-fixer" thinking_level) == medium ]]
+	[[ ! -f $dir/codex-fixer ]] || [[ $(template_field "$dir/codex-fixer" thinking_level) == high ]]
+	[[ ! -f $dir/qa ]] || [[ $(template_field "$dir/qa" thinking_level) == medium ]]
+done
+echo 'PASS templates: 思考の深さは Claude のリーダーと claude-fixer が medium、Codex のリーダーと codex-fixer が high、QA が medium'
 runtimes='["claude","codex"]'
 
 # 全分岐で長い方を足した上限を測る。役の相関を無視するので、すべての組み合わせを上回る。
@@ -400,9 +412,9 @@ done
 echo 'PASS templates: 13 の役のメンションのリンクの行は「このプロジェクトの値」に戻らず、見張りの 3 役のリンクは残る'
 
 # 画像の添付の手順の見出しと、添付のコマンドの形。読む側は、「squad-handoff の「画像を載せる」」と名前で指す qa・実装・修正の役の指示。
-image_skill="$root/common/skills/squad-handoff/SKILL.md"
+image_skill="$root/common/skills/squad-handoff/references/pr.md"
 grep -qxF '## 画像を載せる' "$image_skill"
-grep -qxF '## 人間に操作を頼む前に' "$image_skill"
+grep -qxF '## 人間に操作を頼む前に' "$root/common/skills/squad-handoff/references/human-ops.md"
 awk '/^## 画像を載せる$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$image_skill" >"$test_dir/image-section"
 for text in 'gh pr comment' --attach 'multica issue comment add' --attachment; do
 	grep -qF -- "$text" "$test_dir/image-section"
@@ -457,11 +469,13 @@ for runtime in claude codex; do
 			[[ $(template_field "$file" thinking_level) == high ]]
 		else [[ $model == "$expected" ]]; fi
 		for field in thinking_level max_concurrent_tasks skills; do
+			# Codex だけの構成のリーダーは high。Claude を使う構成の medium とは別の値で、上の思考の深さの確認が見る。
+			[[ $role == orchestrator && $field == thinking_level && $runtime == codex ]] && continue
 			[[ $(template_field "$file" "$field") == "$(template_field "$test_dir/all/$role" "$field")" ]]
 		done
 	done
 done
-echo 'PASS templates: 片方だけのランタイムでは設計表のモデルへ移し、思考の深さ・同時実行数・スキルを保つ'
+echo 'PASS templates: 片方だけのランタイムでは設計表のモデルへ移し、思考の深さ（Codex のリーダーを除く）・同時実行数・スキルを保つ'
 
 # 要件を決める役は、Claude を使う構成では Fable 5.2、Codex だけでは GPT-6.2 Astra で、どの構成でも high にする。
 for scenario in all no-designer claude-only codex-only no-reviews runtime-claude-only; do
@@ -503,11 +517,13 @@ for scenario in all runtime-claude-only runtime-codex-only; do
 done
 echo 'PASS templates: 使用上限の役とオートパイロットに、選択したランタイムの値と環境だけを残す'
 
-# 読む側: common/monitor/squad-pr-watch の conflicts-check・conflicts・unlinked を、リーダーが leader-pr-checks.md の手順で呼ぶ。
+# 読む側: common/monitor/squad-pr-watch の conflicts-check・conflicts・unlinked を、リーダーが leader-pr-merge.md の手順で呼ぶ。
 # コンフリクトの状態の確認と規則の入れ直しは別の節で、呼び方を持つ。
-pr_ref="$root/common/skills/squad-handoff/references/leader-pr-checks.md"
-check_section=$(awk '/^## コンフリクトの状態の確認$/ {inside=1; next} inside && /^##/ {exit} inside {print}' "$pr_ref")
-rearm_section=$(awk '/^## 規則の入れ直し$/ {inside=1; next} inside && /^##/ {exit} inside {print}' "$pr_ref")
+pr_link_ref="$root/common/skills/squad-handoff/references/leader-pr-link.md"
+pr_ci_ref="$root/common/skills/squad-handoff/references/leader-pr-ci.md"
+pr_merge_ref="$root/common/skills/squad-handoff/references/leader-pr-merge.md"
+check_section=$(awk '/^## コンフリクトの状態の確認$/ {inside=1; next} inside && /^##/ {exit} inside {print}' "$pr_merge_ref")
+rearm_section=$(awk '/^## 規則の入れ直し$/ {inside=1; next} inside && /^##/ {exit} inside {print}' "$pr_merge_ref")
 grep -qF 'squad-pr-watch conflicts-check <タスク>' <<<"$check_section"
 if grep -qF 'squad-pr-watch conflicts <タスク>' <<<"$check_section"; then exit 1; fi
 # 手でマージへ回す経路（decide が止まり、解消の引き継ぎのあとに戻る経路）から、conflicts と unlinked を登録できる。
@@ -518,15 +534,15 @@ if grep -qF 'squad-pr-watch conflicts-check' <<<"$rearm_section"; then exit 1; f
 before_conflicts=${rearm_section%%squad-pr-watch conflicts <タスク>*}
 before_unlinked=${rearm_section%%squad-pr-watch unlinked <タスク>*}
 ((${#before_conflicts} < ${#before_unlinked}))
-state_skill="$root/common/skills/squad-handoff/SKILL.md"
+state_skill="$root/common/skills/squad-handoff/references/pr.md"
 grep -qxF '## PR の状態を書く' "$state_skill"
 state_section=$(awk '/^## PR の状態を書く$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$state_skill")
 grep -qF 'コンフリクト:' <<<"$state_section"
 echo 'PASS templates: 参照は状態の確認と規則の入れ直しを分け、squad-handoff は PR の状態の節を持つ'
 
-# 読む側: リーダーが leader-pr-checks.md の手順どおりに、common/monitor/squad-pr-watch link-check を呼ぶ。
+# 読む側: リーダーが leader-pr-link.md の手順どおりに、common/monitor/squad-pr-watch link-check を呼ぶ。
 # 紐付けの確認の節が持つ link-check の呼び方と、展開後のリーダーがこの手順へ向く語。
-link_section=$(awk '/^## PR の紐付けの確認$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$pr_ref")
+link_section=$(awk '/^## PR の紐付けの確認$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$pr_link_ref")
 grep -qF 'squad-pr-watch link-check <タスク>' <<<"$link_section"
 ! grep -qF 'multica issue pull-requests' <<<"$link_section"
 for dir in "$test_dir/"*/; do
@@ -535,23 +551,49 @@ for dir in "$test_dir/"*/; do
 done
 echo 'PASS templates: 紐付けの確認の節に link-check の呼び方を残し、全構成のリーダーがこの手順へ向く'
 
-# 読む側: リーダーが leader-pr-checks.md の手順どおりに、common/monitor/squad-pr-watch の ci-now・conflicts-check と、common/monitor/squad-pr-link の `紐付け:` の判定を読む。
-now_section=$(awk '/^## 紐付いていない PR のその場の確認$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$pr_ref")
+# 読む側: リーダーが返事を待つ回の前と、ほかの理由で人間を呼ぶ前に、その場面の参照から link-check を流す。
+# 分ける前の表が link-check を指した 2 つの時機を、分けたあとの参照が持つ。
+review_request_section=$(awk '/^## レビューと E2E の依頼$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$root/common/skills/squad-handoff/references/leader-review-request.md")
+grep -qF 'squad-pr-watch link-check <タスク>' <<<"$review_request_section"
+grep -qF 'leader-pr-link.md' <<<"$review_request_section"
+human_call_section=$(awk '/^## 人間を呼ぶコメントに添える行$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$root/common/skills/squad-handoff/references/leader-pr-merge.md")
+grep -qF 'squad-pr-watch link-check <タスク>' <<<"$human_call_section"
+grep -qF 'leader-pr-link.md' <<<"$human_call_section"
+echo 'PASS templates: 返事を待つ回の前と人間を呼ぶ前の参照が、link-check を流す文と食い違いの場面への移り先を持つ'
+
+# 読む側: リーダーの始めの確認は squad-task-read、人間を呼んで止まる所と結果を書く所は squad-task-post を使う。
+# 指示は読み取りを 1 回の呼び出しにし、参照は止まる所の状態の変更を squad-task-post に向ける。
+for dir in "$test_dir/"*/; do
+	[[ -f $dir/orchestrator ]] || continue
+	grep -qF 'squad-task-read <タスク>' "$dir/orchestrator"
+	grep -qF 'squad-task-post <タスク> --status in_review --content-file <ファイル>' "$dir/orchestrator"
+	# 始めの確認の読み取りは 1 回の呼び出しにまとめ、タスクとコメントの個別の読み取りは指示に残さない。
+	! grep -qE 'multica issue (get|comment list)' "$dir/orchestrator"
+done
+leader_refs=$root/common/skills/squad-handoff/references
+for ref in leader-run-stop.md leader-pr-link.md leader-pr-ci.md leader-dispatch.md; do
+	grep -qF 'squad-task-post' "$leader_refs/$ref"
+done
+grep -qF 'squad-task-read <タスク>' "$leader_refs/leader-run-wake.md"
+echo 'PASS templates: リーダーの指示と参照が、始めの確認に squad-task-read、人間を呼んで止まる所に squad-task-post を使う'
+
+# 読む側: リーダーが leader-pr-ci.md の手順どおりに、common/monitor/squad-pr-watch の ci-now・conflicts-check と、common/monitor/squad-pr-link の `紐付け:` の判定を読む。
+now_section=$(awk '/^## 紐付いていない PR のその場の確認$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$pr_ci_ref")
 for phrase in 'squad-pr-watch ci-now <タスク> <リーダーの ID> <きっかけのコメント> [<見張り役の ID>]' 'squad-pr-watch conflicts-check <タスク>' '`紐付け:`'; do
 	grep -qF "$phrase" <<<"$now_section"
 done
-ci_section=$(awk '/^## CI$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$pr_ref")
+ci_section=$(awk '/^## CI$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$pr_ci_ref")
 grep -qF 'squad-pr-watch ci-held <タスク>' <<<"$ci_section"
 grep -qF 'squad-pr-watch unlinked <タスク> <きっかけのコメント> [<見張り役の ID>]' <<<"$rearm_section"
 
-periodic_section=$(awk '/^## マージ待ちの定期確認で起きたとき$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$pr_ref")
+periodic_section=$(awk '/^## マージ待ちの定期確認で起きたとき$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$pr_merge_ref")
 for phrase in 'squad-pr-watch unlinked-check <タスク> <リーダーの ID>' 'CI <SHA>: 失敗あり'; do
 	grep -qF "$phrase" <<<"$periodic_section"
 done
 # 読む側: 書くのは common/monitor/squad-pr-watch の unlinked。読むのは common/monitor/squad-review-next の decide と、行をコメントに写すリーダー。
 # `見張り:` の名前は、同じ語がほかの節にもあるので、行を写す 3 つの節に絞って探す。1 つ目は ### の見出しなので、次の # の行で区切る。
-decide_section=$(awk '/^### decide が流すマージの前の確認$/ {inside=1; next} inside && /^#/ {exit} inside {print}' "$pr_ref")
-comment_section=$(awk '/^## 人間を呼ぶコメントに添える行$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$pr_ref")
+decide_section=$(awk '/^### decide が流すマージの前の確認$/ {inside=1; next} inside && /^#/ {exit} inside {print}' "$pr_merge_ref")
+comment_section=$(awk '/^## 人間を呼ぶコメントに添える行$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$pr_merge_ref")
 for section in "$decide_section" "$rearm_section" "$comment_section"; do
 	grep -qF '`見張り:`' <<<"$section"
 done
@@ -603,7 +645,18 @@ for role in claude-principal codex-principal; do
 	grep -qF '直す役:' "$root/common/agents/$role.md"
 	grep -qF '  - 診断:' "$root/common/agents/$role.md"
 	absent -qF 'ラベル `重要` があるタスクだけで呼ばれます' "$root/common/agents/$role.md"
+	# 最終レビューの範囲は、短い道のタスクを除く。説明・役・本文の始めが同じ範囲を書く。始めの文は、要件を決める役の文書が名前で指すので、変えずにあとへ足す。
+	[[ $(principal_model "$role" description) == 短い道を除くすべてのタスクの最終レビューと* ]]
+	[[ $(principal_model "$role" role) == "最上位のレビュー。短い道を除くすべてのタスクの PR の最終レビュー"* ]]
+	grep -qF '最終レビューは、文書だけのものも含むすべてのタスクで行います。人間が同意した小さいタスク（短い道）では行いません。' "$root/common/agents/$role.md"
+	absent -qF 'description: すべてのタスクの最終レビュー' "$root/common/agents/$role.md"
+	absent -qF 'role: 最上位のレビュー。すべてのタスクの' "$root/common/agents/$role.md"
 done
+grep -qF '短い道のタスクを除くすべてのタスクで人間のマージの前に最終レビューを行い' "$root/common/squad.md"
+absent -qF '2 つの務めを担う。すべてのタスクで' "$root/common/squad.md"
+grep -qF '最終レビューは、マークによらず短い道のタスクを除くすべてのタスクで人間のマージの前に頼む' "$root/manual.md"
+absent -qF '最終レビューは、マークによらずすべてのタスクで' "$root/manual.md"
+echo 'PASS templates: 最上位の役の説明・役・本文の始めと共通の指示が、最終レビューを短い道のタスクを除くと書く'
 for scenario in all no-planner no-designer no-planning claude-only codex-only no-reviews runtime-claude-only runtime-codex-only; do
 	[[ ! -f $test_dir/$scenario/claude-principal ]] || grep -qx 'model: claude-fable-5-2' "$test_dir/$scenario/claude-principal"
 	[[ ! -f $test_dir/$scenario/codex-principal ]] || grep -qx 'model: gpt-6.2-astra' "$test_dir/$scenario/codex-principal"
@@ -646,11 +699,14 @@ for scenario in no-planner no-planning; do
 done
 echo 'PASS templates: 要件を決める役がない構成の最上位の役は、見直さないときの 3 行を report が読む順で持つ'
 
-# 読む側: 役の指示（orchestrator と最上位の役）と common/monitor/squad-review-next が、leader-principal.md・leader-dispatch.md の見出しを名前で指す。
+# 読む側: 役の指示（orchestrator と最上位の役）と common/monitor/squad-review-next が、leader-principal.md・leader-principal-pick.md・leader-dispatch.md の見出しを名前で指す。
 # 最上位の役の参照の見出しと、リーダーの重要の基準の見出し。
 refs="$root/common/skills/squad-handoff/references"
-for heading in 判断する時機 重要のマークの記録 修正の依頼の数え方 最上位の役を呼ぶところ 返事の待ち方 最上位の役の選び方; do
+for heading in 判断する時機 重要のマークの記録 修正の依頼の数え方; do
 	grep -qxF "## $heading" "$refs/leader-principal.md"
+done
+for heading in 最上位の役を呼ぶところ 返事の待ち方 最上位の役の選び方; do
+	grep -qxF "## $heading" "$refs/leader-principal-pick.md"
 done
 for scenario in all no-planner no-designer no-planning claude-only codex-only no-reviews runtime-claude-only runtime-codex-only; do
 	grep -qxF '## 重要の基準' "$test_dir/$scenario/orchestrator"
@@ -692,6 +748,8 @@ echo 'PASS templates: 差し込んだ値のマーク・記法・改行・引用�
 
 # PR を作った直後の紐付けの呼び方と、失敗の記録の行。読む側は、`紐付けの失敗:` の行を読む common/monitor/squad-review-next と、呼び方を実行する設計・実装の役。
 skill="$root/common/skills/squad-handoff/SKILL.md"
+pr_skill="$root/common/skills/squad-handoff/references/pr.md"
+reply_skill="$root/common/skills/squad-handoff/references/review-reply.md"
 for scenario in all no-planner no-designer no-planning claude-only codex-only no-reviews minimum runtime-claude-only runtime-codex-only; do
 	for role in designer claude-implementer codex-implementer; do
 		file="$test_dir/$scenario/$role"
@@ -699,7 +757,7 @@ for scenario in all no-planner no-designer no-planning claude-only codex-only no
 		grep -qF 'squad-pr-link <タスク> <PR の URL>' "$file"
 	done
 done
-sed -n '/^## PR を作る・実装を積む$/,/^### PR の本文の置き場所と順序$/p' "$skill" >"$test_dir/pr-link-procedure"
+sed -n '/^## PR を作る・実装を積む$/,/^### PR の本文の置き場所と順序$/p' "$pr_skill" >"$test_dir/pr-link-procedure"
 # 手順のバッククォートの語は、種類に分けて見る。種類ごとの見る・見ないと理由は tests/pr-link-procedure-table.tsv にあり、表の行ごとに手順を 1 か所だけ変えた写しを作って、検査が落ちる・通るを照合する。説明文は固定しない。読む側は common/monitor/squad-pr-link・squad-pr-watch・squad-review-next と leader-run-status.md で、鍵の pr_url と branch を読む。
 pr_link_check="$root/tests/pr-link-procedure-check.py"
 python3 "$pr_link_check" check "$test_dir/pr-link-procedure"
@@ -709,14 +767,18 @@ absent -qF '紐付け済みとして飛ばす' "$test_dir/pr-link-procedure"
 absent -qF 'PR とタスクは、タスクの画面で URL を指定して紐付ける' "$test_dir/pr-link-procedure"
 echo "PASS templates: 全構成で PR 作成直後に squad-pr-link を呼び、手順のバッククォートの語を種類ごとに見て、紐付けの失敗の記録の行と metadata の鍵（pr_url と branch）を保つ（$(<"$test_dir/pr-link-table.out")）"
 
-for heading in 本文の書き方 'PR を作る・実装を積む' 'PR の本文の置き場所と順序' 引き継ぐとき 'レビューと E2E の返事を返す' 'PR にレビューやテストの結果を書く'; do
+for heading in 本文の書き方 引き継ぐとき; do
 	grep -qx "#\{2,3\} $heading" "$skill"
 done
+for heading in 'PR を作る・実装を積む' 'PR の本文の置き場所と順序' 'PR にレビューやテストの結果を書く'; do
+	grep -qx "#\{2,3\} $heading" "$pr_skill"
+done
+grep -qx '## レビューと E2E の返事を返す' "$reply_skill"
 grep -qF 'codex exec --sandbox read-only --ephemeral' "$test_dir/all/codex-fixer"
 absent -qF 'Agent ツールで' "$test_dir/all/codex-fixer"
 echo 'PASS templates: 共通スキルが役の指示の参照する見出しを持ち、Codex の修正の役は codex exec で見直す'
 
-# 設計との照合の引き継ぎの行。読む側は、`設計との差:` の行を読む leader-flow.md と leader-dispatch.md、`設計との差の扱い:` の行を読む leader-flow.md・leader-dispatch.md・leader-principal.md。git の形は、実装・修正の役が実行する。
+# 設計との照合の引き継ぎの行。読む側は、`設計との差:` の行を読む leader-design-diff.md と leader-dispatch.md、`設計との差の扱い:` の行を読む leader-design-diff.md・leader-dispatch.md・leader-principal-design.md。git の形は、実装・修正の役が実行する。
 for dir in "$test_dir/"*/; do
 	[[ -f $dir/orchestrator ]] || continue
 	for role in claude-implementer codex-implementer claude-fixer codex-fixer; do
@@ -751,7 +813,7 @@ repro_heading='## バグの再現のテスト'
 for role in claude-implementer codex-implementer; do
 	file=$root/common/agents/$role.md
 	[[ $(grep -cx -- "$repro_heading" "$file") == 1 ]]
-	awk -v h="$repro_heading" '$0 == h {inside=1; print; next} inside && /^## / {exit} inside {print}' "$file" >"$test_dir/repro-$role"
+	LC_ALL=C awk -v h="$repro_heading" '$0 == h {inside=1; print; next} inside && /^## / {exit} inside {print}' "$file" >"$test_dir/repro-$role"
 	for line in '再現のテスト: `<コマンド>`。直す前: 落ちた（終了コード <数>、<落ちた出力の要点>）。直した後: 通った（終了コード <数>）' '再現のテスト: 書けない（<理由>）。代わりに確認したこと: <再現手順での確認と結果>'; do
 		[[ $(grep -cxF -- "$line" "$test_dir/repro-$role") == 1 ]]
 	done
@@ -791,13 +853,185 @@ for role in claude-principal codex-principal; do
 done
 echo 'PASS templates: security-reviewer と設計の役は 12KB 以内、最上位の役は 16KB 以内に収まる'
 
+# 区切りの行: Claude の実装・修正の役はすべての構成で、設計の役は Claude の構成で持ち、Codex の実装・修正の役は持たない。
+cut_ref='references/run-cut.md'
+for dir in "$test_dir/"*/; do
+	for role in claude-implementer claude-fixer; do
+		[[ -f $dir/$role ]] || continue
+		grep -qF -- "$cut_ref" "$dir/$role"
+	done
+	for role in codex-implementer codex-fixer; do
+		[[ -f $dir/$role ]] || continue
+		absent -F -- "$cut_ref" "$dir/$role"
+	done
+done
+grep -qF -- "$cut_ref" "$test_dir/all/designer"
+[[ ! -f $test_dir/runtime-codex-only/designer ]] || absent -F -- "$cut_ref" "$test_dir/runtime-codex-only/designer"
+echo 'PASS templates: 区切りの行は、Claude の実装・修正・設計の役にあり、Codex の実装・修正の役にない'
+
+# 区切りの手順の終了コード 1: check は区切らずに続け、post は通常の引き継ぎで返す。
+run_cut="$root/common/skills/squad-handoff/references/run-cut.md"
+grep -qF '`check` が終了コード 1 で終わったときは、値を読めていない。区切らずに作業を続け、最後の引き継ぎに `check` の出力と終了コードを書く。' "$run_cut"
+post_exit1=$(awk -F'|' '/^\| 1 \| 値のファイルの誤り/ {print $4}' "$run_cut")
+[[ $post_exit1 == *'通常の引き継ぎでリーダーへ返し'* ]]
+[[ $post_exit1 == *'区切れなかったことを書く'* ]]
+echo 'PASS templates: 区切りの手順は、check の終了コード 1 では区切らずに続け、post の終了コード 1 では通常の引き継ぎで返す'
+
+# リーダーの場面の表に、区切りの続きの確認の行があり、その参照が読む参照にある。
+grep -qF '| 区切りの続きの確認で起きた |' "$test_dir/all/orchestrator"
+[[ -f $refs/leader-run-cut.md ]]
+echo 'PASS templates: リーダーの場面の表に区切りの続きの確認の行があり、leader-run-cut.md がある'
+
+# リーダーの区切りの続きの確認の参照: state が終了コード 0 以外なら頼み直さず人間を呼ぶ。頼み直しは修正の依頼の数に足さない。
+grep -qF '`state` が終了コード 0 以外で終わったときは、頼み直さず、標準エラーの要約を添えて人間を呼ぶ。' "$refs/leader-run-cut.md"
+grep -qF '頼み直しは、修正の依頼の数に足さない' "$refs/leader-run-cut.md"
+echo 'PASS templates: 区切りの続きの確認の参照が、state の終了コード 0 以外の人間の呼び出しと、頼み直しを修正の依頼の数に足さない文を持つ'
+
+# 小さいタスクの短い道: 読む側は、common/monitor/squad-review-next の decide（最も新しい `道:` の行）と、手順を読むリーダー。
+short_path=$(awk '/^## 小さいタスクの短い道$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$refs/leader-request.md")
+[[ -n $short_path ]]
+# 短い道の実装の依頼は、設計の役と最上位の役を呼ばず、レビューと E2E、人間のマージの判断の順に進める。
+short_request=$(awk '/^### 短い道の実装の依頼$/ {inside=1; next} inside && /^#/ {exit} inside {print}' "$refs/leader-request.md")
+grep -qF '設計の役と最上位の役を呼ばずに、実装の役へ頼む' <<<"$short_request"
+grep -qF 'レビューと E2E、人間のマージの判断の順に進める。最終レビューは頼まない' <<<"$short_request"
+grep -qF '`道: 短い` の行を置き' <<<"$short_request"
+echo 'PASS templates: 短い道の実装の依頼は、設計の役と最上位の役を呼ばず、実装、レビューと E2E、人間のマージの判断の順に進める'
+
+# head の照合の表（leader-pr-merge.md の「マージの前の確認」）: 軸の値の組み合わせをすべて並べ、ちょうど 1 行に当たることを表駆動で確認する。
+# 軸は、道・重要のマーク・レビューと E2E の役・最上位の役。経路と head が変わった理由は、行も行き先も変えないので組に入れない。
+merge_check=$(awk '/^## マージの前の確認$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$refs/leader-pr-merge.md")
+head_rows=$(grep -E '^\| [1-5] \|' <<<"$merge_check")
+[[ $(grep -c . <<<"$head_rows") == 5 ]]
+expected_row() { # 道 重要のマーク レビューと E2E の役 最上位の役 → 当たるはずの行
+	if [[ $1 == 短い ]]; then
+		if [[ $2 == ある ]]; then echo 1; elif [[ $3 == ない ]]; then echo 2; else echo 3; fi
+	elif [[ $4 == ある ]]; then echo 4; else echo 5; fi
+}
+combos=0
+for road in 通常 短い; do for mark in ある ない; do for roles in ある ない; do for principal in ある ない; do
+	hits=''
+	while IFS='|' read -r _ row c_road c_mark c_roles c_principal _ _ _ _; do
+		matched=1
+		for pair in "$road:$c_road" "$mark:$c_mark" "$roles:$c_roles" "$principal:$c_principal"; do
+			value=${pair%%:*} cell=${pair#*:}
+			cell=${cell// /}
+			[[ $cell == 問わない || $cell == "$value" ]] || matched=0
+		done
+		if ((matched)); then hits="$hits${row// /} "; fi
+	done <<<"$head_rows"
+	want=$(expected_row "$road" "$mark" "$roles" "$principal")
+	[[ ${hits% } == "$want" ]] || { echo "表の当たり方が違う: $road $mark $roles $principal → ${hits:-なし}（期待 $want）" >&2; exit 1; }
+	# head の 3 つの値は、一致なら「一致」の列、一致しない・読めないなら「一致しない・読めない」の列に進む。どちらの列も空にしない。
+	row_text=$(grep -E "^\| $want \|" <<<"$head_rows")
+	IFS='|' read -r _ _ _ _ _ _ _ c_match c_mismatch _ <<<"$row_text"
+	[[ -n ${c_match// /} && -n ${c_mismatch// /} ]]
+	combos=$((combos + 1))
+done; done; done; done
+((combos == 16))
+row_cells() { grep -E "^\| $1 \|" <<<"$head_rows"; }
+grep -qF '通常の道へ戻す' <<<"$(row_cells 1)"
+grep -qF '`道: 通常` を書き' <<<"$(row_cells 2)"
+grep -qF '短い道にしない' <<<"$(row_cells 2)"
+grep -qF '組の `確認するコミット:`' <<<"$(row_cells 3)"
+grep -qF '前の組と同じ役にレビューと E2E を頼み直す。最終レビューは頼まない' <<<"$(row_cells 3)"
+absent -qF '最終レビューをもう一度頼' <<<"$(row_cells 3)"
+grep -qF '最終レビューの `確認したコミット:`' <<<"$(row_cells 4)"
+grep -qF '今の head で最終レビューをもう一度頼み' <<<"$(row_cells 4)"
+grep -qF '照合しない' <<<"$(row_cells 5)"
+# 手動の入口: 確認の 2 は、最上位の役の有無によらず通る。条件に最上位の役を置かず、最上位の役の参照の表を指さない。
+merge_step2=$(grep -E '^2\. ' <<<"$merge_check")
+grep -qF '最上位の役の有無によらず' <<<"$merge_step2"
+absent -qF '最上位の役があれば' <<<"$merge_step2"
+absent -qF 'leader-principal-final.md' <<<"$merge_step2"
+# 最上位の役の参照は、表を持たず、確認の 2 の表を指す 1 文だけを持つ。
+absent -qE '^\| (通常|短い|[1-5]) \|' "$refs/leader-principal-final.md"
+grep -qF '`leader-pr-merge.md` の「マージの前の確認」の 2 の表のとおりにする' "$refs/leader-principal-final.md"
+# 役がない構成は短い道にしない。道の記録の確認の 5 つ目が、表の 2 の行を指す。
+road_record=$(awk '/^### 道の記録$/ {inside=1; next} inside && /^#/ {exit} inside {print}' "$refs/leader-request.md")
+road_item5=$(grep -E '^5\. ' <<<"$road_record")
+grep -qF '有効なレビューと E2E の役が 1 つ以上ある' <<<"$road_item5"
+grep -qF '表の 2 の行' <<<"$road_item5"
+grep -qF '短い道にしない' <<<"$road_item5"
+# 最終レビューをもう一度頼む文・head の頼み直す文・レビューを回し直さない文は、表を指すか、通常の道だけの文（表の 4・5 の行）にする。
+# 通常の道だけの文は、最上位の役を主語にするか、設計の承認し直しの場面（短い道に設計の承認はない）にある。表そのものの行は上で照合した。
+sentence_files=("$root"/docs/*.md "$refs"/leader-*.md)
+for f in "${sentence_files[@]}"; do
+	awk -v file="$f" '
+		/^\| 承認し直したあと \|/ {ctx = 1; next_ctx = 1}
+		!/^\|/ {ctx = 0}
+		{
+			hit = ($0 ~ /最終レビューをもう一度頼/ || $0 ~ /レビューを回し直さず/)
+			if (!hit && $0 ~ /頼み直す/ && $0 ~ /(^|[^_A-Za-z])head([^_A-Za-z]|$)/) hit = 1
+			if (!hit) next
+			if ($0 ~ /^\| [1-5] \|/ && (file ~ /usage-reduction\.md$/ || file ~ /leader-pr-merge\.md$/)) next
+			if ($0 ~ /head の照合の表/ || $0 ~ /の 2 の表/ || $0 ~ /表の [345]/) next
+			if ($0 ~ /最上位の役/ || $0 ~ /承認し直し/ || ctx) next
+			printf "表を指さず、通常の行だけにも当たらない文: %s:%d\n", file, NR
+			bad = 1
+		}
+		END {exit bad}
+	' "$f" >&2
+done
+echo 'PASS templates: head の照合の表が、軸の値の組み合わせごとにちょうど 1 行に当たり、入口に最上位の役の条件がなく、再依頼の文が表を指すか通常の行だけに当たる'
+
+# 理由の表に、短い道に重要のマークが付いたときの行があり、通常の道へ戻す手順を指す。decide が出す理由の文字列と同じ語で探す。
+stuck_ref="$root/common/skills/squad-handoff/references/leader-review-stuck.md"
+stuck_row=$(grep -F '| `短い道に重要のマークがある` |' "$stuck_ref")
+[[ $(grep -c . <<<"$stuck_row") == 1 ]] || { echo 'FAIL templates: leader-review-stuck.md の理由の表に「短い道に重要のマークがある」の行が 1 つでない' >&2; exit 1; }
+[[ $stuck_row == *'[leader-request.md](leader-request.md) の「通常の道へ戻す」'* && $stuck_row == *'`道: 通常` を書いて設計を頼む'* ]] || { echo "FAIL templates: 「短い道に重要のマークがある」の行が通常の道へ戻す手順を指していない: $stuck_row" >&2; exit 1; }
+[[ $stuck_row != *最終レビューを頼む* ]] || { echo "FAIL templates: 「短い道に重要のマークがある」の行が最終レビューを頼む文になっている: $stuck_row" >&2; exit 1; }
+grep -qF '短い道に重要のマークがある' "$root/common/monitor/squad-review-next" || { echo 'FAIL templates: decide が出す理由と、理由の表の行の文字列が合わない' >&2; exit 1; }
+echo 'PASS templates: 短い道に重要のマークがあるときの理由の行が、通常の道へ戻す手順を指す'
+
+# 要件を決める役があるときは、同意の行がなければ `道: 短い` を書かない。ないときは、リーダーが 4 つの基準で決める。
+consent=$(awk '/^### 同意の記録$/ {inside=1; next} inside && /^#/ {exit} inside {print}' "$refs/leader-request.md")
+grep -qF '道: 短い（人間の同意を得た）' <<<"$consent"
+grep -qF 'この行がないタスクは、通常の道にする' <<<"$consent"
+write_path=$(awk '/^### 道の記録$/ {inside=1; next} inside && /^#/ {exit} inside {print}' "$refs/leader-request.md")
+grep -qF '本文に `道: 短い（人間の同意を得た）` の行がある' <<<"$write_path"
+grep -qF 'どれかが当たらなければ、通常の道にする' <<<"$write_path"
+grep -qF '`道: 短い` を書く前に、次のすべてを読む' <<<"$write_path"
+grep -qF '道: 短い（人間の同意を得た）' "$root/common/agents/planner.md"
+grep -qF '受け入れ条件」の節の末尾' "$root/common/agents/planner.md"
+echo 'PASS templates: 要件を決める役があるとき、同意の行がなければリーダーは `道: 短い` を書かず、同意の行は要件を決める役が置く'
+criteria=$(awk '/^### 小さいタスクの基準$/ {inside=1; next} inside && /^#/ {exit} inside {print}' "$refs/leader-request.md")
+grep -qF '1 つでも当たらないか、当たるかを決められなければ、通常の道にする' <<<"$criteria"
+for n in 1 2 3 4; do
+	grep -qE "^$n\. " <<<"$criteria"
+done
+grep -qF '要件を決める役がないときは、リーダーが同じ基準で決める' <<<"$consent"
+echo 'PASS templates: 要件を決める役がないとき、リーダーが 4 つの基準で道を決める'
+
+# 実装の役が `設計の判断: 要る` を返したら、リーダーは `道: 通常` を書いて設計の役へ戻す。
+back=$(awk '/^### 通常の道へ戻す$/ {inside=1; next} inside && /^#/ {exit} inside {print}' "$refs/leader-request.md")
+grep -qF '`道: 通常` の行を置き、設計の役に設計を頼む' <<<"$back"
+grep -qF '`設計の判断: 要る（<判断が要る点>）` の行を返した' <<<"$back"
+grep -qF '`設計への指摘: あり` がある' <<<"$back"
+grep -qF 'ラベル `重要` を付けた' <<<"$back"
+for dir in "$test_dir/"*/; do
+	for role in claude-implementer codex-implementer; do
+		[[ -f $dir/$role ]] || continue
+		grep -qF '設計の判断: 要る（<判断が要る点>）' "$dir/$role"
+		grep -qF '短い道の実装' "$dir/$role"
+	done
+done
+echo 'PASS templates: 実装の役の `設計の判断: 要る` を、リーダーは `道: 通常` と設計の役への依頼で受ける'
+
+# 人間を待つところは、人間を呼んで止まるどの場面も squad-task-post で結果を書く文にする。
+for dir in "$test_dir/"*/; do
+	[[ -f $dir/orchestrator ]] || continue
+	wait_section=$(awk '/^## 人間を待つところ$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$dir/orchestrator")
+	grep -qF '人間を呼んで止まるどの場面も、`squad-task-post <タスク> --status in_review --content-file <ファイル>` で結果を書き' <<<"$wait_section"
+done
+echo 'PASS templates: 人間を待つところが、人間を呼んで止まるどの場面も squad-task-post で結果を書く文を持つ'
+
 # 設計の役が返す記録の行。読む側は、`直したあとの返し先:` と `重要のマーク:` を読む leader-principal.md の手順。
 grep -qF '直したあとの返し先: スクワッド' "$test_dir/all/designer"
 grep -qF '重要のマーク:' "$test_dir/all/designer"
 echo 'PASS templates: 設計の役の指示が、見せ直しの返し先と重要のマークの記録の行を読む'
 
 # セットアップが起票した記入のタスクの metadata（squad_kit_task）を、役が探すマークにする。
-sed -n '/^## 記入が足りずに止まるとき$/,/^## 人間を呼んで止まるとき$/p' "$skill" >"$test_dir/unfilled-stop"
+sed -n '/^## 記入が足りずに止まるとき$/,$p' "$root/common/skills/squad-handoff/references/missing-fill.md" >"$test_dir/unfilled-stop"
 grep -qx '## 記入が足りずに止まるとき' "$test_dir/unfilled-stop"
 for phrase in 'squad_kit_task=project-instructions' 'squad_kit_task=repository-change'; do
 	grep -qF "$phrase" "$test_dir/unfilled-stop"
@@ -818,16 +1052,19 @@ echo 'PASS templates: 全構成でリポジトリの一覧を渡し、単一の�
 
 # リーダーの手順は、スキルの参照のファイルに置く。スキルは展開しないので、マークも差し込みも持たない。
 refs="$root/common/skills/squad-handoff/references"
-for name in flow dispatch principal review-wait pr-checks run-status; do
+for name in request design-diff fix-request repeat dispatch principal principal-design principal-diagnose principal-final principal-pick principal-reshow review-request review-reply review-stuck pr-link pr-ci pr-merge run-status run-stop run-wake; do
 	[[ -s $refs/leader-$name.md ]]
 	if grep -qE '<!-- IF|\{\{' "$refs/leader-$name.md"; then exit 1; fi
 done
-echo 'PASS templates: リーダーの手順の参照 6 件がスキルにあり、展開のマークも差し込みも持たない'
+echo 'PASS templates: リーダーの手順の参照 20 件がスキルにあり、展開のマークも差し込みも持たない'
 
-# 読む側: common/monitor/squad-review-wait が `返事を待つ役:` の行を読み、リーダーが leader-review-wait.md の手順で squad-review-wait を呼ぶ。
+# 読む側: common/monitor/squad-review-wait が `返事を待つ役:` の行を読み、リーダーが leader-review-request.md・leader-review-reply.md の手順で squad-review-wait を呼ぶ。
 # 返事を待つ役の手順が持つ squad-review-wait の呼び方と依頼の行。
-for phrase in 'squad-review-wait watch' 'squad-review-wait proceed' 'squad-review-wait status' '返事を待つ役:' '確認するコミット:' '返事の待ち: 次に進む'; do
-	grep -qF "$phrase" "$refs/leader-review-wait.md"
+for phrase in 'squad-review-wait watch' 'squad-review-wait status' '返事を待つ役:' '確認するコミット:'; do
+	grep -qF "$phrase" "$refs/leader-review-request.md"
+done
+for phrase in 'squad-review-wait proceed' '返事の待ち: 次に進む'; do
+	grep -qF "$phrase" "$refs/leader-review-reply.md"
 done
 echo 'PASS templates: 返事の手順の参照が、squad-review-wait の呼び方と依頼の行を持つ'
 
@@ -836,12 +1073,12 @@ echo 'PASS templates: 返事の手順の参照が、squad-review-wait の呼び�
 for phrase in 'runs <タスク> --active' '--siblings' 'run-messages' '--help'; do
 	grep -qF -- "$phrase" "$refs/leader-run-status.md"
 done
-grep -qF -- 'squad-pr-watch link-check <タスク> <きっかけのコメント>' "$refs/leader-run-status.md"
+grep -qF -- 'squad-pr-watch link-check <タスク> <きっかけのコメント>' "$refs/leader-run-stop.md"
 echo 'PASS templates: 進捗と停止の参照が、実行の状態を読むコマンドの形を持つ'
-grep -qF -- 'squad-pr-watch conflicts-check' "$refs/leader-pr-checks.md"
+grep -qF -- 'squad-pr-watch conflicts-check' "$refs/leader-pr-merge.md"
 echo 'PASS templates: PR の状態の参照が、conflicts-check の呼び方を持つ'
 for phrase in 'squad-pr-watch link-check <タスク>' '紐付けていません:'; do
-	grep -qF -- "$phrase" "$refs/leader-pr-checks.md"
+	grep -qF -- "$phrase" "$refs/leader-pr-link.md"
 done
 echo 'PASS templates: PR の紐付けの参照が、link-check の呼び方と「紐付けていません:」の行を持つ'
 
@@ -858,12 +1095,14 @@ if grep -qF -- '質問だけでは待ち始めの時刻は新しくならない'
 	exit 1
 fi
 echo 'PASS templates: 振り分けの参照が squad-usage-wait の呼び方を持ち、延長の行を書く指示を持たない'
-for phrase in 'squad-usage-wait pick <タスク> principal' '見直しの種類:' '重要のマーク:' '修正の依頼: <N> 回目' '設計の変更: 実装を始めたあと'; do
+for phrase in '見直しの種類:' '重要のマーク:' '修正の依頼: <N> 回目' '設計の変更: 実装を始めたあと'; do
 	grep -qF -- "$phrase" "$refs/leader-principal.md"
 done
-for phrase in 'ci-wait <タスク>' 'ci-wait-clear <タスク>' 'マージの依頼: <head の完全な SHA>'; do
-	grep -qF -- "$phrase" "$refs/leader-pr-checks.md"
+grep -qF -- 'squad-usage-wait pick <タスク> principal' "$refs/leader-principal-pick.md"
+for phrase in 'ci-wait <タスク>' 'ci-wait-clear <タスク>'; do
+	grep -qF -- "$phrase" "$refs/leader-pr-ci.md"
 done
+grep -qF -- 'マージの依頼: <head の完全な SHA>' "$refs/leader-pr-merge.md"
 grep -qF '| 要件定義 | Fable 5.2 | Fable 5.2 | GPT-6.2 Astra |' "$root/manual.md"
 grep -qF '最上位の役が、人間の用意した要件を次の役へ回す前に見直す' "$root/manual.md"
 # 手引きの「片方だけのランタイムで動かす」の表の設計の行は Opus 5.5・Opus 5.5・GPT-6.2 Sol で、最上位のモデルで動かす役に設計の役を挙げない。
@@ -879,28 +1118,36 @@ for dir in "$test_dir/"*/; do
 	absent -qF '共通 4' "$file"
 	absent -qF '手戻りが設計と要件の食い違いを表すリスク' "$file"
 done
-# 最上位の役の参照が持つ記録の行。読む側は、leader-principal.md と leader-flow.md の手順で、`見直しの種類:` と `手戻りの見直し:` は common/monitor/squad-review-next と squad-cli-lib も読む。
-for phrase in '見直しの種類:' '重要のマーク:' '手戻りの見直し:' '修正の続行の確認:' '修正の依頼:' '設計を用意した人:'; do
+# 最上位の役の参照が持つ記録の行。読む側は、leader-principal.md と leader-fix-request.md の手順で、`見直しの種類:` と `手戻りの見直し:` は common/monitor/squad-review-next と squad-cli-lib も読む。
+for phrase in '見直しの種類:' '重要のマーク:' '手戻りの見直し:' '修正の続行の確認:' '修正の依頼:'; do
 	grep -qF -- "$phrase" "$refs/leader-principal.md"
 done
-grep -qF '修正の続行の確認:' "$refs/leader-flow.md"
+for ref in leader-principal-design leader-principal-final leader-principal-reshow; do
+	grep -qF -- '設計を用意した人:' "$refs/$ref.md"
+done
+grep -qF '修正の続行の確認:' "$refs/leader-fix-request.md"
 # `見る範囲:` の行は、common/monitor/squad-review-next が最終レビューの依頼に書いて頼み直しのときに読み、最上位の役が読む差分を決める。名前も値の形も 1 行で守る。
-grep -qxF '見る範囲: <PR の差分全体 | <前の SHA>..<今の SHA>>' "$refs/leader-principal.md"
+grep -qxF '見る範囲: <PR の差分全体 | <前の SHA>..<今の SHA>>' "$refs/leader-principal-final.md"
 # 流れと振り分けの参照は、共通 4 を使わない。
-absent -qF '共通 4' "$refs/leader-flow.md"
-absent -qF '共通 4' "$refs/leader-dispatch.md"
+for ref in leader-request leader-design-diff leader-fix-request leader-repeat leader-dispatch; do
+	absent -qF '共通 4' "$refs/$ref.md"
+done
 absent -qF '共通 4' "$test_dir/all/designer"
-absent -qF 'マークの判断と重なるとき' "$refs/leader-flow.md"
+for ref in leader-request leader-design-diff leader-fix-request leader-repeat; do
+	absent -qF 'マークの判断と重なるとき' "$refs/$ref.md"
+done
 echo 'PASS templates: 最上位の役・流れの参照が、スクリプトの呼び方と記録の行（見る範囲: の行を含む）を持ち、使わない共通 4 の語を持たない'
 
-# 読む側: リーダーと最上位の役が leader-principal.md の見出しを名前で指し、common/monitor/squad-review-next が依頼の行を読む。
+# 読む側: リーダーと最上位の役が leader-principal-final.md・leader-principal-reshow.md の見出しを名前で指し、common/monitor/squad-review-next が依頼の行を読む。
 # security-reviewer への依頼: 見出し、判断の行、表の確認の行、2 つの役の待ち、見せ直し、基準を全部並べる記録の行。
-for heading in 'security-reviewer への依頼' '2 つの役の結果の扱い' '見せ直し'; do
-	grep -qxF "### $heading" "$refs/leader-principal.md"
+for heading in 'security-reviewer への依頼' '2 つの役の結果の扱い'; do
+	grep -qxF "## $heading" "$refs/leader-principal-final.md"
 done
-for phrase in '共通 2 の判断: <当たる | 当たらない>。理由: <1 文>' '入力と信頼の表の確認: 頼む' '直したあとの返し先: スクワッド' '見せ直し: 1 回目'; do
-	grep -qF -- "$phrase" "$refs/leader-principal.md"
+grep -qxF '## 見せ直し' "$refs/leader-principal-reshow.md"
+for phrase in '共通 2 の判断: <当たる | 当たらない>。理由: <1 文>' '入力と信頼の表の確認: 頼む' '直したあとの返し先: スクワッド'; do
+	grep -qF -- "$phrase" "$refs/leader-principal-final.md"
 done
+grep -qF -- '見せ直し: 1 回目' "$refs/leader-principal-reshow.md"
 echo 'PASS templates: 最上位の役の参照が、security-reviewer への依頼の見出しと記録の行を持つ'
 
 # 設計の文書 docs/principal-review.md が指す参照の見出し。
@@ -913,7 +1160,8 @@ echo 'PASS templates: 設計の文書が指す参照の見出しがあり、リ�
 
 # レビューと E2E の返事: 返事を書く役は report で返し、設計への指摘の行を持つ。次の依頼は common/monitor/squad-review-next の decide が書き、リーダーは決められないときだけ起きる。
 handoff_skill="$root/common/skills/squad-handoff/SKILL.md"
-grep -qF -- '設計への指摘: <あり | なし>' "$handoff_skill"
+refs_skill="$root/common/skills/squad-handoff/references"
+grep -qF -- '設計への指摘: <あり | なし>' "$refs_skill/review-reply.md"
 for role in code-reviewer ux-reviewer security-reviewer performance-reviewer qa claude-principal codex-principal; do
 	grep -qF 'squad-review-wait report <タスク> <きっかけのコメント> <ファイル>' "$test_dir/all/$role"
 done
@@ -921,10 +1169,10 @@ for role in code-reviewer ux-reviewer security-reviewer performance-reviewer qa 
 	grep -qF '`設計への指摘: あり`' "$test_dir/all/$role"
 	grep -qF '`設計への指摘: なし`' "$test_dir/all/$role"
 done
-grep -qF -- '`squad-review-next decide`' "$refs/leader-review-wait.md"
-grep -qF '`--leader <ID>`' "$refs/leader-pr-checks.md"
-grep -qF 'squad-usage-wait pick <タスク> planner' "$refs/leader-flow.md"
-grep -qF 'squad-usage-wait pick <タスク> designer' "$refs/leader-flow.md"
+grep -qF -- '`squad-review-next decide`' "$refs/leader-review-reply.md"
+grep -qF '`--leader <ID>`' "$refs/leader-pr-merge.md"
+grep -qF 'squad-usage-wait pick <タスク> planner' "$refs/leader-request.md"
+grep -qF 'squad-usage-wait pick <タスク> designer' "$refs/leader-request.md"
 grep -qF '`squad-review-next request`' "$test_dir/all/orchestrator"
 echo 'PASS templates: 返事の役は report と設計への指摘の行で返し、リーダーは decide と squad-usage-wait の呼び方を持つ'
 
@@ -960,21 +1208,20 @@ echo 'PASS templates: manual.md の「共通 2 の設計の見直し」に、設
 
 # squad-review-next がマークを読み、squad-cli-lib が前の回: と結果の行の並びを読む。
 # 説明文は固定せず、記録の鍵・プレースホルダーと、その並びだけを確認する。
-python3 - "$handoff_skill" "$refs/leader-principal.md" "$test_dir/all" <<'PY_RESULT'
+python3 - "$refs_skill/pr.md" "$refs_skill/review-reply.md" "$refs/leader-principal-final.md" "$test_dir/all" <<'PY_RESULT'
 import re
 import sys
 from pathlib import Path
 
-skill, principal, agents = map(Path, sys.argv[1:])
+pr_ref, reply_ref, principal, agents = map(Path, sys.argv[1:])
 mark = '<マーク> <自分のエージェントの名前>: <結論>'
 commit = '確認したコミット:'
 design = '設計への指摘:'
-text = skill.read_text()
-section = text.split('## PR にレビューやテストの結果を書く\n', 1)[1].split('\n## ', 1)[0]
+section = pr_ref.read_text().split('## PR にレビューやテストの結果を書く\n', 1)[1].split('\n## ', 1)[0]
 assert mark in section
 for symbol in ('❌', '⚠️', '✅'):
     assert re.search(r'^\| ' + symbol + r' \|', section, re.M), symbol
-reply = text.split('## レビューと E2E の返事を返す\n', 1)[1].split('\n## ', 1)[0]
+reply = reply_ref.read_text().split('## レビューと E2E の返事を返す\n', 1)[1].split('\n## ', 1)[0]
 assert any(commit in p and mark in p and p.index(commit) < p.index(mark)
            for p in reply.split('\n\n')), '共通スキル: コミット・マークの順'
 for role in ('code-reviewer', 'ux-reviewer', 'security-reviewer', 'performance-reviewer',
@@ -988,7 +1235,7 @@ PY_RESULT
 echo 'PASS templates: 通常の結果のマーク・記録の並びと最終レビューの前の回の形を保つ'
 
 # 検証が未実行の結果の行。共通スキルの節が置き、common/monitor/squad-review-next の decide が読む。役のひな形は写さない。
-sed -n '/^### 未記入の報告を返す$/,/^### リーダーが報告を受けたとき$/p' "$handoff_skill" >"$test_dir/unfilled-report"
+sed -n '/^### 未記入の報告を返す$/,/^### リーダーが報告を受けたとき$/p' "$refs_skill/missing-fill.md" >"$test_dir/unfilled-report"
 grep -qxF '未実行: 検証スキルが未記入' "$test_dir/unfilled-report"
 for role in code-reviewer ux-reviewer security-reviewer performance-reviewer qa claude-principal codex-principal; do
 	if grep -qF '未実行: 検証スキルが未記入' "$test_dir/all/$role"; then
@@ -1020,16 +1267,15 @@ for scenario in all no-planner no-designer no-planning claude-only codex-only no
 done
 echo 'PASS templates: 設計の役の成功の条件の表の見出しと、実装・修正の役の確認の結果の記録の行がある'
 
-# 読む側: リーダーと最上位の役が leader-flow.md・leader-principal.md の手順と行の形で、同じ誤りと同じ部品の診断を依頼し、数え直す。
+# 読む側: リーダーと最上位の役が leader-repeat.md・leader-fix-request.md・leader-principal.md の手順と行の形で、同じ誤りと同じ部品の診断を依頼し、数え直す。
 # 同じ誤りと同じ部品の診断は、参照のファイルが手順・行の形・止まる先を持つ。数え方は main の同じ誤り・同じ部品の行に重ねる。
 refs="$root/common/skills/squad-handoff/references"
 diag_flow_phrases=(
-	'#### 診断に入る条件'
-	'#### 同じ誤りが続くとき'
-	'#### 同じ誤りの対象'
-	'#### 数え方の行'
-	'#### 診断の検証待ち'
-	'#### 修正の依頼の前に確認する順'
+	'### 診断に入る条件'
+	'### 同じ誤りが続くとき'
+	'### 同じ誤りの対象'
+	'### 数え方の行'
+	'### 診断の検証待ち'
 	'`診断の依頼: <N> 回目。失敗: <同じ誤り \| 同じ部品> <対象>`'
 	'`数え直し: 同じ誤り <対象>。理由: 直った（<確認したこと>）`'
 	'`数え直し: 同じ誤りのすべて。理由: <人間の再開 \| 設計の承認し直し>`'
@@ -1037,20 +1283,21 @@ diag_flow_phrases=(
 	'同じ誤り: <対象> <N> 回目'
 )
 for phrase in "${diag_flow_phrases[@]}"; do
-	grep -qF -- "$phrase" "$refs/leader-flow.md"
+	grep -qF -- "$phrase" "$refs/leader-repeat.md"
 done
+grep -qxF '## 修正の依頼の前に確認する順' "$refs/leader-fix-request.md"
 # 手当ての行の形: 展開した手順に行の形がある。この行の名前と値は、評価の場面 keep-38・keep-68 の [記録] 4 が読む。
-render "$roles" "$test_dir/all-values" "$refs/leader-flow.md" >"$test_dir/remedy-flow.md"
+render "$roles" "$test_dir/all-values" "$refs/leader-repeat.md" >"$test_dir/remedy-flow.md"
 grep -qF -- '手当ての種類: <禁止 | 機械判定 | 動作確認 | 文>' "$test_dir/remedy-flow.md"
 echo 'PASS templates: 展開した手順に手当ての種類の行の形がある'
 # 診断に入る条件が、同じ誤りの N の表より先にある。条件を満たさないリーダーは、今の手順のまま数える。
-flow_entry_line=$(grep -nxF -- '#### 診断に入る条件' "$refs/leader-flow.md" | cut -d: -f1)
-flow_steps_line=$(grep -nxF -- '#### 同じ誤りが続くとき' "$refs/leader-flow.md" | cut -d: -f1)
+flow_entry_line=$(grep -nxF -- '### 診断に入る条件' "$refs/leader-repeat.md" | cut -d: -f1)
+flow_steps_line=$(grep -nxF -- '### 同じ誤りが続くとき' "$refs/leader-repeat.md" | cut -d: -f1)
 ((flow_entry_line < flow_steps_line))
-# 同じ部品の診断の値は common/ の中で leader-flow.md にだけ書く。診断の回数や N は、ほかのファイルへ写さない。
-[[ $(grep -rlF -- '診断を使うとき' "$root/common" | sort -u) == "$refs/leader-flow.md" ]]
-# 同じ部品の 3 回目で診断を頼む値は、leader-flow.md のほかの common/ のファイルに写さない（修正の依頼の 2 回目からという decide の停止の理由は別の値）。
-absent -rE '同じ部品.{0,30}3 回(目|分)' "$root/common" --exclude=leader-flow.md
+# 同じ部品の診断の値は common/ の中で leader-repeat.md と leader-fix-request.md にだけ書く。診断の回数や N は、ほかのファイルへ写さない。
+[[ $(grep -rlF -- '診断を使うとき' "$root/common" | sort -u) == "$refs/leader-fix-request.md"$'\n'"$refs/leader-repeat.md" ]]
+# 同じ部品の 3 回目で診断を頼む値は、この 2 つのほかの common/ のファイルに写さない（修正の依頼の 2 回目からという decide の停止の理由は別の値）。
+absent -rE '同じ部品.{0,30}3 回(目|分)' "$root/common" --exclude=leader-repeat.md --exclude=leader-fix-request.md
 # 数え方の行は、同じ失敗: と 往復: を使わない。
 absent -rqE '^(同じ失敗|往復): ' "$root/common"
 absent -rqF -- '同じ失敗: <種類>' "$root/common"
@@ -1060,13 +1307,13 @@ diag_principal_phrases=(
 	'`次の依頼を決められません: 診断の回はリーダーが扱う`'
 )
 for phrase in "${diag_principal_phrases[@]}"; do
-	grep -qF -- "$phrase" "$refs/leader-principal.md"
+	grep -qF -- "$phrase" "$refs/leader-principal-pick.md"
 done
 # 診断の回だけ、decide がリーダーに任せる。往復や検証待ちの止まり方は decide に置かない。
-grep -qF -- '| `診断の回はリーダーが扱う` |' "$refs/leader-review-wait.md"
-absent -qF -- '往復が続く回はリーダーが扱う' "$refs/leader-review-wait.md"
-absent -qF -- '診断のあとの ❌ はリーダーが扱う' "$refs/leader-review-wait.md"
-grep -qF -- '[leader-principal.md](leader-principal.md)' "$refs/leader-review-wait.md"
+grep -qF -- '| `診断の回はリーダーが扱う` |' "$refs/leader-review-stuck.md"
+absent -qF -- '往復が続く回はリーダーが扱う' "$refs/leader-review-stuck.md"
+absent -qF -- '診断のあとの ❌ はリーダーが扱う' "$refs/leader-review-stuck.md"
+grep -qF -- '[leader-principal-diagnose.md](leader-principal-diagnose.md)' "$refs/leader-review-stuck.md"
 absent -qE '往復が続く|診断のあとの ❌|往復:' "$root/common/monitor/squad-review-next"
 echo 'PASS templates: 診断の参照が、診断の見出し・行の形を持ち、同じ失敗: と 往復: の行を使わない'
 
@@ -1184,9 +1431,9 @@ for scenario in all no-planner no-designer no-planning claude-only codex-only no
 done
 echo 'PASS templates: 週次の 2 つの指示がデフォルトブランチを取得し、失敗で止まり、対象の行を返す'
 
-# 読む側: 役の指示が指す common/skills/squad-handoff/SKILL.md の節「更新を知らされたときに照合する」を、全役が更新を知らされたときに読む。
+# 読む側: 役の指示が指す common/skills/squad-handoff/references/human-ops.md の節「更新を知らされたときに照合する」を、全役が更新を知らされたときに読む。
 # 照合のために役が流す読み取りのコマンドと、報告の行の形。
-awk '/^## 更新を知らされたときに照合する$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$handoff_skill" >"$test_dir/reconcile-section"
+awk '/^## 更新を知らされたときに照合する$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$refs_skill/human-ops.md" >"$test_dir/reconcile-section"
 [[ -s $test_dir/reconcile-section ]]
 for phrase in \
 	'| 接続先 | `multica auth status`' \
@@ -1200,19 +1447,19 @@ for phrase in \
 done
 echo 'PASS templates: 共通スキルの照合の節に、読むコマンド 6 つと照合の行の形がある'
 
-# 読む側: 役の指示（qa・planner・code-reviewer など）が、common/skills/squad-handoff/SKILL.md のこれらの節の見出しを名前で指す。
+# 読む側: 役の指示（qa・planner・code-reviewer など）が、common/skills/squad-handoff/references/writing-forms.md のこれらの節の見出しを名前で指す。
 # 役の指示が参照する、共通スキルの節の見出し。
 type_skill="$root/common/skills/squad-handoff/SKILL.md"
 for phrase in '## コメントと本文の型' '### 共通の項目名' '### タスクの本文'; do
-	grep -qF -- "$phrase" "$type_skill"
+	grep -qxF -- "$phrase" "$root/common/skills/squad-handoff/references/writing-forms.md"
 done
 echo 'PASS templates: 共通スキルに、役の指示が参照するコメントと本文の型の見出しがある'
 
-# 言い回しの決まり: 共通スキルの小節「言い回し」は「本文の書き方」と「コメントと本文の型」の間にあり、6 つの決まりの行を 1 行ずつ持つ。同じ行が STYLE.md にも 1 行ずつある。読む側は、小節を読む全役と、STYLE.md を読む原本の文書を書く人。
+# 言い回しの決まり: 共通スキルの小節「言い回し」は「本文の書き方」と「タスクのコメントを書く」の間にあり、6 つの決まりの行を 1 行ずつ持つ。同じ行が STYLE.md にも 1 行ずつある。読む側は、小節を読む全役と、STYLE.md を読む原本の文書を書く人。
 phrasing_style="$root/STYLE.md"
 body_line=$(grep -nxF '## 本文の書き方' "$type_skill" | cut -d: -f1)
 phrasing_line=$(grep -nxF '### 言い回し' "$type_skill" | cut -d: -f1)
-types_line=$(grep -nxF '## コメントと本文の型' "$type_skill" | cut -d: -f1)
+types_line=$(grep -nxF '## タスクのコメントを書く' "$type_skill" | cut -d: -f1)
 [[ -n $body_line && -n $phrasing_line && -n $types_line ]]
 ((body_line < phrasing_line && phrasing_line < types_line))
 phrasing_section=$(awk '/^### 言い回し$/ {inside=1; next} inside && /^#/ {exit} inside {print}' "$type_skill")
@@ -1278,12 +1525,12 @@ for role in claude-fixer codex-fixer; do
 	grep -qF 'git diff --name-only origin/main...HEAD' "$test_dir/all/$role"
 	grep -qF 'git show --remerge-diff <マージのコミット>' "$test_dir/all/$role"
 done
-# 読む側: 停止の提案でリーダーが実行する gh。leader-run-status.md の「実行を止める」が、link-check の判定の正規形を渡す。
-stop_section=$(awk '/^## 実行を止める$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$refs/leader-run-status.md")
+# 読む側: 停止の提案でリーダーが実行する gh。leader-run-stop.md の「実行を止める」が、link-check の判定の正規形を渡す。
+stop_section=$(awk '/^## 実行を止める$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$refs/leader-run-stop.md")
 grep -qF 'gh pr view <正規形> --json headRefOid,headRefName' <<<"$stop_section"
 absent -qF 'gh pr view <PR の URL>' <<<"$stop_section"
-# 読む側: common/monitor/squad-usage-wait が、工程の引数 implement を読む。leader-principal.md の実装の役の選び方が渡す。
-grep -qF 'squad-usage-wait pick <タスク> implement' "$refs/leader-principal.md"
+# 読む側: common/monitor/squad-usage-wait が、工程の引数 implement を読む。leader-principal-design.md の実装の役の選び方が渡す。
+grep -qF 'squad-usage-wait pick <タスク> implement' "$refs/leader-principal-design.md"
 # 読む側: 週次の依存の監査（common/autopilots.md）が、重複の判定に multica issue search を ID と別名のそれぞれで実行する。
 grep -qF 'multica issue search <ID> --include-closed --output json' "$test_dir/all/autopilots"
 # 読む側: leader-run-status.md の `multica issue cancel-task` 等は Multica の CLI が、leader-principal.md の `jq -j .description | shasum -a 256` は jq と shasum が読む。
@@ -1296,13 +1543,13 @@ echo "PASS templates: 機械やほかのファイルが読むコマンドの形�
 # 読む側: squad-review-next decide が、タスクの要約から `前からある不具合 <N> 件`（マークの行）と `指摘の一覧: <N> 件` を読む。
 # 共通スキルの見本と型の行を、decide の同じ正規表現で読めること。正規表現は decide の定数から取るので、読み方が変われば落ちる。
 decide_script="$root/common/monitor/squad-review-next"
-result_section=$(awk '/^## PR にレビューやテストの結果を書く$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$type_skill")
+result_section=$(awk '/^## PR にレビューやテストの結果を書く$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$refs/pr.md")
 sample_mark=$(grep -m1 -E '^⚠️ example-code-reviewer: ' <<<"$result_section")
 [[ -n $sample_mark ]]
 # 見本に、前からある不具合の欄が `前からある不具合:` の行と項目で 1 回ある。
 [[ $(grep -cxF -- '前からある不具合:' <<<"$result_section") == 1 ]]
 grep -qE -- '^- `[^`]+`: ' <<<"$(grep -xF -A1 -- '前からある不具合:' <<<"$result_section")"
-reply_section=$(awk '/^## レビューと E2E の返事を返す$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$type_skill")
+reply_section=$(awk '/^## レビューと E2E の返事を返す$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$refs/review-reply.md")
 list_head=$(grep -m1 -oE '`指摘の一覧: <N> 件`' <<<"$reply_section")
 [[ -n $list_head ]]
 grep -qF -- '`- <番号>. <重大度>: <場所>。影響: <影響>`' <<<"$reply_section"
@@ -1325,19 +1572,19 @@ assert found and found.group(1) == "2", row
 READPY
 echo 'PASS templates: 共通スキルの見本のマークの行と指摘の一覧の行が、decide の件数の読み方で読め、見本に前からある不具合の欄がある'
 
-# 読む側: リーダーが手で書くマージの依頼。leader-pr-checks.md の 4 行の名前が、decide が書く依頼と同じ行頭の形で 1 回ずつあり、指摘を要約の `指摘の一覧:` から写すと書いてある。
-manual_section=$(awk '/^### 手で書くマージの依頼の行$/ {inside=1; next} inside && /^#{1,3} / {exit} inside {print}' "$refs/leader-pr-checks.md")
+# 読む側: リーダーが手で書くマージの依頼。leader-pr-merge.md の 4 行の名前が、decide が書く依頼と同じ行頭の形で 1 回ずつあり、指摘を要約の `指摘の一覧:` から写すと書いてある。
+manual_section=$(awk '/^### 手で書くマージの依頼の行$/ {inside=1; next} inside && /^#{1,3} / {exit} inside {print}' "$refs/leader-pr-merge.md")
 [[ -n $manual_section ]]
 for name in '読む深さ: ' 'マージの前に人間がすること: ' '直さずに残した指摘: ' '前からある不具合: '; do
 	[[ $(grep -c -- "^$name" <<<"$manual_section") == 1 ]]
 	grep -qF -- "$name" "$decide_script"
 done
 grep -qF -- '指摘の一覧:' <<<"$manual_section"
-grep -qF -- '「手で書くマージの依頼の行」' "$refs/leader-pr-checks.md"
+grep -qF -- '「手で書くマージの依頼の行」' "$refs/leader-pr-merge.md"
 echo 'PASS templates: リーダーの手順に、手で書くマージの依頼の 4 行の名前が行頭の形で 1 回ずつあり、指摘を要約の指摘の一覧から写すと書いてある'
 
 # 設計文書の決まっていないことの節。読む側は、設計の役と、PR の本文を書き直す役。`- マージの前に決めること:` の行は、手順の見直しが働いた跡として数える（docs/undecided.md の「働いた跡」: kind comment、pattern `マージの前に決めること:`、author_type agent）。
-undecided_skill="$root/common/skills/squad-handoff/SKILL.md"
+undecided_skill="$root/common/skills/squad-handoff/references/pr.md"
 undecided_heading='### 設計文書の決まっていないこと'
 [[ $(grep -cxF -- "$undecided_heading" "$undecided_skill") == 1 ]]
 python3 -I - "$undecided_skill" "$undecided_heading" <<'UNDECIDEDPY'
