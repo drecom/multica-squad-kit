@@ -205,7 +205,7 @@ prepare_project() (
 		current=$(mc agent get "$id" --output json) || die 'エージェントを読めませんでした。'
 		result=$(mc agent env get "$id" --output json) || die '環境変数を読めませんでした。'
 		jq -e '(.custom_env // {}) | type=="object" and all(.[]; type=="string")' >/dev/null <<<"$result" || die '環境変数の応答が不正です。'
-		jq --slurpfile desired "$project_work/$role.env" '(.custom_env // {} | del(.SQUAD_KIT_GH_DEPENDABOT_MERGE,.CLAUDE_CONFIG_DIR,.ENABLE_CLAUDEAI_MCP_SERVERS,.CLAUDE_CODE_SHELL,.CLAUDE_CODE_AUTO_COMPACT_WINDOW,.CLAUDE_ENV_FILE)) + $desired[0]' <<<"$result" >"$project_work/env.json"
+		jq --slurpfile desired "$project_work/$role.env" '(.custom_env // {} | del(.SQUAD_KIT_GH_DEPENDABOT_MERGE,.CLAUDE_CONFIG_DIR,.ENABLE_CLAUDEAI_MCP_SERVERS,.CLAUDE_CODE_SHELL,.CLAUDE_CODE_AUTO_COMPACT_WINDOW,.CLAUDE_ENV_FILE,.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS,.CLAUDE_CODE_DISABLE_CRON,.DISABLE_AUTOUPDATER)) + $desired[0]' <<<"$result" >"$project_work/env.json"
 		if [[ $(jq -Sc '.custom_env // {}' <<<"$result") != "$(jq -Sc . "$project_work/env.json")" ]]; then
 			mc agent env set "$id" --custom-env-file "$project_work/env.json" --output json >/dev/null || die '環境変数を反映できませんでした。'
 		fi
@@ -412,7 +412,7 @@ project_role() {
 }
 project_desired_args() {
 	jq -c --arg model "$1" '
-		def managed: test("^(allow_login_shell|features[.]shell_snapshot)[[:space:]]*=");
+		def managed: test("^(allow_login_shell|features[.]shell_snapshot|project_doc_max_bytes)[[:space:]]*=");
 		if type=="array" and all(.[]; type=="string") then . else error("引数は文字列の配列が必要です") end |
 		. as $args |
 		reduce range(0; length) as $i ({args:[],skip:false};
@@ -422,7 +422,7 @@ project_desired_args() {
 			elif ($args[$i]=="--enable" and $args[$i+1]=="shell_snapshot") then .skip=true
 			elif $args[$i]=="--enable=shell_snapshot" then .
 			else .args+=[$args[$i]] end) |
-		.args + (if ($model|startswith("gpt-")) then ["-c","allow_login_shell=false","-c","features.shell_snapshot=false"] else [] end)'
+		.args + (if ($model|startswith("gpt-")) then ["-c","allow_login_shell=false","-c","features.shell_snapshot=false","-c","project_doc_max_bytes=65536"] else [] end)'
 }
 
 project_desired_env() {
@@ -430,8 +430,8 @@ project_desired_env() {
 	if uses_runtime claude; then use_claude=true; fi
 	jq -n --arg a "$allowed_repos_file" --arg z "$project_shell_dir" --arg h "$agent_home/git-hooks" --arg c "$agent_home/claude" --arg role "$1" --arg model "$2" --argjson use_claude "$use_claude" '
 		{SQUAD_KIT_ALLOWED_REPOS:$a,ZDOTDIR:$z,BASH_ENV:($z+"/env.sh"),GIT_CONFIG_COUNT:"1",GIT_CONFIG_KEY_0:"core.hooksPath",GIT_CONFIG_VALUE_0:$h} |
-		if ($model|startswith("claude-")) then .+{CLAUDE_CONFIG_DIR:$c,ENABLE_CLAUDEAI_MCP_SERVERS:"false",CLAUDE_CODE_SHELL:"/bin/zsh",CLAUDE_CODE_AUTO_COMPACT_WINDOW:"150000",CLAUDE_ENV_FILE:($z+"/env.sh")} else . end |
-		if $role=="usage-monitor" and $use_claude then .+{CLAUDE_CONFIG_DIR:$c} else . end |
+		if ($model|startswith("claude-")) then .+{CLAUDE_CONFIG_DIR:$c,ENABLE_CLAUDEAI_MCP_SERVERS:"false",CLAUDE_CODE_SHELL:"/bin/zsh",CLAUDE_CODE_AUTO_COMPACT_WINDOW:"150000",CLAUDE_ENV_FILE:($z+"/env.sh"),CLAUDE_CODE_DISABLE_BACKGROUND_TASKS:"1",CLAUDE_CODE_DISABLE_CRON:"1",DISABLE_AUTOUPDATER:"1"} else . end |
+		if $role=="usage-monitor" and $use_claude then .+{CLAUDE_CONFIG_DIR:$c,DISABLE_AUTOUPDATER:"1"} else . end |
 		if $role=="dependabot-merger" then .+{SQUAD_KIT_GH_DEPENDABOT_MERGE:"1"} else . end'
 }
 

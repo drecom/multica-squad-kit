@@ -23,8 +23,9 @@ cmp "$test_dir/expected-repos" "$TEMPLATE_AGENT_HOME/allowed-repos.d/project-a"
 jq -e 'length==3 and .[1].resource_ref.url=="git@github.com:EXAMPLE/SECOND.git" and .[2].resource_ref.url=="https://github.com/example/third"' "$TEST_DB/resources.json" >/dev/null
 [[ $(jq -s '[.[]|select(.[0:3]==["project","resource","add"])]|length' "$TEST_DB/calls") == 2 ]]
 jq -e '.model=="gpt-6.2-sol" and .max_concurrent_tasks==1' "$TEST_DB/agents/agent-demo-usage-monitor-owner.json" >/dev/null
-jq -e '.CLAUDE_CONFIG_DIR!=null and .CLAUDE_CODE_SHELL==null and .CLAUDE_ENV_FILE==null' "$TEST_DB/env/agent-demo-usage-monitor-owner.json" >/dev/null
-jq -e --arg env "$TEMPLATE_AGENT_HOME/template/shell/project-a/env.sh" '.CLAUDE_CODE_SHELL=="/bin/zsh" and .ENABLE_CLAUDEAI_MCP_SERVERS=="false" and .CLAUDE_ENV_FILE==$env' "$TEST_DB/env/agent-demo-orchestrator-owner.json" >/dev/null
+jq -e '.CLAUDE_CONFIG_DIR!=null and .CLAUDE_CODE_SHELL==null and .CLAUDE_ENV_FILE==null and .DISABLE_AUTOUPDATER=="1" and .CLAUDE_CODE_DISABLE_BACKGROUND_TASKS==null and .CLAUDE_CODE_DISABLE_CRON==null' "$TEST_DB/env/agent-demo-usage-monitor-owner.json" >/dev/null
+jq -e --arg env "$TEMPLATE_AGENT_HOME/template/shell/project-a/env.sh" '.CLAUDE_CODE_SHELL=="/bin/zsh" and .ENABLE_CLAUDEAI_MCP_SERVERS=="false" and .CLAUDE_ENV_FILE==$env and .CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=="1" and .CLAUDE_CODE_DISABLE_CRON=="1" and .DISABLE_AUTOUPDATER=="1"' "$TEST_DB/env/agent-demo-orchestrator-owner.json" >/dev/null
+jq -e '.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS==null and .CLAUDE_CODE_DISABLE_CRON==null and .DISABLE_AUTOUPDATER==null' "$TEST_DB/env/agent-demo-codex-implementer-owner.json" >/dev/null
 jq -e '.SQUAD_KIT_GH_DEPENDABOT_MERGE=="1"' "$TEST_DB/env/agent-demo-dependabot-merger-owner.json" >/dev/null
 jq -e '.SQUAD_KIT_GH_DEPENDABOT_MERGE==null' "$TEST_DB/env/agent-demo-codex-implementer-owner.json" >/dev/null
 jq -e '[.skills[].id]|sort==["handoff-a","verify-a"]' "$TEST_DB/agents/agent-demo-codex-implementer-owner.json" >/dev/null
@@ -92,11 +93,11 @@ echo 'PASS project: 検証スキルの割り当てがない登録の流し直し
 echo 'PASS custom args: 作成時に Codex にだけ 2 設定を渡し、同じ内容の再実行では設定を書かない'
 echo 'PASS project: HTTPS・SSH・大小文字・末尾の違いは重ねて紐付けず、既存の ref と別種のリソースも保つ'
 
-jq '.custom_args=["--keep","value","--enable","shell_snapshot","--enable=shell_snapshot","--enable","shell_tool","--enable=unified_exec","-c","other=true","-c","allow_login_shell=true","--config","features.shell_snapshot=true","--config=allow_login_shell=true","--config=features.shell_snapshot=true","-c","features.shell_snapshot_extra=true"]' "$TEST_DB/agents/agent-demo-codex-implementer-owner.json" >"$TEST_DB/new"; mv "$TEST_DB/new" "$TEST_DB/agents/agent-demo-codex-implementer-owner.json"
+jq '.custom_args=["--keep","value","--enable","shell_snapshot","--enable=shell_snapshot","--enable","shell_tool","--enable=unified_exec","-c","other=true","-c","allow_login_shell=true","--config","features.shell_snapshot=true","--config=allow_login_shell=true","--config=features.shell_snapshot=true","-c","features.shell_snapshot_extra=true","-c","project_doc_max_bytes=1","--config","project_doc_max_bytes=2","--config=project_doc_max_bytes=3","-c","project_doc_max_bytes_extra=1"]' "$TEST_DB/agents/agent-demo-codex-implementer-owner.json" >"$TEST_DB/new"; mv "$TEST_DB/new" "$TEST_DB/agents/agent-demo-codex-implementer-owner.json"
 jq '.custom_args=["--claude-extra","--enable=shell_snapshot","--enable","shell_snapshot","-c","features.shell_snapshot=false","--config","allow_login_shell=false","--config=features.shell_snapshot=false","--config=allow_login_shell=false","--other","value","-c","allow_login_shell_other=true"]' "$TEST_DB/agents/agent-demo-orchestrator-owner.json" >"$TEST_DB/new"; mv "$TEST_DB/new" "$TEST_DB/agents/agent-demo-orchestrator-owner.json"
 : >"$TEST_DB/calls"
 run
-jq -e '.custom_args==["--keep","value","--enable","shell_tool","--enable=unified_exec","-c","other=true","-c","features.shell_snapshot_extra=true","-c","allow_login_shell=false","-c","features.shell_snapshot=false"]' "$TEST_DB/agents/agent-demo-codex-implementer-owner.json" >/dev/null
+jq -e '.custom_args==["--keep","value","--enable","shell_tool","--enable=unified_exec","-c","other=true","-c","features.shell_snapshot_extra=true","-c","project_doc_max_bytes_extra=1","-c","allow_login_shell=false","-c","features.shell_snapshot=false","-c","project_doc_max_bytes=65536"]' "$TEST_DB/agents/agent-demo-codex-implementer-owner.json" >/dev/null
 jq -e '.custom_args==["--claude-extra","--other","value","-c","allow_login_shell_other=true"]' "$TEST_DB/agents/agent-demo-orchestrator-owner.json" >/dev/null
 [[ $(jq -s '[.[]|select(.[0:2]==["agent","update"])]|length' "$TEST_DB/calls") == 2 ]]
 echo 'PASS custom args: 引数だけの不一致でも更新し、両形式の上書きと重複を除き、ほかの引数の順を保つ'

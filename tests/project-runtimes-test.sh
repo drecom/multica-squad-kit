@@ -35,18 +35,21 @@ for selected in claude codex; do
   jq -e --arg selected "$selected" --arg env "$TEMPLATE_AGENT_HOME/template/shell/project-a/env.sh" 'if $selected=="claude" then .CLAUDE_ENV_FILE==$env else .CLAUDE_ENV_FILE==null end' "$TEST_DB/env/agent-demo-$role-owner.json" >/dev/null
   role_args='[]'
   if [[ $role == orchestrator ]]; then role_args='["--keep","value"]'; fi
-  jq -e --arg selected "$selected" --argjson prefix "$role_args" '.custom_args==($prefix+(if $selected=="codex" then ["-c","allow_login_shell=false","-c","features.shell_snapshot=false"] else [] end))' "$TEST_DB/agents/agent-demo-$role-owner.json" >/dev/null
+  jq -e --arg selected "$selected" --argjson prefix "$role_args" '.custom_args==($prefix+(if $selected=="codex" then ["-c","allow_login_shell=false","-c","features.shell_snapshot=false","-c","project_doc_max_bytes=65536"] else [] end))' "$TEST_DB/agents/agent-demo-$role-owner.json" >/dev/null
  done
  jq -e --arg selected "$selected" --arg model "$(if [[ $selected == claude ]]; then echo claude-fable-5-2; else echo gpt-6.2-astra; fi)" '.model==$model and .runtime_id==("runtime-"+$selected) and .thinking_level=="xhigh"' "$TEST_DB/agents/agent-demo-$selected-principal-owner.json" >/dev/null
  jq -e '.EXTRA=="keep"' "$TEST_DB/env/agent-demo-orchestrator-owner.json" >/dev/null
  if [[ $selected == codex ]]; then
   for role in orchestrator usage-monitor ci-monitor; do
-   jq -e '.CLAUDE_CONFIG_DIR==null and .CLAUDE_CODE_SHELL==null and .ENABLE_CLAUDEAI_MCP_SERVERS==null and .CLAUDE_CODE_AUTO_COMPACT_WINDOW==null' "$TEST_DB/env/agent-demo-$role-owner.json" >/dev/null
+   jq -e '.CLAUDE_CONFIG_DIR==null and .CLAUDE_CODE_SHELL==null and .ENABLE_CLAUDEAI_MCP_SERVERS==null and .CLAUDE_CODE_AUTO_COMPACT_WINDOW==null and .CLAUDE_CODE_DISABLE_BACKGROUND_TASKS==null and .CLAUDE_CODE_DISABLE_CRON==null and .DISABLE_AUTOUPDATER==null' "$TEST_DB/env/agent-demo-$role-owner.json" >/dev/null
   done
   ! grep -q 'CLAUDE_CONFIG_DIR=' "$test_dir/out"
   grep -q 'CODEX_HOME=' "$test_dir/out"
  else
   jq -e '.CLAUDE_CONFIG_DIR!=null and .CLAUDE_CODE_SHELL=="/bin/zsh"' "$TEST_DB/env/agent-demo-usage-monitor-owner.json" >/dev/null
+  for role in orchestrator planner designer qa code-reviewer security-reviewer ux-reviewer performance-reviewer ci-monitor usage-monitor dependabot-merger; do
+   jq -e '.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=="1" and .CLAUDE_CODE_DISABLE_CRON=="1" and .DISABLE_AUTOUPDATER=="1"' "$TEST_DB/env/agent-demo-$role-owner.json" >/dev/null
+  done
   ! grep -q 'CODEX_HOME=' "$test_dir/out"
   grep -q 'CLAUDE_CONFIG_DIR=' "$test_dir/out"
  fi
