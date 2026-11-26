@@ -378,7 +378,7 @@ custom_env、引数、設定は、役の次の実行から効く。デーモン�
 戻すときは、古いキットで流し直したあと、残るものを手で消す。動いているタスクがないときに行う。
 
 1. エージェント用の設定ディレクトリの `settings.json` から、[書くキー](#書くキー)の 8 つを消す。`pluginConfigs`・`skillOverrides`・`permissions.deny` は、キットの項目だけを消す
-2. Claude のモデルの役ごとに、`multica agent env get` で今の custom_env を読み、3 つの変数を消したファイルを `multica agent env set --custom-env-file` で書く
+2. Claude のモデルの役ごとに、`multica agent env get` で今の custom_env を読み、3 つの変数を消したファイルを `multica agent env set --custom-env-file` で書く。Claude の置き場を使う Codex の使用上限の見張りは、`DISABLE_AUTOUPDATER` だけを消す
 3. Codex の役ごとに、`multica agent update --custom-args` で、上限の 2 つの引数を除いた配列を書く
 
 `config.toml` は、古いキットの流し直しで戻る。マークのない人のファイルは、キットが変えていないので戻す作業はない。

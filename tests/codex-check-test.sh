@@ -231,12 +231,12 @@ for when in (5.0, 9.9, 9.93):
     fake = Fake(sends={"TERM": EPERM, "KILL": EPERM}, state=lambda t, n: check.RUNNING,
                 reap=lambda t, n: False, raise_at={"state": boom, "reap": boom})
     run(fake, "unconfirmed")
-# 停止済みで回収だけが期限の直前に例外になる。再試行で回収できれば、時間切れとして返す。
-fake = Fake(state=stopped, reap=lambda t, n: n >= 3, raise_at={"reap": (9.9, RuntimeError("boom"), 1)})
-fake.state_of = stopped
-result = check.stop_group(fake, PGID, GRACE, CONFIRM)
-invariants(fake, result)
-assert result[0] in ("timeout", "unconfirmed")
+# 停止済みで、回収は 9.9 秒まで成功しない。9.9 秒の回収が例外になり、その後始末で回収できても、
+# 例外のあとなので確認できないと返す。例外が実際に起きたことも確認する。
+fake = Fake(state=stopped, reap=lambda t, n: t >= 9.9, raise_at={"reap": (9.9, RuntimeError("boom"), 1)})
+result = run(fake, "unconfirmed")
+assert fake.raise_at["reap"][2] == 0, "期限の直前の回収で、例外が実際に起きた"
+assert fake.reaps >= 2 and fake.t >= 9.9, (fake.reaps, fake.t)
 # KILL の直後に時計が 1 回だけ読めないときも、TERM から数えた上限までで終わる。
 fake = Fake(sends={"TERM": EPERM, "KILL": EPERM}, state=lambda t, n: check.RUNNING, reap=lambda t, n: False)
 real_now = fake.now
@@ -271,6 +271,12 @@ saved = os.environ.get("PATH", "")
 try:
     os.environ["PATH"] = "/nonexistent"
     assert check.Operations(None).state(PGID, 1.0) == check.UNDETERMINABLE, "ps を起動できなければ判定不能"
+finally:
+    os.environ["PATH"] = saved
+# Codex を起動できないときは、設定の誤り（failed）と分けて launch を返す。
+try:
+    os.environ["PATH"] = "/nonexistent"
+    assert check.run("/nonexistent", 1.0, 0.1, 0.1) == ("launch", ""), "起動できなければ launch"
 finally:
     os.environ["PATH"] = saved
 assert check.send_name(None) == "ok" and check.send_name(ESRCH) == "ESRCH"

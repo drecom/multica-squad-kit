@@ -41,7 +41,7 @@ cat >"$test_dir/bin/ps" <<'STUB'
 #!/bin/bash
 base=${0%/*}/..
 # Codex の検証が、停止の確認に読む一覧は、本物の ps から返す。
-[[ $* != '-A -o pid,pgid,stat,command' ]] || PATH=/bin:/usr/bin exec ps "$@"
+[[ $* != '-A -o pid,pgid,stat' && $* != '-A -o pid,pgid,stat,command' ]] || PATH=/bin:/usr/bin exec ps "$@"
 cat "$base/process-env"
 STUB
 cat >"$test_dir/bin/claude" <<'STUB'
@@ -791,6 +791,21 @@ for failure in fail silent other2 secret; do
  cmp "$config" "$test_dir/strict-config"
  [[ ! -s $test_dir/calls ]]
 done
+# Codex を起動できないときは、設定の誤りと別の表示にし、設定のキーを直す案内を出さない。
+# 検証の処理が「起動できない」と返す。実際に起動できない場合は tests/codex-check-test.sh が確認する。
+mkdir -p "$test_dir/py-bin"
+cat >"$test_dir/py-bin/python3" <<'STUB'
+#!/bin/bash
+if [[ ${1:-} == */lib/codex-check.py ]]; then printf 'launch\n\n'; exit 0; fi
+PATH=${PATH#*py-bin:} exec python3 "$@"
+STUB
+chmod +x "$test_dir/py-bin/python3"
+PATH="$test_dir/py-bin:$PATH" deny
+grep -qF 'Codex を起動できませんでした' "$test_dir/err"
+grep -qF 'PATH に codex があり実行できることを確認' "$test_dir/err"
+! grep -qF '設定が厳しい検証を通りません' "$test_dir/err"
+! grep -qF 'キーを直すか消して' "$test_dir/err"
+! grep -qF '終了コード' "$test_dir/err"
 # 検証はログインの確認より前にあり、ログイン切れでも設定の誤りを先に出す。
 echo fail >"$test_dir/codex-strict"
 touch "$test_dir/no-codex-auth"
@@ -870,11 +885,12 @@ while IFS='|' read -r row marker; do
  set_mode running
  agent_env
  started=$(python3 -c 'import time; print(int(time.time() * 1000))')
- TEST_CODEX_SECONDS=1 TEST_CODEX_GRACE=3 run
+ TEST_CODEX_SECONDS=1 TEST_CODEX_GRACE=3 TEST_CODEX_CONFIRM=2 run
  elapsed=$(( $(python3 -c 'import time; print(int(time.time() * 1000))') - started ))
  grep -qF '警告: 設定の検証が 1 秒で終わらず、確認できませんでした' "$test_dir/err"
  grep -q '^daemon status' "$test_dir/calls"
- [[ $elapsed -ge 3900 && $elapsed -le 8000 ]] || { echo "時間切れの行 $row: ${elapsed} ミリ秒（期待 3900〜8000）" >&2; exit 1; }
+ # 下限は待機 1 秒＋猶予 3 秒。上限は検証の許す 6 秒（待機 1＋猶予 3＋確認 2）に、準備全体の余裕 3 秒を足した 9 秒。
+ [[ $elapsed -ge 3900 && $elapsed -le 9000 ]] || { echo "時間切れの行 $row: ${elapsed} ミリ秒（期待 3900〜9000）" >&2; exit 1; }
  # 直接の子は検証の処理が回収し、子孫は実行中で残らない。
  is_gone "$(cat "$test_dir/codex-pid")"
  if [[ $row == *-none ]]; then [[ ! -f $test_dir/desc-pid ]]; else not_running "$(cat "$test_dir/desc-pid")"; fi

@@ -7,6 +7,7 @@
   ok            終了コード 0
   old           古い Codex が --strict-config を受け付けない
   failed        0 以外の終了コード（詳細に終了コード）
+  launch        Codex を起動できなかった（設定の誤りではない）
   timeout       上限を過ぎ、グループが停止済みになった
   unconfirmed   上限を過ぎ、グループの停止を確認できなかった（詳細にグループの番号）
 
@@ -23,6 +24,8 @@ import time
 
 COMMAND = ["codex", "app-server", "--strict-config", "--listen", "stdio://"]
 POLL_SECONDS = 0.05
+# 確認の間は全プロセスを読むので、読み取りの間隔は待ちの刻みより広げる。期限は変えない。
+STATE_POLL_SECONDS = 0.25
 
 RUNNING = "running"
 STOPPED = "stopped"
@@ -39,9 +42,9 @@ class Operations:
         os.killpg(pgid, number)
 
     def state(self, pgid, timeout):
-        # 状態は ps の状態だけから読む。シグナルを送った結果から生存を決めない。
+        # 状態は ps の状態だけから読む。判定に使わないコマンド列は読まない。シグナルを送った結果から生存を決めない。
         try:
-            done = subprocess.run(["ps", "-A", "-o", "pid,pgid,stat,command"], stdin=subprocess.DEVNULL,
+            done = subprocess.run(["ps", "-A", "-o", "pid,pgid,stat"], stdin=subprocess.DEVNULL,
                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=timeout)
         except (OSError, subprocess.SubprocessError):
             return UNDETERMINABLE
@@ -127,7 +130,7 @@ def stop_group(ops, pgid, grace, confirm):
                 break
             if ops.state(pgid, remaining) == STOPPED and ops.reap():
                 return "timeout", sends
-            ops.sleep(min(max(deadline - ops.now(), 0), POLL_SECONDS))
+            ops.sleep(min(max(deadline - ops.now(), 0), STATE_POLL_SECONDS))
         # 期限まで停止済みにならなかった。終了していれば直接の子だけ回収する。
         ops.reap()
         return "unconfirmed", sends
@@ -172,7 +175,7 @@ def run(home, seconds, grace, confirm, make_operations=Operations):
             child = subprocess.Popen(COMMAND, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                      stderr=errors, env=environment, start_new_session=True)
         except OSError:
-            return "failed", "Codex を起動できません。"
+            return "launch", ""
         try:
             code = child.wait(timeout=seconds)
         except subprocess.TimeoutExpired:

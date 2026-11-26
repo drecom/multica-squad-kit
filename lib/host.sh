@@ -160,6 +160,7 @@ host_codex_validate() {
 	old) ui_notice warn "$config" "この Codex は --strict-config を受け付けないため、設定を検証できませんでした" || ui_warning "この Codex は --strict-config を受け付けないため、設定を検証できませんでした: $config" ;;
 	timeout) ui_notice warn "$config" "設定の検証が ${codex_check_seconds:-30} 秒で終わらず、確認できませんでした" || ui_warning "設定の検証が ${codex_check_seconds:-30} 秒で終わらず、確認できませんでした: $config" ;;
 	unconfirmed) die "設定の検証が ${codex_check_seconds:-30} 秒で終わらず、検証のプロセスの停止を確認できませんでした（グループ ${detail:-不明}）。ps -A -o pid,pgid,stat,command で、グループ番号が同じプロセスのうち状態が Z で始まらないものを確認して止めてから、セットアップを流し直してください。" ;;
+	launch) die "Codex を起動できませんでした。設定の誤りではありません。PATH に codex があり実行できることを確認して、セットアップを流し直してください。" ;;
 	*) die "Codex の設定が厳しい検証を通りません（終了コード ${detail:-不明}）: ${config}。Codex の出力は秘密値を含みうるので表示しません。端末で CODEX_HOME=$(printf '%q' "$agent_home/codex") codex app-server --strict-config --listen stdio:// </dev/null を流して、出力の行のキーを直すか消してから、セットアップを流し直してください。" ;;
 	esac
 }

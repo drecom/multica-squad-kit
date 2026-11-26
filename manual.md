@@ -166,7 +166,7 @@ Claude の共有の設定は、置き場の `settings.json` である。次の 8
 
 #### 設定のために新しく止まる場合
 
-次の 4 つのときは、設定を書かずに止まる。表示を読んで直し、同じセットアップを流し直す。
+次のときは、セットアップが止まる。表示を読んで直し、同じセットアップを流し直す。
 
 | 表示 | 直すこと |
 | --- | --- |
@@ -182,7 +182,7 @@ Codex の設定の検証は、`codex app-server --strict-config` で 30 秒ま�
 動いているタスクがないときに戻す。まず、前のバージョンの原本で、セットアップを流し直す。そのあとで、残るものを手で消す。
 
 1. エージェント用の置き場の `settings.json` から、上の 8 つのキーを消す。`pluginConfigs`・`skillOverrides`・`permissions.deny` は、キットの項目だけを消す
-2. Claude のモデルの役ごとに、`multica agent env get` で今の custom_env を読む。3 つの変数を消したファイルを、`multica agent env set --custom-env-file` で書く
+2. Claude のモデルの役ごとに、`multica agent env get` で今の custom_env を読み、3 つの変数を消したファイルを `multica agent env set --custom-env-file` で書く。Claude の置き場を使う Codex の使用上限の見張りは、`DISABLE_AUTOUPDATER` だけを消す
 3. Codex のモデルの役ごとに、`multica agent update --custom-args` で、`-c` と `project_doc_max_bytes=65536` を除いた配列を書く
 
 `config.toml` は、前のバージョンの流し直しで戻る。マークのない人のファイルは、キットが変えていないので、戻す作業はない。
