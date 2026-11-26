@@ -897,6 +897,34 @@ grep -qF 'レビューと E2E、人間のマージの判断の順に進める。
 grep -qF '`道: 短い` の行を置き' <<<"$short_request"
 echo 'PASS templates: 短い道の実装の依頼は、設計の役と最上位の役を呼ばず、実装、レビューと E2E、人間のマージの判断の順に進める'
 
+# 最終レビューの head の照合の表: 道・重要のマークの入力の種類ごとに、照合先と、一致しないときの動きを 1 行で決める。
+# 表のどの行も、文と食い違わない。短い道の不一致は最終レビューではなく、レビューと E2E の頼み直しにする。
+head_table=$(grep -E '^\| (通常|短い) \|' "$refs/leader-principal-final.md")
+[[ $(grep -c . <<<"$head_table") == 3 ]]
+while IFS='|' read -r _ road mark target match mismatch _; do
+	road=${road// /} mark=${mark// /}
+	case "$road $mark" in
+	'通常 問わない')
+		grep -qF '最終レビューの `確認したコミット:`' <<<"$target"
+		grep -qF '最終レビューをもう一度頼み' <<<"$mismatch" ;;
+	'短い なし')
+		grep -qF 'レビューと E2E の組の `確認するコミット:`' <<<"$target"
+		grep -qF 'レビューと E2E を頼み直す' <<<"$mismatch"
+		absent -qF '最終レビューをもう一度頼み' <<<"$mismatch" ;;
+	'短い あり')
+		grep -qF '短い道にしない' <<<"$target"
+		grep -qF '通常の道へ戻す' <<<"$match" ;;
+	*) echo "表にない入力の行: $road $mark" >&2; exit 1 ;;
+	esac
+	grep -qF 'マージの前の確認へ進む' <<<"$match" || [[ $road == 短い && $mark == あり ]]
+done <<<"$head_table"
+# 表の外の文が、短い道の不一致で最終レビューへ戻す書き方を持たない。短い道の例外を、照合の文と完了の文が同じに持つ。
+refs_final="$refs/leader-principal-final.md"
+absent -qF '一致しなければ、コンフリクトの解消など理由を問わず' "$refs_final"
+grep -qF '短い道を除く。短い道は、レビューと E2E を頼み直す' "$refs_final"
+grep -qF '同じ参照の表のとおりにする（短い道は、今の head でレビューと E2E を頼み直し、最終レビューは頼まない）' "$refs/leader-pr-merge.md"
+echo 'PASS templates: 最終レビューの head の照合の表が、入力の種類ごとの照合先と不一致の動きを持ち、短い道の不一致は最終レビューへ戻さない'
+
 # 要件を決める役があるときは、同意の行がなければ `道: 短い` を書かない。ないときは、リーダーが 4 つの基準で決める。
 consent=$(awk '/^### 同意の記録$/ {inside=1; next} inside && /^#/ {exit} inside {print}' "$refs/leader-request.md")
 grep -qF '道: 短い（人間の同意を得た）' <<<"$consent"
