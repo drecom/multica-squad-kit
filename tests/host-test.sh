@@ -806,7 +806,7 @@ term-ignore-none|3800|8000|-
 term-ignore-finish|3800|8000|あり
 term-ignore-ignore|3800|8000|-'
 process_gone() { [[ $1 =~ ^[0-9]+$ ]] || return 1; ! kill -0 "$1" 2>/dev/null; }
-# 判定が、生きた子と空の PID で失敗することを先に確かめる。
+# 判定が、生きた子と空の PID で失敗することを先に確認する。
 /bin/sleep 30 &
 live=$!
 ! process_gone "$live"

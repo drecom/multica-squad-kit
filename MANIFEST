@@ -69,7 +69,7 @@ b0e7a3279a4284756a60a54123b595a50e67522bb23ec18a8c0be187410e77d8  ./common/setup
 1caa0a53bbaafea6d15e8105f94b22e1cd5b487b9891529111085f838bd88681  ./common/squad.md
 067064d2cceb6e8977164c72e83a8b0346ea4ebcbcfe73f591487c0cdb31619b  ./docs/README.md
 c380ac8fd57091fa1d1ad80ff9724cba6667a7199b440a40b4be9b0e25f83623  ./docs/agent-path.md
-7bce2ecf9baa1cd6b20588ac19674dc2f8c5430f42bb2b9fe217f6099ddce361  ./docs/agent-settings.md
+624437b0b4fd719d9110e4aeb4bfdb500fbc1579e4902a25bc5008f3ae7551f9  ./docs/agent-settings.md
 62062b7363a33eb140e814eeff5b3898d2d7d06aadc1ff95a07aa88aa001dbc7  ./docs/autopilot-targets.md
 3ca4ffccd35ce4ddcb26bc3c40ef34d2d2295eb27b8b0e08ea0522827b8bbb9c  ./docs/bug-repro-test.md
 ebdf260d83e27d572cf625fc1edb4b3ad30982a178e5848a00c4bc4d101d1167  ./docs/codex-models.md
@@ -278,7 +278,7 @@ ecd6f37c326cf97ab4c60f934a3168f56fd6923862d4a1de6831dbe7e96d3e23  ./tests/fixtur
 e71707f3eb05dce9239214fb9419946902d078f95a874892f01bdf155e6ee5b0  ./tests/guard-backend.sh
 c485d04a06ca5b2e1759c42d83c333199c3ddafe331031e377d34d669353970d  ./tests/guard-check-test.sh
 172ee5343c2d134522a4fbd00c7df066612331acc7b669d732c8cf3c0352cd3b  ./tests/host-daemon-test.sh
-16bd1100b6bc7766d79e2e838a8cc8b64863b6f761c15b5ec1347ace54ce07b6  ./tests/host-test.sh
+3e15c13b92dfb453cdeb6497d86cd4a47fe95ca4bae0eea91f9ee3085d580c72  ./tests/host-test.sh
 c8532b22f7a86ec6590a5cde3f64a6295148663e9f9893255209fca16fdea5b0  ./tests/install-command-test.sh
 539275b12edb26069fca5bedf9bb83abf3a73a7f68dc3c3ed5456c2ce19228f8  ./tests/install-test.sh
 f1213037642326b587fadb22e6a05923d656ed63570e526e52a8f7444b7e08e4  ./tests/installation-fixture.py
