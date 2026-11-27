@@ -885,6 +885,66 @@ unlinked_link_stop() {
 	ci_record "$link_line"
 }
 
+# 見張りの終わりの知らせを出す時機かを読む。標準入力は規則の一覧、引数は現在の秒。
+# 自分の規則（作成が最も早い 1 つ）の作成から 71 時間を過ぎていれば、作成の 72 時間後の UTC の時刻を出す。読めなければ何も出さない。
+unlinked_end_data() {
+	python3 -c '
+import datetime
+import json
+import re
+import sys
+
+mark, now = sys.argv[1], int(sys.argv[2])
+rules = json.load(sys.stdin)
+found = []
+for rule in rules if isinstance(rules, list) else []:
+    text = rule.get("instruction") if isinstance(rule, dict) else None
+    created = rule.get("created_at")
+    if not isinstance(text, str) or text.split("\n")[0] != mark or not isinstance(created, str):
+        continue
+    try:
+        stamp = datetime.datetime.fromisoformat(re.sub(r"(\.[0-9]{6})[0-9]+", r"\1", created.strip().replace("Z", "+00:00")))
+    except ValueError:
+        continue
+    if stamp.tzinfo is None:
+        continue
+    found.append((stamp.timestamp(), str(rule.get("id"))))
+if found:
+    start = min(found)[0]
+    if now >= start + 71 * 3600:
+        end = datetime.datetime.fromtimestamp(start + 72 * 3600, datetime.timezone.utc)
+        print(end.strftime("%Y-%m-%dT%H:%M:%SZ"))
+' "$UNLINKED_MARK" "$1"
+}
+
+# 71 時間を過ぎたマージ待ちで、見張りの終わりの知らせを 1 回だけ書く。同じ 1 行目のコメントがあれば書かない。
+# 呼ぶ人間を決められないときは、メンションの行を省いて書き、理由を標準エラーに出して 1 を返す。
+unlinked_end_notice() {
+	local issue=$1 leader=$2 thread=$3 pr_url=$4 rules end first comments squad content reason='' status
+	rules=$(squad_cli_read issue-wakeups "$issue") || return 1
+	end=$(printf '%s\n' "$rules" | unlinked_end_data "$(date +%s)") || return 1
+	[[ -n $end ]] || return 0
+	first="連携なしのリポジトリの PR のマージ待ちの見張りが、${end} に終わります。そのあとにマージしたときは、タスクを \`done\` にしてください。マージせずに閉じたときは、\`done\` にしません。PR: \`${pr_url}\`"
+	comments=$(squad_cli_read issue-comments "$issue") || return 1
+	if jq -e --arg first "$first" 'any(.[]; .author_type == "agent" and ((.content | split("\n"))[0] == $first))' <<<"$comments" >/dev/null; then
+		return 0
+	fi
+	if squad=$(squad_cli_squad_for_leader "$leader"); then
+		if ! squad_cli_human_of_squad "$squad"; then reason=$HUMAN_REASON; fi
+	else
+		status=$?
+		((status == 2)) || return "$status"
+		reason='知らせるスクワッドを決められない'
+	fi
+	content=$first
+	if [[ -z $reason ]]; then content+=$'\n'"[@${HUMAN_NAME}](mention://member/${HUMAN_ID})"; fi
+	unlinked_post "$issue" "$thread" "$content" || return 1
+	if [[ -n $reason ]]; then
+		printf '見張りの終わりの知らせを書きましたが、呼ぶ人間を決められないため、メンションを省きました（%s）。\n' "$reason" >&2
+		return 1
+	fi
+}
+
 unlinked_check() {
 	local issue=$1 leader=$2 monitor=${3-} task pr_url pr thread link_line comments prefix notice content conflict_line head short result data
 	local status=0 ci_line
@@ -902,7 +962,19 @@ unlinked_check() {
 	pr_url=$(jq -r .url <<<"$data")
 	if pr=$(squad_cli_read gh-pr-mergeable "$pr_url"); then
 		case $(jq -r '.state' <<<"$pr") in
-		MERGED | CLOSED) unlinked_stop "$issue" 'PR がマージ済みか閉じている'; return 0 ;;
+		MERGED)
+			# 連携なしの PR のマージは、タスクを done にする。マージは事実なので、タスクの状態を見る前に置く。
+			if jq -e '.no_integration_matches' <<<"$data" >/dev/null; then
+				if ! multica issue status "$issue" done --no-start >/dev/null; then
+					echo 'PR はマージされましたが、タスクを done にできませんでした。規則は残します。' >&2
+					return 1
+				fi
+				unlinked_stop "$issue" 'PR がマージされたので、タスクを done にした'
+				return 0
+			fi
+			unlinked_stop "$issue" 'PR がマージ済みか閉じている'
+			return 0 ;;
+		CLOSED) unlinked_stop "$issue" 'PR がマージ済みか閉じている'; return 0 ;;
 		esac
 	else
 		status=$?
@@ -956,6 +1028,10 @@ unlinked_check() {
 		printf '%s 知らせ: %s\n' "$conflict_line" "$result"
 	else
 		status=$?
+	fi
+	# 連携なしの PR は、見張りの最後の確認で、そのあとにマージしたときの done を人間に知らせる。
+	if [[ $link_line == '紐付け: 紐付いていない '* ]] && jq -e '.no_integration_matches' <<<"$data" >/dev/null; then
+		if ! unlinked_end_notice "$issue" "$leader" "$thread" "$pr_url"; then status=1; fi
 	fi
 	return "$status"
 }

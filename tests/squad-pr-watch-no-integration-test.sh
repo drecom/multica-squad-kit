@@ -81,6 +81,18 @@ print(json.dumps(response))
 POSTPY
 	exit $?
 fi
+if [[ "${1-} ${2-} ${3-}" == 'issue status test-issue' ]]; then
+	jq -cn --args '$ARGS.positional' -- "$@" >>"$dir/calls.jsonl"
+	if [[ -f $dir/fail-status ]]; then echo 'CLI mock failure' >&2; exit 1; fi
+	jq --arg status "$4" '.status = $status' "$dir/task.json" >"$dir/task-status.json"
+	mv "$dir/task-status.json" "$dir/task.json"
+	exit 0
+fi
+if [[ "${1-} ${2-} ${3-}" == 'workspace member list' ]]; then
+	if [[ -f $dir/fail-members ]]; then echo 'CLI mock failure' >&2; exit 1; fi
+	cat "$dir/human-members.json"
+	exit 0
+fi
 if [[ "${1-} ${2-} ${3-}" == 'issue pull-requests test-issue' && -f $dir/api-called && -f $dir/fail-after ]]; then
 	exit 1
 fi
@@ -108,7 +120,7 @@ reset_ni() {
 	update_task '.project_id = "proj-1"'
 	rm -rf -- "$PR_LINK_STATE_ROOT"
 	: >"$test_dir/curl-calls.jsonl"
-	rm -f "$test_dir/api-called" "$test_dir/fail-after" "$test_dir/curl-config" "$test_dir/now" "$test_dir/sleeps" "$test_dir"/fail-set-*
+	rm -f "$test_dir/api-called" "$test_dir/fail-after" "$test_dir/curl-config" "$test_dir/now" "$test_dir/sleeps" "$test_dir"/fail-set-* "$test_dir/fail-status" "$test_dir/fail-members"
 	printf 'trigger-1' >"$test_dir/trigger-comment"
 	printf '404' >"$test_dir/api-status"
 	printf '{"pull_requests":[]}' >"$test_dir/pulls.json"
@@ -526,3 +538,148 @@ for with_record in 0 1; do
 	if ((with_record)); then record_present; else record_absent; fi
 done
 echo 'PASS no-integration: unlinked-check の CI とコンフリクトの行と知らせは、記録があってもないときと同じ'
+
+# unlinked-check のマージと閉じたときの扱い、見張りの終わりの知らせ。
+unlinked_prepare() {
+	update_task ".status = \"in_review\" | .metadata.pr_url = \"$pr\""
+	fixture issue-wakeups | jq --arg mark "$UNLINKED_MARK" --arg created "${1-$(stamp -3600)}" \
+		'. as $base | [$base + {id:"mine",instruction:($mark + "\n確認"),created_at:$created}]' >"$test_dir/rules.json"
+	jq '.[0] += {creator_id:"human-1"}' "$test_dir/squads.json" >"$test_dir/squads-updated.json"
+	mv "$test_dir/squads-updated.json" "$test_dir/squads.json"
+	fixture member-list | jq '[. + {user_id:"human-1",name:"Owner"}]' >"$test_dir/human-members.json"
+}
+unlinked_scene() {
+	reset_ni
+	[[ ${1-} != record ]] || { make_record; set_marks "$pr"; }
+	unlinked_prepare "${2-}"
+}
+unlinked_run() {
+	set +e
+	(cd "$test_dir" && bash "$script" unlinked-check test-issue orchestrator monitor) >"$test_dir/out" 2>"$test_dir/err"
+	unlinked_status=$?
+	set -e
+}
+done_calls() { jq -s '[.[] | select(.[0:3] == ["issue","status","test-issue"])]' "$test_dir/calls.jsonl"; }
+# 見張りの終わりの知らせだけを数える（CI の知らせは同じ場面で出る）。
+notice_filter='[.[] | select(.body | startswith("連携なしのリポジトリの PR のマージ待ちの見張りが、"))]'
+no_notice() { assert_jq -s "$notice_filter | length == 0" "$test_dir/posted.jsonl"; }
+rule_kept() { assert_jq 'length == 1' "$test_dir/rules.json"; }
+rule_gone() { assert_jq 'length == 0' "$test_dir/rules.json"; }
+UNLINKED_MARK='紐付いていない PR のマージ待ちの見張りで起きました。'
+
+# 連携なしのマークが同じ PR のままマージされたら、タスクを done にし、見張りを止める。
+unlinked_scene record
+update_pr '.state = "MERGED"'
+unlinked_run
+((unlinked_status == 0))
+[[ $(done_calls | jq -c 'map(.[0:5])') == '[["issue","status","test-issue","done","--no-start"]]' ]]
+assert_jq '.status == "done"' "$test_dir/task.json"
+rule_gone
+no_posts
+echo 'PASS no-integration: unlinked-check は、連携なしのマークの PR がマージされたら done にして止める'
+
+# マークがない（または別の PR の）マージは、今と同じく done にせず止める。
+for kind in none other; do
+	unlinked_scene record
+	if [[ $kind == none ]]; then
+		update_task 'del(.metadata.pr_link_pending, .metadata.pr_link_no_integration)'
+	else
+		set_marks "$other"
+	fi
+	update_pr '.state = "MERGED"'
+	unlinked_run
+	((unlinked_status == 0))
+	[[ $(done_calls) == '[]' ]]
+	assert_jq '.status == "in_review"' "$test_dir/task.json"
+	rule_gone
+done
+echo 'PASS no-integration: マークがない・別の PR のマージは done にしない'
+
+# 閉じた PR は、マークがあっても done にしない。見張りは止める。
+unlinked_scene record
+update_pr '.state = "CLOSED"'
+unlinked_run
+((unlinked_status == 0))
+[[ $(done_calls) == '[]' ]]
+assert_jq '.status == "in_review"' "$test_dir/task.json"
+rule_gone
+echo 'PASS no-integration: 閉じた PR は done にしない'
+
+# done にできなかったときは、規則を残し、理由を標準エラーに出して 1 で終わる。
+unlinked_scene record
+update_pr '.state = "MERGED"'
+: >"$test_dir/fail-status"
+unlinked_run
+((unlinked_status == 1))
+[[ $(<"$test_dir/err") == *'done にできませんでした'* ]]
+rule_kept
+assert_jq '.status == "in_review"' "$test_dir/task.json"
+echo 'PASS no-integration: done にできないときは規則を残して 1 で終わる'
+
+# 作成から 71 時間を過ぎたら、終わりの知らせを 1 回だけ書く。呼ぶ人間をメンションする。
+unlinked_scene record "$(stamp -$((71 * 3600 + 60)))"
+unlinked_run
+((unlinked_status == 0))
+assert_jq -s "$notice_filter"' | length == 1 and (.[0].args | index("--parent") as $i | .[$i + 1] == "ci-thread")
+	and (.[0].body | rtrimstr("\n") | split("\n") | length == 2)
+	and (.[0].body | split("\n")[0] | endswith("に終わります。そのあとにマージしたときは、タスクを `done` にしてください。マージせずに閉じたときは、`done` にしません。PR: `'"$pr"'`"))
+	and (.[0].body | split("\n")[1] == "[@Owner](mention://member/human-1)")' "$test_dir/posted.jsonl"
+rule_kept
+unlinked_run
+((unlinked_status == 0))
+assert_jq -s "$notice_filter | length == 1" "$test_dir/posted.jsonl"
+echo 'PASS no-integration: 71 時間を過ぎた連携なしのマージ待ちは、終わりの知らせを 1 回だけ書く'
+
+# 終了時刻は、規則の作成時刻の 72 時間後の UTC にする。
+created=$(stamp -$((71 * 3600 + 60)))
+unlinked_scene record "$created"
+unlinked_run
+expected_end=$(python3 -c 'import datetime, sys
+print((datetime.datetime.strptime(sys.argv[1], "%Y-%m-%dT%H:%M:%SZ") + datetime.timedelta(hours=72)).strftime("%Y-%m-%dT%H:%M:%SZ"))' "$created")
+assert_jq -s --arg end "$expected_end" "$notice_filter"' | .[0].body | split("\n")[0] | contains("見張りが、" + $end + " に終わります")' "$test_dir/posted.jsonl"
+echo 'PASS no-integration: 終わりの時刻は規則の作成の 72 時間後'
+
+# 71 時間に満ちないとき、マークがないとき、記録の別の PR のときは書かない。
+unlinked_scene record "$(stamp -$((71 * 3600 - 600)))"
+unlinked_run
+((unlinked_status == 0))
+no_notice
+unlinked_scene record
+unlinked_run
+no_notice
+unlinked_scene record "$(stamp -$((71 * 3600 + 60)))"
+update_task 'del(.metadata.pr_link_pending, .metadata.pr_link_no_integration)'
+unlinked_run
+no_notice
+unlinked_scene record "$(stamp -$((71 * 3600 + 60)))"
+set_marks "$other"
+unlinked_run
+no_notice
+echo 'PASS no-integration: 71 時間に満ちないとき・マークがないとき・別の PR のときは知らせない'
+
+# 呼ぶ人間を決められないときは、メンションの行を省いて書き、理由を標準エラーに出して 1 で終わる。
+unlinked_scene record "$(stamp -$((71 * 3600 + 60)))"
+: >"$test_dir/fail-members"
+unlinked_run
+((unlinked_status == 1))
+assert_jq -s "$notice_filter"' | length == 1 and (.[0].body | contains("mention://") | not)' "$test_dir/posted.jsonl"
+[[ $(<"$test_dir/err") == *'メンションを省きました'* ]]
+echo 'PASS no-integration: 呼ぶ人間を決められないときは、メンションなしで書いて 1 で終わる'
+
+# マークの片方を書けなかった PR は、link-check で書き直したあとにマージされれば、unlinked-check で done になる。
+for key in pr_link_pending pr_link_no_integration; do
+	reset_ni
+	make_record
+	touch "$test_dir/fail-set-$key"
+	check_ni "紐付け: 紐付いていない pr: $pr"
+	rm -f "$test_dir/fail-set-$key"
+	check_ni "紐付け: 紐付いていない pr: $pr 連携: なし"
+	both_marks "$pr"
+	unlinked_prepare
+	update_pr '.state = "MERGED"'
+	unlinked_run
+	((unlinked_status == 0))
+	assert_jq '.status == "done"' "$test_dir/task.json"
+	rule_gone
+done
+echo 'PASS no-integration: マークの片方を書き直したあと、マージされると done になる'
