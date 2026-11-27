@@ -146,6 +146,58 @@ expect_call_has pr-watch-calls 'link-check test-issue final-1'
 expect_call_has pr-watch-calls 'unlinked test-issue final-1 --leader orchestrator'
 echo 'PASS review-next-decide: 試み直しで紐付いたマージの依頼には紐付けの依頼と段落がなく、紐付かないままなら両方が残る'
 
+# 連携なし（link-check の行の末尾に `連携: なし`）は、紐付いていないのと同じに CI・コンフリクトを確認して見張りを登録し、マージの依頼には 1 行と見張りの行だけを添える。
+no_integration() { printf '紐付け: 紐付いていない pr: %s 連携: なし\n' "$pr_url" >"$test_dir/link-out"; }
+# 紐付いていない（連携なしの印なし）のマージの依頼を先に書き、CI とコンフリクトの行の基準にする。
+retry_merge_setup
+unlinked
+printf 'CI %s: 成功\n' "${sha:0:7}" >"$test_dir/cinow-out"
+run final-1
+expect_status 0
+plain_lines=$(posted_body | grep -E '^(コンフリクト|CI )' || true)
+[[ -n $plain_lines ]] || fail "基準の本文にコンフリクトと CI の行がない: $(posted_body)"
+retry_merge_setup
+no_integration
+printf 'CI %s: 成功\n' "${sha:0:7}" >"$test_dir/cinow-out"
+run final-1
+expect_status 0
+body=$(posted_body)
+[[ $body == "[@Owner]"*'マージの依頼: '* ]] || fail "マージの依頼を書いていない: $body"
+[[ $body == *$'\n連携なしのリポジトリなので、マージのあとは見張りがマージを確認し、タスクを `done` にする。PR: `'"$pr_url"$'`\n見張り: 1 時間おき、2026-11-17 まで'* ]] || fail "連携なしの 1 行と見張りの行がない: $body"
+[[ $(grep -c 'マージのあとは見張りがマージを確認し' <<<"$body") == 1 ]] || fail "連携なしの 1 行が 1 回でない: $body"
+[[ $body != *'紐付けの失敗:'* && $body != *'紐付いていないので'* && $body != *'先に紐付けてほしい'* && $body != *'`done` にしてほしい'* && $body != *'GitHub 連携'* && $body != *'ワークスペースの設定'* && $body != *'登録できませんでした'* ]] || fail "連携なしなのに、紐付けか done の依頼、段落、連携の案内がある: $body"
+[[ $(grep -E '^(コンフリクト|CI )' <<<"$body" || true) == "$plain_lines" ]] || fail "コンフリクトと CI の行が連携なしの印なしと違う: $body"
+expect_call_has pr-watch-calls 'link-check test-issue final-1'
+expect_call_has pr-watch-calls 'conflicts-check test-issue'
+expect_call_has pr-watch-calls 'ci-now test-issue orchestrator final-1'
+expect_call_has pr-watch-calls 'unlinked test-issue final-1 --leader orchestrator'
+echo 'PASS review-next-decide: 連携なしのマージの依頼は、1 行と見張りの行だけを添え、紐付けと done の依頼・紐付けの失敗の段落・連携の案内を書かない'
+
+# 連携なしで unlinked が 0 以外で終わる、または見張りの行を出さないときは、何も書かず、決めた行を出して 3 で終わる。
+for broken in status noline; do
+	retry_merge_setup
+	no_integration
+	printf 'CI %s: 成功\n' "${sha:0:7}" >"$test_dir/cinow-out"
+	if [[ $broken == status ]]; then
+		echo 1 >"$test_dir/unlinked-status"
+	else
+		printf '{"id": "rule-1"}\n' >"$test_dir/unlinked-out"
+	fi
+	run final-1
+	expect_leader '連携なしの PR の見張りを登録できない（squad-pr-watch unlinked が 0 以外で終わった）'
+	[[ $(<"$test_dir/out") == '次の依頼を決められません: 連携なしの PR の見張りを登録できない（squad-pr-watch unlinked が 0 以外で終わった）' ]] || fail "止まる行が違う: $(<"$test_dir/out")"
+	[[ $(<"$test_dir/out") != *'紐付け'*'頼'* && $(<"$test_dir/out") != *'done にしてほしい'* ]] || fail "止まる行に紐付けか done の依頼がある: $(<"$test_dir/out")"
+	expect_call_has pr-watch-calls 'unlinked test-issue final-1 --leader orchestrator'
+done
+# 人間が見張りを直したあとの流し直しでは、登録できればマージを頼む。
+retry_merge_setup
+no_integration
+printf 'CI %s: 成功\n' "${sha:0:7}" >"$test_dir/cinow-out"
+run final-1
+expect_status 0
+[[ $(<"$test_dir/out") == $'次の依頼: マージの依頼'* ]] || fail "見張りを登録できたのにマージを頼んでいない: $(<"$test_dir/out")"
+echo 'PASS review-next-decide: 連携なしで見張りを登録できないときは、何も書かずに 3 で終わり、登録できればマージを頼む'
+
 # ---- 書く前の失敗。
 reset
 ok_round

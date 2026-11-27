@@ -297,6 +297,15 @@ jq 'map(if .id == "pr-made" then .content = "PR を作りました https://githu
 run round-1
 body=$(posted_body)
 [[ $body == *$'\n紐付けの失敗: タイムアウトでした。\n再実行してください。' && $body != *'ワークスペースの設定'* ]] || fail "連携に触れない段落の扱いが違う: $body"
+# 連携なし（link-check の行の末尾に `連携: なし`）は、紐付ける PR の案内も、紐付けの失敗の段落も、連携の案内も付けない。
+human_setup
+printf '紐付け: 紐付いていない pr: %s 連携: なし\n' "$pr_url" >"$test_dir/link-out"
+run round-1
+expect_status 0
+body=$(posted_body)
+[[ $body == "$human_head"$'前の回: round-1\n使用率の待ち: fix を通算 24 時間待った。' ]] || fail "連携なしの人間の呼びが、何も足さない形でない: $body"
+[[ $body != *'紐付けの失敗:'* && $body != *'GitHub 連携'* && $body != *'ワークスペースの設定'* && $body != *'PR がタスクに紐付いていません'* && $body != *'紐付けてください'* ]] || fail "連携なしなのに、紐付けの依頼か段落か連携の案内がある: $body"
+expect_calls status-calls 'issue status test-issue in_review'
 # CI の待ちの規則があれば、人間を呼ぶ前に消す。消せなければ書かない。
 human_setup
 set_metadata ci_wait_head "$sha"

@@ -6,6 +6,7 @@
 # autopilot-targets の 3 本は、d5f96eaed7ba58076dafca6190a4e0a959fb49e3 の CI（macOS 全 5 シャード）の実測に直した。
 # 絞ったテストの 6 本は、0a980cc40edb7f02484a148833de6c31da716132 の CI（macOS 全 5 シャード）の実測に直した。
 # squad-pr-link-no-integration と squad-pr-watch-no-integration は、手元の tests/run.sh の秒数（24 秒と、unlinked-check の場面を足した後の CPU 時間 50 秒）に、同じ手元で測った squad-pr-watch-link-retry の CI との比（97 秒対 57 秒、約 1.7 倍）を掛けた見積もり。CI の ==== PASS の秒数が出たら写し直す。
+# squad-review-next-decide-unlinked と squad-review-next-decide-fix は、連携なしの場面を足した分（手元の tests/run.sh で、decide の 1 回の実行が約 2 秒、足した実行が unlinked に 6 回、fix に 1 回）を、手元の秒数と CI の比（約 0.7）で直した見積もり。CI の ==== PASS の秒数が出たら写し直す。
 tests/action-advisories-test.sh 6
 tests/agent-templates-test.sh 35
 tests/audit-targets-test.sh 1
@@ -125,11 +126,11 @@ tests/squad-review-next-decide-route-test.sh 34
 tests/squad-review-next-decide-requirement-test.sh 17
 tests/squad-review-next-decide-written-test.sh 10
 tests/squad-review-next-decide-retry-test.sh 27
-tests/squad-review-next-decide-fix-test.sh 50
+tests/squad-review-next-decide-fix-test.sh 51
 tests/squad-review-next-decide-rework-record-test.sh 31
 tests/squad-review-next-decide-final-test.sh 100
 tests/squad-review-next-decide-pr-test.sh 35
-tests/squad-review-next-decide-unlinked-test.sh 55
+tests/squad-review-next-decide-unlinked-test.sh 64
 tests/squad-review-next-decide-merge-test.sh 75
 tests/squad-review-next-decide-merge-note-test.sh 98
 tests/squad-review-next-decide-merge-short-test.sh 25
