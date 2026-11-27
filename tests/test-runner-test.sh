@@ -561,14 +561,16 @@ def load():
     return module
 
 
-# 変数がないとき、変数の場所がないとき、公開の改名が失敗したときは、何も公開せず、一時のファイルも残さず、登録も残さない。
+# 変数がないときは、何もしない。変数の場所がないときと公開の改名が失敗したときは、何も公開せず、一時のファイルも残さない。
+# 登録は外さないので、/dev/null へ替えた登録が残り、遅れて届いた SIGUSR2 でも終わらない。
 os.environ.pop('SQUAD_KIT_TEST_STACK_DIR', None)
 load().register_stack()
 assert not faulthandler.unregister(signal.SIGUSR2)
 missing = os.path.join(tempfile.mkdtemp(), 'no-such-directory')
 os.environ['SQUAD_KIT_TEST_STACK_DIR'] = missing
 load().register_stack()
-assert not os.path.exists(missing) and not faulthandler.unregister(signal.SIGUSR2)
+assert not os.path.exists(missing)
+os.kill(os.getpid(), signal.SIGUSR2)
 failing = tempfile.mkdtemp()
 os.environ['SQUAD_KIT_TEST_STACK_DIR'] = failing
 broken = load()
@@ -591,7 +593,7 @@ os.kill(os.getpid(), signal.SIGUSR2)
 again = load()
 os.environ['SQUAD_KIT_TEST_STACK_DIR'] = failing
 again.register_stack()
-again.unregister_stack()
+again.withdraw_stack()
 os.rename = refuse
 try:
     again.register_stack()
@@ -615,11 +617,11 @@ with open(os.path.join(good, str(os.getpid()))) as stream:
     lines = stream.read().splitlines()
 assert lines[0] == f'{os.getpid()} {os.getppid()} {os.getpgrp()} {os.getsid(0)}' and any('File "' in line for line in lines[1:]), lines
 # 正常に終わるときは、登録を取り下げ、自分の PID の名前のファイルを消す。取り下げたあとの SIGUSR2 は、スタックを書かず、プロセスも終わらせない。
-module.unregister_stack()
+module.withdraw_stack()
 assert os.listdir(good) == [], os.listdir(good)
 os.kill(os.getpid(), signal.SIGUSR2)  # 取り下げたあとに届いても、終了せず、ファイルも作らない
 assert os.listdir(good) == [], os.listdir(good)
-module.unregister_stack()  # 登録がないときの取り下げは、何もしない
+module.withdraw_stack()  # 登録がないときの取り下げは、何もしない
 # run() は、正常に終わると、自分の登録も、fork した包みの登録も残さない。取り下げたあとは、別の run() が登録し直せる。
 for _ in range(2):
     assert module.run(['true'], output=output, error=error) == 0
@@ -631,11 +633,11 @@ module.register_stack()
 assert os.listdir(good) == [str(os.getpid())]
 child = os.fork()
 if child == 0:
-    module.unregister_stack()
+    module.withdraw_stack()
     os._exit(0)
 os.waitpid(child, 0)
 assert os.listdir(good) == [str(os.getpid())], os.listdir(good)
-module.unregister_stack()
+module.withdraw_stack()
 assert os.listdir(good) == []
 # コマンドとして流しても、正常に終わったあとにファイルが残らない。KILL された包みの登録は残る。
 import subprocess

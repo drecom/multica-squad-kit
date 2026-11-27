@@ -14,100 +14,99 @@ import termios
 
 HOLD_FD = 9
 CSI = re.compile(rb'\x1b\[[0-?]*[ -/]*[@-~]')
-stack_file = None
-stack_pid = None
-stack_sink = None
+stack_target = None  # faulthandler が SIGUSR2 を受けて書くファイル。このプロセスが開いたまま持つ
+stack_null = None  # /dev/null。登録の前に開き、プロセスが終わるまで閉じない
+stack_name = None  # 公開した (PID, 名前のパス)
+
+
+def point_stack(new):
+    """SIGUSR2 の書き先を `new` へ替える。書き先を替えて前の書き先を閉じるのは、ここだけである。
+
+    登録は外さない。外すと SIGUSR2 は既定の動作（終了）に戻り、遅れて届いた SIGUSR2 で止まる。
+    閉じたファイルの番号は後から開いた別のファイルに使われ、遅れた SIGUSR2 がそこへ書くので、
+    前の書き先を閉じるのは、替えられたあとだけにする。替えられなければ、前の書き先を開いたまま持つ。
+    `faulthandler.register` を呼ぶのも、ここだけである。
+    """
+    global stack_target
+    try:
+        faulthandler.register(signal.SIGUSR2, file=new, all_threads=True)
+    except (OSError, ValueError, RuntimeError):
+        return False
+    previous, stack_target = stack_target, new
+    if previous is not None and previous is not new and previous is not stack_null:
+        try:
+            previous.close()
+        except OSError:
+            pass
+    return True
 
 
 def register_stack():
     """時間切れの記録のため、SIGUSR2 を受けたら、自分の PID の名前のファイルへスタックを書くよう登録する。
 
-    SQUAD_KIT_TEST_STACK_DIR（tests/run-one.sh が渡す）があるときだけ動く。
-    先に `registering-<PID>` の名前で、先頭に印（PID・親・グループ・セッション）を書き、登録を終えてから
-    `<PID>` へ改名して公開する。送る側は PID の名前のファイルだけを見るので、登録の途中のプロセスへは送らない。
-    fork の子は親の登録とファイルを引き継ぐので、子は自分の PID で登録し直す。
+    SQUAD_KIT_TEST_STACK_DIR（tests/run-one.sh が渡す）があるときだけ動く。手順は docs/ci-timeouts.md の「スタックの書き出し」。
+    1. /dev/null を持ち、書き先を /dev/null へ替える。fork の子は、これで親のファイルから離れる
+    2. `registering-<PID>` を開き、先頭に印（PID・親・グループ・セッション）を書く
+    3. 書き先をそのファイルへ替える
+    4. `<PID>` へ改名して公開する。送る側は PID の名前のファイルだけを見るので、登録の途中のプロセスへは送らない
+    5. 2 から 4 に失敗したら、書き先を /dev/null へ戻し、一時のファイルを閉じて名前を消す。
+       戻せなければ、一時のファイルを書き先として開いたまま持ち、名前だけを消す
     記録のための補助なので、登録に失敗しても動作は変えない。
     """
-    global stack_file, stack_pid
+    global stack_null, stack_name
     directory = os.environ.get('SQUAD_KIT_TEST_STACK_DIR')
-    if not directory or stack_pid == os.getpid():
-        return
     pid = os.getpid()
+    if not directory or (stack_name or (None,))[0] == pid:
+        return
+    if stack_null is None:
+        try:
+            stack_null = open(os.devnull, 'wb')
+        except OSError:
+            return
+    if not point_stack(stack_null):
+        return
     temporary = os.path.join(directory, f'registering-{pid}')
+    published = os.path.join(directory, str(pid))
     opened = None
-    registered = False
     try:
         opened = open(temporary, 'wb')
         opened.write(f'{pid} {os.getppid()} {os.getpgrp()} {os.getsid(0)}\n'.encode())
         opened.flush()
-        faulthandler.register(signal.SIGUSR2, file=opened, all_threads=True)
-        registered = True
-        os.rename(temporary, os.path.join(directory, str(pid)))
-    except (OSError, ValueError, RuntimeError):
-        if registered:
-            # 公開できなかったときは、登録を外さず、公開前に有効だった書き先へ戻す。外すと既定の終了に戻るため。
-            restore_stack_target()
-        if opened:
+        if not point_stack(opened):
+            raise OSError('SIGUSR2 の書き先を替えられない')
+        os.rename(temporary, published)
+    except OSError:
+        if opened is not None and stack_target is opened:
+            point_stack(stack_null)
+        if opened is not None and stack_target is not opened:
             opened.close()
         try:
             os.unlink(temporary)
         except OSError:
             pass
         return
-    previous, stack_file, stack_pid = stack_file, opened, pid
-    if previous:
-        previous.close()
+    stack_name = (pid, published)
 
 
-def restore_stack_target():
-    """SIGUSR2 の書き先を、直前の登録のファイルへ戻す。直前の登録がなければ /dev/null にする。登録は外さない。"""
-    global stack_sink
-    try:
-        if stack_file is not None:
-            target = stack_file
-        else:
-            if stack_sink is None:
-                stack_sink = open(os.devnull, 'wb')
-            target = stack_sink
-        faulthandler.register(signal.SIGUSR2, file=target, all_threads=True)
-        return True
-    except (OSError, ValueError, RuntimeError):
-        return False
+def withdraw_stack():
+    """正常に終わる前に、自分の PID の名前を取り下げる。書き先を /dev/null に替え、名前を消す。
 
-
-def unregister_stack():
-    """正常に終わる前に、自分の登録を取り下げ、自分の PID の名前のファイルを消す。
-
-    登録は外さず、書き先を /dev/null に替える。外すと SIGUSR2 は既定の動作（プロセスの終了）に戻り、
-    送る側の最後の確認と送信の間に取り下げられたとき、終わるテストのプロセスを止めてしまうため。
-    書き先は先に替えてから、ファイルを消して閉じる。送る側は、先に開いたファイルからスタックを読める。
-    fork の子（登録を引き継いだだけで、自分では登録していない）は、
-    親のファイルを消さないよう、登録した PID が自分のときだけ動く。`os._exit` は atexit を呼ばないので、
-    終わる直前に明示して呼ぶ。KILL などで正常に終わらなかったプロセスのファイルは残る。
+    登録は外さない（point_stack の説明）。送る側の最後の確認と送信の間に取り下げられても、
+    遅れた SIGUSR2 は /dev/null へ書かれ、終わるテストのプロセスは止まらない。替えられなければ、
+    今のファイルを開いたまま持つ。名前を消せなければ名前が残り、同じプロセスが次に登録すると改名で置き換える。
+    fork の子（親の登録を引き継いだだけ）は、公開した PID が自分のときだけ動き、親の名前を消さない。
+    `os._exit` は atexit を呼ばないので、終わる直前に明示して呼ぶ。KILL などで正常に終わらなかったプロセスの名前は残る。
     """
-    global stack_file, stack_pid, stack_sink
-    if stack_pid is None or stack_pid != os.getpid():
+    global stack_name
+    if stack_name is None or stack_name[0] != os.getpid():
         return
-    directory = os.environ.get('SQUAD_KIT_TEST_STACK_DIR')
-    switched = False
+    _, published = stack_name
+    stack_name = None
+    point_stack(stack_null)
     try:
-        if stack_sink is None:
-            stack_sink = open(os.devnull, 'wb')
-        faulthandler.register(signal.SIGUSR2, file=stack_sink, all_threads=True)
-        switched = True
-    except (OSError, ValueError, RuntimeError):
+        os.unlink(published)
+    except OSError:
         pass
-    if directory:
-        try:
-            os.unlink(os.path.join(directory, str(stack_pid)))
-        except OSError:
-            pass
-    # 付け替えに失敗したときは、登録が今のファイルを指したままなので、閉じずに持ち続ける。
-    stack_pid = None
-    if switched:
-        opened, stack_file = stack_file, None
-        if opened:
-            opened.close()
 
 
 def write_all(fd, value):
@@ -216,6 +215,8 @@ def wrapper(master, slave, status_r, status_w, control_r, control_w, targets, co
                 for target, source in enumerate(targets):
                     os.dup2(source, target)
                 os.dup2(held_w, HOLD_FD, inheritable=True)
+                # スタックの書き先と /dev/null も、ここで閉じる。C は登録せず PID の名前がないので、SIGUSR2 は送られない。
+                # exec で登録も消えるので、この閉じ方は書き先の条件の例外にする（docs/ci-timeouts.md の「スタックの書き出し」）。
                 for name in os.listdir('/dev/fd'):
                     fd = int(name)
                     if fd > 2 and fd not in (HOLD_FD, exec_w):
@@ -365,11 +366,11 @@ def run(command, *, fds=('in', 'out', 'err'), output, error, input_file=None,
             try:
                 wrapper(master, slave, status_r, status_w, control_r, control_w,
                         targets, command, nonce, watch)
-                unregister_stack()
+                withdraw_stack()
                 os._exit(0)
             except BaseException as failure:
                 print(f'tty-session: wrapper: {type(failure).__name__}: {failure}', file=sys.stderr)
-                unregister_stack()
+                withdraw_stack()
                 os._exit(125)
         close(slave)
         slave = None
@@ -469,7 +470,7 @@ def run(command, *, fds=('in', 'out', 'err'), output, error, input_file=None,
         for handle in handles:
             handle.close()
         signal.signal(signal.SIGTERM, old_term)
-        unregister_stack()
+        withdraw_stack()
     return result
 
 
