@@ -568,6 +568,8 @@ CI まで通ったときだけ、規則を登録する。CI を待つ間は登�
 1. `squad-pr-watch conflicts <タスク> --leader <leader_id>` で、コンフリクトの規則を入れ直す。出力は規則の登録の結果なので、コメントに写さない
 2. 紐付いていないときだけ、続けて `squad-pr-watch unlinked <タスク> <回のコメントの ID> [<見張り役の ID>] --leader <leader_id>` を流す。紐付いているときは流さない
 
+`unlinked` は、`<回のコメントの ID>` のコメントが回として認められるかと、その `対象の PR:` が metadata の `pr_url` と同じかを照合してから登録する。違えば規則を作らず、`紐付け: 食い違い pr: <pr_url> 回の PR: <回の PR>` を出して 0 で終わる。
+
 `unlinked` の出力は、次のように扱う。
 
 | 出力 | `decide` の動き |

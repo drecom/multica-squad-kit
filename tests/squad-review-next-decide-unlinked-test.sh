@@ -198,6 +198,21 @@ expect_status 0
 [[ $(<"$test_dir/out") == $'次の依頼: マージの依頼'* ]] || fail "見張りを登録できたのにマージを頼んでいない: $(<"$test_dir/out")"
 echo 'PASS review-next-decide: 連携なしで見張りを登録できないときは、何も書かずに 3 で終わり、登録できればマージを頼む'
 
+# 回の head の照合のあと、unlinked の前に pr_url が回の対象の PR と違う PR に変わったときは、unlinked が食い違いの行を出す。
+# マージの依頼を書かず、その行で 3 で終わる。連携なしでも同じ。
+for mode in plain no_integration; do
+	retry_merge_setup
+	if [[ $mode == plain ]]; then unlinked; else no_integration; fi
+	printf 'CI %s: 成功\n' "${sha:0:7}" >"$test_dir/cinow-out"
+	mismatch="紐付け: 食い違い pr: https://github.com/demo/project/pull/8 回の PR: $pr_url"
+	printf '%s\n' "$mismatch" >"$test_dir/unlinked-out"
+	run final-1
+	expect_leader "$mismatch"
+	[[ $(<"$test_dir/out") == "次の依頼を決められません: $mismatch" ]] || fail "止まる行が違う: $(<"$test_dir/out")"
+	expect_call_has pr-watch-calls 'unlinked test-issue final-1 --leader orchestrator'
+done
+echo 'PASS review-next-decide: unlinked の前に pr_url が回の対象の PR と違う PR に変わると、マージの依頼を書かず、食い違いの行で 3 で終わる（連携なしも同じ）'
+
 # ---- 書く前の失敗。
 reset
 ok_round

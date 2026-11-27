@@ -28,8 +28,11 @@
 #     記録のスレッドがなければ、きっかけのコメントを metadata に書いて使う。
 #   squad-pr-watch ci-held <タスク> <きっかけのコメント>
 #     今の head の未処理の失敗を一度だけ出し、引き継ぎで受けた記録をきっかけへの返信に残す。
-#   squad-pr-watch unlinked <タスク> <きっかけのコメント> [<見張り役の ID>] [--leader <リーダーの ID>]
+#   squad-pr-watch unlinked <タスク> <回のコメント> [<見張り役の ID>] [--leader <リーダーの ID>]
 #     紐付いていない PR のマージ待ちを、1 時間おき・72 時間まで確認する規則を登録する。
+#     回のコメントは、名簿で回と認め、`対象の PR:` が metadata の pr_url と同じときだけ、規則の最後に `見張る PR:` と `確認した回:` の行を足す。
+#     pr_url が回の `対象の PR:` と違うときは、規則を作らず `紐付け: 食い違い` の行を出す。
+#     回を認められないときは、連携なし（pr_link_no_integration が pr_url と同じ）なら規則を作らずに 1 で終わり、それ以外は 2 行を足さずに登録する。
 #     リーダーの ID は、省くと MULTICA_AGENT_ID から読む。unlinked-check に渡す ID と、見張り役がないときの起こす宛先になる。
 #     見張り役を渡したときは、今のとおり見張り役を起こす。
 #   squad-pr-watch unlinked-check <タスク> <リーダーの ID> [<見張り役の ID>]
@@ -49,7 +52,7 @@ UNLINKED_LIMIT_HOURS=72
 UNLINKED_MAX_FIRES=100
 
 usage() {
-	echo '使い方: squad-pr-watch link-check <タスク> [<きっかけのコメント>] | conflicts <タスク> [--leader <リーダーの ID>] | conflicts-check <タスク> | ci <タスク> <見張り役の ID> <きっかけのコメント> | ci-check <タスク> <リーダーの ID> <見張り役の ID> | ci-now <タスク> <リーダーの ID> <きっかけのコメント> [<見張り役の ID>] | ci-held <タスク> <きっかけのコメント> | unlinked <タスク> <きっかけのコメント> [<見張り役の ID>] [--leader <リーダーの ID>] | unlinked-check <タスク> <リーダーの ID> [<見張り役の ID>] | ci-wait <タスク> <リーダー> <きっかけのコメント> [<起きた規則>] | ci-wait-clear <タスク>' >&2
+	echo '使い方: squad-pr-watch link-check <タスク> [<きっかけのコメント>] | conflicts <タスク> [--leader <リーダーの ID>] | conflicts-check <タスク> | ci <タスク> <見張り役の ID> <きっかけのコメント> | ci-check <タスク> <リーダーの ID> <見張り役の ID> | ci-now <タスク> <リーダーの ID> <きっかけのコメント> [<見張り役の ID>] | ci-held <タスク> <きっかけのコメント> | unlinked <タスク> <回のコメント> [<見張り役の ID>] [--leader <リーダーの ID>] | unlinked-check <タスク> <リーダーの ID> [<見張り役の ID>] | ci-wait <タスク> <リーダー> <きっかけのコメント> [<起きた規則>] | ci-wait-clear <タスク>' >&2
 	exit 2
 }
 
@@ -777,8 +780,40 @@ unlinked_deduplicate() {
 	done
 }
 
+# 回のコメントを名簿で回と認め、その `対象の PR:` の正規形を標準出力に出す。認められないときは理由を 1 行出して 1 を返す。
+# 名簿はタスクの担当のスクワッドから読む。呼び出しの --leader と規則のリーダーの ID は、回の判定に使わない。
+unlinked_round_pr() {
+	local issue=$1 round=$2 comments roster leader principals judge lines value data
+	comments=$(squad_cli_read issue-comments "$issue" 2>/dev/null) || { echo 'コメントを読めない'; return 1; }
+	roster=$(squad_cli_read_roster "$issue" 2>/dev/null) || { echo '名簿を読めない'; return 1; }
+	leader=$(jq -r '.leader // empty' <<<"$roster") || return 1
+	[[ -n $leader ]] || { echo 'スクワッドのリーダーを決められない'; return 1; }
+	principals=$(jq -c '[.roles["claude-principal"].id?, .roles["codex-principal"].id?] | map(select(. != null))' <<<"$roster") \
+		|| { echo '最上位の役を名簿から読めない'; return 1; }
+	judge=$(squad_cli_control analyze "$comments" "$(jq -cn --arg leader "$leader" '[$leader]')" "$principals" "$round" 2>/dev/null) \
+		|| { echo '制御記録を判定できない'; return 1; }
+	if [[ $(jq -r --arg round "$round" '.rounds[$round].ok // false' <<<"$judge") != true ]]; then
+		echo "回を認められない（$(jq -r --arg round "$round" '.rounds[$round].reason // "回のコメントでない"' <<<"$judge")）"
+		return 1
+	fi
+	lines=$(jq -r --arg round "$round" '[.[] | select(.id == $round) | (.content // "") | gsub("\r\n?"; "\n") | split("\n")[]
+		| select(startswith("対象の PR:"))] | .[]' <<<"$comments") || { echo '回のコメントを読めない'; return 1; }
+	if [[ $(grep -c . <<<"$lines") != 1 ]]; then
+		echo '回のコメントの `対象の PR:` の行が 1 つでない'
+		return 1
+	fi
+	value=$(sed -e 's/^対象の PR:[[:space:]]*//' -e 's/[[:space:]]*$//' <<<"$lines")
+	data=$(pr_url_data "$(jq -cn --arg url "$value" '{metadata: {pr_url: $url}}')") || { echo '回の `対象の PR:` を読めない'; return 1; }
+	if [[ $(jq -r .state <<<"$data") != foreign && $(jq -r .state <<<"$data") != valid ]]; then
+		echo '回の `対象の PR:` が GitHub の PR の URL の形でない'
+		return 1
+	fi
+	jq -r .url <<<"$data"
+}
+
 unlinked() {
-	local issue=$1 trigger=$2 monitor=${3-} leader=${4-} target task thread instruction response expires data
+	local issue=$1 round=$2 monitor=${3-} leader=${4-} target task thread instruction response expires data round_pr reason
+	local trigger=$round
 	[[ -n $leader ]] || leader=${MULTICA_AGENT_ID:-}
 	if [[ -z $leader ]]; then
 		echo 'MULTICA_AGENT_ID がなく、--leader もありません。呼び出したリーダーを決められません。' >&2
@@ -787,6 +822,22 @@ unlinked() {
 	task=$(squad_cli_read issue-get "$issue")
 	data=$(pr_url_data "$task")
 	if [[ $(jq -r .state <<<"$data") != valid ]]; then jq -r .line <<<"$data"; return 0; fi
+	# 見張る PR は、回のコメントの `対象の PR:` に固定する。合わないときは、既存の規則に触れずに止まる。
+	round_pr=''
+	if reason=$(unlinked_round_pr "$issue" "$round"); then
+		round_pr=$reason
+		if [[ $(jq -rn --arg a "$round_pr" --arg b "$(jq -r .url <<<"$data")" '($a | ascii_downcase) == ($b | ascii_downcase)') != true ]]; then
+			printf '紐付け: 食い違い pr: %s 回の PR: %s\n' "$(jq -r .url <<<"$data")" "$round_pr"
+			return 0
+		fi
+	else
+		round_pr=''
+		if [[ $(jq -r .no_integration_matches <<<"$data") == true ]]; then
+			echo "unlinked: 連携なしの PR の見張りを登録しない: $reason" >&2
+			return 1
+		fi
+		echo "unlinked: 見張る PR を固定せずに登録する（この規則では done にしない）: $reason" >&2
+	fi
 	unlinked_clear "$issue"
 	thread=$(jq -r '.metadata.ci_watch_thread | select(. != null)' <<<"$task")
 	if [[ -z $thread ]]; then
@@ -814,6 +865,10 @@ CI <SHA>: 失敗あり で始まり、保留でなければ、リーダーの「
 EOF
 		fi
 		printf '記録のスレッド: %s（0 以外で終わったときの返信先）\n' "$thread"
+		if [[ -n $round_pr ]]; then
+			printf '見張る PR: %s\n' "$round_pr"
+			printf '確認した回: %s\n' "$round"
+		fi
 	} >"$instruction"
 	# 表示は登録直前からの期限を分単位で出す。実際の終了はサーバーの expires-in が決める。
 	expires=$(python3 - "$UNLINKED_LIMIT_HOURS" <<'PY'

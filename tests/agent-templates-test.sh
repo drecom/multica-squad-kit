@@ -584,7 +584,7 @@ for phrase in 'squad-pr-watch ci-now <タスク> <リーダーの ID> <きっか
 done
 ci_section=$(awk '/^## CI$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$pr_ci_ref")
 grep -qF 'squad-pr-watch ci-held <タスク>' <<<"$ci_section"
-grep -qF 'squad-pr-watch unlinked <タスク> <きっかけのコメント> [<見張り役の ID>]' <<<"$rearm_section"
+grep -qF 'squad-pr-watch unlinked <タスク> <回のコメント> [<見張り役の ID>]' <<<"$rearm_section"
 
 periodic_section=$(awk '/^## マージ待ちの定期確認で起きたとき$/ {inside=1; next} inside && /^## / {exit} inside {print}' "$pr_merge_ref")
 for phrase in 'squad-pr-watch unlinked-check <タスク> <リーダーの ID>' 'CI <SHA>: 失敗あり'; do
