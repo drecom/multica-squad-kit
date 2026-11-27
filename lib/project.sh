@@ -225,6 +225,8 @@ prepare_project() (
 		progress=$((progress+1))
 		ui_phase_active || printf 'エージェントの設定 %s/%s: %s\n' "$progress" "$agent_total" "$name" >&2
 	done
+	# 役の custom_env と引数を書き終えてから、共有の settings.json のフックを書く（docs/agent-guards.md の「更新の順序」）。
+	if uses_runtime claude; then host_claude_settings write; fi
 	ui_phase_done_counted "$agent_total"
 	progress=0
 	ui_phase_start 8
@@ -415,13 +417,18 @@ project_role() {
 }
 # Codex の役があり、マークのない人の設定にフックの信頼がないときは、役を登録・更新する前に止まる。
 project_check_codex_trust() {
-	[[ $codex_role == yes && -n ${codex_trust_lines:-} ]] || return 0
+	[[ $codex_role == yes ]] || return 0
+	if [[ -n ${codex_disabled_hooks:-} ]]; then
+		die "Codex の役のフックが、無効か、有効と確認できません: ${codex_disabled_hooks}。Stop が無効だと最後のコメントの確認が、PreToolUse が無効だとガードが動きません。マークのない設定 $agent_home/codex/config.toml の、上の鍵の [hooks.state.\"<鍵>\"] にある enabled = false を消すか true にし、フックを無効にしている設定がないか確認してから、セットアップを流し直してください。役はまだ登録も更新もしておらず、共有の設定も書き換えていません。マークのない設定は書き換えていません。"
+	fi
+	[[ -n ${codex_trust_lines:-} ]] || return 0
 	die "Codex の役のフックは、信頼の記録がないと飛ばされ、PreToolUse と Stop が動きません。マークのない設定 $agent_home/codex/config.toml に、次の行を足してからセットアップを流し直してください。役はまだ登録も更新もしていません。キットの設定に替えるときは、そのファイルを退避してから流し直してください。
 $codex_trust_lines"
 }
 
 project_desired_args() {
 	jq -c --arg model "$1" --arg g "$agent_home/guard" '
+		def sq: "\u0027" + gsub("\u0027"; "\u0027\\\u0027\u0027") + "\u0027";
 		def managed: test("^(allow_login_shell|features[.]shell_snapshot|project_doc_max_bytes|hooks[.]PreToolUse|hooks[.]Stop)[[:space:]]*=");
 		if type=="array" and all(.[]; type=="string") then . else error("引数は文字列の配列が必要です") end |
 		. as $args |
@@ -432,7 +439,7 @@ project_desired_args() {
 			elif ($args[$i]=="--enable" and $args[$i+1]=="shell_snapshot") then .skip=true
 			elif $args[$i]=="--enable=shell_snapshot" then .
 			else .args+=[$args[$i]] end) |
-		.args + (if ($model|startswith("gpt-")) then ["-c","allow_login_shell=false","-c","features.shell_snapshot=false","-c","project_doc_max_bytes=65536","-c",("hooks.PreToolUse=[{matcher=\"^(Bash|shell|exec_command|local_shell)$\",hooks=[{type=\"command\",command="+(($g+"/pre-tool-use")|tojson)+"}]}]"),"-c",("hooks.Stop=[{hooks=[{type=\"command\",command="+(($g+"/stop")|tojson)+"}]}]")] else [] end)'
+		.args + (if ($model|startswith("gpt-")) then ["-c","allow_login_shell=false","-c","features.shell_snapshot=false","-c","project_doc_max_bytes=65536","-c",("hooks.PreToolUse=[{matcher=\"^(Bash|shell|exec_command|local_shell)$\",hooks=[{type=\"command\",command="+((($g+"/pre-tool-use")|sq)|tojson)+"}]}]"),"-c",("hooks.Stop=[{hooks=[{type=\"command\",command="+((($g+"/stop")|sq)|tojson)+"}]}]")] else [] end)'
 }
 
 project_desired_env() {

@@ -56,8 +56,8 @@ for role, agent in agents.items():
     hook_args = [a for a in agent['custom_args'] if a.startswith('hooks.')]
     if selected == 'codex':
         assert hook_args == [
-            'hooks.PreToolUse=[{matcher="^(Bash|shell|exec_command|local_shell)$",hooks=[{type="command",command=' + json.dumps(str(guard / 'pre-tool-use')) + '}]}]',
-            'hooks.Stop=[{hooks=[{type="command",command=' + json.dumps(str(guard / 'stop')) + '}]}]'], role
+            'hooks.PreToolUse=[{matcher="^(Bash|shell|exec_command|local_shell)$",hooks=[{type="command",command=' + json.dumps("'" + str(guard / 'pre-tool-use') + "'") + '}]}]',
+            'hooks.Stop=[{hooks=[{type="command",command=' + json.dumps("'" + str(guard / 'stop') + "'") + '}]}]'], role
     else:
         assert agent['custom_args'] == [] and hook_args == [], role
     assert agent['mcp_config'] == ({} if selected == 'claude' else None), role
@@ -126,3 +126,29 @@ reset_db
 run
 grep -q '^\["agent","create"' "$TEST_DB/calls"
 echo 'PASS project runtimes first: マークのない設定に信頼がないとき、Codex の役があれば登録・更新の前に止まり、なければ止まらない'
+
+# 信頼の値はフックを無効にしても変わらない。PreToolUse と Stop を片方ずつ無効（か有効と判定できない）にすると、Codex の役があれば、対象のフックを出して役を登録・更新する前に止まる。両方有効なら進む。
+for hook in 'PreToolUse（/<session-flags>/config.toml:pre_tool_use:0:0）' 'Stop（/<session-flags>/config.toml:stop:0:0）'; do
+ export codex_disabled_hooks=$hook
+ for selected in '["codex"]' '["claude","codex"]'; do
+  export TEST_RUNTIMES=$selected TEST_ROLE_COUNT=17
+  reset_db
+  deny
+  grep -qF "$hook" "$test_dir/err"
+  grep -qF "$TEMPLATE_AGENT_HOME/codex/config.toml" "$test_dir/err"
+  grep -qF 'enabled = false' "$test_dir/err"
+  grep -qF '役はまだ登録も更新もしておらず、共有の設定も書き換えていません' "$test_dir/err"
+  no_role_change
+ done
+ # Codex の役がなければ止まらない。
+ export TEST_RUNTIMES='["claude"]' TEST_ROLE_COUNT=14
+ reset_db
+ run
+ grep -q '^\["agent","create"' "$TEST_DB/calls"
+done
+unset codex_disabled_hooks
+export TEST_RUNTIMES='["codex"]'
+reset_db
+run
+grep -q '^\["agent","create"' "$TEST_DB/calls"
+echo 'PASS project runtimes first: PreToolUse か Stop が無効と返ると、Codex の役があれば対象のフックを出して登録・更新の前に止まり、両方有効なら進む'

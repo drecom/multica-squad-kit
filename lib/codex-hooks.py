@@ -5,8 +5,9 @@
 
 役と同じ -c の引数で app-server を起こし、キットの 2 つのフック（PreToolUse と Stop）の
 鍵と currentHash を読む。値はフックの定義（コマンドのパスと matcher）から決まる。
-標準出力は、1 行目が状態、2 行目が詳細、3 行目から [hooks.state."<鍵>"] の TOML である。
-  ok        2 つのフックの値を読めた。詳細は、人の config.toml を渡したときだけ trusted か untrusted
+標準出力は、1 行目が状態、2 行目が詳細、3 行目が無効なフックの JSON の一覧（[{"hook": "PreToolUse", "key": "<鍵>"}]。
+無効か有効と判定できないフックだけを入れ、なければ []）、4 行目から [hooks.state."<鍵>"] の TOML である。
+  ok        2 つのフックの値を読めた。有効かも 3 行目で読む。詳細は、人の config.toml を渡したときだけ trusted か untrusted
   launch    Codex を起動できなかった
   failed    hooks/list を読めなかった（詳細に理由の分類。Codex の出力は写さない）
   missing   一覧にキットのフックがない（詳細に足りないフック）
@@ -23,11 +24,18 @@ import time
 MATCHER = "^(Bash|shell|exec_command|local_shell)$"
 # 役の引数は lib/project.sh の project_desired_args が作る。この 2 つは同じ値でなければならない。
 EVENTS = (("preToolUse", "pre-tool-use"), ("stop", "stop"))
+NAMES = {"preToolUse": "PreToolUse", "stop": "Stop"}
+
+
+def command(guard, script):
+    # Codex はコマンドをシェルで実行する。パスは単引用符で囲み、空白や単引用符があっても 1 つのパスにする。
+    # lib/project.sh の project_desired_args と同じ文字列でなければ、信頼の値が合わない。
+    return "'" + (guard + "/" + script).replace("'", "'\\''") + "'"
 
 
 def hook_args(guard):
-    pre = 'hooks.PreToolUse=[{matcher="%s",hooks=[{type="command",command=%s}]}]' % (MATCHER, json.dumps(guard + "/pre-tool-use"))
-    stop = 'hooks.Stop=[{hooks=[{type="command",command=%s}]}]' % json.dumps(guard + "/stop")
+    pre = 'hooks.PreToolUse=[{matcher="%s",hooks=[{type="command",command=%s}]}]' % (MATCHER, json.dumps(command(guard, "pre-tool-use")))
+    stop = 'hooks.Stop=[{hooks=[{type="command",command=%s}]}]' % json.dumps(command(guard, "stop"))
     return ["codex", "app-server", "--listen", "stdio://", "-c", pre, "-c", stop]
 
 
@@ -108,16 +116,19 @@ def find_kit_hooks(result, guard):
             if isinstance(item, dict):
                 entries.extend(item.get("hooks") or [])
     found = {}
+    disabled = []
     for event, script in EVENTS:
-        wanted = guard + "/" + script
+        wanted = command(guard, script)
         for entry in entries:
             if not isinstance(entry, dict) or entry.get("eventName") != event or entry.get("command") != wanted:
                 continue
             key, current = entry.get("key"), entry.get("currentHash")
             if isinstance(key, str) and key and isinstance(current, str) and current:
                 found[event] = (key, current)
+                if entry.get("enabled") is not True:
+                    disabled.append({"hook": NAMES[event], "key": key})
                 break
-    return found, [event for event, _ in EVENTS if event not in found]
+    return found, [event for event, _ in EVENTS if event not in found], disabled
 
 
 def render(found):
@@ -153,14 +164,18 @@ def main(argv):
     if status != "ok":
         print(status)
         print("")
+        print("[]")
         return
-    found, missing = find_kit_hooks(result, guard)
+    found, missing, disabled = find_kit_hooks(result, guard)
     if missing:
         print("missing")
         print(",".join(missing))
+        print("[]")
         return
     print("ok")
     print(("trusted" if trusted(config, found) else "untrusted") if config else "")
+    # 信頼の値はフックを無効にしても変わらない。無効か、有効と判定できないもの（enabled が true でない）を、JSON の一覧で渡す。
+    print(json.dumps(disabled, ensure_ascii=False))
     print(render(found))
 
 

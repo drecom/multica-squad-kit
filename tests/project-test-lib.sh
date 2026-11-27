@@ -10,7 +10,7 @@ export GH_CONFIG_DIR="$test_dir/human-gh"
 mkdir -p "$GH_CONFIG_DIR"
 unset GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN
 # Codex の役の引数の期待値。スタブと各テストの jq が同じ定義を使う。$g はガードの置き場。
-export HOOK_ARGS_DEF='def codex_args($g): ["-c","allow_login_shell=false","-c","features.shell_snapshot=false","-c","project_doc_max_bytes=65536","-c","hooks.PreToolUse=[{matcher=\"^(Bash|shell|exec_command|local_shell)$\",hooks=[{type=\"command\",command=\"\($g)/pre-tool-use\"}]}]","-c","hooks.Stop=[{hooks=[{type=\"command\",command=\"\($g)/stop\"}]}]"];'
+export HOOK_ARGS_DEF='def sq: "\u0027" + gsub("\u0027"; "\u0027\\\u0027\u0027") + "\u0027"; def codex_args($g): ["-c","allow_login_shell=false","-c","features.shell_snapshot=false","-c","project_doc_max_bytes=65536","-c","hooks.PreToolUse=[{matcher=\"^(Bash|shell|exec_command|local_shell)$\",hooks=[{type=\"command\",command=" + (($g+"/pre-tool-use")|sq|tojson) + "}]}]","-c","hooks.Stop=[{hooks=[{type=\"command\",command=" + (($g+"/stop")|sq|tojson) + "}]}]"];'
 mkdir -p "$test_dir/bin" "$test_dir/package"
 cp "$root/VERSION" "$test_dir/package/VERSION"
 cp -R "$root/lib" "$root/common" "$root/skeleton" "$test_dir/package/"
@@ -78,7 +78,7 @@ case "$event" in
  envfile=$(option --custom-env-file "$@")
  [[ $(python3 -c 'import os,sys; print(oct(os.stat(sys.argv[1]).st_mode & 0o777)[2:])' "$envfile") == 600 ]]
  jq -e --arg z "$TEMPLATE_AGENT_HOME/template/shell/project-a" '.ZDOTDIR==$z and .BASH_ENV==($z+"/env.sh") and (.SQUAD_KIT_ALLOWED_REPOS|endswith("/allowed-repos.d/project-a"))' "$envfile" >/dev/null
- jq -e --arg g "$TEMPLATE_AGENT_HOME/guard" --arg h "$TEMPLATE_AGENT_HOME/git-hooks" --arg human "$GH_CONFIG_DIR" '.GH_CONFIG_DIR==($g+"/gh-empty") and .SQUAD_KIT_GH_CONFIG_DIR==$human and .GIT_CONFIG_COUNT=="6" and ([range(0;6) as $n|[.["GIT_CONFIG_KEY_\($n)"],.["GIT_CONFIG_VALUE_\($n)"]]]==[["core.hooksPath",$h],["credential.helper",""],["credential.https://github.com.helper",""],["credential.https://github.com.helper",("!\u0027"+$g+"/git-credential\u0027")],["credential.https://github.com.useHttpPath","true"],["core.sshCommand",("\u0027"+$g+"/git-ssh\u0027")]])' "$envfile" >/dev/null
+ jq -e --arg g "$TEMPLATE_AGENT_HOME/guard" --arg h "$TEMPLATE_AGENT_HOME/git-hooks" --arg human "$GH_CONFIG_DIR" 'def sq: "\u0027" + gsub("\u0027"; "\u0027\\\u0027\u0027") + "\u0027"; .GH_CONFIG_DIR==($g+"/gh-empty") and .SQUAD_KIT_GH_CONFIG_DIR==$human and .GIT_CONFIG_COUNT=="6" and ([range(0;6) as $n|[.["GIT_CONFIG_KEY_\($n)"],.["GIT_CONFIG_VALUE_\($n)"]]]==[["core.hooksPath",$h],["credential.helper",""],["credential.https://github.com.helper",""],["credential.https://github.com.helper",("!"+(($g+"/git-credential")|sq))],["credential.https://github.com.useHttpPath","true"],["core.sshCommand",(($g+"/git-ssh")|sq)]])' "$envfile" >/dev/null
  jq -e --arg model "$(option --model "$@")" --arg z "$TEMPLATE_AGENT_HOME/template/shell/project-a" 'if ($model|startswith("claude-")) then .CLAUDE_ENV_FILE==($z+"/env.sh") else .CLAUDE_ENV_FILE==null end' "$envfile" >/dev/null
  custom_args=$(option --custom-args "$@")
  jq -ne --arg model "$(option --model "$@")" --arg g "$TEMPLATE_AGENT_HOME/guard" --argjson args "$custom_args" "$HOOK_ARGS_DEF"'$args == (if ($model|startswith("gpt-")) then codex_args($g) else [] end)' >/dev/null
@@ -219,7 +219,7 @@ export TEST_DB="$test_dir/db" TEMPLATE_AGENT_HOME="$test_dir/host"
 export TEST_EXCLUDED='[]' TEST_ROLE_COUNT=17
 reset_db() {
  rm -rf "$TEST_DB" "$TEMPLATE_AGENT_HOME"
- mkdir -p "$TEST_DB/projects" "$TEST_DB/agents" "$TEST_DB/skills" "$TEST_DB/env" "$TEMPLATE_AGENT_HOME/bin" "$TEMPLATE_AGENT_HOME/git-hooks" "$TEMPLATE_AGENT_HOME/guard/gh-empty"
+ mkdir -p "$TEST_DB/projects" "$TEST_DB/agents" "$TEST_DB/skills" "$TEST_DB/env" "$TEMPLATE_AGENT_HOME/bin" "$TEMPLATE_AGENT_HOME/git-hooks" "$TEMPLATE_AGENT_HOME/claude" "$TEMPLATE_AGENT_HOME/guard/gh-empty"
  cp "$root/common/guard/gh" "$TEMPLATE_AGENT_HOME/bin/gh"
  cp "$root/common/guard/pre-push" "$TEMPLATE_AGENT_HOME/git-hooks/pre-push"
  chmod +x "$TEMPLATE_AGENT_HOME/bin/gh" "$TEMPLATE_AGENT_HOME/git-hooks/pre-push"

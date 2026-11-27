@@ -188,3 +188,66 @@ for selected in claude codex; do
 done
 echo 'PASS extension runtimes: 選ばなかったランタイムのモデルを、全エージェントの作成前に拒否する'
 rm "$test_dir/extension/agents/helper.md"
+
+# 置き場に空白と単引用符があっても、Codex はフックのコマンドをシェルで実行するので、役の引数のコマンドは 1 つのパスとして読まれ、2 つのフックのスクリプトが起動する。
+export TEMPLATE_AGENT_HOME="$test_dir/ho st's home"
+export TEST_RUNTIMES='["codex"]' TEST_COMPLETE=yes TEST_ROLE_COUNT=14
+export TEST_REPOSITORIES='[{"url":"https://github.com/example/project","repository":"example/project"}]'
+reset_db
+cp "$root/common/guard/pre-tool-use" "$root/common/guard/stop" "$root/common/guard/shell_split.py" "$TEMPLATE_AGENT_HOME/guard/"
+chmod +x "$TEMPLATE_AGENT_HOME/guard/pre-tool-use" "$TEMPLATE_AGENT_HOME/guard/stop"
+run
+python3 - "$TEST_DB/agents/agent-demo-codex-implementer-owner.json" "$TEMPLATE_AGENT_HOME" <<'PY'
+import json
+import subprocess
+import sys
+
+args = json.load(open(sys.argv[1], encoding="utf-8"))["custom_args"]
+guard = sys.argv[2] + "/guard"
+commands = {}
+for value in args:
+    for name in ("PreToolUse", "Stop"):
+        if value.startswith("hooks.%s=" % name):
+            # 引数の値は TOML の文字列（JSON と同じ書き方）で、コマンドを 1 つ持つ。
+            start = value.index('command="') + len("command=")
+            commands[name] = json.loads(value[start:value.index('"}', start) + 1])
+assert set(commands) == {"PreToolUse", "Stop"}, args
+assert commands["PreToolUse"].startswith("'") and commands["PreToolUse"].endswith("'"), commands
+pre = subprocess.run(["/bin/sh", "-c", commands["PreToolUse"]], input='{"tool_name":"Bash","tool_input":{"command":"ls"}}', capture_output=True, text=True)
+assert pre.returncode == 2 and "PreToolUse のガード" in pre.stderr, (pre.returncode, pre.stderr)
+stop = subprocess.run(["/bin/sh", "-c", commands["Stop"]], input='{"hook_event_name":"Stop"}', capture_output=True, text=True)
+assert stop.returncode == 0 and "decision" in stop.stdout, (stop.returncode, stop.stdout, stop.stderr)
+# 引用しないと、同じパスは空白で割れて 127、単引用符で閉じずに 2 で終わる。
+bare = subprocess.run(["/bin/sh", "-c", guard + "/pre-tool-use"], input="{}", capture_output=True, text=True)
+assert bare.returncode != 2 or "PreToolUse のガード" not in bare.stderr, bare
+PY
+echo 'PASS project runtimes: 置き場に空白と単引用符があっても、役の引数のコマンドをシェルで実行すると 2 つのフックのスクリプトが起動する'
+
+# 更新が途中で止まっても、共有の settings.json は書き換わらず（フックと deny は最後に書く）、登録済みの役はそのまま動く。
+snapshot_shared() { { cat "$TEMPLATE_AGENT_HOME/claude/settings.json"; agent_snapshot; } | shasum | cut -d' ' -f1; }
+unset TEST_COMPLETE TEST_REPOSITORIES
+export TEST_EXCLUDED='[]' TEST_ROLE_COUNT=17 TEST_RUNTIMES='["claude","codex"]'
+for stop in codex_hooks env_set; do
+ rm -rf "$TEST_DB" "$TEMPLATE_AGENT_HOME"
+ cp -R "$test_dir/completed/db" "$TEST_DB"
+ cp -R "$test_dir/completed/host" "$TEMPLATE_AGENT_HOME"
+ mkdir -p "$TEMPLATE_AGENT_HOME/claude"
+ printf '%s\n' '{"theme":"dark","permissions":{"allow":["Bash(ls)"]}}' >"$TEMPLATE_AGENT_HOME/claude/settings.json"
+ before=$(snapshot_shared)
+ : >"$TEST_DB/calls"
+ if [[ $stop == codex_hooks ]]; then
+  # Codex のフックが無効と返る: 役の登録・更新の前に止まる。
+  export codex_disabled_hooks='Stop（/<session-flags>/config.toml:stop:0:0）'
+  deny
+  unset codex_disabled_hooks
+ else
+  # 役の custom_env を書いている途中で止まる。
+  TEST_FAIL='agent env set' deny
+ fi
+ [[ $(snapshot_shared) == "$before" ]]
+ ! grep -q 'hooks' "$TEMPLATE_AGENT_HOME/claude/settings.json"
+ # 止まったあとに流し直すと、フックと deny がそろって書かれる。
+ run
+ grep -q 'hooks' "$TEMPLATE_AGENT_HOME/claude/settings.json"
+done
+echo 'PASS project runtimes: 更新が確認の時点や custom_env の書き込みの途中で止まっても、共有の settings.json は変わらず、流し直すと書かれる'

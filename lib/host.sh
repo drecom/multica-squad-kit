@@ -172,10 +172,11 @@ PY
 
 # 役に渡すフックの信頼を、Codex の設定へ書く。値は、役と同じ引数で起こした app-server の hooks/list から読む。
 # マークのある設定と、まだない設定は、ひな形に値を埋めて書く。マークのない人の設定は上書きせず、信頼があるかだけを読む。
-# 信頼がないときは、足す行を codex_trust_lines に残す。止めるかは、Codex の役の有無を知る prepare_project が決める。
+# 信頼がないときは、足す行を codex_trust_lines に、フックが無効か有効と判定できないときは、対象を codex_disabled_hooks に残す（マークのない人の設定だけ）。止めるかは、Codex の役の有無を知る prepare_project が決める。
 host_codex_config() {
-	local config=$agent_home/codex/config.toml existing='' result status detail trust
+	local config=$agent_home/codex/config.toml existing='' result status detail trust disabled
 	codex_trust_lines=
+	codex_disabled_hooks=
 	if [[ -e $config ]] && ! grep -qx '# multica-squad-kit-managed' "$config"; then existing=$config; fi
 	if ! result=$(python3 "${kit_root:-$root}/lib/codex-hooks.py" "$agent_home/codex" "$agent_home/guard" "${codex_check_seconds:-30}" ${existing:+"$existing"}); then
 		die 'Codex のフックの信頼の値を読む処理を実行できませんでした。python3 を確認して流し直してください。'
@@ -183,6 +184,8 @@ host_codex_config() {
 	status=${result%%$'\n'*}
 	result=${result#*$'\n'}
 	detail=${result%%$'\n'*}
+	result=${result#*$'\n'}
+	disabled=${result%%$'\n'*}
 	trust=
 	[[ $result != *$'\n'* ]] || trust=${result#*$'\n'}
 	case $status in
@@ -193,6 +196,8 @@ host_codex_config() {
 	esac
 	if [[ -n $existing ]]; then
 		[[ $detail == trusted ]] || codex_trust_lines=$trust
+		# 信頼の値はフックを無効にしても変わらない。マークのない人の設定は書き換えないので、止めるために対象を残す。
+		codex_disabled_hooks=$(jq -r 'map("\(.hook)（\(.key)）") | join("、")' <<<"$disabled") || die 'Codex のフックの有効を読めませんでした。'
 		host_shared_file "$root/common/codex/config.toml" "$config" no
 	else
 		host_codex_template "$trust"
@@ -233,10 +238,12 @@ host_codex_validate() {
 
 # JSON には管理マークを付けず、キットが持つキーと項目だけを合わせる。
 # フックは、コマンドのパスがキットの置き場（guard）の中にある項目だけをキットの項目として合わせる。
+# 引数が check のときは、書き換える前の確認だけを流し、何も書かない。write のときは、確認をして書く。
+# 共有の settings.json のフックは、役の custom_env より先に入ると既存の役を止めるので、write は役の設定のあとに呼ぶ。
 host_claude_settings() {
-	local settings=$agent_home/claude/settings.json guard=$agent_home/guard human_gh message
+	local mode=${1:-write} settings=$agent_home/claude/settings.json guard=$agent_home/guard human_gh message
 	human_gh=$(host_human_gh_dir) || die '人の gh の置き場を決められませんでした。'
-	if ! message=$(python3 - "$settings" "$guard" "$human_gh" <<'PY'
+	if ! message=$(python3 - "$settings" "$guard" "$human_gh" "$mode" <<'PY'
 import copy
 import json
 import os
@@ -265,6 +272,7 @@ owned_items = {
 settings = Path(sys.argv[1])
 guard = os.path.normpath(sys.argv[2])
 human_gh = os.path.normpath(sys.argv[3])
+write = sys.argv[4] == "write"
 home = os.path.normpath(os.environ.get("HOME") or "/")
 
 def deny_read(path, directory):
@@ -401,7 +409,7 @@ try:
         groups[:] = kept
         if changed:
             overwritten.append("hooks." + event)
-    if not exists or not same(config, original):
+    if write and (not exists or not same(config, original)):
         fd, temporary = tempfile.mkstemp(prefix=".settings.", dir=settings.parent)
         with os.fdopen(fd, "w", encoding="utf-8") as target:
             os.fchmod(target.fileno(), 0o600)
@@ -409,7 +417,7 @@ try:
             target.write("\n")
         os.replace(temporary, settings)
         temporary = None
-    if overwritten:
+    if write and overwritten:
         print("キットが持つ設定をキットの値で上書きしました: " + ", ".join(overwritten))
 except ValueError as error:
     print(str(error))
@@ -478,7 +486,8 @@ PY
 		fi
 	done
 	if uses_runtime claude; then
-		host_claude_settings
+		# 共有の settings.json は、ここでは確認だけにする。書くのは、役の設定を書いたあとである（prepare_project）。
+		host_claude_settings check
 		host_check_claude_auth
 	fi
 	if uses_runtime codex; then

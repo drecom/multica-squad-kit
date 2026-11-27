@@ -24,7 +24,7 @@ def entry(event, snake, command, matcher_value, source):
     digest = hashlib.sha256(("%s|%s|%s" % (event, command, matcher_value)).encode()).hexdigest()
     place = "/<session-flags>" if source == "sessionFlags" else "/human"
     return {"key": "%s/config.toml:%s:0:0" % (place, snake), "eventName": event, "command": command,
-            "matcher": matcher_value, "source": source, "currentHash": "sha256:" + digest, "trustStatus": "untrusted"}
+            "matcher": matcher_value, "source": source, "currentHash": "sha256:" + digest, "trustStatus": "untrusted", "enabled": True}
 
 
 hooks = [entry("preToolUse", "pre_tool_use", commands[0], matcher, "sessionFlags"),
@@ -39,6 +39,12 @@ elif mode == "stop-only":
     hooks = hooks[1:]
 elif mode == "other-command":
     hooks = [entry("preToolUse", "pre_tool_use", "/elsewhere/pre-tool-use", matcher, "sessionFlags"), hooks[1]]
+if mode == "pre-disabled":
+    hooks[0]["enabled"] = False
+elif mode == "stop-disabled":
+    hooks[1]["enabled"] = False
+elif mode == "no-enabled":
+    del hooks[1]["enabled"]
 for line in sys.stdin:
     message = json.loads(line)
     ident = message.get("id")

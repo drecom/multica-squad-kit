@@ -156,6 +156,7 @@ fi
 if [[ -n ${TEST_EXTENSION_WORK:-} ]]; then kit_root=$root; root=$TEST_EXTENSION_WORK; fi
 prepare_host
 [[ -z ${TEST_TRUST_OUT:-} ]] || printf '%s' "${codex_trust_lines:-}" >"$TEST_TRUST_OUT"
+[[ -z ${TEST_DISABLED_OUT:-} ]] || printf '%s' "${codex_disabled_hooks:-}" >"$TEST_DISABLED_OUT"
 RUN
 run() { /bin/bash "$test_dir/run.sh" "$root" >"$test_dir/out" 2>"$test_dir/err"; }
 deny() { if run; then exit 1; fi; [[ -s $test_dir/err ]]; }
@@ -172,7 +173,7 @@ guard = sys.argv[2] + "/guard"
 matcher = "^(Bash|shell|exec_command|local_shell)$"
 lines = []
 for event, snake, script, value in (("preToolUse", "pre_tool_use", "pre-tool-use", matcher), ("stop", "stop", "stop", None)):
-    digest = hashlib.sha256(("%s|%s/%s|%s" % (event, guard, script, value)).encode()).hexdigest()
+    digest = hashlib.sha256(("%s|%s|%s" % (event, "'" + (guard + "/" + script).replace("'", "'\\''") + "'", value)).encode()).hexdigest()
     lines += ['[hooks.state."/<session-flags>/config.toml:%s:0:0"]' % snake, 'trusted_hash = "sha256:%s"' % digest]
 sys.stdout.write(template.replace("{{HOOKS_STATE}}", "\n".join(lines)))
 PY
@@ -229,6 +230,19 @@ PY
 ! grep -qF 'マークのない設定に' "$test_dir/err"
 echo 'PASS host: 新しいホストで Codex の設定に 2 つのキーを足し、専用の置き場で厳しい検証に 1 回かける'
 settings=$TEMPLATE_AGENT_HOME/claude/settings.json
+# prepare_host は、共有の settings.json を確認するだけで書かない。書くのは、役の設定を書いたあとである（prepare_project）。
+[[ ! -e $settings ]]
+cat >"$test_dir/settings-run.sh" <<'RUN'
+#!/bin/bash
+set -euo pipefail
+source "$1/lib/ui.sh"
+source "${TEST_SETTINGS_HOST:-$1/lib/host.sh}"
+die() { ui_error "$*"; exit 1; }
+host_paths
+host_claude_settings
+RUN
+settings_run() { /bin/bash "$test_dir/settings-run.sh" "$root" >"$test_dir/out" 2>"$test_dir/err"; }
+settings_run
 python3 - "$settings" "$test_dir/kit-settings.json" <<'PY'
 import json
 import os
@@ -277,16 +291,6 @@ Path(sys.argv[2]).write_bytes(settings.read_bytes())
 PY
 echo 'PASS host: Claude の共有の設定をキットのキーだけで作り、フック・deny・書き込み制限を含め、権限を 600 にする'
 
-cat >"$test_dir/settings-run.sh" <<'RUN'
-#!/bin/bash
-set -euo pipefail
-source "$1/lib/ui.sh"
-source "${TEST_SETTINGS_HOST:-$1/lib/host.sh}"
-die() { ui_error "$*"; exit 1; }
-host_paths
-host_claude_settings
-RUN
-settings_run() { /bin/bash "$test_dir/settings-run.sh" "$root" >"$test_dir/out" 2>"$test_dir/err"; }
 python3 - "$settings" <<'PY'
 import json
 import os
@@ -933,12 +937,18 @@ import sys
 
 calls = [json.loads(line) for line in open(sys.argv[1], encoding="utf-8")]
 guard = sys.argv[2] + "/guard"
+
+
+def quote(path):
+    return "'" + path.replace("'", "'\\''") + "'"
+
+
 assert len(calls) == 1, calls
 assert calls[0]["home"] == sys.argv[2] + "/codex", calls
 assert calls[0]["args"] == [
     "app-server", "--listen", "stdio://",
-    "-c", 'hooks.PreToolUse=[{matcher="^(Bash|shell|exec_command|local_shell)$",hooks=[{type="command",command="%s/pre-tool-use"}]}]' % guard,
-    "-c", 'hooks.Stop=[{hooks=[{type="command",command="%s/stop"}]}]' % guard], calls
+    "-c", 'hooks.PreToolUse=[{matcher="^(Bash|shell|exec_command|local_shell)$",hooks=[{type="command",command=%s}]}]' % json.dumps(quote(guard + "/pre-tool-use")),
+    "-c", 'hooks.Stop=[{hooks=[{type="command",command=%s}]}]' % json.dumps(quote(guard + "/stop"))], calls
 PY
 # 人の設定のフック（source が人の設定）は、キットのフックと取り違えない。
 ! grep -q 'human' "$config"
@@ -1008,6 +1018,34 @@ grep -qF 'trusted_hash = "sha256:' "$test_dir/trust-lines"
 printf '%s\n' "$unmarked_keys" >"$config"
 unset TEST_TRUST_OUT
 echo 'PASS host: マークのない設定は信頼があってもなくても書き換えず、ホストの準備では止めない'
+
+# 信頼の値はフックを無効にしても変わらない。マークのない設定では、hooks/list が無効か有効と判定できないと返したフックを、プロジェクトの準備に渡す。
+export TEST_DISABLED_OUT="$test_dir/disabled-hooks"
+for case_mode in ok pre-disabled stop-disabled no-enabled; do
+ echo "$case_mode" >"$test_dir/codex-hooks"
+ printf '%s\n' "$unmarked_keys" >"$config"
+ cp "$config" "$test_dir/unmarked-config"
+ set_mode running
+ agent_env
+ run
+ cmp "$config" "$test_dir/unmarked-config"
+ case $case_mode in
+ ok) [[ ! -s $test_dir/disabled-hooks ]] ;;
+ pre-disabled) [[ $(<"$test_dir/disabled-hooks") == PreToolUse（* && $(<"$test_dir/disabled-hooks") != *Stop* ]] ;;
+ stop-disabled) [[ $(<"$test_dir/disabled-hooks") == Stop（* && $(<"$test_dir/disabled-hooks") != *PreToolUse* ]] ;;
+ no-enabled) [[ $(<"$test_dir/disabled-hooks") == Stop（* ]] ;;
+ esac
+done
+# マークのある設定は、流し直しで書き直すので、止める対象にしない。
+rm -f "$config"
+echo pre-disabled >"$test_dir/codex-hooks"
+run
+grep -qx '# multica-squad-kit-managed' "$config"
+[[ ! -s $test_dir/disabled-hooks ]]
+echo ok >"$test_dir/codex-hooks"
+printf '%s\n' "$unmarked_keys" >"$config"
+unset TEST_DISABLED_OUT
+echo 'PASS host: マークのない設定で、PreToolUse と Stop の片方が無効か有効と判定できないとき対象を渡し、両方有効なら渡さず、人の設定は書き換えない'
 
 # 設定の検証。0 で進み、0 以外で止まり、古い Codex と時間切れは警告して進む。
 cp "$test_dir/original/codex/config.toml" "$config"
