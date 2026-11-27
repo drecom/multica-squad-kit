@@ -194,7 +194,8 @@ def inline(code, *, scripted=None, answer=None, fds=('in', 'out', 'err'), comman
         input_path = case / 'input'
         input_path.write_bytes(answer)
     # 時間切れの記録の登録（run() の始めの register_stack）が開くファイルを、比べる fd に数えない。
-    # run() は終わるときに登録を取り下げてファイルを閉じるので、比べる前も取り下げた状態にそろえる。
+    # run() は終わるときに登録を取り下げ、書き先を /dev/null の 1 つの fd に替えて残すので、比べる前も同じ状態にそろえる。
+    getattr(module, 'register_stack', lambda: None)()
     getattr(module, 'unregister_stack', lambda: None)()
     before = set(os.listdir('/dev/fd'))
     diagnostic = io.StringIO()

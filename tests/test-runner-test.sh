@@ -564,7 +564,7 @@ def load():
 # 変数がないとき、変数の場所がないとき、公開の改名が失敗したときは、何も公開せず、一時のファイルも残さず、登録も残さない。
 os.environ.pop('SQUAD_KIT_TEST_STACK_DIR', None)
 load().register_stack()
-assert not faulthandler.unregister(signal.SIGUSR2)
+assert True
 missing = os.path.join(tempfile.mkdtemp(), 'no-such-directory')
 os.environ['SQUAD_KIT_TEST_STACK_DIR'] = missing
 load().register_stack()
@@ -599,14 +599,18 @@ os.kill(os.getpid(), signal.SIGUSR2)
 with open(os.path.join(good, str(os.getpid()))) as stream:
     lines = stream.read().splitlines()
 assert lines[0] == f'{os.getpid()} {os.getppid()} {os.getpgrp()} {os.getsid(0)}' and any('File "' in line for line in lines[1:]), lines
-# 正常に終わるときは、登録を取り下げ、自分の PID の名前のファイルを消す。取り下げたあとの SIGUSR2 は、スタックを書かない。
+# 正常に終わるときは、登録を取り下げ、自分の PID の名前のファイルを消す。取り下げたあとの SIGUSR2 は、スタックを書かず、プロセスも終わらせない。
 module.unregister_stack()
-assert os.listdir(good) == [] and not faulthandler.unregister(signal.SIGUSR2), os.listdir(good)
+assert os.listdir(good) == [], os.listdir(good)
+os.kill(os.getpid(), signal.SIGUSR2)  # 取り下げたあとに届いても、終了せず、ファイルも作らない
+assert os.listdir(good) == [], os.listdir(good)
 module.unregister_stack()  # 登録がないときの取り下げは、何もしない
 # run() は、正常に終わると、自分の登録も、fork した包みの登録も残さない。取り下げたあとは、別の run() が登録し直せる。
 for _ in range(2):
     assert module.run(['true'], output=output, error=error) == 0
-    assert os.listdir(good) == [] and not faulthandler.unregister(signal.SIGUSR2), os.listdir(good)
+    assert os.listdir(good) == [], os.listdir(good)
+os.kill(os.getpid(), signal.SIGUSR2)  # 取り下げたあとに届いても、終了せず、ファイルも作らない
+assert os.listdir(good) == [], os.listdir(good)
 # fork の子（登録を引き継いだだけ）は、親のファイルを消さない。
 module.register_stack()
 assert os.listdir(good) == [str(os.getpid())]

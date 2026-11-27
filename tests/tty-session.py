@@ -16,6 +16,7 @@ HOLD_FD = 9
 CSI = re.compile(rb'\x1b\[[0-?]*[ -/]*[@-~]')
 stack_file = None
 stack_pid = None
+stack_sink = None
 
 
 def register_stack():
@@ -60,23 +61,32 @@ def register_stack():
 def unregister_stack():
     """正常に終わる前に、自分の登録を取り下げ、自分の PID の名前のファイルを消す。
 
-    先にファイルを消し、そのあと登録を外してファイルを閉じる。送る側は、先に開いたファイルからスタックを読める。
+    登録は外さず、書き先を /dev/null に替える。外すと SIGUSR2 は既定の動作（プロセスの終了）に戻り、
+    送る側の最後の確認と送信の間に取り下げられたとき、終わるテストのプロセスを止めてしまうため。
+    書き先は先に替えてから、ファイルを消して閉じる。送る側は、先に開いたファイルからスタックを読める。
     fork の子（登録を引き継いだだけで、自分では登録していない）は、
     親のファイルを消さないよう、登録した PID が自分のときだけ動く。`os._exit` は atexit を呼ばないので、
     終わる直前に明示して呼ぶ。KILL などで正常に終わらなかったプロセスのファイルは残る。
     """
-    global stack_file, stack_pid
+    global stack_file, stack_pid, stack_sink
     if stack_pid is None or stack_pid != os.getpid():
         return
     directory = os.environ.get('SQUAD_KIT_TEST_STACK_DIR')
+    switched = False
+    try:
+        if stack_sink is None:
+            stack_sink = open(os.devnull, 'wb')
+        faulthandler.register(signal.SIGUSR2, file=stack_sink, all_threads=True)
+        switched = True
+    except (OSError, ValueError, RuntimeError):
+        pass
     if directory:
         try:
             os.unlink(os.path.join(directory, str(stack_pid)))
         except OSError:
             pass
-    faulthandler.unregister(signal.SIGUSR2)
     opened, stack_file, stack_pid = stack_file, None, None
-    if opened:
+    if opened and switched:
         opened.close()
 
 
