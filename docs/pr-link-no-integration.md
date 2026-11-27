@@ -665,6 +665,7 @@ PR のタイトルは、GitHub で PR を直せる人なら誰でも書ける。
 | `tests/squad-pr-link-test.sh` | 120 秒のあいだ 404 で終わる今の場面を、タスクにプロジェクトのない入力にする。期待と、120 秒のうちに紐付く場面は変えない（[テスト](#テスト)） |
 | `tests/squad-pr-link-no-integration-test.sh` | 新しく足す（[テスト](#テスト)） |
 | `tests/squad-pr-watch-no-integration-test.sh` | 新しく足す。照合のデータを読めない場面、マージの依頼がない場面、書く前に回が変わる場面、知らせ済みの判定の場面を含める（[テスト](#テスト)） |
+| `tests/pr-watch-no-integration-lib.sh`、`tests/squad-pr-watch-no-integration-unlinked-test.sh`、`tests/squad-pr-watch-no-integration-reread-test.sh` | 新しく足し、1 本の時間を上限から離すため、上の行の場面を共通の準備と 3 本に分けて置く（場面は変えない）。`link-check` は元の 1 本に、`unlinked-check` は `-unlinked` に、書く直前の読み直しとマージの依頼は `-reread` に置く |
 | `tests/squad-review-next-decide-unlinked-test.sh` | `連携: なし` の場面と、見張りの登録に失敗する場面と、回のあとに `pr_url` が変わる場面と、古い回の行で止まる場面を足す |
 | `tests/squad-cli-lib-control-test.sh` | `analyze` の `latest` の場面と、`merge_requested` に回を渡す場面を足す（[テスト](#テスト)） |
 | `tests/squad-review-next-decide-fix-test.sh` | 使用率の待ちのコメントに、`連携: なし` の場面を足す |
