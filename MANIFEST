@@ -16,7 +16,7 @@ dfc7b81f937d5fb799b18ca4d9b7ac4ce58cee16f14edceb75bee2dfae80f53f  ./AGENTS.md
 3069bb0c5d56a3eca4adf024ce8b3e2585701a481645890a77141a773e4a89ce  ./CHANGELOG.md
 1eb99314d85723af288e50d11188f125f136b52e043917134038c50c02ef6a94  ./CONTRIBUTING.md
 35b6fce60988f9b9a34c897a147fc2304550a86189154497fd665bc8009dfc8e  ./EXTENSIONS.md
-c64ff136b0a19ba329f98b05b879ced23358f4863b7aa22d560c2359dba780a9  ./README.md
+c64757f13bdbd3ae82f9a4275703d4b2754498763847029a0b02a97faf2eb02c  ./README.md
 98918366ce3f46b590bb6aa4569914648339e1cea6068ccdcecfcdfe6794c353  ./STYLE.md
 76d01424beffc6fd5f69a6176dba1718af62c629485922d8eee75a3a8087e5d5  ./VERSION
 a8589891c83dd2f462ec04992aec83bc8d93e4cb3038f9a7483d890f0274ff06  ./common/agents/FORMAT
@@ -149,7 +149,7 @@ b9a45cd63da0d056163d453d727352a611c2515299627c097ce072f28fc7f8b7  ./lib/autopilo
 23d61cb270e4f571520a230918feccc00e8b5b09cbcf430108e0a424244b5a96  ./lib/installation.sh
 98823f1dc43473fe56a1a8f1e37e3d5a3fc3e8dd2389a7dff8c71f0b4c40f6a1  ./lib/project-changes.sh
 350f6f6dd554d0aa4c32302a45d459aeab8750e4b1fcf2dcbbed53b747930fbc  ./lib/project.sh
-644786eca22c603758cf6d7406ef6bf7b7934af7d62fd8ebac8adc0fdb343125  ./lib/questions.sh
+ce3c9114d4070b0e744432f53632b08ae29c2a8cf8d1ab6c296ac38f13a79236  ./lib/questions.sh
 ae4eac4a5f72d78dc0e311ec42a6ef3a9d1973f91a1aefe14ab32d8982f7b2a1  ./lib/render.sh
 586f3aa9bc5bfa9df551ff1e1be82b5adf9e671933b86341dde46bf9b804ca67  ./lib/setup-issues.sh
 3938f7e455607b15bd089439ce2c3bf106cb48e8e1d58c67a7b9e7cc32cdcbac  ./lib/squad.sh
@@ -158,7 +158,7 @@ b8145ced477ed48eb7c0f599f44fc85c3e15990085d6de4521f276286cee6ff8  ./lib/terminal
 f57a7a829cf4cac51462f7a2dc04912b57a99927b8541727faf70f7e4fa701a4  ./lib/version.sh
 405d6c439cb72b4f19d46452714e5ef46f3b9517a1ce8bea0cd57d24afcd2836  ./lib/webhooks.sh
 50c2bfd06e66458d38fe423d6f4c2bf3223efe098dde74b561e21105c807af40  ./lib/workspace.sh
-229399e07e5ef8c89f048fc6ccd210624288e76dfd03f7b2db1ea07c7a8ee310  ./manual.md
+4b10f493814545d7ec8e7947ef7342ed8f1ba1bac56324688eb9774a8044cfa0  ./manual.md
 633f1030aafe88149effa1a7c3d64247fd6100f682ffbaae2c212d44b443a538  ./scripts/build-assets.sh
 58a7f0238d3b698745dba710637832fad1c4dc3c051353b4a04505f77c798202  ./scripts/check-links.py
 44f95ffd36dfaf4829e3ea7a6c81dd60c6569595754aff1e8285e6d654c45eb1  ./scripts/check-style.py
@@ -694,14 +694,14 @@ aa48052b223dabd13d51dbe43d6ce1172d420d23c55c76030b194f037b8a2ecd  ./tests/runtim
 01aae340e98113206bcfde901b279f1c7e8401d4b63ff8f3c38df2147ff7e46a  ./tests/setup-fixture.sh
 b578078bcb20457554548922aaebdbee413a4ed8c1bc92e1c669c8220f7840a1  ./tests/setup-issues-test.sh
 a61db35ef43cd5f35c5e2384ea4e3f6b4d94df86b7d890ba714341ba27915db8  ./tests/setup-progress-test.sh
-196cbc139059af1c0d082682c6c77352c44aabf38bd5cac8e62322e9535e1348  ./tests/setup-repositories-test.sh
+eef0b1a24443af2c4f4eed1adb512a584544a60c6694e37378f29107578b5a8a  ./tests/setup-repositories-test.sh
 fcccbb9e0648dd9d7fc4aac8faf9872bdc8bc7d69dfd625b20182e9baf90e285  ./tests/setup-runtime-cli.py
 a6c5bb9c0b064cc3d59d1c27500f66d22f5ba52839afa1dbbdcde6d532f82fe5  ./tests/setup-runtimes-both-changes-test.sh
 aa03f77f85dc73a75048a50267d331ce66338f2d54745c758e7d5d309a7fdddd  ./tests/setup-runtimes-both-issues-test.sh
 bebfff3bc6b1fda21b88f36dfcd50878711c0609ccc205d7643f80d524f331a7  ./tests/setup-runtimes-both-test.sh
 47c29736164714192f08d063b07b5d9e8d354f88ad28ba008b984fc2351e6034  ./tests/setup-runtimes-test-lib.sh
 6b6369063bad32faa4ed17590f2078773e7db36fc09ff67eeed02109a1a997f4  ./tests/setup-tag-test.sh
-e21574a9e6bf9dd12e207a5a5f472661de040ceb6e112bc4eedcd9bfa3658f9c  ./tests/setup-test.sh
+cd89b69a90f1d008b97d4ff5d77c537eac0de21c9054c86cf984683903a5313e  ./tests/setup-test.sh
 988a7f34189829bf2801c6177c00ffff55ae472c7f8fa0783978dcd52cf13764  ./tests/setup-version-cache-check.sh
 e42f6c1da2298c8129b66a19532e50599526ae8bf0abd15c1dc3add3e6e2368a  ./tests/setup-version-cache.sh
 d0b7c9dddeb71a77716c318b7f63f4bf9ed2eec5351d1d93a895d22e773d192c  ./tests/setup-version-test.sh

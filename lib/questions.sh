@@ -514,8 +514,9 @@ ask_questions() {
 		printf '%s\n' 'ワークスペースのオーナーか管理者に、次の準備を依頼してください。' \
 			'1. ワークスペースの設定 → コードで GitHub 連携を設定し、このプロジェクトで使うリポジトリを許可します。' \
 			'2. 自前サーバーで GitHub App が未設定なら、サーバーの管理者に GitHub 連携の準備を依頼します。' \
-			'3. 導入先のサーバー・ワークスペースで multica repo list --output json を実行し、候補に出ることを確認してから、セットアップを流し直します。' >&2
-		die '選べるリポジトリがありません。手順書の「GitHub 連携とリポジトリの紐付け」に従い、ワークスペースへ紐付けてください。'
+			'3. GitHub 連携がなくても、ワークスペースの管理者が multica repo add <リポジトリの URL> で登録すれば、候補に出ます。' \
+			'4. 導入先のサーバー・ワークスペースで multica repo list --output json を実行し、候補に出ることを確認してから、セットアップを流し直します。' >&2
+		die '選べるリポジトリがありません。手順書の「リポジトリの登録と GitHub 連携」に従い、ワークスペースへ登録してください。'
 	fi
 	default=$(jq -nr --argjson items "$eligible_repos" --argjson previous "$saved" '[($previous.repositories // [])[] as $repo | $items|to_entries[]|select(.value.repository==$repo.repository)|(.key+1|tostring)]|join(" ")')
 	if [[ -z $default && $(jq length <<<"$eligible_repos") == 1 ]]; then default=1; fi

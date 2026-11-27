@@ -127,7 +127,8 @@ TEST_FAIL=project deny
 grep -q 'プロジェクト を取得できません' "$test_dir/err"
 TEST_MALFORMED=yes deny
 TEST_NO_REPO=yes deny
-grep -q 'GitHub 連携とリポジトリの紐付け' "$test_dir/err"
+grep -q 'リポジトリの登録と GitHub 連携' "$test_dir/err"
+grep -qF 'multica repo add <リポジトリの URL>' "$test_dir/err"
 cmp "$saved" "$test_dir/previous"
 echo 'PASS setup: CLI の失敗・不正 JSON・未連携では止め、前の答えを保つ'
 printf '1\n1\ndemo\n1\nmembera\n99\n1\n1\n99\n3 4\n4 9\n\nyes\n' >"$test_dir/input"

@@ -9,9 +9,9 @@ Multica のスクワッドを、プロジェクトごとに導入して更新す
 - macOS か Linux（WSL 2 を含む）の環境
 - `multica`・`jq`・`gh`・Python 3.11 以上・Git などの標準の道具
 - エージェントのランタイムとして、`claude`（Claude Code）と `codex` の一方または両方
-- 導入先の Multica のワークスペースと、そこで GitHub 連携を許可したプロジェクトのリポジトリ
+- 導入先の Multica のワークスペースと、そこに登録したプロジェクトのリポジトリ
 
-詳しい条件と Linux での入れ方は [受け取る人の準備](manual.md#受け取る人の準備) にある。
+詳しい条件と Linux での入れ方は [受け取る人の準備](manual.md#受け取る人の準備) に、GitHub 連携の有無の違いは [リポジトリの登録と GitHub 連携](manual.md#リポジトリの登録と-github-連携) にある。
 
 ## クイックスタート
 
