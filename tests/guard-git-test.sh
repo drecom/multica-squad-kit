@@ -228,8 +228,15 @@ ssh_undecided() {
 	grep -q '^git push のガード: SSH のコマンドを判定できないので止めた' "$test_dir/err"
 	grep -qF 'LFS' "$test_dir/err"
 	grep -qF '許可の一覧の問題ではありません' "$test_dir/err"
-	! grep -qF '紐付いた' "$test_dir/err"
-	! grep -qF 'への SSH の push' "$test_dir/err"
+	# 許可先の一覧を示す語句と push の宛先の文は、出た時点で明示的に失敗させる（`! grep` は set -e で止まらない）。
+	local phrase
+	for phrase in '紐付いた' 'ワークスペース' 'にだけ SSH で push できる' 'への SSH の push' "$(head -n 1 "$SQUAD_KIT_ALLOWED_REPOS" 2>/dev/null)"; do
+		[[ -n $phrase ]] || continue
+		if grep -qF -- "$phrase" "$test_dir/err"; then
+			echo "判定できない操作の表示に、出してはいけない語句がある: ${phrase}（$*）" >&2
+			exit 1
+		fi
+	done
 }
 
 # 受ける形の表（tests/fixtures/git-ssh-forms.tsv）を入力にして、1 行ごとに扱いを確認する。

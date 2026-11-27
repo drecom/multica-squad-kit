@@ -8,6 +8,7 @@ set_mode stopped
 run
 # マークのある設定を、人の設定（信頼なし）に替えて、足す信頼の行を読み、信頼が合う人の設定を作る。
 config=$TEMPLATE_AGENT_HOME/codex/config.toml
+pre_key='/<session-flags>/config.toml:pre_tool_use:0:0'
 unmarked_keys=$'allow_login_shell = false\ncheck_for_update_on_startup = false\n[analytics]\nenabled = false'
 echo ok >"$test_dir/codex-hooks"
 printf '%s\n' "$unmarked_keys" >"$config"
@@ -121,8 +122,16 @@ while IFS=$'\t' read -r id state refusal message remain; do
  printf '%s\n' '{"theme":"dark"}' >"$settings"
  case $state in
  managed) sed 's/trusted_hash = "sha256:[0-9a-f]*"/trusted_hash = "sha256:old"/' "$config" >"$test_dir/old-config"; cp "$test_dir/old-config" "$config" ;;
+ managed-off) sed 's/trusted_hash = "sha256:[0-9a-f]*"/trusted_hash = "sha256:old"/' "$config" | sed '/^\[hooks\.state\..*pre_tool_use/a\
+enabled = false' >"$test_dir/old-config"; cp "$test_dir/old-config" "$config" ;;
  new) rm -f "$config" ;;
  unmarked) printf '%s\n' "$unmarked_keys" >"$config" ;;
+ # 止めた役のフックの鍵に enabled = false を、見出しの書き方を変えて置く。案内は書き方でなく、読んだ設定の値で分ける。
+ unmarked-off-spaced) printf '%s\n[ hooks . state . "%s" ]\nenabled = false\n' "$unmarked_keys" "$pre_key" >"$config" ;;
+ unmarked-off-indent) printf '%s\n  [hooks.state."%s"]\n  enabled = false\n' "$unmarked_keys" "$pre_key" >"$config" ;;
+ unmarked-off-dotted) printf '%s\n[hooks]\nstate."%s".enabled = false\n' "$unmarked_keys" "$pre_key" >"$config" ;;
+ unmarked-off-other) printf '%s\n[hooks.state."/other/config.toml:x:0:0"]\nenabled = false\n' "$unmarked_keys" >"$config" ;;
+ unmarked-on) printf '%s\n[hooks.state."%s"]\nenabled = true\n' "$unmarked_keys" "$pre_key" >"$config" ;;
  unmarked-fresh) cp "$test_dir/unmarked-trusted" "$config" ;;
  unmarked-trusted) sed 's/trusted_hash = "sha256:[0-9a-f]*"/trusted_hash = "sha256:old"/' "$test_dir/unmarked-trusted" >"$config" ;;
  *) echo "表の状態が不明です: $state" >&2; exit 1 ;;

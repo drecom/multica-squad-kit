@@ -151,7 +151,7 @@ b9a45cd63da0d056163d453d727352a611c2515299627c097ce072f28fc7f8b7  ./lib/autopilo
 1e160f76a6cca7b4fbbe71af2c50cd7adc413e33ea3f8a41a631aedd01087d09  ./lib/codex-hooks.py
 2d1ddbe078e69260fa06aaf0af9169dd68aff118151dcebe615059714a3dd674  ./lib/extensions.py
 10cd0eaaddfd83b11ff48f1fd07d4fd3b029a93afd0504449017603559529589  ./lib/extensions.sh
-7fddee00e927c07ecd31372b2d25a53762c3e5cfc29d2ede918af8abcd1b6c0c  ./lib/host.sh
+abf1f16a3d86d573c7d0bd75202aafa4dfbecfd3eabd64a06ad34453b217c06d  ./lib/host.sh
 23d61cb270e4f571520a230918feccc00e8b5b09cbcf430108e0a424244b5a96  ./lib/installation.sh
 98823f1dc43473fe56a1a8f1e37e3d5a3fc3e8dd2389a7dff8c71f0b4c40f6a1  ./lib/project-changes.sh
 a64aa00177818b153a6029502a10439ad5d579ebcbbbda600572946bd837cc7c  ./lib/project.sh
@@ -307,7 +307,7 @@ dbb62029d95e8f85b01008d88dcff6a7d5fce368188e140c4fc7b570fbf8a109  ./tests/fixtur
 077a6ee0a3aa94073de201bb4b0b163345e20a097c3846ac572f5dba85b78862  ./tests/fixtures/codex-hooks-forms.tsv
 ebc0de81fe645e875d493af1f6cd26a89d2d2cc78ee893902d63bca66d7854f7  ./tests/fixtures/codex-hooks-paths.tsv
 8350679d4dff9afaea9dd8cebe958ae0c0421fe65ec2e64602b4117deb6c6a64  ./tests/fixtures/git-ssh-forms.tsv
-df6a1e28d2f97166000fd6f53b50b9ee6b557f7587272e0a5f556d9256a132e2  ./tests/fixtures/host-update-order.tsv
+bee2bb1b93ed6770b650c814cc488616d0b349db0be09ad5b59e48e2d69201cd  ./tests/fixtures/host-update-order.tsv
 5e1c194e8f8d27dbd3fd8dddaf87198bf84b00c9677bcb1252128ea75e75a8b0  ./tests/fixtures/metrics/breakdown/breakdown-tasks.json
 9f6da941b906e6c92294493f0298d90b0dd25ecdedb7b9f31ddb5a9c841b9d60  ./tests/fixtures/metrics/breakdown/breakdown.json
 f88fe23da2738ad60080b079f078eaa05657c08ce744ee300387e3324c502019  ./tests/fixtures/metrics/breakdown/breakdown.md
@@ -325,13 +325,13 @@ ecd6f37c326cf97ab4c60f934a3168f56fd6923862d4a1de6831dbe7e96d3e23  ./tests/fixtur
 0df1de86ac219d0a9d8604593412e10966b925fba42f84b43810de07311c5eb5  ./tests/gh-test.sh
 842a80a28bb169035e2774c2f2af84db74770ea91684b60012c51bf35ef2b2f4  ./tests/guard-backend.sh
 4f90c6eaf3861a432556fd0c38f9afb57908b7e2d1b09d8a10a1f8dc06a9b749  ./tests/guard-check-test.sh
-cdd227b43c7f0b18a0a3b07b47541c8aa3d5e9429a635ed20c9f6998a5a96892  ./tests/guard-git-test.sh
+068bb298b54752d51c36d4d84a6c35fe78a39fced4a78424607472d819a7bced  ./tests/guard-git-test.sh
 860892118f29640c780b4b3a20403658ecfb23e2d5261f18880b0ba626f12ac3  ./tests/guard-hook-test.sh
 7096a01774fa75f7d1643482ccbae548f8e9bb1471fbeaf8b185b69433fe8321  ./tests/host-daemon-test.sh
 0588e09c36eb9e5e572291dfcbcaacf3a200ba6532abe6fe3e3926a235a38444  ./tests/host-order-1-test.sh
 bca3a3a455902a7b46d811ace46109fc540530e0503da1ee2ed847a8c4f8082d  ./tests/host-order-2-test.sh
 cf6f1a35ba9654bfe215d7a56bd6674cb24586a80be03953195749f135bfe22a  ./tests/host-order-3-test.sh
-e8c49a65dfcebee3941fd55bbe301cb008de1e33e84922633cff4a386d5bc0a1  ./tests/host-order-body.sh
+e4c7e79f53c9388a7e73505652cdfd390a4da9ad4ae00be08753c716104f0ebf  ./tests/host-order-body.sh
 bb32949d8fdcbd671dd226e54a50265c3b730caf309a2477eefd452d8874be86  ./tests/host-order-setup-test.sh
 acd934e724c02eea735f7c23bb6fff6756c500df8007578c9940a059109e7f3f  ./tests/host-order-snapshot.py
 f1caec498622c8bed76d324dee1137ec3a7f5903bbb63d2d560ebe2d4359ec6b  ./tests/host-test-lib.sh

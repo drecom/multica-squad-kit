@@ -17,7 +17,8 @@
 none-managed	managed	none		書き換わる（比べるための行）
 none-new	new	none		書き換わる（比べるための行）
 managed-pre-disabled	managed	hooks:pre-disabled	無効か、有効と確認できません	何も変わらない
-managed-pre-disabled-guide	managed	hooks:pre-disabled	に enabled = false があれば、消すか true にしてから	何も変わらない
+managed-pre-disabled-guide	managed-off	hooks:pre-disabled	に enabled = false があれば、消すか true にしてから	何も変わらない
+managed-pre-disabled-noedit	managed	hooks:pre-disabled	このフックを無効にする enabled = false がないので、編集するものはありません	何も変わらない
 managed-stop-disabled	managed	hooks:stop-disabled	無効か、有効と確認できません	何も変わらない
 managed-no-enabled	managed	hooks:no-enabled	無効か、有効と確認できません	何も変わらない
 managed-enabled-null	managed	hooks:enabled-null	無効か、有効と確認できません	何も変わらない
@@ -37,6 +38,11 @@ new-dup-session	new	hooks:dup-session	2 つ以上あります	何も変わらな
 new-stop-only	new	hooks:stop-only	キットのフックがありません	何も変わらない（設定は作らない）
 new-hang	new	hooks:hang	hooks/list を読めませんでした	何も変わらない（設定は作らない）
 unmarked-pre-disabled	unmarked	hooks:pre-disabled	無効か、有効と確認できません	何も変わらない（人の設定は書き換えない）
+unmarked-off-spaced-guide	unmarked-off-spaced	hooks:pre-disabled	に enabled = false があれば、消すか true にしてから	何も変わらない（人の設定は書き換えない）
+unmarked-off-indent-guide	unmarked-off-indent	hooks:pre-disabled	に enabled = false があれば、消すか true にしてから	何も変わらない（人の設定は書き換えない）
+unmarked-off-dotted-guide	unmarked-off-dotted	hooks:pre-disabled	に enabled = false があれば、消すか true にしてから	何も変わらない（人の設定は書き換えない）
+unmarked-off-other-guide	unmarked-off-other	hooks:pre-disabled	このフックを無効にする enabled = false がないので、編集するものはありません	何も変わらない（人の設定は書き換えない）
+unmarked-on-guide	unmarked-on	hooks:pre-disabled	このフックを無効にする enabled = false がないので、編集するものはありません	何も変わらない（人の設定は書き換えない）
 unmarked-dup-session	unmarked	hooks:dup-session	2 つ以上あります	何も変わらない
 unmarked-untrusted	unmarked	untrusted	の行を足してから	何も変わらない
 unmarked-stale	unmarked-trusted	stale	の行を足してから	何も変わらない

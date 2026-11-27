@@ -170,6 +170,32 @@ PY
 	ui_notice warn "$config" "マークのない設定に、更新の確認と利用状況の送信を切るキーがありません: $missing" || ui_warning "マークのない設定に、更新の確認と利用状況の送信を切るキーがありません（${missing}）: $config"
 }
 
+# 設定を TOML として読み、止めた役のフックの鍵に enabled = false があるかを返す（0 はある）。見出しの書き方（空白・字下げ・ドット付きのキー）に依存しない。設定がない、読めて鍵がない、のときだけ 1。読めない設定は編集の案内を出す側（0）に倒す。何も書かない。
+host_codex_hook_disabled_in() {
+	[[ -f $1 ]] || return 1
+	python3 - "$1" "$2" <<'PY'
+import json
+import sys
+
+try:
+    import tomllib
+    with open(sys.argv[1], "rb") as source:
+        config = tomllib.load(source)
+except (ImportError, OSError, ValueError):
+    sys.exit(0)
+keys = [item["key"] for item in json.loads(sys.argv[2])]
+hooks = config.get("hooks")
+state = hooks.get("state") if isinstance(hooks, dict) else None
+if not isinstance(state, dict):
+    sys.exit(1)
+for key in keys:
+    entry = state.get(key)
+    if isinstance(entry, dict) and entry.get("enabled") is False:
+        sys.exit(0)
+sys.exit(1)
+PY
+}
+
 # Codex の設定のトップレベルの allow_login_shell が真偽値の false かを読む。ログインシェルでは別の起動ファイルが効くため、確認した環境とそろえる。何も書かない。
 host_codex_login_shell_off() {
 	python3 - "$1" <<'PY'
@@ -213,7 +239,7 @@ host_codex_check() {
 	# 信頼の値はフックを無効にしても変わらない。有効は、役のフックの項目の enabled で見る。
 	names=$(jq -r 'map("\(.hook)（\(.key)）") | join("、")' <<<"$disabled") || die 'Codex のフックの有効を読めませんでした。'
 	if [[ -n $names ]]; then
-		if [[ -f $config ]] && grep -q '^\[hooks\.state\.' "$config"; then
+		if host_codex_hook_disabled_in "$config" "$disabled"; then
 			die "Codex の役のフックが、無効か、有効と確認できません: ${names}。Stop が無効だと最後のコメントの確認が、PreToolUse が無効だとガードが動きません。まず codex --version で Codex が新しいことと、フックを無効にしている設定がないことを確認してください。設定 $config の、上の鍵の [hooks.state.\"<鍵>\"] に enabled = false があれば、消すか true にしてから、セットアップを流し直してください。何も書き換えていません。"
 		fi
 		die "Codex の役のフックが、無効か、有効と確認できません: ${names}。Stop が無効だと最後のコメントの確認が、PreToolUse が無効だとガードが動きません。設定 $config には、このフックを無効にする enabled = false がないので、編集するものはありません。codex --version で Codex が新しいことと、フックを無効にしている設定（Codex の管理者の設定など）がないことを確認してから、セットアップを流し直してください。何も書き換えていません。"
