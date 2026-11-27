@@ -147,7 +147,12 @@ for target, expected in (('wrapper', 125), ('parent', -9), ('term', 143)):
         wrapper, child = map(int, stream.readline().split())
         with notice.open('rb') as entered:
             assert entered.read(1) == b'x'
-        os.kill(wrapper if target == 'wrapper' else proc.pid, signal.SIGTERM if target == 'term' else signal.SIGKILL)
+        victim = wrapper if target == 'wrapper' else proc.pid
+        if target != 'term':
+            # SIGKILL されたプロセスは、スタックの登録を取り下げられない。tty-session-test.sh が、残るファイルはこれだけと確認する。
+            with (scratch / 'sigkilled-pids').open('a') as record:
+                record.write(f'{victim}\n')
+        os.kill(victim, signal.SIGTERM if target == 'term' else signal.SIGKILL)
         assert stream.read() == b''
     finish(proc, case, expected)
     no_process(wrapper, child)
@@ -189,8 +194,8 @@ def inline(code, *, scripted=None, answer=None, fds=('in', 'out', 'err'), comman
         input_path = case / 'input'
         input_path.write_bytes(answer)
     # 時間切れの記録の登録（run() の始めの register_stack）が開くファイルを、比べる fd に数えない。
-    # 登録は同じプロセスで 1 回だけ開くので、比べる前に済ませておく。
-    getattr(module, 'register_stack', lambda: None)()
+    # run() は終わるときに登録を取り下げてファイルを閉じるので、比べる前も取り下げた状態にそろえる。
+    getattr(module, 'unregister_stack', lambda: None)()
     before = set(os.listdir('/dev/fd'))
     diagnostic = io.StringIO()
     with contextlib.redirect_stderr(diagnostic):

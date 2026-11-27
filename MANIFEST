@@ -821,11 +821,11 @@ c98729878e6706f5780a10fbbdd9246ef49a12182fb27d46624296d335659336  ./tests/termin
 02780be78af1fe401053d462b0b9ecc108dfed3c0b1efd387af2cd491bae6b8a  ./tests/terminal-stub.sh
 c0509d732b2b3fa99f882283848bc2ba1c82ed3a6d0a90ac8263045dfee07010  ./tests/terminal-test.sh
 bb7b764515248a871ceb26e80ed0d7a543675fe39a1813d3355767cb94475dc7  ./tests/terms-test.sh
-454f25cd540125190df943161983ca5d4166b207d430c806b9774e9683550da0  ./tests/test-runner-test.sh
+af7827d0eb204af364acfe613f94a3a13aaeb3803ebdd9755dc344d020e47dee  ./tests/test-runner-test.sh
 aafe53504d959b1213d2c5a2d5f659226a75f214be7e30b8fe579cee82e4b3b0  ./tests/test-weights
-27f91ca1d21f1e8918fc6562cd657054a2d2e2e98189e093b2f3833056621925  ./tests/tty-session-cases.py
-a0e2424125413c1c5bc44b0dba0b9c391785e81466da212529b51a8fbfe10013  ./tests/tty-session-test.sh
-6d055f4b85471774e2c74d89727294da752a2fe2db94562fd856ff496026377d  ./tests/tty-session.py
+0c443df4ae317caead8ade87ae56414d1de8ffce76022e746354502fa394e64b  ./tests/tty-session-cases.py
+f8f63fec772482088cbbbd0a2926bd1193177b9191fe9bdb1cce99a856d7f48c  ./tests/tty-session-test.sh
+1b993ef6a188f498218f497edc1ae8c32d40881d0d2d43896a09d1adfa59dbda  ./tests/tty-session.py
 3e9e683ab3a2775d4f92aba2e8c84f8aa66cf7066ec328f9603728ded54ad6c6  ./tests/ui-contrast.py
 9b79bf0e9a21b198ce356ee7d6fc287316eef96040f5a4918b5c21ed09c2c607  ./tests/ui-steps-test.sh
 eb0a12120d36856588a0f63afb37cdfa1e2b253c19588fe385bafa439e1b2d4d  ./tests/ui-test.sh

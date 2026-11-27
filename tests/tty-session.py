@@ -57,6 +57,29 @@ def register_stack():
         previous.close()
 
 
+def unregister_stack():
+    """正常に終わる前に、自分の登録を取り下げ、自分の PID の名前のファイルを消す。
+
+    先にファイルを消し、そのあと登録を外してファイルを閉じる。送る側が消える前にファイルを見つけても、
+    送られた先はまだ登録を持っている。fork の子（登録を引き継いだだけで、自分では登録していない）は、
+    親のファイルを消さないよう、登録した PID が自分のときだけ動く。`os._exit` は atexit を呼ばないので、
+    終わる直前に明示して呼ぶ。KILL などで正常に終わらなかったプロセスのファイルは残る。
+    """
+    global stack_file, stack_pid
+    if stack_pid is None or stack_pid != os.getpid():
+        return
+    directory = os.environ.get('SQUAD_KIT_TEST_STACK_DIR')
+    if directory:
+        try:
+            os.unlink(os.path.join(directory, str(stack_pid)))
+        except OSError:
+            pass
+    faulthandler.unregister(signal.SIGUSR2)
+    opened, stack_file, stack_pid = stack_file, None, None
+    if opened:
+        opened.close()
+
+
 def write_all(fd, value):
     while value:
         value = value[os.write(fd, value):]
@@ -121,6 +144,8 @@ def wrapper(master, slave, status_r, status_w, control_r, control_w, targets, co
         close(master)
         close(status_r)
         close(control_w)
+        # 閉じた番号は、次に開くファイル（スタックの登録）が使う。終わりの片付けで閉じ直さない。
+        descriptors.difference_update((master, status_r, control_w))
         os.setsid()
         register_stack()  # 別のセッションへ移ったあとに公開する。移る前は、親と同じセッションの印で診断が包みへも届く
         fcntl.ioctl(slave, termios.TIOCSCTTY, 0)
@@ -310,9 +335,11 @@ def run(command, *, fds=('in', 'out', 'err'), output, error, input_file=None,
             try:
                 wrapper(master, slave, status_r, status_w, control_r, control_w,
                         targets, command, nonce, watch)
+                unregister_stack()
                 os._exit(0)
             except BaseException as failure:
                 print(f'tty-session: wrapper: {type(failure).__name__}: {failure}', file=sys.stderr)
+                unregister_stack()
                 os._exit(125)
         close(slave)
         slave = None
@@ -412,6 +439,7 @@ def run(command, *, fds=('in', 'out', 'err'), output, error, input_file=None,
         for handle in handles:
             handle.close()
         signal.signal(signal.SIGTERM, old_term)
+        unregister_stack()
     return result
 
 

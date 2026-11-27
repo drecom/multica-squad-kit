@@ -558,15 +558,40 @@ assert load().run(['true'], output=output, error=error) == 0
 # 成功したときは、PID の名前のファイルだけが残り、先頭に印があり、SIGUSR2 でスタックが続く。
 good = tempfile.mkdtemp()
 os.environ['SQUAD_KIT_TEST_STACK_DIR'] = good
-load().register_stack()
+module = load()
+module.register_stack()
 assert os.listdir(good) == [str(os.getpid())], os.listdir(good)
 os.kill(os.getpid(), signal.SIGUSR2)
 with open(os.path.join(good, str(os.getpid()))) as stream:
     lines = stream.read().splitlines()
 assert lines[0] == f'{os.getpid()} {os.getppid()} {os.getpgrp()} {os.getsid(0)}' and any('File "' in line for line in lines[1:]), lines
+# 正常に終わるときは、登録を取り下げ、自分の PID の名前のファイルを消す。取り下げたあとの SIGUSR2 は、スタックを書かない。
+module.unregister_stack()
+assert os.listdir(good) == [] and not faulthandler.unregister(signal.SIGUSR2), os.listdir(good)
+module.unregister_stack()  # 登録がないときの取り下げは、何もしない
+# run() は、正常に終わると、自分の登録も、fork した包みの登録も残さない。取り下げたあとは、別の run() が登録し直せる。
+for _ in range(2):
+    assert module.run(['true'], output=output, error=error) == 0
+    assert os.listdir(good) == [] and not faulthandler.unregister(signal.SIGUSR2), os.listdir(good)
+# fork の子（登録を引き継いだだけ）は、親のファイルを消さない。
+module.register_stack()
+assert os.listdir(good) == [str(os.getpid())]
+child = os.fork()
+if child == 0:
+    module.unregister_stack()
+    os._exit(0)
+os.waitpid(child, 0)
+assert os.listdir(good) == [str(os.getpid())], os.listdir(good)
+module.unregister_stack()
+assert os.listdir(good) == []
+# コマンドとして流しても、正常に終わったあとにファイルが残らない。KILL された包みの登録は残る。
+import subprocess
+env = dict(os.environ, SQUAD_KIT_TEST_STACK_DIR=good)
+done = subprocess.run([sys.executable, '-I', helper, '--output', output, '--error', error, '--', 'true'], env=env)
+assert done.returncode == 0 and os.listdir(good) == [], os.listdir(good)
 PY
 python3 -I "$test_dir/registration-case.py" "$kit/tests/tty-session.py"
-echo 'PASS runner: 登録は印を書いてから登録し、成功したときだけ PID の名前で公開して、失敗しても動作を変えない'
+echo 'PASS runner: 登録は印を書いてから登録し、成功したときだけ PID の名前で公開して、失敗しても動作を変えない。正常に終わるときは取り下げてファイルを残さない'
 
 # 1 つも送れなくても、記録は進み、テストは今までどおり止まる。登録しないテストの PID の名前のファイルは、印がないので送らない。
 cat >"$fixtures/unregistered.sh" <<'FIXTURE'
