@@ -213,6 +213,21 @@ for mode in plain no_integration; do
 done
 echo 'PASS review-next-decide: unlinked の前に pr_url が回の対象の PR と違う PR に変わると、マージの依頼を書かず、食い違いの行で 3 で終わる（連携なしも同じ）'
 
+# 回のあとに新しい回があり、unlinked が古い回の行を出したときも、マージの依頼を書かず、その行で 3 で終わる。連携なしでも同じ。
+for mode in plain no_integration; do
+	retry_merge_setup
+	if [[ $mode == plain ]]; then unlinked; else no_integration; fi
+	printf 'CI %s: 成功\n' "${sha:0:7}" >"$test_dir/cinow-out"
+	old_round='紐付け: 古い回 回: final-1 今の回: final-2'
+	printf '%s\n' "$old_round" >"$test_dir/unlinked-out"
+	run final-1
+	expect_leader "$old_round"
+	[[ $(<"$test_dir/out") == "次の依頼を決められません: $old_round" ]] || fail "止まる行が違う: $(<"$test_dir/out")"
+	[[ $(<"$test_dir/out") != *'マージの依頼'* ]] || fail "止まる行にマージの依頼がある: $(<"$test_dir/out")"
+	expect_call_has pr-watch-calls 'unlinked test-issue final-1 --leader orchestrator'
+done
+echo 'PASS review-next-decide: unlinked が古い回の行を出すと、マージの依頼を書かず、その行で 3 で終わる（連携なしも同じ）'
+
 # ---- 書く前の失敗。
 reset
 ok_round

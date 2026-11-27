@@ -31,6 +31,7 @@
 #   squad-pr-watch unlinked <タスク> <回のコメント> [<見張り役の ID>] [--leader <リーダーの ID>]
 #     紐付いていない PR のマージ待ちを、1 時間おき・72 時間まで確認する規則を登録する。
 #     回のコメントは、名簿で回と認め、`対象の PR:` が metadata の pr_url と同じときだけ、規則の最後に `見張る PR:` と `確認した回:` の行を足す。
+#     回が今の回（認める回のうち最も新しいもの）でないときは、規則を作らず `紐付け: 古い回` の行を出す。
 #     pr_url が回の `対象の PR:` と違うときは、規則を作らず `紐付け: 食い違い` の行を出す。
 #     回を認められないときは、連携なし（pr_link_no_integration が pr_url と同じ）なら規則を作らずに 1 で終わり、それ以外は 2 行を足さずに登録する。
 #     リーダーの ID は、省くと MULTICA_AGENT_ID から読む。unlinked-check に渡す ID と、見張り役がないときの起こす宛先になる。
@@ -785,6 +786,7 @@ unlinked_deduplicate() {
 }
 
 # 回のコメントを名簿で回と認め、その `対象の PR:` の正規形を標準出力に出す。認められないときは理由を 1 行出して 1 を返す。
+# 認める回でも、認める回のうちコメントの並びで最も新しい回（今の回）でないときは、今の回の ID を出して 2 を返す。
 # 名簿はタスクの担当のスクワッドから読む。呼び出しの --leader と規則のリーダーの ID は、回の判定に使わない。
 unlinked_round_pr() {
 	local issue=$1 round=$2 comments roster leader principals judge lines value data
@@ -799,6 +801,11 @@ unlinked_round_pr() {
 	if [[ $(jq -r --arg round "$round" '.rounds[$round].ok // false' <<<"$judge") != true ]]; then
 		echo "回を認められない（$(jq -r --arg round "$round" '.rounds[$round].reason // "回のコメントでない"' <<<"$judge")）"
 		return 1
+	fi
+	value=$(jq -r '.latest // empty' <<<"$judge") || { echo '今の回を読めない'; return 1; }
+	if [[ $value != "$round" ]]; then
+		echo "$value"
+		return 2
 	fi
 	lines=$(jq -r --arg round "$round" '[.[] | select(.id == $round) | (.content // "") | gsub("\r\n?"; "\n") | split("\n")[]
 		| select(startswith("対象の PR:"))] | .[]' <<<"$comments") || { echo '回のコメントを読めない'; return 1; }
@@ -816,7 +823,7 @@ unlinked_round_pr() {
 }
 
 unlinked() {
-	local issue=$1 round=$2 monitor=${3-} leader=${4-} target task thread instruction response expires data round_pr reason
+	local issue=$1 round=$2 monitor=${3-} leader=${4-} target task thread instruction response expires data round_pr reason status
 	local trigger=$round
 	[[ -n $leader ]] || leader=${MULTICA_AGENT_ID:-}
 	if [[ -z $leader ]]; then
@@ -828,7 +835,13 @@ unlinked() {
 	if [[ $(jq -r .state <<<"$data") != valid ]]; then jq -r .line <<<"$data"; return 0; fi
 	# 見張る PR は、回のコメントの `対象の PR:` に固定する。合わないときは、既存の規則に触れずに止まる。
 	round_pr=''
-	if reason=$(unlinked_round_pr "$issue" "$round"); then
+	status=0
+	reason=$(unlinked_round_pr "$issue" "$round") || status=$?
+	if ((status == 2)); then
+		printf '紐付け: 古い回 回: %s 今の回: %s\n' "$round" "$reason"
+		return 0
+	fi
+	if ((status == 0)); then
 		round_pr=$reason
 		if [[ $(jq -rn --arg a "$round_pr" --arg b "$(jq -r .url <<<"$data")" '($a | ascii_downcase) == ($b | ascii_downcase)') != true ]]; then
 			printf '紐付け: 食い違い pr: %s 回の PR: %s\n' "$(jq -r .url <<<"$data")" "$round_pr"

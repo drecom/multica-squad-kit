@@ -168,15 +168,45 @@ run_unlinked round-1 monitor
 assert_jq 'map(.id) == ["old"]' "$test_dir/rules.json"
 echo 'PASS unlinked: 回のあとに pr_url が別の PR に変わっていれば、規則を作らず、既存の規則にも触れず、食い違いの行を出して 0 で終える'
 
+# 引数の回のあとに、認める新しい回があるときは、連携なしでもそうでなくても、規則を作らず、既存の規則にも触れず、古い回の行を出して 0 で終える。
+# 人間と名簿の外のコメントは、新しい回に数えない。
+for mode in plain no_integration; do
+	register_reset
+	[[ $mode == plain ]] || no_integration "$repo_pr"
+	add_comment round-1 agent orchestrator "$(round_body "$repo_pr")"
+	add_comment human-round member human-1 "$(round_body "$repo_pr")"
+	add_comment rogue-round agent rogue "$(round_body "$repo_pr")"
+	run_unlinked round-1 monitor
+	[[ $status == 0 && ! -s $test_dir/error && $(<"$test_dir/output") == *'見張り: '* && $(<"$test_dir/output") != *'古い回'* ]] || { echo "人間と名簿の外のコメントで古い回になった: $mode" >&2; cat "$test_dir/output" "$test_dir/error" >&2; exit 1; }
+	: >"$test_dir/wakeups.jsonl"
+	printf '%s\n' "$(fixture issue-wakeups | jq --arg instruction $'紐付いていない PR のマージ待ちの見張りで起きました。\n古い指示' '.id = "old" | .instruction = $instruction')" | jq -s . >"$test_dir/rules.json"
+	add_comment round-2 agent orchestrator "$(round_body "$repo_other")"
+	run_unlinked round-1 monitor
+	[[ $status == 0 && ! -s $test_dir/error && ! -s $test_dir/wakeups.jsonl ]]
+	[[ $(<"$test_dir/output") == "紐付け: 古い回 回: round-1 今の回: round-2" ]] || { echo "古い回の行が違う: $mode: $(<"$test_dir/output")" >&2; exit 1; }
+	assert_jq 'map(.id) == ["old"]' "$test_dir/rules.json"
+	# 今の回なら、そのまま登録できる。
+	jq --arg pr "$repo_other" '.metadata.pr_url = $pr' "$test_dir/task.json" >"$test_dir/changed.json"
+	mv "$test_dir/changed.json" "$test_dir/task.json"
+	[[ $mode == plain ]] || no_integration "$repo_other"
+	run_unlinked round-2 monitor
+	[[ $status == 0 && ! -s $test_dir/error && $(<"$test_dir/output") == *'見張り: '* ]]
+	assert_jq -s 'length == 1 and (.[0].body | split("\n") | map(select(. != "")) | .[-2:] == ["見張る PR: https://github.com/example/repo/pull/68", "確認した回: round-2"])' "$test_dir/wakeups.jsonl"
+done
+echo 'PASS unlinked: 引数の回のあとに認める新しい回があれば、規則を作らず、既存の規則にも触れず、古い回の行を出して 0 で終える。人間と名簿の外のコメントは数えず、今の回なら登録できる'
+
 # 連携なしで回を認められないときは、規則を作らず、理由を標準エラーに 1 行出して 1 で終える。
 register_reset
 no_integration "$repo_pr"
 add_comment human-round member human-1 "$(round_body "$repo_pr")"
 add_comment result-round agent orchestrator "$(round_body "$repo_pr")"$'\n返事の回: round-1'
 add_comment rogue-round agent rogue "$(round_body "$repo_pr")"
-add_comment two-lines agent orchestrator "$(round_body "$repo_pr" "$repo_pr")"
-add_comment no-line agent orchestrator "$(round_body)"
+# 認める回でも、対象の PR の行が 1 つでない回は、今の回でなければ古い回になるので、足してすぐ流す。
 for args in 'human-round monitor' 'result-round monitor' 'no-such-comment monitor' 'rogue-round monitor --leader rogue' 'two-lines monitor' 'no-line monitor'; do
+	case $args in
+	two-lines*) add_comment two-lines agent orchestrator "$(round_body "$repo_pr" "$repo_pr")" ;;
+	no-line*) add_comment no-line agent orchestrator "$(round_body)" ;;
+	esac
 	: >"$test_dir/wakeups.jsonl"
 	# shellcheck disable=SC2086
 	run_unlinked $args

@@ -7,7 +7,7 @@
 # 絞ったテストの 6 本は、0a980cc40edb7f02484a148833de6c31da716132 の CI（macOS 全 5 シャード）の実測に直した。
 # squad-pr-link-no-integration と squad-pr-watch-no-integration は、手元の tests/run.sh の秒数（squad-pr-link-no-integration は一覧の読み直しの場面を足した後の 48 秒、squad-pr-watch-no-integration は unlinked-check の場面を足した後の CPU 時間 50 秒）に、同じ手元で測った squad-pr-watch-link-retry の CI との比（97 秒対 57 秒、約 1.7 倍）を掛けた見積もり。CI の ==== PASS の秒数が出たら写し直す。
 # squad-review-next-decide-unlinked と squad-review-next-decide-fix は、連携なしの場面を足した分（手元の tests/run.sh で、decide の 1 回の実行が約 2 秒、足した実行が unlinked に 6 回、fix に 1 回）を、手元の秒数と CI の比（約 0.7）で直した見積もり。CI の ==== PASS の秒数が出たら写し直す。
-# squad-pr-watch-unlinked と squad-review-next-decide-unlinked は、回の照合の場面を足した分を、手元の tests/run.sh の秒数（squad-pr-watch-unlinked は 26 秒、squad-review-next-decide-unlinked は足した実行が 2 回で約 4 秒）に CI の比（約 0.7）を掛けた見積もり。CI の ==== PASS の秒数が出たら写し直す。
+# squad-pr-watch-unlinked と squad-review-next-decide-unlinked は、回の照合と古い回の場面を足した分を、手元の tests/run.sh の秒数（squad-pr-watch-unlinked は 35 秒、squad-review-next-decide-unlinked は足した実行が 2 回で約 4 秒）に CI の比（約 0.7）を掛けた見積もり。CI の ==== PASS の秒数が出たら写し直す。
 tests/action-advisories-test.sh 6
 tests/agent-templates-test.sh 35
 tests/audit-targets-test.sh 1
@@ -113,7 +113,7 @@ tests/squad-pr-watch-register-test.sh 30
 tests/squad-pr-watch-unlinked-check-test.sh 40
 tests/squad-pr-watch-unlinked-concurrent-test.sh 5
 tests/squad-pr-watch-unlinked-register-test.sh 6
-tests/squad-pr-watch-unlinked-test.sh 18
+tests/squad-pr-watch-unlinked-test.sh 25
 tests/squad-pr-watch-url-test.sh 30
 tests/squad-preflight-test.sh 11
 tests/squad-run-cut-test.sh 10
@@ -131,7 +131,7 @@ tests/squad-review-next-decide-fix-test.sh 51
 tests/squad-review-next-decide-rework-record-test.sh 31
 tests/squad-review-next-decide-final-test.sh 100
 tests/squad-review-next-decide-pr-test.sh 35
-tests/squad-review-next-decide-unlinked-test.sh 67
+tests/squad-review-next-decide-unlinked-test.sh 70
 tests/squad-review-next-decide-merge-test.sh 75
 tests/squad-review-next-decide-merge-note-test.sh 98
 tests/squad-review-next-decide-merge-short-test.sh 25
