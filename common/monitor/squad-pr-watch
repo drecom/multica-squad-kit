@@ -975,10 +975,16 @@ if found:
 # 71 時間を過ぎたマージ待ちで、見張りの終わりの知らせを 1 回だけ書く。同じ 1 行目のコメントがあれば書かない。
 # 呼ぶ人間を決められないときは、メンションの行を省いて書き、理由を標準エラーに出して 1 を返す。
 unlinked_end_notice() {
-	local issue=$1 leader=$2 thread=$3 pr_url=$4 rules end first comments squad content reason='' status
+	local issue=$1 leader=$2 thread=$3 pr_url=$4 data=$5 rules end first comments squad content reason='' status
 	rules=$(squad_cli_read issue-wakeups "$issue") || return 1
 	end=$(printf '%s\n' "$rules" | unlinked_end_data "$(date +%s)") || return 1
 	[[ -n $end ]] || return 0
+	# 見張る PR を回で確認できないときは、知らせない。
+	if ! reason=$(unlinked_watch_check "$issue" "$data"); then
+		printf '見張りの終わりの知らせを書きません（%s）。\n' "$reason" >&2
+		return 0
+	fi
+	reason=''
 	first="連携なしのリポジトリの PR のマージ待ちの見張りが、${end} に終わります。そのあとにマージしたときは、タスクを \`done\` にしてください。マージせずに閉じたときは、\`done\` にしません。PR: \`${pr_url}\`"
 	comments=$(squad_cli_read issue-comments "$issue") || return 1
 	if jq -e --arg first "$first" 'any(.[]; .author_type == "agent" and ((.content | split("\n"))[0] == $first))' <<<"$comments" >/dev/null; then
@@ -1000,9 +1006,45 @@ unlinked_end_notice() {
 	fi
 }
 
+# 自分の規則（作成が最も早い 1 つ）の `見張る PR:` と `確認した回:` を、回のコメントと metadata に照合する。
+# 第 2 引数は pr_url_data の出力。そろうときは何も出さずに 0 を返す。そろわないときは理由を 1 行出して 1 を返す。
+unlinked_watch_check() {
+	local issue=$1 data=$2 rules instruction watch_lines round_lines watch round watch_data round_pr url
+	rules=$(squad_cli_read issue-wakeups "$issue" 2>/dev/null) || { echo '規則を読めない'; return 1; }
+	instruction=$(jq -r --arg mark "$UNLINKED_MARK" '[.[] | select((.instruction | split("\n")[0]) == $mark)]
+		| sort_by(.created_at, .id) | .[0].instruction // empty' <<<"$rules") || { echo '規則を読めない'; return 1; }
+	[[ -n $instruction ]] || { echo '自分の規則が見つからない'; return 1; }
+	instruction=$(tr -d '\r' <<<"$instruction")
+	watch_lines=$(grep '^見張る PR:' <<<"$instruction" || true)
+	round_lines=$(grep '^確認した回:' <<<"$instruction" || true)
+	if [[ $(grep -c . <<<"$watch_lines") != 1 || $(grep -c . <<<"$round_lines") != 1 ]]; then
+		echo '規則の `見張る PR:` か `確認した回:` の行が 1 つずつでない'
+		return 1
+	fi
+	watch=$(sed -e 's/^見張る PR:[[:space:]]*//' -e 's/[[:space:]]*$//' <<<"$watch_lines")
+	round=$(sed -e 's/^確認した回:[[:space:]]*//' -e 's/[[:space:]]*$//' <<<"$round_lines")
+	watch_data=$(pr_url_data "$(jq -cn --arg url "$watch" '{metadata: {pr_url: $url}}')") || { echo '規則の `見張る PR:` を読めない'; return 1; }
+	case $(jq -r .state <<<"$watch_data") in
+	foreign | valid) ;;
+	*) echo '規則の `見張る PR:` が GitHub の PR の URL の形でない'; return 1 ;;
+	esac
+	watch=$(jq -r .url <<<"$watch_data")
+	round_pr=$(unlinked_round_pr "$issue" "$round") || { echo "確認した回: $round_pr"; return 1; }
+	if [[ $(jq -rn --arg a "$round_pr" --arg b "$watch" '($a | ascii_downcase) == ($b | ascii_downcase)') != true ]]; then
+		echo "回の PR（$round_pr）が規則の見張る PR（$watch）と違う"
+		return 1
+	fi
+	url=$(jq -r .url <<<"$data")
+	if [[ $(jq -rn --arg a "$url" --arg b "$watch" '($a | ascii_downcase) == ($b | ascii_downcase)') != true ]] \
+		|| ! jq -e '.no_integration_matches' <<<"$data" >/dev/null; then
+		echo "metadata の pr_url と pr_link_no_integration が規則の見張る PR（$watch）と合わない"
+		return 1
+	fi
+}
+
 unlinked_check() {
 	local issue=$1 leader=$2 monitor=${3-} task pr_url pr thread link_line comments prefix notice content conflict_line head short result data
-	local status=0 ci_line
+	local status=0 ci_line reason
 	task=$(squad_cli_read issue-get "$issue")
 	case $(jq -r '.status_category' <<<"$task") in
 	done | cancelled) unlinked_stop "$issue" 'タスクが終わっている'; return 0 ;;
@@ -1020,12 +1062,15 @@ unlinked_check() {
 		MERGED)
 			# 連携なしの PR のマージは、タスクを done にする。マージは事実なので、タスクの状態を見る前に置く。
 			if jq -e '.no_integration_matches' <<<"$data" >/dev/null; then
-				if ! multica issue status "$issue" done --no-start >/dev/null; then
-					echo 'PR はマージされましたが、タスクを done にできませんでした。規則は残します。' >&2
-					return 1
+				if reason=$(unlinked_watch_check "$issue" "$data"); then
+					if ! multica issue status "$issue" done --no-start >/dev/null; then
+						echo 'PR はマージされましたが、タスクを done にできませんでした。規則は残します。' >&2
+						return 1
+					fi
+					unlinked_stop "$issue" 'PR がマージされたので、タスクを done にした'
+					return 0
 				fi
-				unlinked_stop "$issue" 'PR がマージされたので、タスクを done にした'
-				return 0
+				printf 'PR はマージされましたが、done にしません（%s）。\n' "$reason" >&2
 			fi
 			unlinked_stop "$issue" 'PR がマージ済みか閉じている'
 			return 0 ;;
@@ -1086,7 +1131,7 @@ unlinked_check() {
 	fi
 	# 連携なしの PR は、見張りの最後の確認で、そのあとにマージしたときの done を人間に知らせる。
 	if [[ $link_line == '紐付け: 紐付いていない '* ]] && jq -e '.no_integration_matches' <<<"$data" >/dev/null; then
-		if ! unlinked_end_notice "$issue" "$leader" "$thread" "$pr_url"; then status=1; fi
+		if ! unlinked_end_notice "$issue" "$leader" "$thread" "$pr_url" "$data"; then status=1; fi
 	fi
 	return "$status"
 }

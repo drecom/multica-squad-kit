@@ -540,18 +540,34 @@ done
 echo 'PASS no-integration: unlinked-check の CI とコンフリクトの行と知らせは、記録があってもないときと同じ'
 
 # unlinked-check のマージと閉じたときの扱い、見張りの終わりの知らせ。
+add_comment() { # ID 作者の種類 作者の ID 本文
+	jq --slurpfile base "$test_dir/comment-prototype.json" --arg id "$1" --arg type "$2" --arg author "$3" --arg content "$4" \
+		'. + [$base[0] + {id: $id, author_type: $type, author_id: $author, content: $content}]' "$test_dir/comments.json" >"$test_dir/changed.json"
+	mv "$test_dir/changed.json" "$test_dir/comments.json"
+}
+round_body() { # 対象の PR の行に入れる URL...
+	local body=$'確認するコミット: abcdef0\n返事を待つ役: [@demo-monitor-test](mention://agent/monitor)\n観点: code-reviewer（テスト）' url
+	for url; do body+=$'\n'"対象の PR: $url"; done
+	printf '%s' "$body"
+}
+# 規則の指示の最後の 2 行。省くと、round-1 と $pr の標準の 2 行にする。
+rule_lines() { printf '見張る PR: %s\n確認した回: %s' "${1-$pr}" "${2-round-1}"; }
 unlinked_prepare() {
+	local lines=${2-$(rule_lines)}
 	update_task ".status = \"in_review\" | .metadata.pr_url = \"$pr\""
-	fixture issue-wakeups | jq --arg mark "$UNLINKED_MARK" --arg created "${1-$(stamp -3600)}" \
-		'. as $base | [$base + {id:"mine",instruction:($mark + "\n確認"),created_at:$created}]' >"$test_dir/rules.json"
-	jq '.[0] += {creator_id:"human-1"}' "$test_dir/squads.json" >"$test_dir/squads-updated.json"
+	fixture issue-wakeups | jq --arg mark "$UNLINKED_MARK" --arg created "${1-$(stamp -3600)}" --arg lines "$lines" \
+		'. as $base | [$base + {id:"mine",instruction:($mark + "\n確認\n" + $lines),created_at:$created}]' >"$test_dir/rules.json"
+	jq '.[0] += {creator_id:"human-1"} | map(.name = "Demo-Test")' "$test_dir/squads.json" >"$test_dir/squads-updated.json"
 	mv "$test_dir/squads-updated.json" "$test_dir/squads.json"
 	fixture member-list | jq '[. + {user_id:"human-1",name:"Owner"}]' >"$test_dir/human-members.json"
+	# 名簿のリーダーが書いた回。回の判定は、登録と同じく名簿から読む。
+	fixture squad-member-list | jq '. as $base | [$base + {member_id: "orchestrator", member_type: "agent"}, $base + {member_id: "monitor", member_type: "agent"}]' >"$test_dir/members.json"
+	add_comment round-1 agent orchestrator "$(round_body "$pr")"
 }
 unlinked_scene() {
 	reset_ni
 	[[ ${1-} != record ]] || { make_record; set_marks "$pr"; }
-	unlinked_prepare "${2-}"
+	if (($# > 2)); then unlinked_prepare "${2-}" "$3"; else unlinked_prepare "${2-}"; fi
 }
 unlinked_run() {
 	set +e
@@ -665,6 +681,66 @@ unlinked_run
 assert_jq -s "$notice_filter"' | length == 1 and (.[0].body | contains("mention://") | not)' "$test_dir/posted.jsonl"
 [[ $(<"$test_dir/err") == *'メンションを省きました'* ]]
 echo 'PASS no-integration: 呼ぶ人間を決められないときは、メンションなしで書いて 1 で終わる'
+
+# done の照合。規則の 2 行・回の判定と対象の PR・metadata のどれかが合わなければ、マージされても done にしない。
+# どの場合も、見張りは止め、標準エラーに理由を 1 行出し、done も知らせも書かない。
+merged_refuses() { # 名前 [規則の最後の 2 行 [created]]
+	local name=$1 created=${3-}
+	if (($# > 1)); then unlinked_scene record "$created" "$2"; else unlinked_scene record; fi
+	"${prepare_extra:-:}"
+	update_pr '.state = "MERGED"'
+	unlinked_run
+	((unlinked_status == 0)) || { echo "FAIL $name: 終了コード $unlinked_status" >&2; exit 1; }
+	[[ $(done_calls) == '[]' ]] || { echo "FAIL $name: done にした" >&2; exit 1; }
+	assert_jq '.status == "in_review"' "$test_dir/task.json"
+	rule_gone
+	no_posts
+	[[ $(grep -c 'done にしません' "$test_dir/err") == 1 ]] || { echo "FAIL $name: 理由が 1 行でない" >&2; cat "$test_dir/err" >&2; exit 1; }
+}
+other_round() { add_comment other-round agent orchestrator "$(round_body "$other")"; }
+merged_refuses '見張る PR が同じリポジトリの別の PR' "$(rule_lines "$other")"
+merged_refuses '見張る PR の行がない' $'確認した回: round-1'
+merged_refuses '見張る PR の行が 2 つ' "$(rule_lines)"$'\n見張る PR: '"$pr"
+merged_refuses '確認した回の行がない' "見張る PR: $pr"
+merged_refuses '確認した回の行が 2 つ' "$(rule_lines)"$'\n確認した回: round-1'
+merged_refuses '見張る PR が URL でない' "$(rule_lines 'https://example.com/x')"
+merged_refuses '回が存在しない' "$(rule_lines "$pr" no-such-round)"
+prepare_extra=other_round merged_refuses '回の対象の PR が見張る PR と違う' "$(rule_lines "$pr" other-round)"
+human_round() { add_comment human-round member human-1 "$(round_body "$pr")"; }
+prepare_extra=human_round merged_refuses '回が人間のコメント' "$(rule_lines "$pr" human-round)"
+rogue_round() { add_comment rogue-round agent rogue "$(round_body "$pr")"; }
+prepare_extra=rogue_round merged_refuses '回が名簿の外のエージェントのコメント' "$(rule_lines "$pr" rogue-round)"
+result_round() { add_comment result-round agent orchestrator "$(round_body "$pr")"$'\n返事の回: round-1'; }
+prepare_extra=result_round merged_refuses '回が結果のコメント' "$(rule_lines "$pr" result-round)"
+# 登録のあとに pr_url と連携なしのマークを別のマージ済みの PR に書き換えても、回の PR と合わないので done にしない。
+swapped_marks() { update_task ".metadata.pr_url = \"$other\" | .metadata.pr_link_pending = \"$other\" | .metadata.pr_link_no_integration = \"$other\""; }
+prepare_extra=swapped_marks merged_refuses 'pr_url とマークが別の PR に変わった'
+unset prepare_extra
+echo 'PASS no-integration: 規則の行・回・metadata のどれかが合わないマージは、done にせず理由を 1 行出して止める'
+
+# 規則の作り手が人間でも、照合がすべて合えば done にする。作り手は信頼の根拠にしない。
+unlinked_scene record
+jq '.[0] += {created_by:"human-1", created_by_name:"Owner", created_by_agent:false}' "$test_dir/rules.json" >"$test_dir/updated.json"
+mv "$test_dir/updated.json" "$test_dir/rules.json"
+update_pr '.state = "MERGED"'
+unlinked_run
+((unlinked_status == 0))
+assert_jq '.status == "done"' "$test_dir/task.json"
+rule_gone
+echo 'PASS no-integration: 規則の作り手が人間でも、照合が合えば done にする'
+
+# 照合が合わないときは、71 時間を過ぎても終わりの知らせを書かない。標準エラーに理由を出し、CI とコンフリクトの行は今のままにする。
+for case in line round; do
+	if [[ $case == line ]]; then lines=$'確認した回: round-1'; else lines=$(rule_lines "$pr" other-round); fi
+	unlinked_scene record "$(stamp -$((71 * 3600 + 60)))" "$lines"
+	[[ $case == line ]] || other_round
+	unlinked_run
+	((unlinked_status == 0))
+	no_notice
+	[[ $(grep -c '知らせを書きません' "$test_dir/err") == 1 ]]
+	[[ $(<"$test_dir/out") == $'/note'* ]]
+done
+echo 'PASS no-integration: 照合が合わなければ 71 時間を過ぎても知らせず、理由を標準エラーに出す'
 
 # マークの片方を書けなかった PR は、link-check で書き直したあとにマージされれば、unlinked-check で done になる。
 for key in pr_link_pending pr_link_no_integration; do
