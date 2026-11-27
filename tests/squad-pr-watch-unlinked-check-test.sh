@@ -109,6 +109,26 @@ assert_jq -s 'length == 2' "$test_dir/posted.jsonl"
 assert_mine_deleted
 echo 'PASS unlinked-check: 規則を消せず再実行しても食い違いを重ねず、一覧が変われば新しく知らせる'
 
+# 知らせの投稿が失敗したら、書いたことにも止めたことにもせず、規則を残して 1 で終わる（次の確認でやり直す）。
+reset_unlinked
+linked_urls "$other"
+echo 'issue comment add' >"$test_dir/fail"
+status=0
+run_unlinked monitor >"$test_dir/output" 2>"$test_dir/error" || status=$?
+[[ $status == 1 ]]
+assert_jq 'map(.id) == ["mine","other"]' "$test_dir/rules.json"
+rm "$test_dir/fail"
+line=$(run_unlinked monitor)
+assert_jq -s 'length == 1' "$test_dir/posted.jsonl"
+assert_mine_deleted
+reset_unlinked
+update_pr '.mergeable = "CONFLICTING"'
+echo 'issue comment add' >"$test_dir/fail"
+status=0
+line=$(run_unlinked monitor 2>/dev/null) || status=$?
+[[ $status == 1 && $line == *'知らせ: 書けなかった' && $line != *'知らせ: 書いた' ]]
+echo 'PASS unlinked-check: 知らせの投稿に失敗したら、規則を消さず、書いたと言わず、1 で終わる'
+
 for value in cli missing-field missing-url; do
 	reset_unlinked
 	case $value in

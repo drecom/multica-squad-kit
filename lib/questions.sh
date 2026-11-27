@@ -511,11 +511,10 @@ ask_questions() {
 	question_notice=$(jq -r '.[]|"選べないリポジトリ: \(.repository)（別プロジェクト: \(.projects|join("、"))）"' <<<"$blocked_repos"); question_notice_kind=warning
 	if [[ $(jq length <<<"$eligible_repos") == 0 ]]; then
 		question_prompt_no_input
-		printf '%s\n' 'ワークスペースのオーナーか管理者に、次の準備を依頼してください。' \
-			'1. ワークスペースの設定 → コードで GitHub 連携を設定し、このプロジェクトで使うリポジトリを許可します。' \
-			'2. 自前サーバーで GitHub App が未設定なら、サーバーの管理者に GitHub 連携の準備を依頼します。' \
-			'3. GitHub 連携がなくても、ワークスペースの管理者が multica repo add <リポジトリの URL> で登録すれば、候補に出ます。' \
-			'4. 導入先のサーバー・ワークスペースで multica repo list --output json を実行し、候補に出ることを確認してから、セットアップを流し直します。' >&2
+		printf '%s\n' 'ワークスペースのオーナーか管理者に、次のどちらかでリポジトリの登録を依頼してください。' \
+			'A. GitHub 連携で許可する: ワークスペースの設定 → コードで GitHub 連携を設定し、このプロジェクトで使うリポジトリを許可します。自前サーバーで GitHub App が未設定なら、先にサーバーの管理者に GitHub 連携の準備を依頼します。' \
+			'B. 連携を使わずに登録する: ワークスペースの管理者が multica repo add <リポジトリの URL> で登録すれば、候補に出ます。' \
+			'どちらの場合も、導入先のサーバー・ワークスペースで multica repo list --output json を実行し、候補に出ることを確認してから、セットアップを流し直します。' >&2
 		die '選べるリポジトリがありません。手順書の「リポジトリの登録と GitHub 連携」に従い、ワークスペースへ登録してください。'
 	fi
 	default=$(jq -nr --argjson items "$eligible_repos" --argjson previous "$saved" '[($previous.repositories // [])[] as $repo | $items|to_entries[]|select(.value.repository==$repo.repository)|(.key+1|tostring)]|join(" ")')

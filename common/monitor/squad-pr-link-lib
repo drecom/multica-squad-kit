@@ -173,20 +173,20 @@ pr_link_record_exists() {
 	[[ -f $PR_LINK_RECORD ]]
 }
 
-# pr_link_record_create <プロジェクトの ID> <PR の URL> <タスクの識別子>
-# 記録を作る。ディレクトリは 700、ファイルは 600 で作る。ファイルは同じディレクトリの一時ファイルに書き、
-# `ln` で記録のパスに結ぶ。`ln` は記録のパスがあると失敗するので、同時に作る実行のうち 1 つだけが作れる。
-# 作れたら 0 を返し、一時ファイルを PR_LINK_RECORD_TMP に残す（あとで pr_link_record_discard_own か
-# pr_link_record_finish で消す）。すでにあれば 2、ほかの理由で作れなければ 1 を返し、どちらも一時ファイルを残さない。
-# 理由は PR_LINK_RECORD_REASON に返す。パスの検査やシンボリックリンクで断ったときだけ、標準エラーに理由を 1 行出す。
-pr_link_record_create() {
+# pr_link_record_prepare <プロジェクトの ID> <PR の URL> <タスクの識別子>
+# 記録の中身を、同じディレクトリの一時ファイルに書く。記録のパスにはまだ結ばないので、ほかの実行からは見えない。
+# ディレクトリは 700、ファイルは 600 で作る。作れたら 0 を返し、一時ファイルを PR_LINK_RECORD_TMP に残す
+# （あとで pr_link_record_commit か pr_link_record_finish で消す）。すでに記録があれば 2、ほかの理由で作れなければ 1 を返し、
+# どちらも一時ファイルを残さない。理由は PR_LINK_RECORD_REASON に返す。
+# パスの検査やシンボリックリンクで断ったときだけ、標準エラーに理由を 1 行出す。
+pr_link_record_prepare() {
 	local project=$1 url=$2 identifier=$3 repository tmp
 	PR_LINK_RECORD_TMP=''
 	if ! pr_link_record_locate "$project" "$url" || ! pr_link_record_safe; then
 		printf '%s\n' "$PR_LINK_RECORD_REASON" >&2
 		return 1
 	fi
-	if [[ -e $PR_LINK_RECORD ]]; then
+	if [[ -e $PR_LINK_RECORD || -L $PR_LINK_RECORD ]]; then
 		PR_LINK_RECORD_REASON='連携なしの記録がすでにある'
 		return 2
 	fi
@@ -215,6 +215,19 @@ pr_link_record_create() {
 		PR_LINK_RECORD_REASON='連携なしの記録を書けない'
 		return 1
 	fi
+	PR_LINK_RECORD_TMP=$tmp
+}
+
+# 用意した記録を、記録のパスに結んで見えるようにする。pr_link_record_prepare が 0 を返したあとに呼ぶ。
+# `ln` は記録のパスがあると失敗するので、同時に結ぶ実行のうち 1 つだけが結べる。
+# 結べたら 0、先に別の実行が結んでいたら 2、ほかの理由で結べなければ 1 を返す。どの場合も一時ファイルは消す。
+pr_link_record_commit() {
+	local tmp=${PR_LINK_RECORD_TMP:-}
+	PR_LINK_RECORD_TMP=''
+	if [[ -z $tmp ]]; then
+		PR_LINK_RECORD_REASON='連携なしの記録を用意していない'
+		return 1
+	fi
 	if ! ln -- "$tmp" "$PR_LINK_RECORD" 2>/dev/null; then
 		rm -f -- "$tmp"
 		if [[ -e $PR_LINK_RECORD || -L $PR_LINK_RECORD ]]; then
@@ -224,22 +237,22 @@ pr_link_record_create() {
 		PR_LINK_RECORD_REASON='連携なしの記録を結べない'
 		return 1
 	fi
-	PR_LINK_RECORD_TMP=$tmp
+	rm -f -- "$tmp"
 }
 
-# 自分が作った記録の一時ファイルを消す。pr_link_record_create が 0 を返したあと、最後に呼ぶ。
+# pr_link_record_create <プロジェクトの ID> <PR の URL> <タスクの識別子>
+# 用意と結ぶのを続けて行う。戻り値は pr_link_record_prepare と pr_link_record_commit に同じ。
+pr_link_record_create() {
+	local rc=0
+	pr_link_record_prepare "$@" || rc=$?
+	((rc == 0)) || return "$rc"
+	pr_link_record_commit
+}
+
+# 用意した記録の一時ファイルを、結ばずに消す。pr_url を書けなかったときに使う。
 pr_link_record_finish() {
 	[[ -z ${PR_LINK_RECORD_TMP:-} ]] || rm -f -- "$PR_LINK_RECORD_TMP"
 	PR_LINK_RECORD_TMP=''
-}
-
-# 自分が作った記録だけを消し、一時ファイルも消す。記録のパスが自分の一時ファイルと同じファイル（-ef）のときだけ、記録を消す。
-# ほかの実行が作った記録は消さない。pr_url を書けなかったときに使う。
-pr_link_record_discard_own() {
-	if [[ -n ${PR_LINK_RECORD_TMP:-} && -f $PR_LINK_RECORD && ! -L $PR_LINK_RECORD && $PR_LINK_RECORD -ef $PR_LINK_RECORD_TMP ]]; then
-		rm -f -- "$PR_LINK_RECORD"
-	fi
-	pr_link_record_finish
 }
 
 # pr_link_record_remove <プロジェクトの ID> <PR の URL>

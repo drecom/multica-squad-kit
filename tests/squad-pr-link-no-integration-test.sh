@@ -52,11 +52,9 @@ expect '3 行目' "$(sed -n 3p "$record")" 'task: TASK-7'
 expect 'ファイルは 600' "$(mode_of "$record")" 600
 expect 'プロジェクトのディレクトリは 700' "$(mode_of "$PR_LINK_RECORD_PROJECT_DIR")" 700
 expect 'オーナーのディレクトリは 700' "$(mode_of "$PR_LINK_RECORD_DIR")" 700
-[[ -f $PR_LINK_RECORD_TMP && $PR_LINK_RECORD -ef $PR_LINK_RECORD_TMP ]] || fail '一時ファイルは記録と同じファイル'
 pr_link_record_exists "$project" "$pr_url" || fail '作ったあとは exists が 0'
-pr_link_record_finish
-expect 'finish で一時ファイルだけが消える' "$(ls -A "$PR_LINK_RECORD_DIR")" repo.name
-[[ -f $record ]] || fail 'finish は記録を消さない'
+expect '作ったあとは記録だけが残る' "$(ls -A "$PR_LINK_RECORD_DIR")" repo.name
+expect '作ったあとは一時ファイルを持たない' "${PR_LINK_RECORD_TMP:-}" ''
 
 # --- 作成: すでにあるときは 2 を返し、記録を変えず、一時ファイルを残さない ---
 before=$(cat "$record")
@@ -72,26 +70,40 @@ pr_link_record_exists proj-2 "$pr_url" && fail '別のプロジェクトの記�
 pr_link_record_exists "$project" https://github.com/owner-a/other/pull/1 && fail '同じプロジェクトの別のリポジトリの記録を読まない'
 pr_link_record_exists "$project" https://github.com/OWNER-A/REPO.NAME/pull/99 || fail '大文字小文字を区別せず同じ記録を読む'
 
-# --- 消去: 自分の記録だけを消す ---
+# --- 用意と結ぶ: 結ぶまで記録は見えない ---
 rm -f "$record"
-pr_link_record_create "$project" "$pr_url" TASK-1 || fail '自分の記録を作る'
-pr_link_record_discard_own
-[[ ! -e $record ]] || fail '自分の記録を消す'
-expect '自分の記録を消したあとに一時ファイルが残らない' "$(ls -A "$PR_LINK_RECORD_DIR")" ''
-pr_link_record_create "$project" "$pr_url" TASK-1 || fail '記録を作り直す'
+pr_link_record_prepare "$project" "$pr_url" TASK-1 || fail '記録を用意する'
 mine=$PR_LINK_RECORD_TMP
+[[ -f $mine ]] || fail '用意した一時ファイルがある'
+[[ ! -e $record ]] || fail '結ぶまで記録は見えない'
+pr_link_record_exists "$project" "$pr_url" && fail '結ぶまで exists は 1'
+pr_link_record_finish
+[[ ! -e $mine ]] || fail '結ばずに finish すると一時ファイルが消える'
+[[ ! -e $record ]] || fail '結ばずに finish しても記録は見えない'
+expect '結ばなかったあとに何も残らない' "$(ls -A "$PR_LINK_RECORD_DIR")" ''
+pr_link_record_prepare "$project" "$pr_url" TASK-1 || fail '記録を用意し直す'
+mine=$PR_LINK_RECORD_TMP
+pr_link_record_commit || fail '記録を結ぶ'
+[[ -f $record ]] || fail '結ぶと記録が見える'
+[[ ! -e $mine ]] || fail '結んだあとに一時ファイルが残らない'
+expect '結んだあとに一時ファイルを持たない' "${PR_LINK_RECORD_TMP:-}" ''
+# 先に別の実行が結んでいるとき: prepare は 2、結ぶ前に割り込まれたときの commit も 2。記録は変えない。
 rm -f "$record"
+pr_link_record_prepare "$project" "$pr_url" TASK-2 || fail '割り込まれる前に用意する'
 printf 'other\n' >"$record"
-pr_link_record_discard_own
-expect '別の実行の記録は消さない' "$(cat "$record")" other
-[[ ! -e $mine ]] || fail '別の記録を残しても自分の一時ファイルは消す'
 rc=0
-pr_link_record_create "$project" "$pr_url" TASK-2 || rc=$?
-expect '作れなかった実行の discard は何も消さない' "$rc" 2
-pr_link_record_discard_own
-expect '作れなかった実行の discard のあとも記録が残る' "$(cat "$record")" other
+pr_link_record_commit || rc=$?
+expect '結ぶ前に割り込まれると commit は 2' "$rc" 2
+expect '別の実行の記録は変わらない' "$(cat "$record")" other
+expect '割り込まれた実行は一時ファイルを残さない' "$(ls -A "$PR_LINK_RECORD_DIR")" repo.name
+rc=0
+pr_link_record_prepare "$project" "$pr_url" TASK-3 || rc=$?
+expect '記録があるときの prepare は 2' "$rc" 2
+expect '2 を返した prepare は一時ファイルを持たない' "${PR_LINK_RECORD_TMP:-}" ''
+rm -f "$record"
 
 # --- 消去: remove は記録があるときだけ消す ---
+pr_link_record_create "$project" "$pr_url" TASK-1 || fail '消す記録を作る'
 pr_link_record_remove "$project" "$pr_url" || fail '記録を消す'
 [[ ! -e $record ]] || fail 'remove で記録が消える'
 if pr_link_record_remove "$project" "$pr_url"; then fail '記録がなければ remove は 1'; fi
@@ -319,6 +331,8 @@ if [[ $1 == issue && $2 == get ]]; then
 elif [[ $1 == issue && $2 == metadata && $3 == set ]]; then
 	[[ $4 == task-id && $5 == --key && $7 == --value && $9 == --type && ${10} == string ]]
 	case $6 in pr_url | pr_link_pending | pr_link_no_integration) ;; *) exit 99 ;; esac
+	# 欄を書く時点で記録が見えていたかを残す。pr_url を書く前に記録が見えると、書けなかったときに連携なしだけが残る。
+	if [[ $6 == pr_url && -f $dir/watch-record && -e $(<"$dir/watch-record") ]]; then touch "$dir/record-visible"; fi
 	if [[ -f $dir/fail-$6 ]]; then echo "$MULTICA_TOKEN" >&2; exit 1; fi
 	jq --arg key "$6" --arg value "$8" '.metadata[$key] = $value' "$dir/issue.json" >"$dir/next.json"
 	/bin/mv "$dir/next.json" "$dir/issue.json"
@@ -382,7 +396,7 @@ e2e_reset() {
 	: >"$e2e/multica.jsonl"
 	: >"$e2e/curl.jsonl"
 	: >"$e2e/sleeps"
-	rm -rf -- "$e2e"/fail-* "$e2e/transport-fail-from" "$e2e/ignore-timeout" "$e2e/rival-record" "$PR_LINK_STATE_ROOT"
+	rm -rf -- "$e2e"/fail-* "$e2e/record-visible" "$e2e/watch-record" "$e2e/transport-fail-from" "$e2e/ignore-timeout" "$e2e/rival-record" "$PR_LINK_STATE_ROOT"
 }
 e2e_run() {
 	local expected=$1 status=0
@@ -473,7 +487,25 @@ e2e_warn_not_found
 expect '別の実行が先で pr_url を書けない: 記録は先の実行のもの' "$(cat "$e2e_record")" 'repository: rival'
 e2e_no_tmp
 
-# 記録を作った実行が pr_url を書けない: 自分の記録だけが消え、今と同じ警告で 1 で終わる。
+# 記録は pr_url を書いたあとに見えるようにする: pr_url を書く時点では見えず、書いたあとに見える。
+e2e_reset
+echo "$e2e_record" >"$e2e/watch-record"
+e2e_run 0 TASK-7 "$e2e_url"
+[[ ! -e $e2e/record-visible ]] || fail 'pr_url を書く前に記録が見えた'
+[[ -f $e2e_record ]] || fail '書いたあとは記録が見える'
+e2e_no_tmp
+
+# 待っているあいだに別の実行が記録を作り、そのあとにこの実行が紐付いた: 連携ありの PR なので、記録を消す。
+e2e_reset
+printf '[404,200]\n' >"$e2e/statuses.json"
+echo "$e2e_record" >"$e2e/rival-record"
+e2e_run 0 TASK-7 "$e2e_url"
+expect '紐付いた: 出力' "$(cat "$e2e/out")" "紐付けました: TASK-7 $e2e_url"
+expect '紐付いた: pr_url' "$(e2e_field pr_url)" "$e2e_url"
+[[ ! -e $e2e_record ]] || fail '紐付いたあとに記録が残った'
+e2e_no_tmp
+
+# 記録を作った実行が pr_url を書けない: 記録は結ばれず、今と同じ警告で 1 で終わる。
 e2e_reset
 touch "$e2e/fail-pr_url"
 e2e_run 1 TASK-7 "$e2e_url"

@@ -52,6 +52,8 @@ TEMPLATE_STATE_ROOT="$test_dir/zero-candidates" deny
 grep -q 'リポジトリの登録と GitHub 連携' "$test_dir/err"
 grep -qF 'ワークスペースの設定 → コード' "$test_dir/err"
 grep -qF 'GitHub App が未設定なら' "$test_dir/err"
+grep -qF 'A. GitHub 連携で許可する' "$test_dir/err"
+grep -qF 'B. 連携を使わずに登録する' "$test_dir/err"
 grep -qF 'multica repo list --output json' "$test_dir/err"
 grep -qF 'multica repo add <リポジトリの URL> で登録すれば、候補に出ます。' "$test_dir/err"
 grep -q 'Existing project' "$test_dir/err"

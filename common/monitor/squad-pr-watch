@@ -142,15 +142,19 @@ if state == "valid":
             pending_matches = matches
         else:
             no_integration_matches = matches
-# 試み直した時刻。形に合わないものはないものとして読む。今より後かは、間隔を測るときに見る。
+# 試み直した時刻。値は「時刻 PR の URL」の形で、URL が今見ている PR と同じときだけ読む。
+# 形に合わないもの、時刻だけのもの、別の PR の URL のものは、ないものとして読む（別の PR の試みで間隔が延びないようにするため）。
 tried_epoch = None
 tried = metadata.get("pr_link_tried_at")
-if isinstance(tried, str) and re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z", tried):
-    try:
-        tried_epoch = int(datetime.datetime.strptime(tried, "%Y-%m-%dT%H:%M:%SZ")
-                          .replace(tzinfo=datetime.timezone.utc).timestamp())
-    except (ValueError, OverflowError, OSError):
-        pass
+if state == "valid" and isinstance(tried, str):
+    parts = tried.split(" ")
+    if len(parts) == 2 and re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z", parts[0]):
+        try:
+            if canonical(parts[1]).casefold() == url.casefold():
+                tried_epoch = int(datetime.datetime.strptime(parts[0], "%Y-%m-%dT%H:%M:%SZ")
+                                  .replace(tzinfo=datetime.timezone.utc).timestamp())
+        except (ValueError, OverflowError, OSError):
+            pass
 print(json.dumps(dict(state=state, url=url, reason=reason, line=line,
                      pending_matches=pending_matches,
                      no_integration_matches=no_integration_matches,
@@ -340,7 +344,7 @@ link_check() {
 		fi
 		if ((no_integration && called)); then
 			# 連携なしは紐付かなかった結果の記録を書かないので、API を呼んだ時刻を間隔のために残す。書けなくても出力は変えない。
-			multica issue metadata set "$issue" --key pr_link_tried_at --value "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --type string >/dev/null 2>&1 || :
+			multica issue metadata set "$issue" --key pr_link_tried_at --value "$(date -u +%Y-%m-%dT%H:%M:%SZ) ${pr_url}" --type string >/dev/null 2>&1 || :
 		fi
 		if ! prs=$(squad_cli_read issue-pull-requests "$issue"); then
 			line="紐付け: 未確認 pr: $pr_url 理由: 紐付いた PR の一覧を読めない（CLI の失敗か欄の不正）"
@@ -907,9 +911,12 @@ unlinked_post() {
 	body=$(mktemp tmp/pr-watch-unlinked-result.XXXXXX)
 	trap "$(printf 'rm -f -- %q' "$body")" EXIT
 	printf '%s\n' "$content" >"$body"
-	multica issue comment add "$issue" --parent "$thread" --content-file "$body" --output table >/dev/null
+	# 呼び出しが if や || の中にあると set -e が効かないので、投稿の終了コードをここで返す。
+	local rc=0
+	multica issue comment add "$issue" --parent "$thread" --content-file "$body" --output table >/dev/null || rc=$?
 	rm -f "$body"
 	trap - EXIT
+	return "$rc"
 }
 
 unlinked_seen() {
@@ -934,7 +941,7 @@ unlinked_link_stop() {
 	if ! unlinked_seen "$comments" "$prefix"; then
 		notice=$(unlinked_notice "$leader" "$monitor")
 		content=$(printf '%s' "$prefix"; if [[ -n $notice ]]; then printf '\n%s\n' "$notice"; fi)
-		unlinked_post "$issue" "$thread" "$content"
+		unlinked_post "$issue" "$thread" "$content" || return 1
 	fi
 	unlinked_clear "$issue"
 	ci_record "$link_line"
@@ -1121,8 +1128,7 @@ unlinked_check() {
 				notice=$(unlinked_notice "$leader" "$monitor")
 				content=$(printf '%s' "$prefix"; if [[ -n $notice ]]; then printf '\n%s\n' "$notice"; fi
 					printf '\nPR: %s\n%s\n' "$pr_url" "$conflict_line")
-				unlinked_post "$issue" "$thread" "$content"
-				result=書いた
+				if unlinked_post "$issue" "$thread" "$content"; then result=書いた; else result=書けなかった; status=1; fi
 			fi
 		fi
 		printf '%s 知らせ: %s\n' "$conflict_line" "$result"

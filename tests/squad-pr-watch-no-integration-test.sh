@@ -146,7 +146,7 @@ stamp() {
 print((datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=int(sys.argv[1]))).strftime("%Y-%m-%dT%H:%M:%SZ"))' "$1"
 }
 tried_recent() {
-	assert_jq '.metadata.pr_link_tried_at | type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")' "$test_dir/task.json"
+	assert_jq '.metadata.pr_link_tried_at | type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z https://github.com/example/repo/pull/67$")' "$test_dir/task.json"
 }
 tried_absent() { mark_absent pr_link_tried_at; }
 add_record_comment() {
@@ -304,17 +304,19 @@ check_ni "紐付け: 紐付いていない pr: $pr 連携: なし"
 no_api
 echo 'PASS no-integration: 直前に API を呼んだ時刻から 5 分たつまで、API を呼ばない'
 
-for case_name in old-tried recent-tried-old-comment old-tried-recent-comment malformed future empty not-string; do
+for case_name in plain-recent other-pr-recent old-tried recent-tried-old-comment old-tried-recent-comment malformed future empty not-string; do
 	reset_ni
 	make_record
 	set_marks "$pr"
 	case $case_name in
-	old-tried) update_task ".metadata.pr_link_tried_at = \"$(stamp -600)\""; expected=1 ;;
-	recent-tried-old-comment) update_task ".metadata.pr_link_tried_at = \"$(stamp -60)\""; add_record_comment 600; expected=0 ;;
-	old-tried-recent-comment) update_task ".metadata.pr_link_tried_at = \"$(stamp -600)\""; add_record_comment 60; expected=0 ;;
+	plain-recent) update_task ".metadata.pr_link_tried_at = \"$(stamp -60)\""; expected=1 ;;
+	other-pr-recent) update_task ".metadata.pr_link_tried_at = \"$(stamp -60) $other\""; expected=1 ;;
+	old-tried) update_task ".metadata.pr_link_tried_at = \"$(stamp -600) $pr\""; expected=1 ;;
+	recent-tried-old-comment) update_task ".metadata.pr_link_tried_at = \"$(stamp -60) $pr\""; add_record_comment 600; expected=0 ;;
+	old-tried-recent-comment) update_task ".metadata.pr_link_tried_at = \"$(stamp -600) $pr\""; add_record_comment 60; expected=0 ;;
 	malformed) update_task '.metadata.pr_link_tried_at = "yesterday"'; expected=1 ;;
-	future) update_task ".metadata.pr_link_tried_at = \"$(stamp 3600)\""; expected=1 ;;
-	empty) update_task '.metadata.pr_link_tried_at = "2026-13-45T00:00:00Z"'; expected=1 ;;
+	future) update_task ".metadata.pr_link_tried_at = \"$(stamp 3600) $pr\""; expected=1 ;;
+	empty) update_task ".metadata.pr_link_tried_at = \"2026-13-45T00:00:00Z $pr\""; expected=1 ;;
 	not-string) update_task '.metadata.pr_link_tried_at = 12345'; expected=1 ;;
 	esac
 	check_ni "紐付け: 紐付いていない pr: $pr 連携: なし"

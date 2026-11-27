@@ -171,27 +171,39 @@ if ! pr_link_pull_request "$id" "$url" "$metadata"; then
 	fi
 	# 記録がなく、期限まで 404 だけが続いたときだけ、連携なしに切り替える。
 	if [[ $record_state == absent && ${PR_LINK_ALL_404:-0} == 1 ]]; then
-		created=0
-		pr_link_record_create "$project" "$url" "$identifier" || created=$?
-		if (( created == 0 )); then
+		# 記録は、pr_url を書いたあとに結ぶ。結ぶ前に pr_url の書き込みに失敗しても、見える記録が残らないようにするため。
+		prepared=0
+		pr_link_record_prepare "$project" "$url" "$identifier" || prepared=$?
+		if (( prepared == 0 )); then
 			if ! write_no_integration_marks; then
 				reason=$PR_LINK_REASON
-				pr_link_record_discard_own
+				pr_link_record_finish
 				fail_link "$reason"
 			fi
-			pr_link_record_finish
-			printf '連携なしにしました: %s %s\n' "$identifier" "$url"
-			notice_text
-			exit 0
-		elif (( created == 2 )); then
-			# 同時に待ち切れた別の実行が、先に記録を作った。知らせはその実行が出すので、ここでは出さない。
+			committed=0
+			pr_link_record_commit || committed=$?
+			if (( committed == 0 )); then
+				printf '連携なしにしました: %s %s\n' "$identifier" "$url"
+				notice_text
+				exit 0
+			elif (( committed == 2 )); then
+				# 同時に待ち切れた別の実行が、先に記録を結んだ。知らせはその実行が出すので、ここでは出さない。
+				printf '紐付けていません（連携なし）: %s %s\n' "$identifier" "$url"
+				exit 0
+			fi
+			fail_link "$PR_LINK_RECORD_REASON"
+		elif (( prepared == 2 )); then
+			# 別の実行がすでに記録を結んでいる。知らせはその実行が出す。
 			write_no_integration_marks || fail_link "$PR_LINK_REASON"
 			printf '紐付けていません（連携なし）: %s %s\n' "$identifier" "$url"
 			exit 0
 		fi
+		fail_link "$PR_LINK_RECORD_REASON"
 	fi
 	fail_link "$PR_LINK_REASON"
 fi
+# 紐付いたと分かったので、同時に別の実行が結んだ記録があれば消す。残すと、連携ありの PR を連携なしとして扱い続けるため。
+if [[ $record_state != off ]]; then pr_link_record_remove "$project" "$url" || true; fi
 if jq -e 'has("pr_url")' <<<"$metadata" >/dev/null; then
 	existing_url=$(jq -r '.pr_url' <<<"$metadata")
 	if [[ $existing_url != "$url" ]]; then
