@@ -436,10 +436,13 @@ metadata と見張りの規則は、役と人間とほかのエージェント�
 
 セットアップは、リポジトリの候補が 0 件のときの案内だけを直す。質問と、ほかの案内は変えない。
 
-今の案内（`lib/questions.sh`）は、ワークスペースへのリポジトリの紐付けを 3 つの手順で示し、手順書の節を名前で示して止まる。手順に、次の文を足す。
+今の案内（`lib/questions.sh`）は、ワークスペースへのリポジトリの紐付けを 3 つの手順で示し、手順書の節を名前で示して止まる。この手順を、登録の 2 つの選び方と、そのあとの確認に組み直す。
 
 ```text
-GitHub 連携がなくても、ワークスペースの管理者が multica repo add <リポジトリの URL> で登録すれば、候補に出ます。
+ワークスペースのオーナーか管理者に、次のどちらかでリポジトリの登録を依頼してください。
+A. GitHub 連携で許可する: ワークスペースの設定 → コードで GitHub 連携を設定し、このプロジェクトで使うリポジトリを許可します。自前サーバーで GitHub App が未設定なら、先にサーバーの管理者に GitHub 連携の準備を依頼します。
+B. 連携を使わずに登録する: ワークスペースの管理者が multica repo add <リポジトリの URL> で登録すれば、候補に出ます。
+どちらの場合も、導入先のサーバー・ワークスペースで multica repo list --output json を実行し、候補に出ることを確認してから、セットアップを流し直します。
 ```
 
 止まるときの文が示す手順書の節の名前は、[README と手順書](#readme-と手順書)の直しに合わせる。
@@ -476,7 +479,7 @@ README と手順書は、連携を導入の前提と書くのをやめる。連�
 | 入力（誰が書いた何か） | 読むところ | 信頼する条件 | 合わないとき |
 | --- | --- | --- | --- |
 | 連携なしの記録（`squad-pr-link` が書く。ホストの同じユーザーの処理と人間も書ける） | `squad-pr-link` の待つかの判定と、`link-check` の `連携: なし` の判定 | パスの各部分が検証を通り、記録とその上のディレクトリがシンボリックリンクでない普通のファイル。中身は読まない | ないものとして読み、今の動作にする。標準エラーに理由を 1 行出す |
-| 記録のパスにあるファイル（ほかの実行も同時に作れる） | `squad-pr-link` の失敗のときの記録の消去 | 自分の一時ファイルと同じファイル（`-ef`）である | 消さない |
+| 記録のパスにあるファイル（ほかの実行も同時に作れる） | `squad-pr-link` が記録を結ぶとき | `pr_url` を書いたあと、自分の一時ファイルを `ln` で結べた | 結ばずに一時ファイルだけを消し、[記録があるとき](#記録があるとき)のとおりにする。ほかの実行が結んだ記録は書き換えず、消さない |
 | `multica issue get` の `project_id`（サーバーが返す） | 記録のパス | 今の CLI の読み取りの検証を通り、パスの部分の検証を通る | 記録を読まず書かず、今の動作にする |
 | PR の URL（PR を作った役が `squad-pr-link` に渡す） | 記録のパスのオーナーとリポジトリ | 今の URL の形の検証を通り、metadata の `repository` と小文字で同じ | 記録を読まず書かず、今の動作にする |
 | 紐付けの API の応答の状態コード（サーバーが返す） | 記録を書くかの判定 | 期限を過ぎ、期限の直前の応答まで 404 だけが続いた（足す `PR_LINK_ALL_404`） | 記録を書かず、今の失敗の動作にする |
@@ -564,7 +567,7 @@ PR のタイトルは、GitHub で PR を直せる人なら誰でも書ける。
 | `tests/squad-review-next-decide-unlinked-test.sh` | `連携: なし` の場面と、見張りの登録に失敗する場面と、回のあとに `pr_url` が変わる場面を足す |
 | `tests/squad-review-next-decide-fix-test.sh` | 使用率の待ちのコメントに、`連携: なし` の場面を足す |
 | `tests/squad-pr-watch-link-retry-test.sh`、`tests/squad-pr-watch-unlinked-test.sh` | `PR_LINK_STATE_ROOT` を空の一時ディレクトリに向ける 1 行を足す。`unlinked` のテストは、約束の欄の比較に `link_source` を加えて[登録の照合](#登録の照合)の場面を足し、今の場面の期待は規則の 2 行と標準エラーの理由の行のほかは変えない |
-| `tests/squad-pr-watch-unlinked-check-test.sh` | 約束の欄の比較に、`squad-cli-lib` で足した `link_source` を加える。場面と期待は変えない |
+| `tests/squad-pr-watch-unlinked-check-test.sh` | 約束の欄の比較に、`squad-cli-lib` で足した `link_source` を加える。知らせの投稿に失敗したとき、規則を残して 1 で終わる場面を足し、今の場面の期待は変えない |
 | `tests/setup-test.sh`、`tests/setup-repositories-test.sh` | 0 件の案内と、手順書の節の名前の期待を直す |
 | `tests/test-weights` | 新しいテストの行を、そのテストを足すのと同じコミットで足す。`tests/test-runner-test.sh` が重みの行とテストのファイルの一致を見るためで、場面を足したフェーズでは重みを手元の秒数に合わせて直す |
 | `tests/fixtures/base-size/rule-lines-changed.tsv` | `references/pr.md` で書き直した 2 行（識別子を持ち出さない項目と、push のたびにタイトルを直す段落）と `SKILL.md` の状態の表の `done` の行を、書き直した行として足す。理由の欄には、`pr.md` の 2 行は PR のタイトルの識別子を例外にしたため、`done` の行は連携のないリポジトリでは見張りが `done` にするためと書く |
@@ -730,7 +733,7 @@ GitHub 連携のないリポジトリで、PR の紐付けを待たずに進め�
 
 `tests/squad-review-next-decide-fix-test.sh` には、使用率の待ちのコメントの `連携: なし` の場面を足す。紐付けを頼む行と `紐付けの失敗:` の段落と連携の案内がないことを見る。
 
-`tests/setup-test.sh` と `tests/setup-repositories-test.sh` は、候補が 0 件のときの案内に `multica repo add` があることを見る。
+`tests/setup-test.sh` と `tests/setup-repositories-test.sh` は、候補が 0 件のときの案内に、A と B の 2 つの選び方と `multica repo add` があることを見る。
 
 約束の検査（`tests/squad-cli-lib-test.sh` などの今のテスト）は、`link_source` を足したあとも通す。識別子の決まりの例外は、[識別子の決まりの例外](#識別子の決まりの例外)の 4 つのファイルに「PR のタイトルの識別子」の語があるかを `grep` で見る。紐付けの手順の検査（`tests/agent-templates-test.sh`）も、直した `references/pr.md` で通す。
 
