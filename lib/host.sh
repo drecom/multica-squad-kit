@@ -170,6 +170,21 @@ PY
 	ui_notice warn "$config" "マークのない設定に、更新の確認と利用状況の送信を切るキーがありません: $missing" || ui_warning "マークのない設定に、更新の確認と利用状況の送信を切るキーがありません（${missing}）: $config"
 }
 
+# Codex の設定のトップレベルの allow_login_shell が真偽値の false かを読む。ログインシェルでは別の起動ファイルが効くため、確認した環境とそろえる。何も書かない。
+host_codex_login_shell_off() {
+	python3 - "$1" <<'PY'
+import sys
+
+try:
+    import tomllib
+    with open(sys.argv[1], "rb") as source:
+        config = tomllib.load(source)
+except (ImportError, OSError, ValueError):
+    sys.exit(1)
+sys.exit(0 if config.get("allow_login_shell") is False else 1)
+PY
+}
+
 # 役に渡すフックの信頼と有効を、書き換える前に確認する。何も書かない。値は、役と同じ引数で起こした app-server の hooks/list から読む。
 # 読めない・フックが足りない・一意に決まらない・無効か有効と判定できない・マークのない人の設定に信頼がない、のどれでも止まる。
 # 止まらないときは、設定に書く信頼の行を codex_trust に残す（host_codex_write が書く）。
@@ -202,6 +217,10 @@ host_codex_check() {
 	if [[ -n $existing && $detail != trusted ]]; then
 		die "Codex の役のフックは、信頼の記録がないと飛ばされ、PreToolUse と Stop が動きません。マークのない設定 $config に、次の行を足してからセットアップを流し直してください。何も書き換えていません。キットの設定に替えるときは、そのファイルを退避してから流し直してください。
 $trust"
+	fi
+	# 保つ人の設定は、書いたあとには直せない。ログインシェルの値も、ガードを書く前にここで読む。
+	if [[ -n $existing ]] && ! host_codex_login_shell_off "$existing"; then
+		die "Codex の設定で allow_login_shell = false を確認できません: ${existing}。設定が正しい TOML で、トップレベルの値が真偽値の false か確認してから流し直してください。何も書き換えていません。既存の設定は上書きしません。"
 	fi
 	codex_trust=$trust
 }
@@ -449,13 +468,53 @@ PY
 	fi
 }
 
+# 更新で置くファイルの一覧。種類は guard（マークのない既存のファイルは止める）、exec（gh と pre-push。マークのない既存のファイルは実行できれば使う）、shared（マークのない既存のファイルは使う）。
+# 置く前の確認（host_check_targets）と置く処理が同じ一覧を読む。
+host_list_targets() {
+	local file name
+	host_target_kind=() host_target_dst=()
+	for name in git-credential git-ssh pre-tool-use stop shell_split.py; do
+		host_target_kind+=(guard)
+		host_target_dst+=("$agent_home/guard/$name")
+	done
+	host_target_kind+=(exec exec shared)
+	host_target_dst+=("$agent_home/bin/gh" "$agent_home/git-hooks/pre-push" "$agent_home/start-daemon")
+	for file in "$root/common/monitor/"squad-*; do
+		host_target_kind+=(shared)
+		host_target_dst+=("$agent_home/bin/${file##*/}")
+	done
+}
+
+# 置く前に、置き先を全件読み取りだけで確認する。どれか 1 件でも置けなければ、1 件も置かずに止まる。
+# 止める形: シンボリックリンク、マークのない既存のガード、マークのない既存の gh と pre-push が実行できない、
+# マークのある既存のファイルが通常のファイルでない・書けない、置き場が書けない。
+host_check_targets() {
+	local i dst kind dir
+	host_list_targets
+	for i in "${!host_target_dst[@]}"; do
+		dst=${host_target_dst[$i]} kind=${host_target_kind[$i]}
+		[[ ! -L $dst ]] || die "シンボリックリンクは上書きしません: ${dst}。何も書き換えていません。そのリンクを確認し、不要なら消してから流し直してください。"
+		if [[ -e $dst ]]; then
+			if ! grep -qx '# multica-squad-kit-managed' "$dst"; then
+				case $kind in
+				guard) die "ガードのファイルが原本と一致しません: ${dst}。何も書き換えていません。マークのない既存のファイルが残っていると、役のフックが動きません。そのファイルの中身を確認して、不要なら移すか消してから、セットアップを流し直してください。既存のファイルは上書きしません。" ;;
+				exec) [[ -f $dst && -x $dst ]] || die "既存のガードを利用できません: ${dst}。何も書き換えていません。実行権限・読み取り権限を管理者に確認してもらい、流し直してください。既存のファイルは上書きしません。" ;;
+				esac
+			else
+				[[ -f $dst && -w $dst ]] || die "更新するファイルが通常のファイルでないか、書けません: ${dst}。何も書き換えていません。権限と種類を確認してから流し直してください。"
+			fi
+		else
+			dir=${dst%/*}
+			[[ -d $dir && -w $dir ]] || die "置き場がないか、書けません: ${dir}。何も書き換えていません。権限を確認してから流し直してください。"
+		fi
+	done
+}
+
 prepare_host() {
 	local file real_gh_dir
 	host_paths
 	check_runtime_tools || die '選んだランタイムを導入してから流し直してください。'
 	(umask 077; mkdir -p "$agent_home/claude" "$agent_home/codex" "$agent_home/bin" "$agent_home/git-hooks" "$agent_home/guard/gh-empty") || die 'ホストの置き場を作れませんでした。'
-	# 役の GH_CONFIG_DIR に渡す空の置き場。ファイルがあると認証が成り立つので、権限を絞る。
-	chmod 700 "$agent_home/guard/gh-empty" || die '空の gh の置き場の権限を設定できませんでした。'
 	# 書き換える前に、前もって判定できる確認をすべて流す（docs/agent-guards.md の「更新の順序」の 1）。どれかが合わなければ、ガード・設定・許可・起動ファイルのどれも書かずに止まる。
 	real_gh_dir=$(host_real_gh_dir) || exit 1
 	host_check_isolation "$real_gh_dir"
@@ -468,10 +527,14 @@ prepare_host() {
 		host_codex_check
 		CODEX_HOME="$agent_home/codex" codex login status >/dev/null 2>&1 || die "エージェント用の Codex にログインしてください: CODEX_HOME=$agent_home/codex codex login"
 	fi
-	# ここから書く。ガードのスクリプトと、Codex の信頼。共有の settings.json のフックか役の引数が指すまで、役の動作を変えない。
+	# 置き先は全件を、書く前に読み取りだけで確認する。1 件でも置けなければ、共有のファイルも権限も変えずに止まる。
+	host_check_targets
+	# ここから書く。役の GH_CONFIG_DIR に渡す空の置き場は、ファイルがあると認証が成り立つので、権限を絞る。
+	chmod 700 "$agent_home/guard/gh-empty" || die '空の gh の置き場の権限を設定できませんでした。'
+	# ガードのスクリプトと、Codex の信頼。共有の settings.json のフックか役の引数が指すまで、役の動作を変えない。
+	# フックのスクリプトと、PreToolUse が読む分割の部品は、settings.json のフックがこの置き場を指す。
 	host_guard_file "$root/common/guard/git-credential" "$agent_home/guard/git-credential"
 	host_guard_file "$root/common/guard/git-ssh" "$agent_home/guard/git-ssh"
-	# フックのスクリプトと、PreToolUse が読む分割の部品。settings.json のフックがこの置き場を指す。
 	host_guard_file "$root/common/guard/pre-tool-use" "$agent_home/guard/pre-tool-use"
 	host_guard_file "$root/common/guard/stop" "$agent_home/guard/stop"
 	host_guard_file "$root/common/guard/shell_split.py" "$agent_home/guard/shell_split.py"
@@ -485,19 +548,8 @@ prepare_host() {
 		host_codex_config
 		ui_phase_active || printf '使用する Codex の設定: %s\n' "$agent_home/codex/config.toml" >&2
 		[[ -r $agent_home/codex/config.toml ]] || die 'Codex の設定を利用できません。表示したファイルの読み取り権限を管理者に確認してもらい、流し直してください。既存の設定は上書きしません。'
-		# ログインシェルでは別の起動ファイルが効くため、確認した環境とそろえる。
-		if ! python3 - "$agent_home/codex/config.toml" <<'PY'
-import sys
-
-try:
-    import tomllib
-    with open(sys.argv[1], "rb") as source:
-        config = tomllib.load(source)
-except (ImportError, OSError, ValueError):
-    sys.exit(1)
-sys.exit(0 if config.get("allow_login_shell") is False else 1)
-PY
-		then
+		# 保つ人の設定は書く前に読んだ。ここは、ひな形から書いた設定を確認する。
+		if ! host_codex_login_shell_off "$agent_home/codex/config.toml"; then
 			die 'Codex の設定で allow_login_shell = false を確認できません。表示した設定が正しい TOML で、トップレベルの値が真偽値の false か管理者に確認してもらってください。既存の設定は上書きしません。'
 		fi
 		host_codex_unmarked_keys "$agent_home/codex/config.toml"

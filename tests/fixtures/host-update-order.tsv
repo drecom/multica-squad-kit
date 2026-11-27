@@ -4,7 +4,12 @@
 # Codex の設定の状態: managed はマークのある設定、new はまだない設定、unmarked は人の設定（信頼なし）、unmarked-trusted は信頼の行を足した人の設定。
 # 止める条件: hooks:<モード> は tests/codex-hooks-stub.py のモード、env:<名前> は端末の認証の環境変数、gh-empty-file は空の gh の置き場のファイル、disable-all-hooks は共有の settings.json、
 # claude-auth と codex-auth はログインの確認、untrusted は人の設定に信頼がない、stale は信頼の値が古い、none は止めない（比べるための行で、止めずに書き換わる）。
-# tests/host-test.sh が行ごとに、止めたあとの $agent_home の全ファイルの内容が止める前と同じことを確認する。
+# 置き先で止める条件: guard:<名前> は共有のガード 5 本（git-credential・git-ssh・pre-tool-use・stop・shell_split.py）のうち 1 本をマークのないファイルにする、guard-link:<名前> は同じ 1 本をシンボリックリンクにする、
+# link:<置き場からの相対パス> は gh・pre-push・start-daemon・監視のスクリプトをシンボリックリンクにする、noexec:<相対パス> はマークのない gh か pre-push を実行できないファイルにする。
+# login-shell は信頼が合う人の設定の allow_login_shell を true にする（状態は unmarked-fresh。信頼の行が今のキットの値と合う人の設定）。
+# 置き先の行は、ほかのガードを古い管理済みのファイルにしたまま、止めるファイルだけを変える。先に処理するファイルも後に処理するファイルも、止めたあとに変わらないことを見る。
+# tests/host-test.sh が行ごとに、止めたあとの $agent_home の全ファイルの内容・種類・権限・リンク先が止める前と同じことを確認する。
+# 置き先の行は、止めた原因を直して流し直すと、共有のガード 5 本と gh・pre-push が原本と同じになり、もう一度流しても何も変わらないことも確認する。
 none-managed	managed	none		書き換わる（比べるための行）
 none-new	new	none		書き換わる（比べるための行）
 managed-pre-disabled	managed	hooks:pre-disabled	無効か、有効と確認できません	何も変わらない
@@ -38,3 +43,23 @@ managed-token-env	managed	env:GH_TOKEN	GH_TOKEN	何も変わらない
 managed-github-token-env	managed	env:GITHUB_TOKEN	GITHUB_TOKEN	何も変わらない
 managed-gh-empty-file	managed	gh-empty-file	空の gh の置き場にファイルがあります	何も変わらない
 new-gh-empty-file	new	gh-empty-file	空の gh の置き場にファイルがあります	何も変わらない（設定は作らない）
+managed-guard-git-credential	managed	guard:git-credential	ガードのファイルが原本と一致しません	何も変わらない（直して流し直すとそろう）
+managed-guard-git-ssh	managed	guard:git-ssh	ガードのファイルが原本と一致しません	何も変わらない（直して流し直すとそろう）
+managed-guard-pre-tool-use	managed	guard:pre-tool-use	ガードのファイルが原本と一致しません	何も変わらない（直して流し直すとそろう）
+managed-guard-stop	managed	guard:stop	ガードのファイルが原本と一致しません	何も変わらない（直して流し直すとそろう）
+managed-guard-shell_split.py	managed	guard:shell_split.py	ガードのファイルが原本と一致しません	何も変わらない（直して流し直すとそろう）
+managed-guard-link-git-credential	managed	guard-link:git-credential	シンボリックリンクは上書きしません	何も変わらない（直して流し直すとそろう）
+managed-guard-link-git-ssh	managed	guard-link:git-ssh	シンボリックリンクは上書きしません	何も変わらない（直して流し直すとそろう）
+managed-guard-link-pre-tool-use	managed	guard-link:pre-tool-use	シンボリックリンクは上書きしません	何も変わらない（直して流し直すとそろう）
+managed-guard-link-stop	managed	guard-link:stop	シンボリックリンクは上書きしません	何も変わらない（直して流し直すとそろう）
+managed-guard-link-shell_split.py	managed	guard-link:shell_split.py	シンボリックリンクは上書きしません	何も変わらない（直して流し直すとそろう）
+new-guard-stop	new	guard:stop	ガードのファイルが原本と一致しません	何も変わらない（設定は作らない）
+unmarked-fresh-guard-stop	unmarked-fresh	guard:stop	ガードのファイルが原本と一致しません	何も変わらない（人の設定は書き換えない）
+managed-link-bin-gh	managed	link:bin/gh	シンボリックリンクは上書きしません	何も変わらない（直して流し直すとそろう）
+managed-link-git-hooks-pre-push	managed	link:git-hooks/pre-push	シンボリックリンクは上書きしません	何も変わらない（直して流し直すとそろう）
+managed-link-start-daemon	managed	link:start-daemon	シンボリックリンクは上書きしません	何も変わらない（直して流し直すとそろう）
+managed-link-bin-squad-cli-lib	managed	link:bin/squad-cli-lib	シンボリックリンクは上書きしません	何も変わらない（直して流し直すとそろう）
+managed-link-monitor	managed	link:bin/squad-usage-wait	シンボリックリンクは上書きしません	何も変わらない（直して流し直すとそろう）
+managed-noexec-bin-gh	managed	noexec:bin/gh	既存のガードを利用できません	何も変わらない（直して流し直すとそろう）
+managed-noexec-git-hooks-pre-push	managed	noexec:git-hooks/pre-push	既存のガードを利用できません	何も変わらない（直して流し直すとそろう）
+unmarked-fresh-login-shell	unmarked-fresh	login-shell	allow_login_shell = false を確認できません	何も変わらない（直して流し直すとそろう）

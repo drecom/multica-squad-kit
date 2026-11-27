@@ -151,7 +151,7 @@ b9a45cd63da0d056163d453d727352a611c2515299627c097ce072f28fc7f8b7  ./lib/autopilo
 1e160f76a6cca7b4fbbe71af2c50cd7adc413e33ea3f8a41a631aedd01087d09  ./lib/codex-hooks.py
 2d1ddbe078e69260fa06aaf0af9169dd68aff118151dcebe615059714a3dd674  ./lib/extensions.py
 10cd0eaaddfd83b11ff48f1fd07d4fd3b029a93afd0504449017603559529589  ./lib/extensions.sh
-530314c6a1f5cf625b5c73d158b36c23704ff93ce2e87c9def3397843ec08449  ./lib/host.sh
+ef76945532afcab755f8d3508853ba9e7db062b5f705aab94123aa02e0e5b10c  ./lib/host.sh
 23d61cb270e4f571520a230918feccc00e8b5b09cbcf430108e0a424244b5a96  ./lib/installation.sh
 98823f1dc43473fe56a1a8f1e37e3d5a3fc3e8dd2389a7dff8c71f0b4c40f6a1  ./lib/project-changes.sh
 e50659e5b14aedb6d52498bbf44efd83aafbbb15ba2bed43c1b52b78e5fb648f  ./lib/project.sh
@@ -307,7 +307,7 @@ dbb62029d95e8f85b01008d88dcff6a7d5fce368188e140c4fc7b570fbf8a109  ./tests/fixtur
 077a6ee0a3aa94073de201bb4b0b163345e20a097c3846ac572f5dba85b78862  ./tests/fixtures/codex-hooks-forms.tsv
 ebc0de81fe645e875d493af1f6cd26a89d2d2cc78ee893902d63bca66d7854f7  ./tests/fixtures/codex-hooks-paths.tsv
 6abce509b46e72c4766f2c2dfc86f1d946f0099c1a82161621dde1289d85d768  ./tests/fixtures/git-ssh-forms.tsv
-c5859c05d4597880af657ce5364fe83df105ceb9998e83550ae0f22b53fbd675  ./tests/fixtures/host-update-order.tsv
+3ea1f22b2bb09a180c6d168634cfbcffc3294b5cc739d7362d8e759c6f36da28  ./tests/fixtures/host-update-order.tsv
 5e1c194e8f8d27dbd3fd8dddaf87198bf84b00c9677bcb1252128ea75e75a8b0  ./tests/fixtures/metrics/breakdown/breakdown-tasks.json
 9f6da941b906e6c92294493f0298d90b0dd25ecdedb7b9f31ddb5a9c841b9d60  ./tests/fixtures/metrics/breakdown/breakdown.json
 f88fe23da2738ad60080b079f078eaa05657c08ce744ee300387e3324c502019  ./tests/fixtures/metrics/breakdown/breakdown.md
@@ -328,7 +328,7 @@ ecd6f37c326cf97ab4c60f934a3168f56fd6923862d4a1de6831dbe7e96d3e23  ./tests/fixtur
 3955ce233920ecb4094ed7701483069165443bd0a39b794e8a4e60c8d72d4c88  ./tests/guard-git-test.sh
 860892118f29640c780b4b3a20403658ecfb23e2d5261f18880b0ba626f12ac3  ./tests/guard-hook-test.sh
 7096a01774fa75f7d1643482ccbae548f8e9bb1471fbeaf8b185b69433fe8321  ./tests/host-daemon-test.sh
-85e0ac93fad72cfb64978615a138cc44d63f575b38002331b686b8e83c0a4fb2  ./tests/host-test.sh
+7d23ddd1068fb5f5b0626e4a580fc68fbf5a334add449a18ea75ef480b5c0842  ./tests/host-test.sh
 c8532b22f7a86ec6590a5cde3f64a6295148663e9f9893255209fca16fdea5b0  ./tests/install-command-test.sh
 539275b12edb26069fca5bedf9bb83abf3a73a7f68dc3c3ed5456c2ce19228f8  ./tests/install-test.sh
 f1213037642326b587fadb22e6a05923d656ed63570e526e52a8f7444b7e08e4  ./tests/installation-fixture.py

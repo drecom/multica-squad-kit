@@ -1022,7 +1022,22 @@ echo 'PASS host: マークのない設定は、信頼がなければ足す行を
 
 # 更新が書くものと止める確認の表（tests/fixtures/host-update-order.tsv）。行ごとに、止めたあとの $agent_home の全ファイルが止める前と同じことを確認する。
 # 書き換わる行（none）が実際に書き換えることも確認し、止めた行の「変わらない」が書く手順を流さなかっただけの結果でないようにする。
-snapshot_home() { (cd "$TEMPLATE_AGENT_HOME" && find . -type f -exec shasum {} + | LC_ALL=C sort | shasum | cut -d' ' -f1); }
+# 内容だけでなく、種類・権限・リンク先と、ディレクトリの有無と権限も比べる。
+snapshot_home() {
+ python3 - "$TEMPLATE_AGENT_HOME" <<'PY'
+import hashlib, os, stat, sys
+root = sys.argv[1]
+rows = []
+for base, dirs, files in os.walk(root):
+    for name in dirs + files:
+        path = os.path.join(base, name)
+        info = os.lstat(path)
+        kind = "link" if stat.S_ISLNK(info.st_mode) else "dir" if stat.S_ISDIR(info.st_mode) else "file"
+        detail = os.readlink(path) if kind == "link" else hashlib.sha256(open(path, "rb").read()).hexdigest() if kind == "file" else ""
+        rows.append("%s %s %o %s" % (os.path.relpath(path, root), kind, stat.S_IMODE(info.st_mode), detail))
+print(hashlib.sha256("\n".join(sorted(rows)).encode()).hexdigest())
+PY
+}
 unset TEST_TRUST_OUT TEST_DISABLED_OUT
 order_rows=0
 rm -rf "$test_dir/before-table-home"
@@ -1055,8 +1070,24 @@ while IFS=$'\t' read -r id state refusal message remain; do
  managed) sed 's/trusted_hash = "sha256:[0-9a-f]*"/trusted_hash = "sha256:old"/' "$config" >"$test_dir/old-config"; cp "$test_dir/old-config" "$config" ;;
  new) rm -f "$config" ;;
  unmarked) printf '%s\n' "$unmarked_keys" >"$config" ;;
+ unmarked-fresh) cp "$test_dir/unmarked-trusted" "$config" ;;
  unmarked-trusted) sed 's/trusted_hash = "sha256:[0-9a-f]*"/trusted_hash = "sha256:old"/' "$test_dir/unmarked-trusted" >"$config" ;;
  *) echo "表の状態が不明です: $state" >&2; exit 1 ;;
+ esac
+ # 空の置き場の権限は、止めた行で変わらないことを見るため、既定の 700 と違う値にしておく。
+ chmod 750 "$TEMPLATE_AGENT_HOME/guard/gh-empty"
+ target='' fixed=no
+ case $refusal in
+ guard:* | guard-link:*) target=$TEMPLATE_AGENT_HOME/guard/${refusal#*:} ;;
+ link:*) target=$TEMPLATE_AGENT_HOME/${refusal#link:} ;;
+ noexec:*) target=$TEMPLATE_AGENT_HOME/${refusal#noexec:} ;;
+ login-shell) target=$config ;;
+ esac
+ case $refusal in
+ guard:*) printf '# 人のファイル\n' >"$target" ;;
+ guard-link:* | link:*) rm -f "$target"; ln -s "$test_dir/codex-hooks" "$target" ;;
+ noexec:*) printf '# 人のファイル\n' >"$target"; chmod 644 "$target" ;;
+ login-shell) sed 's/allow_login_shell = false/allow_login_shell = true/' "$test_dir/unmarked-trusted" >"$config" ;;
  esac
  before=$(snapshot_home)
  set_mode running
@@ -1070,6 +1101,7 @@ while IFS=$'\t' read -r id state refusal message remain; do
  claude-auth) touch "$test_dir/no-claude-auth"; deny; rm -f "$test_dir/no-claude-auth" ;;
  codex-auth) touch "$test_dir/no-codex-auth"; deny; rm -f "$test_dir/no-codex-auth" ;;
  untrusted | stale) deny ;;
+ guard:* | guard-link:* | link:* | noexec:* | login-shell) fixed=yes; deny ;;
  *) echo "表の止める条件が不明です: $refusal" >&2; exit 1 ;;
  esac
  if [[ $refusal == none ]]; then
@@ -1079,6 +1111,25 @@ while IFS=$'\t' read -r id state refusal message remain; do
   [[ $(snapshot_home) == "$before" ]] || { echo "止めたのに書き換わった行: $id" >&2; exit 1; }
   [[ ! -s $test_dir/calls ]] || { echo "止めたのにデーモンを操作した行: $id" >&2; exit 1; }
   [[ $state != new || ! -e $config ]] || { echo "設定を作った行: $id" >&2; exit 1; }
+ fi
+ if [[ $fixed == yes ]]; then
+  # 原因を直して流し直すと全件がそろい、もう一度流しても何も変わらない。
+  case $refusal in
+  login-shell) cp "$test_dir/unmarked-trusted" "$config" ;;
+  *) rm -f "$target"; cp -P "$test_dir/installed-home/${target#"$TEMPLATE_AGENT_HOME"/}" "$target" ;;
+  esac
+  set_mode running
+  agent_env
+  run
+  for name in git-credential git-ssh pre-tool-use stop shell_split.py; do
+   cmp -s "$root/common/guard/$name" "$TEMPLATE_AGENT_HOME/guard/$name" && [[ ! -L $TEMPLATE_AGENT_HOME/guard/$name ]] || { echo "流し直してもそろわない行: $id ($name)" >&2; exit 1; }
+  done
+  cmp -s "$root/common/guard/gh" "$TEMPLATE_AGENT_HOME/bin/gh" && cmp -s "$root/common/guard/pre-push" "$TEMPLATE_AGENT_HOME/git-hooks/pre-push" || { echo "流し直してもそろわない行: $id (gh と pre-push)" >&2; exit 1; }
+  settled=$(snapshot_home)
+  set_mode running
+  agent_env
+  run
+  [[ $(snapshot_home) == "$settled" ]] || { echo "2 回目の流し直しで変わった行: $id" >&2; exit 1; }
  fi
 done <"$root/tests/fixtures/host-update-order.tsv"
 echo ok >"$test_dir/codex-hooks"
