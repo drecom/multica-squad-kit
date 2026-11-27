@@ -1,6 +1,7 @@
 # プロジェクトとエージェントの設定を終えてから、スクワッドを設定する。
 prepare_project() (
 	umask 077
+	local project_id=$1
 	local project_work enabled role file model thinking name id result current desired skills matches field value runtime max custom_args
 	local profile people member_name owner_mention squad_name squad_id records='{}' values
 	local selected_repositories selected_repo
@@ -59,12 +60,9 @@ prepare_project() (
 	values=$(jq -n --arg project_name "$project_name" --arg project_key "$project_key" --arg member_key "$member_key" --arg member_name "$member_name" --arg repository "$repository" --arg owner_mention "$owner_mention" '{project_name:$project_name,project_key:$project_key,member_key:$member_key,member_name:$member_name,repository:$repository,owner_mention:$owner_mention}')
 	project_repository_values
 	printf '%s\n' "$values" >"$project_work/values.json"
-	# 名前で現在のレコードを探し直す。保存済みの ID は信頼しない。
-	result=$(mc project list --output json) || die 'プロジェクトを取得できませんでした。'
-	project_named "$result" title "$project_name"
-	current=$matches
-	project_id=$(jq -r '.[0].id // empty' <<<"$current")
+	# 質問で選んだ ID を使う。許可を書く直前に、今も同じ名前と ID であることを確認する。
 	if [[ -z $project_id ]]; then
+		recheck_selected_project "$project_id"
 		template_apply "$project_work/values.json" "$root/skeleton/project.md" >"$project_work/description" || die 'プロジェクトの説明を展開できませんでした。'
 		result=$(mc project create --title "$project_name" --description "$(cat "$project_work/description")" --repo "$repository_url" --output json) || die 'プロジェクトを作れませんでした。'
 		project_id=$(project_result_id "$result") || die 'プロジェクト作成の応答が不正です。'
@@ -358,7 +356,7 @@ project_repositories_recheck() {
 	local latest_projects eligible_repos blocked_repos line
 	resolve_link_repositories
 	latest_projects=$(read_list プロジェクト project list) || die '許可先の再確認に必要なプロジェクトを取得できませんでした。'
-	jq -e --arg id "$project_id" 'any(.[]; .id==$id)' >/dev/null <<<"$latest_projects" || die '許可先の再確認で対象のプロジェクトを確認できませんでした。'
+	recheck_selected_project "$project_id" "$latest_projects"
 	repository_choices "$selected_repositories" "$latest_projects" "$project_id"
 	if [[ $(jq length <<<"$blocked_repos") != 0 ]]; then
 		while IFS= read -r line; do ui_error "$line"; done < <(jq -r '.[] | "別プロジェクトに紐付いたため許可できません: \(.repository)（\(.projects|join("、"))）"' <<<"$blocked_repos")

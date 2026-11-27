@@ -182,14 +182,16 @@ codex_runtime_id=runtime-codex
 runtimes=${TEST_RUNTIMES:-[\"claude\",\"codex\"]}
 agent_home=$TEMPLATE_AGENT_HOME
 excluded_roles=$TEST_EXCLUDED
+# 質問で選んだ ID を渡す。本体の登録前の確認とは別に、質問時点のデータから選ぶ。
+projects=$(jq -s . "$TEST_DB"/projects/*.json)
+project_named "$projects" title "$project_name"
+selected_project_id=$(jq -r '.[0].id // empty' <<<"$matches")
 if [[ ${TEST_RECHECK:-no} == yes ]]; then
  # 選択時には全件が候補だった。その後の別セットアップによる変更を再現する。
  projects=$(read_list プロジェクト project list)
  repository_choices "$repositories" "$projects" project-a
  [[ $(jq length <<<"$eligible_repos") == $(jq length <<<"$repositories") ]]
  touch "$TEST_DB/selection-ready"
- # 保存済みの ID でなく、名前から読み直した実 ID で自分自身を除外する。
- project_id=stale-saved-id
 fi
 if [[ -n ${TEST_EXTENSION_DIR:-} ]]; then
  choose_extension <<<"$TEST_EXTENSION_DIR"
@@ -211,7 +213,7 @@ if [[ ${TEST_COMPLETE:-no} == yes ]]; then
  source "$root/lib/installation.sh"
  member_ids='["actor"]'
 fi
-prepare_project
+prepare_project "$selected_project_id"
 [[ $excluded_roles == "$TEST_EXCLUDED" ]]
 DRIVER
 export PATH="$test_dir/bin:$PATH" TEST_PACKAGE="$test_dir/package"

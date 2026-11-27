@@ -154,8 +154,8 @@ b9a45cd63da0d056163d453d727352a611c2515299627c097ce072f28fc7f8b7  ./lib/autopilo
 ac71ac021a5f2d787b5ab6435fdf0db08cc3f6f75bad62b6447ab3a255234eb2  ./lib/host.sh
 23d61cb270e4f571520a230918feccc00e8b5b09cbcf430108e0a424244b5a96  ./lib/installation.sh
 98823f1dc43473fe56a1a8f1e37e3d5a3fc3e8dd2389a7dff8c71f0b4c40f6a1  ./lib/project-changes.sh
-e50659e5b14aedb6d52498bbf44efd83aafbbb15ba2bed43c1b52b78e5fb648f  ./lib/project.sh
-f088b8ff63d550807317455472143744cc5ce021c291790512a81d75d6bb770f  ./lib/questions.sh
+a64aa00177818b153a6029502a10439ad5d579ebcbbbda600572946bd837cc7c  ./lib/project.sh
+a6d2fa6c6d23acc33987e011e358aec75c2bc650048bca65ccf64a019b209099  ./lib/questions.sh
 ae4eac4a5f72d78dc0e311ec42a6ef3a9d1973f91a1aefe14ab32d8982f7b2a1  ./lib/render.sh
 586f3aa9bc5bfa9df551ff1e1be82b5adf9e671933b86341dde46bf9b804ca67  ./lib/setup-issues.sh
 3938f7e455607b15bd089439ce2c3bf106cb48e8e1d58c67a7b9e7cc32cdcbac  ./lib/squad.sh
@@ -176,7 +176,7 @@ a307ed5a29f8ee53d6aa1518ae40cb7cd157c2f841eacceefbee4eaf3d8c9ecd  ./scripts/doc-
 5b08afa6d8b2550dec9c1d587d39b7684f3811d5ae937e7e8ab61dd3bdec6ac8  ./scripts/metrics.py
 854307b630f5246a2809a38c52b87b6a42366280d91c7b5ebfa64b470f59729f  ./scripts/release.sh
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./scripts/style-exempt.txt
-b26a96d3613f866b20ee4a9d15213d306561410e3d403a373738dc485c875dcc  ./setup.sh
+2fca9dfa8cca4cf801820845ccdd44671567ee8a69cbda56133a7c1e7fc94ccb  ./setup.sh
 595fd8697be17ce33adec5b6851a97ed974231aad8e48b244aee70c4128f26b7  ./skeleton/.agents/review-paths
 51eb4a7c0fd29e15873a87c8dd06c550af1097bd66324f9bd0dc41f379eb769f  ./skeleton/.agents/rules/code.md
 9af1cb6c7844a8ccabe3f2183600c0f6d7bfb31c8554328cade8900119b7eabc  ./skeleton/.agents/rules/database.md
@@ -307,7 +307,7 @@ dbb62029d95e8f85b01008d88dcff6a7d5fce368188e140c4fc7b570fbf8a109  ./tests/fixtur
 077a6ee0a3aa94073de201bb4b0b163345e20a097c3846ac572f5dba85b78862  ./tests/fixtures/codex-hooks-forms.tsv
 ebc0de81fe645e875d493af1f6cd26a89d2d2cc78ee893902d63bca66d7854f7  ./tests/fixtures/codex-hooks-paths.tsv
 6abce509b46e72c4766f2c2dfc86f1d946f0099c1a82161621dde1289d85d768  ./tests/fixtures/git-ssh-forms.tsv
-ac4302a16574bf3cd98a64231b8cf6c32a750a9461a34f867666f5d56ea51fd3  ./tests/fixtures/host-update-order.tsv
+a82690972236951e0706300ec597501f89aafe244b7e72121dd91d81a0665872  ./tests/fixtures/host-update-order.tsv
 5e1c194e8f8d27dbd3fd8dddaf87198bf84b00c9677bcb1252128ea75e75a8b0  ./tests/fixtures/metrics/breakdown/breakdown-tasks.json
 9f6da941b906e6c92294493f0298d90b0dd25ecdedb7b9f31ddb5a9c841b9d60  ./tests/fixtures/metrics/breakdown/breakdown.json
 f88fe23da2738ad60080b079f078eaa05657c08ce744ee300387e3324c502019  ./tests/fixtures/metrics/breakdown/breakdown.md
@@ -332,7 +332,7 @@ ecd6f37c326cf97ab4c60f934a3168f56fd6923862d4a1de6831dbe7e96d3e23  ./tests/fixtur
 bca3a3a455902a7b46d811ace46109fc540530e0503da1ee2ed847a8c4f8082d  ./tests/host-order-2-test.sh
 cf6f1a35ba9654bfe215d7a56bd6674cb24586a80be03953195749f135bfe22a  ./tests/host-order-3-test.sh
 e8c49a65dfcebee3941fd55bbe301cb008de1e33e84922633cff4a386d5bc0a1  ./tests/host-order-body.sh
-56cd3a5933cc4d53c3bf067bdb610c6a9a02d5c74a40df812c8b7e34827d1d79  ./tests/host-order-setup-test.sh
+dc6b9a8a85ad3b265ea697f14fdfcbbee57cf77ddca2fdf473f92b5cbbc601d2  ./tests/host-order-setup-test.sh
 acd934e724c02eea735f7c23bb6fff6756c500df8007578c9940a059109e7f3f  ./tests/host-order-snapshot.py
 f1caec498622c8bed76d324dee1137ec3a7f5903bbb63d2d560ebe2d4359ec6b  ./tests/host-test-lib.sh
 8327c2010558c65be073ea6bfe184ea10b90944522175ee53d5c66aa0d7bec1f  ./tests/host-test.sh
@@ -683,8 +683,8 @@ e2141527ff9e7280bce9dd9dd161bec702edca9d55658c078e487cae802c9ab2  ./tests/projec
 59c17b27dd840bfb577695d5bca491c7ccd0bfecd452cbd9b413838e2e4bef9c  ./tests/project-progress-test.sh
 e02c8e17d26a2d461f4dd0897c5590d6d06eb6b54a5324de5e65271c8cf4f3b4  ./tests/project-runtimes-first-test.sh
 7b4df7980b6ce0ede37303f81839419aab6c1578f3358cf043fb2cde479f0e1f  ./tests/project-runtimes-test.sh
-c2ceb8dd3561ee8adeaca790ebc1594cb1ad442522bb2a39334276306999f1ad  ./tests/project-select-test.sh
-b0ebdcabbf56739ccb7154756677beb99e9ab48beb4924eafd19a7b1e84d12ca  ./tests/project-test-lib.sh
+9ef6a9680ef8ebfe33085119aeb39a268728eb02b23cde8561014fea844c2d6a  ./tests/project-select-test.sh
+f1741b64873d2671d11103087cb5b7bd09ee852ad8fe58565d553c449edf5964  ./tests/project-test-lib.sh
 5a6e6016e455b9837aaa4a2f9eb2beb31b865302d416a52421a8270dff432d14  ./tests/questions-fold-test.sh
 dc0b28093ee7de45ba672084ceb520a493f34f57faaacf9685f8d094bb883690  ./tests/questions-ui-test.sh
 301a11f2a4ce0520cf6b0da1f97e86ddc55aec1ce92385f2074f89365869ba22  ./tests/release-assertions.sh
@@ -717,7 +717,7 @@ aa48052b223dabd13d51dbe43d6ce1172d420d23c55c76030b194f037b8a2ecd  ./tests/runtim
 b578078bcb20457554548922aaebdbee413a4ed8c1bc92e1c669c8220f7840a1  ./tests/setup-issues-test.sh
 a61db35ef43cd5f35c5e2384ea4e3f6b4d94df86b7d890ba714341ba27915db8  ./tests/setup-progress-test.sh
 196cbc139059af1c0d082682c6c77352c44aabf38bd5cac8e62322e9535e1348  ./tests/setup-repositories-test.sh
-fcccbb9e0648dd9d7fc4aac8faf9872bdc8bc7d69dfd625b20182e9baf90e285  ./tests/setup-runtime-cli.py
+a59ee5040990d899e321a5b60cb0efa766a6f66c17f01215f7579a080ba6f603  ./tests/setup-runtime-cli.py
 a6c5bb9c0b064cc3d59d1c27500f66d22f5ba52839afa1dbbdcde6d532f82fe5  ./tests/setup-runtimes-both-changes-test.sh
 aa03f77f85dc73a75048a50267d331ce66338f2d54745c758e7d5d309a7fdddd  ./tests/setup-runtimes-both-issues-test.sh
 bebfff3bc6b1fda21b88f36dfcd50878711c0609ccc205d7643f80d524f331a7  ./tests/setup-runtimes-both-test.sh

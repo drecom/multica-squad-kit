@@ -265,3 +265,4 @@ project-preserve-shell	project	project:preserve:template/shell/project-order/.zs
 setup-shell-parent-readonly	setup	shell-parent-readonly	置き場がないか、書けません	共有・プロジェクト・役を変えずに止まり、親の権限を直すと全件がそろう
 setup-gh-empty-unreadable	setup	gh-empty-unreadable	空の gh の置き場を読めませんでした	共有・プロジェクト・役を変えずに止まり、読み取れるようにすると全件がそろう
 setup-gh-empty-readable	setup	gh-empty-readable		列挙できる空の置き場は通り、全件がそろう
+setup-project-id-shift	setup	project-id-shift	選んだプロジェクトが変わりました	配置先の事前確認後に同名の別 ID が見えたら共有・プロジェクト・役を変えずに止まり、選択が一致する状態で全件がそろう

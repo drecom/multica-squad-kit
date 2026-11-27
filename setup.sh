@@ -109,6 +109,7 @@ choose_server
 check_login
 check_update
 ask_questions
+readonly selected_project_id=$project_id
 resolve_link_repositories
 check_autopilot_targets
 load_extension_inventory
@@ -120,9 +121,11 @@ ui_steps_begin err 2 'ホストを準備' '共通のラベルとスキル' 'プ�
 mkdir -p "$root/tmp" || die '作業用の置き場を作れませんでした。'
 ui_steps_notice_file=$(mktemp "$root/tmp/notices.XXXXXX") || die '作業用の置き場を作れませんでした。'
 ui_phase_start 1
-if [[ -n $project_id ]]; then
-	recheck_selected_project
-	host_check_project_targets "$project_id"
+if [[ -n $selected_project_id ]]; then
+	recheck_selected_project "$selected_project_id"
+	host_check_project_targets "$selected_project_id"
+	# 配置先を検査する間に選択が変わった場合も、共有ファイルを書き始める前に止める。
+	recheck_selected_project "$selected_project_id"
 fi
 save_answers
 prepare_host
@@ -130,6 +133,6 @@ ui_phase_done "$(host_gate_summary)"
 ui_phase_start 2
 prepare_workspace
 ui_phase_done
-prepare_project
+prepare_project "$selected_project_id"
 save_extension_inventory
 record_installed_version
