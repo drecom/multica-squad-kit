@@ -197,13 +197,18 @@ reset_db
 cp "$root/common/guard/pre-tool-use" "$root/common/guard/stop" "$root/common/guard/shell_split.py" "$TEMPLATE_AGENT_HOME/guard/"
 chmod +x "$TEMPLATE_AGENT_HOME/guard/pre-tool-use" "$TEMPLATE_AGENT_HOME/guard/stop"
 run
-python3 - "$TEST_DB/agents/agent-demo-codex-implementer-owner.json" "$TEMPLATE_AGENT_HOME" <<'PY'
+guard_env_dir="$test_dir/guard-env"
+mkdir -p "$guard_env_dir/bin" "$guard_env_dir/state"
+ln -sf "$(command -v python3)" "$guard_env_dir/bin/python3"
+# ガードは MULTICA_TASK_ID がないと何もせずに通す。実行の環境（エージェントの中か CI か）に左右されないよう、値と PATH（multica なし）と状態の置き場を固定する。
+python3 - "$TEST_DB/agents/agent-demo-codex-implementer-owner.json" "$TEMPLATE_AGENT_HOME" "$guard_env_dir" <<'PY'
 import json
 import subprocess
 import sys
 
 args = json.load(open(sys.argv[1], encoding="utf-8"))["custom_args"]
 guard = sys.argv[2] + "/guard"
+guard_env = {"PATH": sys.argv[3] + "/bin:/usr/bin:/bin", "HOME": sys.argv[3], "MULTICA_TASK_ID": "task-test", "SQUAD_KIT_STATE_DIR": sys.argv[3] + "/state"}
 commands = {}
 for value in args:
     for name in ("PreToolUse", "Stop"):
@@ -213,12 +218,12 @@ for value in args:
             commands[name] = json.loads(value[start:value.index('"}', start) + 1])
 assert set(commands) == {"PreToolUse", "Stop"}, args
 assert commands["PreToolUse"].startswith("'") and commands["PreToolUse"].endswith("'"), commands
-pre = subprocess.run(["/bin/sh", "-c", commands["PreToolUse"]], input='{"tool_name":"Bash","tool_input":{"command":"ls"}}', capture_output=True, text=True)
+pre = subprocess.run(["/bin/sh", "-c", commands["PreToolUse"]], input='{"tool_name":"Bash","tool_input":{"command":"ls"}}', capture_output=True, text=True, env=guard_env)
 assert pre.returncode == 2 and "PreToolUse のガード" in pre.stderr, (pre.returncode, pre.stderr)
-stop = subprocess.run(["/bin/sh", "-c", commands["Stop"]], input='{"hook_event_name":"Stop"}', capture_output=True, text=True)
+stop = subprocess.run(["/bin/sh", "-c", commands["Stop"]], input='{"hook_event_name":"Stop"}', capture_output=True, text=True, env=guard_env)
 assert stop.returncode == 0 and "decision" in stop.stdout, (stop.returncode, stop.stdout, stop.stderr)
 # 引用しないと、同じパスは空白で割れて 127、単引用符で閉じずに 2 で終わる。
-bare = subprocess.run(["/bin/sh", "-c", guard + "/pre-tool-use"], input="{}", capture_output=True, text=True)
+bare = subprocess.run(["/bin/sh", "-c", guard + "/pre-tool-use"], input="{}", capture_output=True, text=True, env=guard_env)
 assert bare.returncode != 2 or "PreToolUse のガード" not in bare.stderr, bare
 PY
 echo 'PASS project runtimes: 置き場に空白と単引用符があっても、役の引数のコマンドをシェルで実行すると 2 つのフックのスクリプトが起動する'
@@ -238,7 +243,7 @@ for stop in env_set; do
  # 役の custom_env を書いている途中で止まる。
  TEST_FAIL='agent env set' deny
  [[ $(snapshot_shared) == "$before" ]]
- ! grep -q 'hooks' "$TEMPLATE_AGENT_HOME/claude/settings.json"
+ if grep -q 'hooks' "$TEMPLATE_AGENT_HOME/claude/settings.json"; then echo '止まったのにフックが書かれた' >&2; exit 1; fi
  # 止まったあとに流し直すと、フックと deny がそろって書かれる。
  run
  grep -q 'hooks' "$TEMPLATE_AGENT_HOME/claude/settings.json"

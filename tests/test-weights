@@ -60,7 +60,7 @@ tests/project-issues-test.sh 28
 tests/project-linking-test.sh 77
 tests/project-progress-test.sh 18
 tests/project-runtimes-first-test.sh 40
-tests/project-runtimes-test.sh 37
+tests/project-runtimes-test.sh 240
 tests/project-select-test.sh 34
 tests/questions-fold-test.sh 55
 tests/questions-ui-test.sh 100
