@@ -94,7 +94,7 @@ b95232d26ae1ae5fcdb6af4dadc63d3877c2a4f4a21d0a87752b2acf606c5dc5  ./common/skill
 77ceb35ddbb3520a7053b58a204f6da4b1340a2cb7de2dba89db48d4160dfb26  ./common/skills/squad-handoff/references/run-cut.md
 3f91e3e8613df7240d8eb1cac9116181ef22e772bb6f3273a93302dc65eae439  ./common/skills/squad-handoff/references/writing-forms.md
 19bf4eb0781004c0e270fd227004025b6e7a266a452098c2d4aae01d85b1018b  ./common/squad.md
-87efc5eb4cf13f04625dc5a924a8caa813d96d0ba86ecb225f6a3102b711aa81  ./docs/README.md
+3fe7919b4ff4d09ac2054de91760b387fc9c7379de447eb29d39af1c22f8c0b9  ./docs/README.md
 c380ac8fd57091fa1d1ad80ff9724cba6667a7199b440a40b4be9b0e25f83623  ./docs/agent-path.md
 c2473e43861c12dc3733d0789b32e4e89c9a9d9827289f2c1968b6f2caaefb81  ./docs/agent-settings.md
 e1053a8614b8876ec371c43684db9c0ab2a90ad31fe7699dcac0272127ca81e0  ./docs/autopilot-targets.md
@@ -114,6 +114,7 @@ c87cc9bfe056434281fb54a7da958d76d8d08dc4c17a73b402283f2e37239067  ./docs/leader-
 f3e7834c16bb59c09a819b29a92ccea1d2ba7bdbe50505af4e1912167369d653  ./docs/metrics.md
 fc4ec5836bb4c9b565596c63b7e0255ce645fb797e1a9bbb07b3b68e3e1f521b  ./docs/own-review-paths.md
 50cf4e276cc4493aa7342eec05ccdc15afb666d22e17106e4a3d19ecd599355b  ./docs/planner-requirements.md
+049c67726a04954d76911aca35db33d99a96261f354dc230344b900314c0a1b4  ./docs/pr-link-no-integration.md
 69892606db1ef32f15152c9409a64bf62407d29f282bd96f047ea28b14a1364f  ./docs/pr-link-retry.md
 99c60e172765c6ebb6936a9b0aef232e5ddbd8b9fe279fdd6ab566373248cb1e  ./docs/principal-review.md
 a58a91809ea09df148c193b451ff8955d8b9c9a7b702cace304633e1673c4b43  ./docs/procedure-review.md
