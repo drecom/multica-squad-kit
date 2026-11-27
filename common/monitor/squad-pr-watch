@@ -960,13 +960,15 @@ unlinked_seen() {
 
 # 3 つの知らせを書いたかを、`ci_watch_thread` への名簿のエージェント（リーダーか役）の返信だけから読む。
 # 第 2 引数は issue-comments の出力、第 3 引数は `ci_watch_thread`、第 4 引数は比べ方（prefix は本文の先頭、first は 1 行目）、第 5 引数は知らせの先頭。
-# 書いてあれば 0、なければ 1、名簿を読めないときは理由を標準エラーに出して 2 を返す。
+# 書いてあれば 0、なければ（名簿の終了コード 2 の担当がスクワッドでないときも）1、名簿を読めない（終了コード 1 など）ときは理由を標準エラーに出して 2 を返す。
 unlinked_notified() {
 	local issue=$1 comments=$2 thread=$3 mode=$4 text=$5 roster status=0 ids
 	roster=$(unlinked_roster "$issue") || status=$?
 	if ((status == 0)); then
 		ids=$(jq -c '[.leader, (.roles // {} | .[] | .id)] | map(select(type == "string" and . != ""))' <<<"$roster") || status=1
 	fi
+	# 終了コード 2 は、名簿を読めたがスクワッドの担当でなくなった（名簿のエージェントがいない）ことを指す。知らせ済みの返信は無いので、書いていないと読む。
+	if ((status == 2)); then return 1; fi
 	if ((status != 0)); then
 		echo '名簿を読めないため、知らせを書いたか判定できません。知らせを書かず、規則を残します。' >&2
 		return 2
