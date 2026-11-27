@@ -97,9 +97,11 @@ git の設定を環境変数の `GIT_CONFIG_COUNT` と `GIT_CONFIG_KEY_n`・`GIT
 
 ### SSH の push を止める
 
-キットの SSH のコマンドは、git が SSH で送るコマンドを読む。`git-receive-pack` で、行き先が `github.com` の許すリポジトリでないときは、止めて理由を出す。ほかのコマンドと許すリポジトリへの push は、本物の `ssh` にそのまま渡す。push かどうかは、最後の引数の最初の単引用符より前のコマンド名で決め、リポジトリの名前は見ない。名前に `receive-pack` を含むリポジトリの fetch と `ls-remote` は、読み取りとして通す。
+キットの SSH のコマンドは、git が SSH で送るコマンドを読む。`git-receive-pack` で、行き先が `github.com` の許すリポジトリでないときは、止めて理由を出す。ほかのコマンドと許すリポジトリへの push は、本物の `ssh` にそのまま渡す。
 
 git は、SCP の形の URL では `git-receive-pack 'OWNER/REPO.git'` を、`ssh://` の URL では `git-receive-pack '/OWNER/REPO.git'` を送る。どちらの形も、実機の git で確認した。
+
+push かどうかは、最後の引数の最初の単引用符より前のコマンド名で決め、リポジトリの名前は見ない。名前に `receive-pack` を含むリポジトリの fetch と `ls-remote` は、読み取りとして通す。
 
 ### 置き場と変数の一覧
 
