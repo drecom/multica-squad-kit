@@ -7,8 +7,8 @@ source "$root/tests/pr-watch-test-lib.sh"
 # ホストの連携なしの記録が結果を変えないよう、記録の根を空の一時ディレクトリに向ける。
 export PR_LINK_STATE_ROOT=$test_dir/pr-link-state
 
-# 要素はまだ採取できていないため、約束で宣言した html_url だけをテストに使う。
-assert_jq '.entries["issue-pull-requests"].items.fields == [{path:"html_url",class:"required",nullable:false}]' "$test_dir/contracts.json"
+# 要素はまだ採取できていないため、約束で宣言した html_url だけを判定に使う。link_source は squad-pr-link が表示にだけ使う。
+assert_jq '.entries["issue-pull-requests"].items.fields == [{path:"html_url",class:"required",nullable:false},{path:"link_source",class:"optional",nullable:true}]' "$test_dir/contracts.json"
 mv "$test_dir/bin/multica" "$test_dir/bin/multica-base"
 cat >"$test_dir/bin/multica" <<'EOF'
 #!/usr/bin/env bash

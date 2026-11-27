@@ -69,6 +69,64 @@ write_no_integration_marks() {
 	multica issue metadata set "$id" --key pr_link_no_integration --value "$url" --type string >/dev/null 2>&1 || true
 }
 
+# 紐付けに失敗したあと、タスクの PR の一覧を 1 回だけ読み直す（docs/pr-link-no-integration.md の「一覧の読み直し」）。
+# 自動の関連付けなどで PR がすでに紐付いていれば、紐付けの失敗として扱わないため。
+# 一覧に PR があれば 0 を返し、紐付け方を LISTED_SOURCE に返す。PR がないとき、一覧を読めないとき、python3 がないときは 1 を返す。
+# 一覧の読み取りの診断には認証情報が含まれ得るので、標準エラーには何も出さない。比べ方は squad-pr-watch の link-check と同じにする。
+reread_listed() {
+	local prs
+	LISTED_SOURCE=
+	prs=$(squad_cli_read issue-pull-requests "$task" 2>/dev/null) || return 1
+	LISTED_SOURCE=$(python3 - "$url" "$prs" 2>/dev/null <<'PY'
+import json
+import re
+import sys
+from urllib.parse import urlsplit
+
+owner = r"[A-Za-z0-9-]+"
+repo = r"[A-Za-z0-9_.-]+"
+
+def canonical(value):
+    if not isinstance(value, str):
+        raise ValueError("GitHub の PR の URL の形でない")
+    if any(ord(c) < 32 or 127 <= ord(c) <= 159 for c in value):
+        raise ValueError("制御文字を含む")
+    try:
+        parsed = urlsplit(value)
+        match = re.fullmatch(rf"/({owner})/({repo})/pull/([0-9]+)(?:/.*)?", parsed.path)
+        if parsed.scheme.lower() not in ("http", "https") or parsed.netloc.lower() != "github.com" or not match:
+            raise ValueError
+        account, project, number = match.groups()
+        number = int(number)
+        if project in (".", "..") or number < 1:
+            raise ValueError
+    except ValueError:
+        raise ValueError("GitHub の PR の URL の形でない") from None
+    return f"https://github.com/{account}/{project}/pull/{number}"
+
+target = canonical(sys.argv[1]).casefold()
+items = json.loads(sys.argv[2])["pull_requests"]
+urls = [canonical(item["html_url"]).casefold() for item in items]
+if target not in urls:
+    sys.exit(1)
+source = items[urls.index(target)].get("link_source")
+print(source if isinstance(source, str) and re.fullmatch(r"[a-z_]+", source) else "不明")
+PY
+	) || { LISTED_SOURCE=; return 1; }
+}
+# 一覧に PR があったときの終わり方。pr_url を書き、記録があれば消し、紐付いていた行を出して 0 で終わる。
+# マークと pr_link_no_integration は書かない。pr_url を書けなければ、今と同じ警告で 1 で終わる。
+finish_listed() {
+	if ! multica issue metadata set "$id" --key pr_url --value "$url" --type string >/dev/null 2>&1; then
+		# サーバーは PR を知っているので、PR を見つけられないという案内は出さない。
+		PR_LINK_NOT_FOUND=0
+		fail_link 'metadata を書けない'
+	fi
+	if [[ $record_state != off ]]; then pr_link_record_remove "$project" "$url" || true; fi
+	printf '紐付いていました: %s %s 紐付け方: %s\n' "$identifier" "$url" "$LISTED_SOURCE"
+	exit 0
+}
+
 repository=$(jq -r '.repository | select(. != null)' <<<"$metadata" | tr '[:upper:]' '[:lower:]')
 url_repository=${url#https://github.com/}
 url_repository=$(printf '%s' "${url_repository%/pull/*}" | tr '[:upper:]' '[:lower:]')
@@ -99,12 +157,18 @@ if [[ $record_state == present ]]; then
 		fi
 		fail_link 'metadata を書けない'
 	fi
+	# 200 でなければ、紐付けの失敗として扱う前に、一覧に PR がないかを読み直す。
+	if reread_listed; then finish_listed; fi
 	write_no_integration_marks || fail_link "$PR_LINK_REASON"
 	printf '紐付けていません（連携なし）: %s %s\n' "$identifier" "$url"
 	exit 0
 fi
 
 if ! pr_link_pull_request "$id" "$url" "$metadata"; then
+	# 一覧を読み直すのは、作業先が PR のリポジトリと違うときと、200 のあとに pr_url を書けなかったときを除く失敗である。
+	if [[ $PR_LINK_REASON != 'metadata を書けない' ]] && { [[ -z $repository ]] || (( same_repository )); } && reread_listed; then
+		finish_listed
+	fi
 	# 記録がなく、期限まで 404 だけが続いたときだけ、連携なしに切り替える。
 	if [[ $record_state == absent && ${PR_LINK_ALL_404:-0} == 1 ]]; then
 		created=0

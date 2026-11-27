@@ -225,7 +225,8 @@ squad_cli_contracts() {
       "items": {
         "path": ["pull_requests"],
         "fields": [
-          {"path": "html_url", "class": "required", "nullable": false}
+          {"path": "html_url", "class": "required", "nullable": false},
+          {"path": "link_source", "class": "optional", "nullable": true}
         ]
       },
       "samples": [
@@ -238,6 +239,11 @@ squad_cli_contracts() {
           "name": "element",
           "where": "has(\"html_url\")",
           "unavailable": "2026-11-13 時点で、このワークスペースに紐付いた PR を持つタスクがなく、要素の見本を取れなかった。紐付いたタスクができたら取り直す。"
+        },
+        {
+          "name": "link_source-present",
+          "where": "has(\"link_source\") and .link_source != null",
+          "unavailable": "要素の見本を取れていないため、link_source の値の見本もない。squad-pr-link が `紐付け方:` に出すだけで、判定には使わない。契約で宣言した欄を連携なしのテストで設定する。"
         }
       ]
     },
