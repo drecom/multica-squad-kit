@@ -824,7 +824,7 @@ bb7b764515248a871ceb26e80ed0d7a543675fe39a1813d3355767cb94475dc7  ./tests/terms-
 af7827d0eb204af364acfe613f94a3a13aaeb3803ebdd9755dc344d020e47dee  ./tests/test-runner-test.sh
 aafe53504d959b1213d2c5a2d5f659226a75f214be7e30b8fe579cee82e4b3b0  ./tests/test-weights
 0c443df4ae317caead8ade87ae56414d1de8ffce76022e746354502fa394e64b  ./tests/tty-session-cases.py
-f8f63fec772482088cbbbd0a2926bd1193177b9191fe9bdb1cce99a856d7f48c  ./tests/tty-session-test.sh
+492b4efa10832e1bc09ae1b7354db43c20cce7fee793e73bab5876508cdfa9c8  ./tests/tty-session-test.sh
 1b993ef6a188f498218f497edc1ae8c32d40881d0d2d43896a09d1adfa59dbda  ./tests/tty-session.py
 3e9e683ab3a2775d4f92aba2e8c84f8aa66cf7066ec328f9603728ded54ad6c6  ./tests/ui-contrast.py
 9b79bf0e9a21b198ce356ee7d6fc287316eef96040f5a4918b5c21ed09c2c607  ./tests/ui-steps-test.sh
