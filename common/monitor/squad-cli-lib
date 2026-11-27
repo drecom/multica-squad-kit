@@ -2224,7 +2224,8 @@ squad_cli_human_of_squad() {
 # 名簿は読まない。リーダーの ID の一覧と、必要なら名簿の最上位の役の ID の一覧を、呼び出し側が渡す。
 # 標準入力に {comments, leaders, principals} を渡し、モードで出すものを変える。
 #   analyze: 各コメントの {rounds, controls, finals} と rework_reviewed・short_path。finals は principals があるときだけ。
-#   merge_requested <head>: その head のマージの依頼があれば yes、なければ no。
+#   merge_requested <head> [<回>]: その head のマージの依頼があれば yes、なければ no。回を渡すと、その回のコメントより後の依頼だけを読み、回より前の依頼と読めない候補は見ない。
+#     回がコメントにないときと、空のときも、渡したものとして no を返す。回を渡さないときは、全コメントを読む。
 #   state: 認める回のうち最も新しいものの状態（なければ何も出さない）。
 read -r -d '' SQUAD_CLI_CONTROL_PY <<'SQUADCLICONTROLPY' || true
 import calendar
@@ -2686,12 +2687,19 @@ if mode == "analyze":
     })
 elif mode == "merge_requested":
     want = "マージの依頼: " + args[0]
+    # 回を渡したときは、回より後のコメントだけを読む。回が見つからなければ、読む先がないので依頼はない。
+    after = args[1] if len(args) > 1 else None
+    if after is not None and after not in pos:
+        print("no")
+        sys.exit(0)
     # 読めない候補は、読める依頼と同じ head にあっても優先する。依頼済みと読まず、理由を返す。
-    held = blocked_text(unreadable([want]))
+    held = blocked_text(unreadable([want], after))
     if held:
         print("blocked " + held)
         sys.exit(0)
     for i in sequence:
+        if after is not None and pos[i] <= pos[after]:
+            continue
         if not parsed[i]["agent"] or is_result(i) or want not in parsed[i]["placed"]:
             continue
         if parsed[i]["author"] in leaders or control(i)["kind"] == "merge":

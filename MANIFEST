@@ -43,7 +43,7 @@ df2acf34199ccb21f6db596a8491bf8e11b59096b82a75b0851f2547cee09549  ./common/guard
 15799b1ff7222641e44809664065d2b1b583d3d066db424d6a73f0cf67005106  ./common/guard/pre-push
 7c7afed97df65372d87d6ab58875f217f3f5d7329241e9c7838677887da0b889  ./common/host/start-daemon
 8d7089db252c5cc09c3ae6aea590e3d1a1370450f4fb7f3f9e99fa4290542fff  ./common/labels
-d7dce828b535d24d4c8dae5248bad64b490b4922d7fc5f9b1631759d36a8ed3d  ./common/monitor/squad-cli-lib
+d6d01ec584ccd2944c1561e2dde1515b6a95c88a586a6d2d0e4f351823ba6962  ./common/monitor/squad-cli-lib
 c9f338dd47ba2cb8aa8e4d2ee2208700faf9f1aa05c5e7407b3bdc9e31d8f14c  ./common/monitor/squad-dependabot-merge
 8f187cb0ff2e26d5e2f4d4acab7c8314f6107908c3c9af15366ab601c4ea52a8  ./common/monitor/squad-dispatch-pick
 11e92028db42a6d5d9c732e2be3719afa7be9466baa4d283126940178c406914  ./common/monitor/squad-pr-link
@@ -709,7 +709,7 @@ ae066d4b0c090b7fc258c3148945fde730f3261ee083db94c0289de66b1b02d2  ./tests/shell-
 8b15fccb4916e3dbc55fb1f831ac001d7a343c4ac91b6881b4178a39472f1589  ./tests/squad-cli-lib-body-table-test.sh
 c4b098847391dd0a566509e0f8f5a6d7d29a59b26bc60cc77cf1ed1ace051805  ./tests/squad-cli-lib-check-runs-test.sh
 9251f4ace2f648d0a7039b3baa8ecb08e6fcf09ca736719a4f31aa3070ec812b  ./tests/squad-cli-lib-contract.py
-145c1cf87116aa68f1207fc7b969e38fb49cd8463616a5a97e8864c57d2c3c30  ./tests/squad-cli-lib-control-test.sh
+88624b4885dbf3e71f0e9617abb3262e9ffbddfdafff3733be395e406f9d7fe2  ./tests/squad-cli-lib-control-test.sh
 3bc47a2cb9ea3c908f1d37ffb44f38bca9c870b254c6c081d99cd03ae3616bd2  ./tests/squad-cli-lib-fence-test.sh
 abce74f707a9082a17839cc96ad824d1a1831f39d1c862002db81e90219e37fb  ./tests/squad-cli-lib-gh-test.sh
 b602e26f9f2e2af5ef9f0d91353aeba30a9363bf5193ad6e1049d8f9dcfa4220  ./tests/squad-cli-lib-test.sh
