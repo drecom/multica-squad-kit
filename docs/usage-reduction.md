@@ -643,6 +643,8 @@ squad-task-post <タスク> --status <状態> --content-file <ファイル> [--p
 
 `leader-review-request.md` も、依頼の前の `link-check` の文を足すと、上限との差が 100 バイトほどになる。このあと足す文は、ほかの参照に置く。
 
+`leader-pr-merge.md` は、[連携なしの手順の置き場所](pr-link-no-integration.md#リーダーの参照の置き場所)のとおりに文を移したあと、上限との差が 60 バイトに満たない。このあと足す文も、ほかの参照に置く。
+
 ### リーダーの指示の大きさ
 
 リーダーの指示（`orchestrator.md`）は、展開した大きさを今の上限の 12,288 バイトに収め、上限は上げない。上限と、縮めた内容を記録する決まりは、今の [planner-requirements.md のリーダーの指示の大きさ](planner-requirements.md#リーダーの指示の大きさ)のとおりである。
