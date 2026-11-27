@@ -297,3 +297,31 @@ for order in before after; do
 	done
 done
 echo 'PASS merge_requested: 読める依頼と同じ head の読めない候補が同時にあるときは、順序によらず、読めない候補を優先して止める'
+
+# ---- analyze の latest。認める回のうち、コメントの並びで最も新しいもの。人間と名簿の外のコメントでは変わらない。
+latest_is() { analyze | jq -e --arg want "$1" '.latest == (if $want == "null" then null else $want end)' >/dev/null || { printf '失敗: latest が %s でない\n' "$1" >&2; analyze | jq '{latest, rounds}' >&2; exit 1; }; }
+reset
+latest_is null
+base
+latest_is r1
+agent r2 L $'確認するコミット: '"$sha"$'\n返事を待つ役: '"$(mention qa)"$'\n観点: qa（テスト）'
+latest_is r2
+echo 'PASS analyze: latest は、認める回のうちコメントの並びで最も新しいもの'
+# 人間・名簿の外のエージェント・正しい前の回: のない決める実行の役のコメントは、回の形をしていても latest を変えない。
+round_text=$'確認するコミット: '"$sha"$'\n返事を待つ役: '"$(mention qa)"$'\n観点: qa（テスト）'
+base
+add h1 human-1 member "$round_text"
+latest_is r1
+agent s1 stranger "$round_text"
+latest_is r1
+agent q1 qa "$round_text"
+latest_is r1
+agent q2 qa "$round_text"$'\n前の回: nothing'
+latest_is r1
+echo 'PASS analyze: 人間、名簿の外のエージェント、前の回: のない決める実行の役の回の形のコメントでは、latest は変わらない'
+# 決める実行の役が、正しい前の回: で書いた回は、新しい回として認める。
+agent q3 qa $'コミットが合わず頼み直す役: qa\n'"$round_text"$'\n前の回: r1'
+latest_is q3
+agent h2 human-1 member "$round_text"$'\n前の回: q3'
+latest_is q3
+echo 'PASS analyze: 決める実行の役の正しい前の回: の回は latest になり、その後の人間のコメントでは変わらない'

@@ -2678,6 +2678,7 @@ if mode == "analyze":
     target = args[0] if args else None
     emit({
         "rounds": rounds, "controls": controls, "finals": finals,
+        "latest": latest_round(),
         "rework_reviewed": rework_reviewed,
         "short_path": short_path,
         "blocked": blocked_round(target) if target in parsed else None,
