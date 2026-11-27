@@ -13,7 +13,7 @@ trap 'test_exit=$?; if [[ $test_exit != 0 ]]; then cat "$test_dir/out" "$test_di
 kit="$test_dir/kit"
 fixtures="$test_dir/fixtures with spaces"
 mkdir -p "$kit/tests" "$fixtures"
-cp "$root/tests/run.sh" "$root/tests/run-one.sh" "$root/tests/run-hook.sh" "$root/tests/stop-session.py" "$kit/tests/"
+cp "$root/tests/run.sh" "$root/tests/run-one.sh" "$root/tests/run-hook.sh" "$root/tests/stop-session.py" "$root/tests/tty-session.py" "$kit/tests/"
 for name in project project-followup squad-dispatch-pick squad-dependabot-merge; do
 	printf ':\n' >"$kit/tests/$name-test.sh"
 done
@@ -302,6 +302,91 @@ for name in sleeper stubborn; do
 	pid_gone "$(cat "$TEST_RUNNER_STATE/child.pid")"
 done
 echo 'PASS runner: 上限を超えたファイルを、別のグループの子ごと止めて時間切れの失敗にし、ほかのファイルは流す'
+
+# 時間切れの記録。tty-session.py の下で眠るファイルを短い上限で止め、止める前のプロセスの一覧と、
+# 登録したプロセスのスタック（select で待つ行）がログに出ることを確認する。
+cat >"$fixtures/stacker.sh" <<'FIXTURE'
+#!/usr/bin/env bash
+set -euo pipefail
+echo 'PASS fixture: before timeout'
+# セッションの外のプロセスの PID と、整数でない名前のファイルを置く。どちらへも SIGUSR2 は送られない。
+touch "$SQUAD_KIT_TEST_STACK_DIR/$(cat "$TEST_RUNNER_STATE/outside.pid")" "$SQUAD_KIT_TEST_STACK_DIR/not-a-pid"
+printf '%s\n' "$$" >"$TEST_RUNNER_STATE/test.pid"
+python3 -I "$TEST_RUNNER_KIT/tests/tty-session.py" --output "$TMPDIR/out" --error "$TMPDIR/err" -- sleep 60
+FIXTURE
+rm -rf -- "$TEST_RUNNER_STATE"
+mkdir -p "$TEST_RUNNER_STATE"
+python3 -c 'import os, sys; os.setsid(); os.execvp(sys.argv[1], sys.argv[1:])' sleep 60 &
+outside=$!
+printf '%s\n' "$outside" >"$TEST_RUNNER_STATE/outside.pid"
+SQUAD_KIT_TEST_TIMEOUT=2 run_suite 1 1 "$fixtures/stacker.sh"
+grep -qxF "==== FAIL $fixtures/stacker.sh（時間切れ: 2 秒で止めた）" "$test_dir/out"
+grep -qxF -- '---- 時間切れの記録（2 秒）' "$test_dir/out"
+grep -qxF 'プロセスの一覧（PID 親 グループ 状態 経過 コマンド）' "$test_dir/out"
+# 一覧は、PID・親・グループ・状態・経過時間・コマンドの順で、セッションの tty-session.py を含む。ゾンビの行は求めない。
+grep -qE '^[0-9]+ [0-9]+ [0-9]+ [A-Z][A-Za-z+<>]* +[0-9:.-]+ .*tty-session\.py' "$test_dir/out"
+# 一覧にセッションの外のプロセスはなく、外のプロセスは SIGUSR2 を受けていない。
+! grep -qE "^$outside " "$test_dir/out"
+kill -0 "$outside"
+kill "$outside"
+wait "$outside" 2>/dev/null || :
+# スタックは、セッションにいる親の run() が select で待つ行を指す。
+# 包みは setsid で別のセッションへ移るので、ここには出ない。
+run_select=$(grep -n 'select.select(\[master, status_r\]' "$root/tests/tty-session.py" | cut -d: -f1)
+[[ $run_select =~ ^[0-9]+$ ]]
+grep -qE "tty-session\.py\", line $run_select in run\$" "$test_dir/out"
+pid_gone "$(cat "$TEST_RUNNER_STATE/test.pid")"
+echo 'PASS runner: 時間切れにプロセスの一覧と tty-session の select のスタックを出し、整数でない名前と外の PID へは送らない'
+
+# 終わったのに回収されていない子（ゾンビ）がいるセッションでも、LIST はほかのプロセスを出して 0 で終わる。
+# macOS ではゾンビの os.getsid() が失敗するので、ゾンビの行は求めない。出るなら、状態は Z になる。
+python3 -I - "$kit/tests/stop-session.py" <<'PY'
+import os
+import signal
+import subprocess
+import sys
+
+read_fd, write_fd = os.pipe()
+leader = os.fork()
+if leader == 0:
+    os.close(read_fd)
+    os.setsid()
+    child = os.fork()
+    if child == 0:
+        os._exit(0)
+    # 子の終了を待つが、回収はしない。子はゾンビのまま残る。
+    os.waitid(os.P_PID, child, os.WEXITED | os.WNOWAIT)
+    os.write(write_fd, str(child).encode())
+    os.close(write_fd)
+    signal.pause()
+    os._exit(0)
+os.close(write_fd)
+
+
+def listing_of(session):
+    return subprocess.run([sys.executable, '-I', sys.argv[1], str(session), 'LIST'],
+                          capture_output=True, text=True)
+
+
+try:
+    zombie = int(os.read(read_fd, 100))
+    listing = listing_of(leader)
+    assert listing.returncode == 0, listing
+    rows = {int(row.split()[0]): row.split(maxsplit=5) for row in listing.stdout.splitlines()}
+    assert leader in rows, rows
+    assert all(len(row) == 6 for row in rows.values()), rows
+    assert os.getpid() not in rows, rows
+    assert all(row[3].startswith('Z') for pid, row in rows.items() if pid == zombie), rows
+    assert set(rows) <= {leader, zombie}, rows
+finally:
+    os.close(read_fd)
+    os.kill(leader, signal.SIGKILL)
+    os.waitpid(leader, 0)
+# セッションにプロセスがなければ、何も出さずに 1 で終わる。
+empty = listing_of(leader)
+assert empty.returncode == 1 and not empty.stdout, empty
+PY
+echo 'PASS runner: ゾンビのいるセッションでも LIST は、ほかのプロセスを出して 0 で終わり、プロセスがなければ 1 で終わる'
 
 # 既定の上限は、時計だけを進めて確認し、実際には 450 秒待たない。
 mkdir -p "$test_dir/clock"

@@ -1,6 +1,7 @@
 """単一端末でコマンドを動かし、包みの終端マークを受領して回収する。"""
 import argparse
 import errno
+import faulthandler
 import fcntl
 import os
 from pathlib import Path
@@ -13,6 +14,29 @@ import termios
 
 HOLD_FD = 9
 CSI = re.compile(rb'\x1b\[[0-?]*[ -/]*[@-~]')
+stack_file = None
+stack_pid = None
+
+
+def register_stack():
+    """時間切れの記録のため、SIGUSR2 を受けたら、自分の PID の名前のファイルへスタックを書くよう登録する。
+
+    SQUAD_KIT_TEST_STACK_DIR（tests/run-one.sh が渡す）があるときだけ動く。
+    fork の子は親の登録とファイルを引き継ぐので、子は自分の PID で登録し直す。
+    記録のための補助なので、登録に失敗しても動作は変えない。
+    """
+    global stack_file, stack_pid
+    directory = os.environ.get('SQUAD_KIT_TEST_STACK_DIR')
+    if not directory or stack_pid == os.getpid():
+        return
+    try:
+        opened = open(os.path.join(directory, str(os.getpid())), 'wb')
+        faulthandler.register(signal.SIGUSR2, file=opened, all_threads=True)
+    except (OSError, ValueError, RuntimeError):
+        return
+    previous, stack_file, stack_pid = stack_file, opened, os.getpid()
+    if previous:
+        previous.close()
 
 
 def write_all(fd, value):
@@ -240,6 +264,7 @@ def run(command, *, fds=('in', 'out', 'err'), output, error, input_file=None,
         raise InterruptedSession()
 
     try:
+        register_stack()
         signal.signal(signal.SIGTERM, interrupted)
         for path in (output, error):
             handles.append(open(path, 'w+b'))
@@ -260,6 +285,7 @@ def run(command, *, fds=('in', 'out', 'err'), output, error, input_file=None,
         wrapper_pid = os.fork()
         if wrapper_pid == 0:
             try:
+                register_stack()
                 wrapper(master, slave, status_r, status_w, control_r, control_w,
                         targets, command, nonce, watch)
                 os._exit(0)

@@ -13,6 +13,9 @@ root, scratch = map(Path, sys.argv[1:])
 helper = root / 'tests/tty-session.py'
 counter = itertools.count()
 os.environ["TERM"] = "xterm-256color"
+# 時間切れの記録の登録（register_stack）は、ここでは動かさない。同じプロセスで run() を呼ぶケースが、
+# 登録のファイルを開いて、fd の数の確認を崩すため。記録は tests/test-runner-test.sh が確認する。
+os.environ.pop('SQUAD_KIT_TEST_STACK_DIR', None)
 
 
 def launch(code, *, fds='in,out,err', answer=None, script=None, extra=(), command=None):
