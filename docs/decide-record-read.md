@@ -76,7 +76,7 @@
 | 共有の判定のソースを引数に持つ起動か | プログラムの文より後ろの引数のどれかが、共有の判定のソースと一致する |
 | モード | プログラムの文の次の引数 |
 
-包みは bash のスクリプトで、`tests/squad-review-next-decide-rework-record-test.sh` が置く。テストの偽の CLI も `python3` を起こすが、プログラムの文が共有の判定のソースではないので、どちらの数にも入らない。
+包みは bash のスクリプトで、共通の準備 `tests/review-next-decide-rework-record-lib.sh` が置く。テストの偽の CLI も `python3` を起こすが、プログラムの文が共有の判定のソースではないので、どちらの数にも入らない。
 
 共有の判定の解析・並べ替え・判定は、このソースの中にしかない。そのため、ソースをプログラムとして起こした回数と、引数で受け取った回数を数えれば、すべてのコメントの解析が何回流れたかが分かる。
 
@@ -147,13 +147,13 @@
 
 ## テスト
 
-`decide` のテスト（`tests/squad-review-next-decide-*-test.sh`）は、すべて通す。記録を読む場面の多くは `tests/squad-review-next-decide-fix-test.sh` にあり、`tests/squad-review-next-decide-rework-record-test.sh` は、そこにない場面と処理の数を置く。
+`decide` のテスト（`tests/squad-review-next-decide-*-test.sh`）は、すべて通す。記録を読む場面の多くは `tests/squad-review-next-decide-fix-rework-test.sh` にあり、`tests/squad-review-next-decide-rework-record-test.sh` は、そこにない場面と処理の数を置く。
 
 | テスト | 確認すること |
 | --- | --- |
-| `tests/squad-review-next-decide-fix-test.sh` | リーダーの行があれば、止まらずに修正の依頼を書く。リーダー以外の役の行とメンバーの行、囲み・HTML のコメント・引用・字下げ・項目の中の行、閉じない囲みや制御文字のある本文の行では、リーダーを起こして止まる |
+| `tests/squad-review-next-decide-fix-rework-test.sh` | リーダーの行があれば、止まらずに修正の依頼を書く。リーダー以外の役の行とメンバーの行、囲み・HTML のコメント・引用・字下げ・項目の中の行、閉じない囲みや制御文字のある本文の行では、リーダーを起こして止まる |
 | `tests/squad-cli-lib-control-test.sh` | リーダーのエージェントが読める本文に書いた行で、`rework_reviewed` が `true` になる。行がない・リーダー以外の役の行・メンバーの行・囲みの中の行・読めない本文の行・リーダーの ID を渡さない呼び出しでは `false` になる |
-| `tests/squad-review-next-decide-rework-record-test.sh` | 下の表の場面と、[処理の数](#処理の数で確認する)と、[規模の場面](#想定規模で-1-回測る) |
+| `tests/squad-review-next-decide-rework-record-test.sh`・`tests/squad-review-next-decide-rework-record-merge-test.sh` | 下の表の場面と、[処理の数](#処理の数で確認する)と、[規模の場面](#想定規模で-1-回測る) |
 
 `tests/squad-review-next-decide-rework-record-test.sh` に置く、記録を読む場面は次のとおりである。どれも、`設計の変更: 実装を始めたあと` の行があり、マークがなく、❌ の結果がある。
 
