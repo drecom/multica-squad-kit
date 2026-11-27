@@ -8,7 +8,7 @@ pr=https://github.com/example/repo/pull/67
 other=https://github.com/example/repo/pull/68
 mark='紐付いていない PR のマージ待ちの見張りで起きました。'
 # 要素の実物は未採取なので、宣言された必須欄だけをケースに使う。
-assert_jq '.entries["issue-pull-requests"].items.fields == [{path:"html_url",class:"required",nullable:false}]' "$test_dir/contracts.json"
+assert_jq '.entries["issue-pull-requests"].items.fields == [{path:"html_url",class:"required",nullable:false},{path:"link_source",class:"optional",nullable:true}]' "$test_dir/contracts.json"
 update_task() {
 	jq "$1" "$test_dir/task.json" >"$test_dir/updated.json"
 	mv "$test_dir/updated.json" "$test_dir/task.json"
