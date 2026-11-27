@@ -87,6 +87,8 @@ git の設定を環境変数の `GIT_CONFIG_COUNT` と `GIT_CONFIG_KEY_n`・`GIT
 | `credential.https://github.com.useHttpPath` | `true` | ヘルパーに、リポジトリのパスを渡す |
 | `core.sshCommand` | キットの SSH のコマンド | 許していないリポジトリへの SSH の push を止める |
 
+2 つの値の置き場は、空白や単引用符を含んでもよい。ヘルパーは `!` で始めて単引用符で囲み、SSH のコマンドは単引用符で囲んで、シェルが 1 つのパスとして読むようにする。
+
 キットの認証情報のヘルパーは、`get` の問い合わせだけに答える。パスの `OWNER/REPO` が、許すリポジトリのファイルにあるときだけ、本物の `gh` の `auth git-credential get` に人の置き場を渡して答えを返す。許すリポジトリの照合は、`gh` のガードと同じにする。
 
 ヘルパーは、親のプロセスをたどり、git の `git-remote-https` から呼ばれたときだけ答える。`git credential fill` で人のトークンを取り出せないようにするためである。どちらかに合わないときは、何も返さずに終わる。git は認証できず、push と fetch が止まる。

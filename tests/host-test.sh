@@ -422,6 +422,23 @@ deny
 [[ ! -s $test_dir/calls ]]
 echo 'PASS host: 壊れた JSON と最上位・permissions・deny・pluginConfigs・skillOverrides・hooks と各イベントの形の違いで書かずに止まる'
 
+# 既存の disableAllHooks: true は、フックを無効にするので、役の登録の前に止めて直し方を案内する。
+for hooks_off in '{"disableAllHooks":true}' '{"disableAllHooks":true,"permissions":{"deny":["Read(/x)"]}}'; do
+ printf '%s\n' "$hooks_off" >"$settings"
+ cp "$settings" "$test_dir/hooks-off-settings"
+ if settings_run; then exit 1; fi
+ cmp "$settings" "$test_dir/hooks-off-settings"
+ grep -qF 'disableAllHooks' "$test_dir/err"
+ grep -qF '設定を直してから流し直してください' "$test_dir/err"
+ set_mode running
+ deny
+ grep -qF 'disableAllHooks' "$test_dir/err"
+ [[ ! -s $test_dir/calls ]]
+done
+printf '{"disableAllHooks":false}\n' >"$settings"
+settings_run
+echo 'PASS host: disableAllHooks が true の既存設定は、書き換えず、役の登録とデーモンの操作の前に止めて直し方を案内する（false は通す）'
+
 rm "$settings"
 for target in "$test_dir/kit-settings.json" "$test_dir/missing-settings.json"; do
  ln -s "$target" "$settings"
@@ -450,6 +467,28 @@ cmp "$root/common/host/start-daemon" "$TEMPLATE_AGENT_HOME/start-daemon"
 [[ -x $TEMPLATE_AGENT_HOME/start-daemon && ! -e $TEMPLATE_AGENT_HOME/bin/start-daemon ]]
 ! grep -Eq '^daemon (stop|start)$' "$test_dir/calls"
 echo 'PASS host: 流し直すと管理マークのある古い入口を原本に更新し、実行権限を付ける'
+
+# 新しいガードと分割の部品は、配置先が原本と一致しなければ、役の登録の前に止めて対処を案内する。
+for file in git-credential git-ssh pre-tool-use stop shell_split.py; do
+ target=$TEMPLATE_AGENT_HOME/guard/$file
+ cp "$target" "$test_dir/guard-original"
+ # マークのない既存のファイル（人のファイル）は、上書きせず止める。
+ printf '#!/bin/sh\nexit 0\n' >"$target"
+ cp "$target" "$test_dir/guard-unmarked"
+ set_mode running
+ agent_env
+ deny
+ cmp "$target" "$test_dir/guard-unmarked"
+ grep -qF "ガードのファイルが原本と一致しません: $target" "$test_dir/err"
+ grep -qF '流し直してください' "$test_dir/err"
+ ! grep -Eq '^daemon (stop|start)$' "$test_dir/calls"
+ # 管理マークのある古い内容は、原本に戻る。
+ printf '#!/bin/sh\n# multica-squad-kit-managed\nexit 0\n' >"$target"
+ run
+ cmp "$root/common/guard/$file" "$target"
+ [[ -x $target ]]
+done
+echo 'PASS host: 新しいガードと分割の部品は、マークのない既存のファイルを上書きせず役の登録の前に止め、マークのある古い内容は原本に戻す'
 
 printf '#!/bin/bash\nprintf "manual entry\\n"\n' >"$TEMPLATE_AGENT_HOME/start-daemon"
 chmod 644 "$TEMPLATE_AGENT_HOME/start-daemon"
@@ -905,6 +944,17 @@ sed 's/trusted_hash = "sha256:[0-9a-f]*"/trusted_hash = "sha256:old"/' "$test_di
 run
 cmp "$test_dir/trusted-config" "$config"
 echo 'PASS host: hooks/list が返した 2 つのフックの鍵と currentHash を、役と同じ引数で起こした app-server から読んで設定に書く'
+
+# 通知と応答が 1 回の書き込みで届いても、応答を取りこぼさずに同じ設定を書く。
+rm -f "$config"
+echo batched >"$test_dir/codex-hooks"
+set_mode running
+agent_env
+TEST_CODEX_SECONDS=5 run
+expected_codex_config
+cmp "$test_dir/expected-config" "$config"
+echo ok >"$test_dir/codex-hooks"
+echo 'PASS host: 通知と hooks/list の応答が同じ書き込みで届いても、応答を読んで設定に書く'
 
 # 読めない・足りないときは、何も書かず、Codex の出力も写さずに止まる。
 for failure in unreadable garbled exit empty pre-only stop-only other-command hang; do

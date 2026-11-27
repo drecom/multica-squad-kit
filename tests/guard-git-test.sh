@@ -298,3 +298,42 @@ EOF
 	jq -se '[.[] | select(.[-1] | test("receive-pack"))] | length == 2 and all(.[]; .[-1] | test("^git-receive-pack .(/)?example/template.git.$"))' "$test_dir/ssh-calls" >/dev/null
 	echo 'PASS ssh: 実際の git の push で、2 つの URL の形のうち、許していないものを自分の文で止め、許すものを ssh に渡す'
 fi
+
+# 置き場に空白と単引用符があっても、役の環境の credential.helper と core.sshCommand を、git が起動できる。
+# project_desired_env が出す値を、そのまま git に渡す。外へは接続せず、仮のヘルパーと ssh の差し替えを呼ぶ。
+if command -v git >/dev/null; then
+	odd_home="$test_dir/it's a home"
+	mkdir -p "$odd_home/guard"
+	cat >"$odd_home/guard/git-credential" <<'SCRIPT'
+#!/usr/bin/env bash
+cat >/dev/null
+printf '%s\n' "$*" >>"$GUARD_GIT_TEST_DIR/odd-helper-calls"
+SCRIPT
+	cat >"$odd_home/guard/git-ssh" <<'SCRIPT'
+#!/usr/bin/env bash
+printf '%s\n' "$#" >>"$GUARD_GIT_TEST_DIR/odd-ssh-calls"
+exit 1
+SCRIPT
+	chmod +x "$odd_home/guard/git-credential" "$odd_home/guard/git-ssh"
+	odd_env=$(bash -c '
+		set -euo pipefail
+		root=$1; agent_home=$2
+		die() { echo "$*" >&2; exit 1; }
+		source "$root/lib/check.sh"; source "$root/lib/host.sh"; source "$root/lib/project.sh"
+		allowed_repos_file=/dev/null project_shell_dir=/dev/null
+		project_desired_env fixture gpt-fixture' -- "$root" "$odd_home")
+	: >"$test_dir/odd-helper-calls"
+	: >"$test_dir/odd-ssh-calls"
+	(
+		cd "$test_dir/repo"
+		for name in $(jq -r 'keys[] | select(test("^GIT_CONFIG_"))' <<<"$odd_env"); do
+			export "$name=$(jq -r --arg n "$name" '.[$n]' <<<"$odd_env")"
+		done
+		export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_TERMINAL_PROMPT=0
+		printf 'protocol=https\nhost=github.com\npath=example/template.git\n\n' | git credential fill >/dev/null 2>&1 || true
+		git push -q git@github.com:example/template.git HEAD:refs/heads/fixture-test >/dev/null 2>&1 || true
+	)
+	[[ -s $test_dir/odd-helper-calls && $(head -n 1 "$test_dir/odd-helper-calls") == get ]]
+	[[ -s $test_dir/odd-ssh-calls ]]
+	echo 'PASS 引用: 空白と単引用符を含む置き場でも、git が credential.helper と core.sshCommand の仮のスクリプトを起動する'
+fi

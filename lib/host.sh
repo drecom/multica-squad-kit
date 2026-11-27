@@ -28,6 +28,17 @@ host_install() {
 	[[ $executable != yes || -x $dst ]] || chmod 755 "$dst" || die "実行権限を付けられません: $dst"
 }
 
+# 役のフックが動くために原本と同じでなければならないファイルを置く。マークのない既存のファイルや、
+# 原本と内容が違うファイルが残るときは、人のファイルを上書きせず、役の登録の前に止めて対処を案内する。
+host_guard_file() {
+	local src=$1 dst=$2
+	host_shared_file "$src" "$dst" yes
+	if [[ -f $dst && -x $dst ]] && cmp -s "$src" "$dst"; then
+		return
+	fi
+	die "ガードのファイルが原本と一致しません: ${dst}。マークのない既存のファイル、または原本と違う内容のファイルが残っていると、役のフックが動きません。そのファイルの中身を確認して、不要なら移すか消してから、セットアップを流し直してください。既存のファイルは上書きしません。"
+}
+
 host_shared_file() {
 	local src=$1 dst=$2 executable=$3
 	if [[ -e $dst ]] && ! grep -qx '# multica-squad-kit-managed' "$dst"; then
@@ -328,6 +339,8 @@ try:
     container(config, ("permissions",), dict)
     container(config, ("permissions", "deny"), list)
     container(config, ("hooks",), dict)
+    if config.get("disableAllHooks") is True:
+        raise ValueError("disableAllHooks が true で、すべてのフックが無効になっています。役の PreToolUse と Stop のガードが動かないので、このキーを false にするか消してください。")
     for event in hook_groups:
         container(config, ("hooks", event), list)
     for path, items in retired_items.items():
@@ -419,12 +432,12 @@ prepare_host() {
 	(umask 077; mkdir -p "$agent_home/claude" "$agent_home/codex" "$agent_home/bin" "$agent_home/git-hooks" "$agent_home/guard/gh-empty") || die 'ホストの置き場を作れませんでした。'
 	# 役の GH_CONFIG_DIR に渡す空の置き場。ファイルがあると認証が成り立つので、権限を絞る。
 	chmod 700 "$agent_home/guard/gh-empty" || die '空の gh の置き場の権限を設定できませんでした。'
-	host_shared_file "$root/common/guard/git-credential" "$agent_home/guard/git-credential" yes
-	host_shared_file "$root/common/guard/git-ssh" "$agent_home/guard/git-ssh" yes
+	host_guard_file "$root/common/guard/git-credential" "$agent_home/guard/git-credential"
+	host_guard_file "$root/common/guard/git-ssh" "$agent_home/guard/git-ssh"
 	# フックのスクリプトと、PreToolUse が読む分割の部品。settings.json のフックがこの置き場を指す。
-	host_shared_file "$root/common/guard/pre-tool-use" "$agent_home/guard/pre-tool-use" yes
-	host_shared_file "$root/common/guard/stop" "$agent_home/guard/stop" yes
-	host_shared_file "$root/common/guard/shell_split.py" "$agent_home/guard/shell_split.py" yes
+	host_guard_file "$root/common/guard/pre-tool-use" "$agent_home/guard/pre-tool-use"
+	host_guard_file "$root/common/guard/stop" "$agent_home/guard/stop"
+	host_guard_file "$root/common/guard/shell_split.py" "$agent_home/guard/shell_split.py"
 	host_shared_file "$root/common/guard/gh" "$agent_home/bin/gh" yes
 	host_shared_file "$root/common/guard/pre-push" "$agent_home/git-hooks/pre-push" yes
 	host_shared_file "$root/common/host/start-daemon" "$agent_home/start-daemon" yes

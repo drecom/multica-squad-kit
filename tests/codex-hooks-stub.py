@@ -43,7 +43,13 @@ for line in sys.stdin:
     message = json.loads(line)
     ident = message.get("id")
     if message.get("method") == "initialize":
-        print(json.dumps({"id": ident, "result": {"userAgent": "stub"}}), flush=True)
+        reply = json.dumps({"id": ident, "result": {"userAgent": "stub"}})
+        if mode == "batched":
+            # 通知と応答を、1 回の書き込みで届ける
+            sys.stdout.write(json.dumps({"method": "notification"}) + "\n" + reply + "\n")
+            sys.stdout.flush()
+        else:
+            print(reply, flush=True)
     elif message.get("method") == "hooks/list":
         if mode == "hang":
             time.sleep(300)
@@ -52,5 +58,9 @@ for line in sys.stdin:
         elif mode == "garbled":
             print("not json SYNTHETIC_SECRET_VALUE", flush=True)
             sys.exit(0)
+        elif mode == "batched":
+            reply = json.dumps({"id": ident, "result": {"data": [{"cwd": os.getcwd(), "hooks": hooks + [foreign], "warnings": [], "errors": []}]}})
+            sys.stdout.write(json.dumps({"method": "notification"}) + "\n" + reply + "\n")
+            sys.stdout.flush()
         else:
             print(json.dumps({"id": ident, "result": {"data": [{"cwd": os.getcwd(), "hooks": hooks + [foreign], "warnings": [], "errors": []}]}}), flush=True)

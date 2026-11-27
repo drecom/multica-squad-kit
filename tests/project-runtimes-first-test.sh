@@ -50,9 +50,9 @@ for role, agent in agents.items():
         ('core.hooksPath', str(home / 'git-hooks')),
         ('credential.helper', ''),
         ('credential.https://github.com.helper', ''),
-        ('credential.https://github.com.helper', str(guard / 'git-credential')),
+        ('credential.https://github.com.helper', '!' + "'" + str(guard / 'git-credential') + "'"),
         ('credential.https://github.com.useHttpPath', 'true'),
-        ('core.sshCommand', str(guard / 'git-ssh'))], role
+        ('core.sshCommand', "'" + str(guard / 'git-ssh') + "'")], role
     hook_args = [a for a in agent['custom_args'] if a.startswith('hooks.')]
     if selected == 'codex':
         assert hook_args == [

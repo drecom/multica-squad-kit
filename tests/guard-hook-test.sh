@@ -458,6 +458,25 @@ check_isolation_examples() {
 	expect_verdict stop "($mode) Write: .mcp.json" "$(json_file_tool Write file_path "$work/.mcp.json")"
 }
 
+# シェルの配列は、-c が使う文を検査する。位置引数つきの配列は、実行する文と検査する文がずれるので止める
+json_codex_argv() { jq -nc --arg d "$work" --args '{hook_event_name:"PreToolUse",session_id:"s",turn_id:"t",cwd:$d,tool_name:"shell",tool_input:{command:$ARGS.positional}}' -- "$@"; }
+for argv in "bash|-c|/absolute/gh api -X POST repos/OTHER/REPO/issues -f title=x|multica issue get X" \
+	"bash|-lc|git push --no-verify|multica issue get X" "sh|-c|echo ok|arg0|arg1" "bash|-e|-o|pipefail|-c|echo ok|arg0"; do
+	IFS='|' read -r -a parts <<<"$argv"
+	extra_env=()
+	expect_verdict stop "配列の位置引数（通常）: $argv" "$(json_codex_argv "${parts[@]}")"
+	extra_env=(GH_TOKEN=fake-token)
+	expect_verdict stop "配列の位置引数（認証の分離）: $argv" "$(json_codex_argv "${parts[@]}")"
+done
+extra_env=()
+expect_verdict pass '位置引数なしの配列（-o の値を読み飛ばす）' "$(json_codex_argv bash -e -o pipefail -c 'echo ok')"
+expect_verdict stop '位置引数なしでも中の文を検査する' "$(json_codex_argv bash -o pipefail -lc 'git push --no-verify')"
+expect_verdict stop '-c に文がない配列' "$(json_codex_argv bash -c)"
+extra_env=(GH_TOKEN=fake-token)
+expect_verdict stop '認証の分離: 位置引数なしの配列の中の gh の書き込み' "$(json_codex_argv bash -c '/absolute/gh api -X POST repos/OTHER/REPO/issues -f title=x')"
+extra_env=()
+echo 'PASS シェルの配列: 位置引数つきを、認証の分離と通常の照合の両方で止める'
+
 # 仮のトークンの変数
 for var in GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN; do
 	extra_env=("$var=fake-token")

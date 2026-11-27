@@ -369,6 +369,36 @@ def not_multica(commands):
 
 # --- 入力の読み取り ---
 
+def shell_c_script(argv):
+    """["bash", "-lc", "文", ...] のように -c を使う配列から、シェルが実行する文を取る。-c がなければ None。
+    文のあとに位置引数があるときは、実行する文と検査する文がずれないよう止める。"""
+    i = 1
+    has_c = False
+    while i < len(argv):
+        t = argv[i]
+        if t == "--":
+            i += 1
+            break
+        if len(t) < 2 or t[0] not in "-+" or t.startswith(("--", "+-")):
+            if t.startswith("--"):
+                i += 1  # --norc などの長いオプション。値を取るもの（--rcfile）は下で止める
+                if t in ("--rcfile", "--init-file"):
+                    i += 1
+                continue
+            break
+        letters = t[1:]
+        if t[0] == "-" and "c" in letters:
+            has_c = True
+        i += 1 + sum(letters.count(x) for x in "oO")  # -o・-O は次の語を取る
+    if not has_c:
+        return None
+    if i >= len(argv):
+        stop("シェルの -c に実行する文がないので、確認できません")
+    if i != len(argv) - 1:
+        stop("シェルの -c の文のあとに引数があり、実行する文を確認できません")
+    return argv[i]
+
+
 def command_text(tool_input):
     """Claude の command、Codex の command（文字列・配列）・cmd・action.command から、シェルの文を取る。"""
     if not isinstance(tool_input, dict):
@@ -379,10 +409,10 @@ def command_text(tool_input):
             if isinstance(v, str) and v:
                 return v
             if isinstance(v, list) and v and all(isinstance(x, str) for x in v):
-                # Codex の shell は ["bash", "-lc", "文"] を渡す。外側のシェルは数えず、中の文を読む
-                if (len(v) >= 3 and os.path.basename(v[0]) in ("bash", "sh", "zsh")
-                        and any(x.startswith("-") and not x.startswith("--") and "c" in x for x in v[1:-1])):
-                    return v[-1]
+                if os.path.basename(v[0]) in ("bash", "sh", "zsh"):
+                    script = shell_c_script(v)
+                    if script is not None:
+                        return script
                 return " ".join(shlex.quote(x) for x in v)
     return None
 

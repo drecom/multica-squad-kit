@@ -152,9 +152,9 @@ for role, agent in agents.items():
         ('core.hooksPath', str((scenario / 'host') / 'git-hooks')),
         ('credential.helper', ''),
         ('credential.https://github.com.helper', ''),
-        ('credential.https://github.com.helper', str(guard / 'git-credential')),
+        ('credential.https://github.com.helper', '!' + "'" + str(guard / 'git-credential') + "'"),
         ('credential.https://github.com.useHttpPath', 'true'),
-        ('core.sshCommand', str(guard / 'git-ssh'))], role
+        ('core.sshCommand', "'" + str(guard / 'git-ssh') + "'")], role
     needs_claude = provider == 'claude' or (role == 'usage-monitor' and 'claude' in runtimes)
     assert ('CLAUDE_CONFIG_DIR' in env) == needs_claude, role
     assert ('CLAUDE_CODE_SHELL' in env) == (provider == 'claude'), role

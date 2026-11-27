@@ -35,18 +35,27 @@ class Failed(Exception):
     pass
 
 
-def read_response(child, wanted, deadline):
-    # 行ごとに読み、期限まで待つ。通知や別の ID の行は読み飛ばす。
+def read_response(child, wanted, deadline, buffer):
+    # 期限付きで読み、行は渡された buffer（bytearray）に組み立てる。選ぶ待ちと行の組み立てが同じ
+    # バッファを使うので、通知と応答が 1 回の書き込みで届いても、残りの行を取りこぼさない。
+    # 通知や別の ID の行は読み飛ばす。
+    fd = child.stdout.fileno()
     while True:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise Failed("timeout")
-        ready, _, _ = select.select([child.stdout], [], [], remaining)
-        if not ready:
-            raise Failed("timeout")
-        line = child.stdout.readline()
-        if not line:
-            raise Failed("closed")
+        newline = buffer.find(b"\n")
+        if newline < 0:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise Failed("timeout")
+            ready, _, _ = select.select([fd], [], [], remaining)
+            if not ready:
+                raise Failed("timeout")
+            chunk = os.read(fd, 65536)
+            if not chunk:
+                raise Failed("closed")
+            buffer.extend(chunk)
+            continue
+        line = bytes(buffer[:newline])
+        del buffer[:newline + 1]
         try:
             message = json.loads(line)
         except ValueError:
@@ -65,16 +74,17 @@ def list_hooks(home, guard, seconds):
     except OSError:
         return "launch", None
     deadline = time.monotonic() + seconds
+    buffer = bytearray()
     try:
         def send(message):
             child.stdin.write((json.dumps(message) + "\n").encode("utf-8"))
             child.stdin.flush()
 
         send({"id": 1, "method": "initialize", "params": {"clientInfo": {"name": "multica-squad-kit", "version": "0"}}})
-        read_response(child, 1, deadline)
+        read_response(child, 1, deadline, buffer)
         send({"method": "initialized"})
         send({"id": 2, "method": "hooks/list", "params": {"cwds": [os.getcwd()]}})
-        return "ok", read_response(child, 2, deadline)
+        return "ok", read_response(child, 2, deadline, buffer)
     except (Failed, OSError, ValueError):
         return "failed", None
     finally:
