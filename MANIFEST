@@ -99,7 +99,7 @@ c380ac8fd57091fa1d1ad80ff9724cba6667a7199b440a40b4be9b0e25f83623  ./docs/agent-p
 cdf7277c8518409f57673b250845ef3ff69680946ac4232f5e11e1423f8432d8  ./docs/agent-settings.md
 e1053a8614b8876ec371c43684db9c0ab2a90ad31fe7699dcac0272127ca81e0  ./docs/autopilot-targets.md
 345e824a373fcf5a1f3f7b1254fb1ef340bce2cc436c77aa29122f72cbd29244  ./docs/bug-repro-test.md
-7ee63ef245229a9661545fe786916ca271dfa6a2b83c4c8a747fa887f57764a0  ./docs/ci-timeouts.md
+522a140bb8c3a496ba4c9a364f36a80fee2600962289b121c97a6e21be691c34  ./docs/ci-timeouts.md
 b77b3b0ea23e013eb3c31d778c4c062aa36c3facdc3a6ae77a35dc32ee400dce  ./docs/codex-models.md
 985fdb59c1e89be53c6ae4d7709af8b0e5f239d4ce0025f7b59cd056b8021e18  ./docs/decide-record-read.md
 5e2a86f6e2a46391d106f27386a5af76471ce03e017b0834085d62bf19360bb7  ./docs/default-branch.md
@@ -821,11 +821,11 @@ c98729878e6706f5780a10fbbdd9246ef49a12182fb27d46624296d335659336  ./tests/termin
 02780be78af1fe401053d462b0b9ecc108dfed3c0b1efd387af2cd491bae6b8a  ./tests/terminal-stub.sh
 c0509d732b2b3fa99f882283848bc2ba1c82ed3a6d0a90ac8263045dfee07010  ./tests/terminal-test.sh
 bb7b764515248a871ceb26e80ed0d7a543675fe39a1813d3355767cb94475dc7  ./tests/terms-test.sh
-596af7c8c3a043473295758a27343adc45fccbbfc3677b26b10bf0aebe8e672b  ./tests/test-runner-test.sh
+2cb6619106ab71cd5171b6455ad191ce1234a228cde4a536a1d4341e9abca692  ./tests/test-runner-test.sh
 aafe53504d959b1213d2c5a2d5f659226a75f214be7e30b8fe579cee82e4b3b0  ./tests/test-weights
 cba32818cb4505e60153c29ab1fa040846f0b53e4a4c86b3c5b560ee082030f7  ./tests/tty-session-cases.py
 cee4a323a66b319a0796f4127a3d9f16b7baabbe378d4633c3513d69dba53892  ./tests/tty-session-test.sh
-42e80451a7b7d7638e223cd2b8ba95d03461e8ce0bf9c4986bf4dc6c0df25f22  ./tests/tty-session.py
+509f1b6b6b44befab90db3d5ac17e35ed4f53a64ac4f20104885131f666e227d  ./tests/tty-session.py
 3e9e683ab3a2775d4f92aba2e8c84f8aa66cf7066ec328f9603728ded54ad6c6  ./tests/ui-contrast.py
 9b79bf0e9a21b198ce356ee7d6fc287316eef96040f5a4918b5c21ed09c2c607  ./tests/ui-steps-test.sh
 eb0a12120d36856588a0f63afb37cdfa1e2b253c19588fe385bafa439e1b2d4d  ./tests/ui-test.sh

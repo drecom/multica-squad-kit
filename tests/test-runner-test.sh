@@ -564,7 +564,7 @@ def load():
 # 変数がないとき、変数の場所がないとき、公開の改名が失敗したときは、何も公開せず、一時のファイルも残さず、登録も残さない。
 os.environ.pop('SQUAD_KIT_TEST_STACK_DIR', None)
 load().register_stack()
-assert True
+assert not faulthandler.unregister(signal.SIGUSR2)
 missing = os.path.join(tempfile.mkdtemp(), 'no-such-directory')
 os.environ['SQUAD_KIT_TEST_STACK_DIR'] = missing
 load().register_stack()
@@ -584,7 +584,22 @@ try:
     broken.register_stack()
 finally:
     os.rename = original_rename
-assert os.listdir(failing) == [] and not faulthandler.unregister(signal.SIGUSR2), os.listdir(failing)
+assert os.listdir(failing) == [], os.listdir(failing)
+# 公開に失敗しても、登録は外れない。遅れて届いた SIGUSR2 でプロセスは終わらない。
+os.kill(os.getpid(), signal.SIGUSR2)
+# 取り下げたあとの再登録が公開に失敗しても、同じく終わらない。
+again = load()
+os.environ['SQUAD_KIT_TEST_STACK_DIR'] = failing
+again.register_stack()
+again.unregister_stack()
+os.rename = refuse
+try:
+    again.register_stack()
+finally:
+    os.rename = original_rename
+assert os.listdir(failing) == [], os.listdir(failing)
+os.kill(os.getpid(), signal.SIGUSR2)
+faulthandler.unregister(signal.SIGUSR2)
 # 登録に失敗しても、run() の動作は変わらない。
 output, error = os.path.join(failing, 'out'), os.path.join(failing, 'err')
 os.environ['SQUAD_KIT_TEST_STACK_DIR'] = missing

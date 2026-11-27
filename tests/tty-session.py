@@ -45,7 +45,8 @@ def register_stack():
         os.rename(temporary, os.path.join(directory, str(pid)))
     except (OSError, ValueError, RuntimeError):
         if registered:
-            faulthandler.unregister(signal.SIGUSR2)
+            # 公開できなかったときは、登録を外さず、公開前に有効だった書き先へ戻す。外すと既定の終了に戻るため。
+            restore_stack_target()
         if opened:
             opened.close()
         try:
@@ -56,6 +57,22 @@ def register_stack():
     previous, stack_file, stack_pid = stack_file, opened, pid
     if previous:
         previous.close()
+
+
+def restore_stack_target():
+    """SIGUSR2 の書き先を、直前の登録のファイルへ戻す。直前の登録がなければ /dev/null にする。登録は外さない。"""
+    global stack_sink
+    try:
+        if stack_file is not None:
+            target = stack_file
+        else:
+            if stack_sink is None:
+                stack_sink = open(os.devnull, 'wb')
+            target = stack_sink
+        faulthandler.register(signal.SIGUSR2, file=target, all_threads=True)
+        return True
+    except (OSError, ValueError, RuntimeError):
+        return False
 
 
 def unregister_stack():
@@ -85,9 +102,12 @@ def unregister_stack():
             os.unlink(os.path.join(directory, str(stack_pid)))
         except OSError:
             pass
-    opened, stack_file, stack_pid = stack_file, None, None
-    if opened and switched:
-        opened.close()
+    # 付け替えに失敗したときは、登録が今のファイルを指したままなので、閉じずに持ち続ける。
+    stack_pid = None
+    if switched:
+        opened, stack_file = stack_file, None
+        if opened:
+            opened.close()
 
 
 def write_all(fd, value):
