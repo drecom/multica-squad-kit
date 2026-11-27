@@ -177,7 +177,7 @@ host_codex_config() {
 	local config=$agent_home/codex/config.toml existing='' result status detail trust
 	codex_trust_lines=
 	if [[ -e $config ]] && ! grep -qx '# multica-squad-kit-managed' "$config"; then existing=$config; fi
-	if ! result=$(python3 "$root/lib/codex-hooks.py" "$agent_home/codex" "$agent_home/guard" "${codex_check_seconds:-30}" ${existing:+"$existing"}); then
+	if ! result=$(python3 "${kit_root:-$root}/lib/codex-hooks.py" "$agent_home/codex" "$agent_home/guard" "${codex_check_seconds:-30}" ${existing:+"$existing"}); then
 		die 'Codex のフックの信頼の値を読む処理を実行できませんでした。python3 を確認して流し直してください。'
 	fi
 	status=${result%%$'\n'*}
