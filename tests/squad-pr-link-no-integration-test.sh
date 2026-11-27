@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # 連携なしの記録の共通の部品を、単体で確認する。
 # 記録のパスの検査・作成・消去、pr_link_pull_request の PR_LINK_ALL_404、呼ぶ人間を決める関数、metadata の欄の約束を見る。
+# 続けて、CLI と API と時計を差し替えて squad-pr-link を丸ごと流し、記録の読み書きを通した動作を見る。
 # 実際のタスク・PR・ホストの記録には触れない。記録の根は PR_LINK_STATE_ROOT で一時ディレクトリに向ける。
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -293,4 +294,289 @@ for field in metadata.pr_link_no_integration metadata.pr_link_tried_at project_i
 	expect "issue-get の $field は省略可能" "$got" 'optional true'
 done
 
-echo 'PASS pr-link-no-integration: 記録のパスの検査・作成・消去・同時の作成・PR_LINK_ALL_404・呼ぶ人間・欄の約束'
+# --- squad-pr-link: 記録の読み書きを通した動作 ---
+# CLI と API と時計を差し替えて、スクリプトを丸ごと流す。実際のタスク・PR・ホストの記録には触れない。
+e2e=$test_dir/e2e
+export PR_LINK_TEST_DIR=$e2e PR_LINK_TEST_ROOT=$root
+script=$root/common/monitor/squad-pr-link
+mkdir -p "$e2e/bin" "$e2e/work/tmp"
+for cmd in bash dirname jq tr cat python3 mkdir mktemp rm sed ln chmod wc; do
+	ln -s "$(command -v "$cmd")" "$e2e/bin/$cmd"
+done
+squad_cli_contracts >"$e2e/contracts.json"
+cat >"$e2e/bin/multica" <<'MOCK'
+#!/bin/bash
+set -euo pipefail
+dir=$PR_LINK_TEST_DIR
+stub_args=("$@")
+stub() { recorded=1; python3 "$PR_LINK_TEST_ROOT/tests/cli-stub.py" multica "$dir" multica "$@" -- ${stub_args[@]+"${stub_args[@]}"}; }
+if [[ ${1-} == version ]]; then stub - record; echo 'multica fixture-version'; exit 0; fi
+recorded=
+trap '[[ -n $recorded ]] || stub multica.jsonl record' EXIT
+if [[ $1 == issue && $2 == get ]]; then
+	[[ $3 == TASK-7 && $4 == --output && $5 == json ]]
+	stub multica.jsonl emit issue-get "$dir/issue.json"
+elif [[ $1 == issue && $2 == metadata && $3 == set ]]; then
+	[[ $4 == task-id && $5 == --key && $7 == --value && $9 == --type && ${10} == string ]]
+	case $6 in pr_url | pr_link_pending | pr_link_no_integration) ;; *) exit 99 ;; esac
+	if [[ -f $dir/fail-$6 ]]; then echo "$MULTICA_TOKEN" >&2; exit 1; fi
+	jq --arg key "$6" --arg value "$8" '.metadata[$key] = $value' "$dir/issue.json" >"$dir/next.json"
+	/bin/mv "$dir/next.json" "$dir/issue.json"
+else
+	exit 99
+fi
+MOCK
+cat >"$e2e/bin/curl" <<'MOCK'
+#!/bin/bash
+set -euo pipefail
+dir=$PR_LINK_TEST_DIR
+python3 "$PR_LINK_TEST_ROOT/tests/cli-stub.py" none "$dir" curl curl.jsonl record -- "$@"
+cat >/dev/null
+calls=$(<"$dir/curl-count")
+args=("$@")
+max_time=0
+for ((i = 0; i < ${#args[@]}; i++)); do
+	if [[ ${args[i]} == --max-time ]]; then max_time=${args[i+1]}; fi
+done
+duration=$(jq -r --argjson i "$calls" '.[ $i ] // .[-1]' "$dir/durations.json")
+echo "$((calls + 1))" >"$dir/curl-count"
+echo "$(($(<"$dir/now") + duration))" >"$dir/now"
+if [[ -f $dir/transport-fail-from ]] && (( calls >= $(<"$dir/transport-fail-from") )); then exit 7; fi
+if (( duration >= max_time )) && [[ ! -f $dir/ignore-timeout ]]; then printf '000'; exit 28; fi
+jq -r --argjson i "$calls" '.[ $i ] // .[-1]' "$dir/statuses.json"
+MOCK
+cat >"$e2e/bin/date" <<'MOCK'
+#!/bin/bash
+set -euo pipefail
+if [[ $* == +%s ]]; then cat "$PR_LINK_TEST_DIR/now"; elif [[ $* == '-u +%Y-%m-%dT%H:%M:%SZ' ]]; then echo 2026-01-02T03:04:05Z; else exit 99; fi
+MOCK
+cat >"$e2e/bin/sleep" <<'MOCK'
+#!/bin/bash
+set -euo pipefail
+dir=$PR_LINK_TEST_DIR
+echo "$1" >>"$dir/sleeps"
+echo "$(($(<"$dir/now") + $1))" >"$dir/now"
+# 待っているあいだに、別の実行が記録を作った場面を作る。
+if [[ -f $dir/rival-record && ! -e $(<"$dir/rival-record") ]]; then
+	mkdir -p "$(dirname "$(<"$dir/rival-record")")"
+	printf 'repository: rival\n' >"$(<"$dir/rival-record")"
+fi
+MOCK
+chmod +x "$e2e/bin/multica" "$e2e/bin/curl" "$e2e/bin/date" "$e2e/bin/sleep"
+e2e_url=https://github.com/Example/Template/pull/33
+e2e_record=$PR_LINK_STATE_ROOT/fixture-id-000036/example/template
+e2e_notice='example/template を、このプロジェクトでは GitHub 連携なしとして扱います。サーバーが 120 秒待っても PR を見つけなかったためです。このあとの PR では紐付けを待たず、紐付けの警告と依頼を出さず、マージ待ちの見張りがマージを確認してタスクを done にします。連携しているはずなら、ワークスペースの設定のコードの画面で example/template がつながっていることを確認してください。このリポジトリの PR が 1 つでも紐付けば、自動で連携ありの扱いに戻ります。'
+e2e_reset() {
+	python3 "$root/tests/multica-fixture.py" "$e2e" base issue-get |
+		jq '. + {id:"task-id",identifier:"TASK-7"} | .metadata.repository="example/template" | del(.metadata.pr_url)' >"$e2e/issue.json"
+	printf '[404]\n' >"$e2e/statuses.json"
+	printf '[0]\n' >"$e2e/durations.json"
+	echo 1000 >"$e2e/now"
+	echo 0 >"$e2e/curl-count"
+	: >"$e2e/multica.jsonl"
+	: >"$e2e/curl.jsonl"
+	: >"$e2e/sleeps"
+	rm -rf -- "$e2e"/fail-* "$e2e/transport-fail-from" "$e2e/ignore-timeout" "$e2e/rival-record" "$PR_LINK_STATE_ROOT"
+}
+e2e_run() {
+	local expected=$1 status=0
+	shift
+	(cd "$e2e/work"; PATH="$e2e/bin" MULTICA_TOKEN=${E2E_TOKEN-e2e-secret} MULTICA_SERVER_URL=https://multica.invalid/ /bin/bash "$script" "$@") \
+		>"$e2e/out" 2>"$e2e/err" || status=$?
+	[[ $status == "$expected" ]] || { cat "$e2e/out" "$e2e/err" >&2; fail "終了コード $status、期待 $expected"; }
+}
+e2e_field() { jq -r --arg key "$1" '.metadata[$key] // "なし"' "$e2e/issue.json"; }
+e2e_warn_not_found() {
+	grep -qF "タスク TASK-7 に PR $e2e_url を紐付けられませんでした" "$e2e/err" || fail '今と同じ警告がない'
+	[[ ! -s $e2e/out ]] || fail '標準出力が空でない'
+}
+e2e_no_record() { [[ ! -e $PR_LINK_STATE_ROOT ]] || [[ -z $(find "$PR_LINK_STATE_ROOT" -type f 2>/dev/null) ]] || fail '記録ができている'; }
+e2e_no_tmp() { [[ -z $(find "$PR_LINK_STATE_ROOT" -name '.record.*' 2>/dev/null) ]] || fail '一時ファイルが残った'; }
+
+# 記録がなく、404 だけが 120 秒続く: 記録が 4 行でき、3 つの欄が書かれ、知らせの 2 行で 0 で終わる。
+e2e_reset
+e2e_run 0 TASK-7 "$e2e_url"
+expect '連携なしにした: 1 行目' "$(sed -n 1p "$e2e/out")" "連携なしにしました: TASK-7 $e2e_url"
+expect '連携なしにした: 2 行目' "$(sed -n 2p "$e2e/out")" "$e2e_notice"
+expect '連携なしにした: 行数' "$(wc -l <"$e2e/out" | tr -d ' ')" 2
+[[ ! -s $e2e/err ]] || fail '連携なしにした: 標準エラーが空でない'
+expect '120 秒待った' "$(<"$e2e/curl-count")" 12
+expect '記録は 4 行' "$(wc -l <"$e2e_record" | tr -d ' ')" 4
+expect '記録の中身' "$(cat "$e2e_record")" "$(printf 'repository: example/template\npr: %s\ntask: TASK-7\n記録した時刻: 2026-01-02T03:04:05Z' "$e2e_url")"
+expect '記録のモード' "$(mode_of "$e2e_record")" 600
+for key in pr_url pr_link_pending pr_link_no_integration; do expect "$key" "$(e2e_field "$key")" "$e2e_url"; done
+e2e_no_tmp
+
+# 404 のあとに 500・通信の失敗が返った、または期限を過ぎてから 500・通信の失敗・200 が返ったときは、記録ができず、今と同じ警告で 1 で終わる。
+for scene in early-500 early-transport late-500 late-transport late-200; do
+	e2e_reset
+	case $scene in
+	early-500) printf '[404,500]\n' >"$e2e/statuses.json"; reason='応答の状態コード 500' ;;
+	early-transport) printf '[404,404]\n' >"$e2e/statuses.json"; echo 1 >"$e2e/transport-fail-from"; reason=通信に失敗した ;;
+	late-500) printf '[404,404,404,500]\n' >"$e2e/statuses.json"; reason='120 秒待った' ;;
+	late-transport) printf '[404,404,404,404]\n' >"$e2e/statuses.json"; echo 3 >"$e2e/transport-fail-from"; reason='120 秒待った' ;;
+	late-200) printf '[404,404,404,200]\n' >"$e2e/statuses.json"; reason='120 秒待った' ;;
+	esac
+	if [[ $scene == late-* ]]; then
+		printf '[29,29,29,4]\n' >"$e2e/durations.json"
+		touch "$e2e/ignore-timeout"
+	fi
+	e2e_run 1 TASK-7 "$e2e_url"
+	e2e_warn_not_found
+	grep -qF "（$reason" "$e2e/err" || { cat "$e2e/err" >&2; fail "$scene: 理由が違う"; }
+	e2e_no_record
+	expect "$scene: 記録の欄" "$(e2e_field pr_link_no_integration)" なし
+	expect "$scene: pr_url" "$(e2e_field pr_url)" なし
+	expect "$scene: マーク" "$(e2e_field pr_link_pending)" "$e2e_url"
+done
+
+# 記録を作ったあと、マークの片方を書けなくても 0 で終わり、書けなかった欄は空のまま。
+for key in pr_link_pending pr_link_no_integration; do
+	e2e_reset
+	touch "$e2e/fail-$key"
+	e2e_run 0 TASK-7 "$e2e_url"
+	[[ -f $e2e_record ]] || fail "$key を書けなくても記録は残る"
+	expect "$key を書けない: 書けなかった欄" "$(e2e_field "$key")" なし
+	expect "$key を書けない: pr_url" "$(e2e_field pr_url)" "$e2e_url"
+	expect "$key を書けない: 1 行目" "$(sed -n 1p "$e2e/out")" "連携なしにしました: TASK-7 $e2e_url"
+	[[ ! -s $e2e/err ]] || fail "$key を書けない: 標準エラーが空でない"
+done
+
+# 待っているあいだに別の実行が記録を作った: 知らせは出さず、紐付けていません（連携なし）で 0 で終わり、先の記録は残る。
+e2e_reset
+echo "$e2e_record" >"$e2e/rival-record"
+e2e_run 0 TASK-7 "$e2e_url"
+expect '別の実行が先: 出力' "$(cat "$e2e/out")" "紐付けていません（連携なし）: TASK-7 $e2e_url"
+[[ ! -s $e2e/err ]] || fail '別の実行が先: 標準エラーが空でない'
+expect '別の実行が先: 記録は先の実行のもの' "$(cat "$e2e_record")" 'repository: rival'
+for key in pr_url pr_link_pending pr_link_no_integration; do expect "別の実行が先: $key" "$(e2e_field "$key")" "$e2e_url"; done
+e2e_no_tmp
+# その実行が pr_url を書けないときも、先の記録は残る。
+e2e_reset
+echo "$e2e_record" >"$e2e/rival-record"
+touch "$e2e/fail-pr_url"
+e2e_run 1 TASK-7 "$e2e_url"
+e2e_warn_not_found
+expect '別の実行が先で pr_url を書けない: 記録は先の実行のもの' "$(cat "$e2e_record")" 'repository: rival'
+e2e_no_tmp
+
+# 記録を作った実行が pr_url を書けない: 自分の記録だけが消え、今と同じ警告で 1 で終わる。
+e2e_reset
+touch "$e2e/fail-pr_url"
+e2e_run 1 TASK-7 "$e2e_url"
+e2e_warn_not_found
+e2e_no_record
+e2e_no_tmp
+expect 'pr_url を書けない: マーク' "$(e2e_field pr_link_pending)" "$e2e_url"
+expect 'pr_url を書けない: 連携なしの欄' "$(e2e_field pr_link_no_integration)" なし
+
+# 記録を書けない（記録の根が普通のファイル）: 今と同じ警告で 1 で終わる。
+e2e_reset
+: >"$e2e/not-a-directory"
+PR_LINK_STATE_ROOT=$e2e/not-a-directory e2e_run 1 TASK-7 "$e2e_url"
+e2e_warn_not_found
+expect '記録を書けない: pr_url' "$(e2e_field pr_url)" なし
+expect '記録を書けない: 連携なしの欄' "$(e2e_field pr_link_no_integration)" なし
+
+# 404 だけでない失敗・トークンがない・作業先が違う・作業先がない・プロジェクトがない: 記録ができず、出力は今と同じ。
+for scene in status500 token other-repository no-repository no-project; do
+	e2e_reset
+	case $scene in
+	status500) printf '[500]\n' >"$e2e/statuses.json" ;;
+	other-repository) jq '.metadata.repository = "other/service"' "$e2e/issue.json" >"$e2e/next.json" && mv "$e2e/next.json" "$e2e/issue.json" ;;
+	no-repository) jq 'del(.metadata.repository)' "$e2e/issue.json" >"$e2e/next.json" && mv "$e2e/next.json" "$e2e/issue.json" ;;
+	no-project) jq 'del(.project_id)' "$e2e/issue.json" >"$e2e/next.json" && mv "$e2e/next.json" "$e2e/issue.json" ;;
+	esac
+	if [[ $scene == token ]]; then E2E_TOKEN='' e2e_run 1 TASK-7 "$e2e_url"; else e2e_run 1 TASK-7 "$e2e_url"; fi
+	[[ ! -s $e2e/out ]] || fail "$scene: 標準出力が空でない"
+	grep -qF "タスク TASK-7 に PR $e2e_url を紐付けられませんでした" "$e2e/err" || fail "$scene: 今と同じ警告がない"
+	e2e_no_record
+	expect "$scene: 連携なしの欄" "$(e2e_field pr_link_no_integration)" なし
+	expect "$scene: pr_url" "$(e2e_field pr_url)" なし
+done
+
+# 記録があるとき: 待たず、API を 1 回だけ呼ぶ。404・通信の失敗・トークンがないでも、警告なしで 0 で終わり、3 つの欄を書く。
+for scene in 404 transport token; do
+	e2e_reset
+	mkdir -p "$(dirname "$e2e_record")" && printf 'repository: example/template\n' >"$e2e_record"
+	if [[ $scene == transport ]]; then echo 0 >"$e2e/transport-fail-from"; fi
+	if [[ $scene == token ]]; then E2E_TOKEN='' e2e_run 0 TASK-7 "$e2e_url"; else e2e_run 0 TASK-7 "$e2e_url"; fi
+	expect "記録あり $scene: 出力" "$(cat "$e2e/out")" "紐付けていません（連携なし）: TASK-7 $e2e_url"
+	[[ ! -s $e2e/err ]] || fail "記録あり $scene: 標準エラーが空でない"
+	expect "記録あり $scene: API の呼び出し" "$(<"$e2e/curl-count")" "$([[ $scene == token ]] && echo 0 || echo 1)"
+	[[ ! -s $e2e/sleeps ]] || fail "記録あり $scene: 待った"
+	for key in pr_url pr_link_pending pr_link_no_integration; do expect "記録あり $scene: $key" "$(e2e_field "$key")" "$e2e_url"; done
+	[[ -f $e2e_record ]] || fail "記録あり $scene: 記録が消えた"
+done
+# 記録があり、API が 200: 紐付けて、記録を消す。
+e2e_reset
+mkdir -p "$(dirname "$e2e_record")" && printf 'repository: example/template\n' >"$e2e_record"
+printf '[200]\n' >"$e2e/statuses.json"
+e2e_run 0 TASK-7 "$e2e_url"
+expect '記録あり 200: 出力' "$(cat "$e2e/out")" "紐付けました: TASK-7 $e2e_url"
+[[ ! -e $e2e_record ]] || fail '記録あり 200: 記録が消えていない'
+expect '記録あり 200: pr_url' "$(e2e_field pr_url)" "$e2e_url"
+expect '記録あり 200: 連携なしの欄は書かない' "$(e2e_field pr_link_no_integration)" なし
+# 記録があり、pr_url を書けない: 今と同じ警告で 1 で終わり、記録は変えない。
+for status in 404 200; do
+	e2e_reset
+	mkdir -p "$(dirname "$e2e_record")" && printf 'repository: example/template\n' >"$e2e_record"
+	printf '[%s]\n' "$status" >"$e2e/statuses.json"
+	touch "$e2e/fail-pr_url"
+	e2e_run 1 TASK-7 "$e2e_url"
+	[[ ! -s $e2e/out ]] || fail "記録ありで pr_url を書けない($status): 標準出力が空でない"
+	grep -qF "タスク TASK-7 に PR $e2e_url を紐付けられませんでした" "$e2e/err" || fail "記録ありで pr_url を書けない($status): 警告がない"
+	expect "記録ありで pr_url を書けない($status): 記録" "$(cat "$e2e_record")" 'repository: example/template'
+done
+# 記録があっても、pr_url がすでにあれば API を呼ばず、今と同じ行を出す。
+e2e_reset
+mkdir -p "$(dirname "$e2e_record")" && printf 'repository: example/template\n' >"$e2e_record"
+jq --arg url "$e2e_url" '.metadata.pr_url = $url' "$e2e/issue.json" >"$e2e/next.json" && mv "$e2e/next.json" "$e2e/issue.json"
+e2e_run 0 TASK-7 "$e2e_url"
+[[ $(cat "$e2e/out") == "紐付けていません: TASK-7 ${e2e_url}（metadata に pr_url があるため、API を呼びませんでした。紐付いているかは multica issue pull-requests で確認してください）" ]] || fail 'pr_url がある: 今と同じ行'
+expect 'pr_url がある: API を呼ばない' "$(<"$e2e/curl-count")" 0
+[[ -f $e2e_record ]] || fail 'pr_url がある: 記録を変えない'
+
+# 別のプロジェクトの記録と、同じプロジェクトの別のリポジトリの記録は、記録がないものとして 120 秒まで待つ。自分の記録を作り、ほかの記録は変えない。
+for other in other-project other-repository; do
+	e2e_reset
+	if [[ $other == other-project ]]; then other_record=$PR_LINK_STATE_ROOT/another-project/example/template; else other_record=$PR_LINK_STATE_ROOT/fixture-id-000036/example/another; fi
+	mkdir -p "$(dirname "$other_record")" && printf 'repository: other\n' >"$other_record"
+	e2e_run 0 TASK-7 "$e2e_url"
+	expect "$other: 120 秒待った" "$(<"$e2e/curl-count")" 12
+	expect "$other: 出力" "$(sed -n 1p "$e2e/out")" "連携なしにしました: TASK-7 $e2e_url"
+	expect "$other: ほかの記録は変えない" "$(cat "$other_record")" 'repository: other'
+	[[ -f $e2e_record ]] || fail "$other: 自分の記録を作る"
+done
+# 120 秒のうちに 200 になれば、記録を作らない。
+e2e_reset
+printf '[404,404,200]\n' >"$e2e/statuses.json"
+e2e_run 0 TASK-7 "$e2e_url"
+expect '待って紐付いた: 出力' "$(cat "$e2e/out")" "紐付けました: TASK-7 $e2e_url"
+e2e_no_record
+
+# シンボリックリンクと、パスに使えない文字: 記録を読まず書かず、標準エラーの理由は警告の前に 1 行だけ出す。リンク先は書き換えない。
+e2e_reset
+mkdir -p "$PR_LINK_STATE_ROOT/fixture-id-000036/example" "$e2e/elsewhere"
+ln -s "$e2e/elsewhere" "$e2e_record"
+e2e_run 1 TASK-7 "$e2e_url"
+e2e_warn_not_found
+expect 'リンクの記録: 理由の行' "$(grep -c 'シンボリックリンク' "$e2e/err" | tr -d ' ')" 1
+expect '120 秒待った（リンクの記録）' "$(<"$e2e/curl-count")" 12
+[[ -z $(ls -A "$e2e/elsewhere") ]] || fail 'リンク先に書いた'
+e2e_reset
+mkdir -p "$e2e/elsewhere" "$PR_LINK_STATE_ROOT/fixture-id-000036"
+ln -s "$e2e/elsewhere" "$PR_LINK_STATE_ROOT/fixture-id-000036/example"
+e2e_run 1 TASK-7 "$e2e_url"
+e2e_warn_not_found
+[[ -z $(ls -A "$e2e/elsewhere") ]] || fail 'リンクのディレクトリの先に書いた'
+for bad_project in '..' 'a/b'; do
+	e2e_reset
+	jq --arg project "$bad_project" '.project_id = $project' "$e2e/issue.json" >"$e2e/next.json" && mv "$e2e/next.json" "$e2e/issue.json"
+	e2e_run 1 TASK-7 "$e2e_url"
+	e2e_warn_not_found
+	e2e_no_record
+	[[ ! -e $e2e/state/example ]] || fail "プロジェクトの ID [$bad_project] で根の外に書いた"
+done
+
+echo 'PASS pr-link-no-integration: 記録のパスの検査・作成・消去・同時の作成・PR_LINK_ALL_404・呼ぶ人間・欄の約束・squad-pr-link の記録の動作'

@@ -20,6 +20,13 @@ warn_not_found() {
 	printf 'サーバーは、%s がワークスペースの GitHub 連携につながり、PR が同期されるまで、PR を見つけられません。ワークスペースの設定のコードの画面で、%s がつながっていることを確認してから紐付けてください。つながっていないと、タスクの画面からも紐付けられません。\n' "$repository" "$repository" >&2
 }
 
+# 連携なしの扱いを知らせる文（docs/pr-link-no-integration.md の「知らせ」）。
+notice_text() {
+	local repository=${url#https://github.com/}
+	repository=$(printf '%s' "${repository%/pull/*}" | tr '[:upper:]' '[:lower:]')
+	printf '%s を、このプロジェクトでは GitHub 連携なしとして扱います。サーバーが 120 秒待っても PR を見つけなかったためです。このあとの PR では紐付けを待たず、紐付けの警告と依頼を出さず、マージ待ちの見張りがマージを確認してタスクを done にします。連携しているはずなら、ワークスペースの設定のコードの画面で %s がつながっていることを確認してください。このリポジトリの PR が 1 つでも紐付けば、自動で連携ありの扱いに戻ります。\n' "$repository" "$repository"
+}
+
 mkdir -p tmp
 diagnostic=$(mktemp tmp/pr-link-read.XXXXXX)
 trap "$(printf 'rm -f -- %q' "$diagnostic")" EXIT
@@ -40,18 +47,86 @@ fi
 id=$(jq -r '.id' <<<"$issue")
 identifier=$(jq -r '.identifier' <<<"$issue")
 metadata=$(jq -c '.metadata' <<<"$issue")
-if ! pr_link_pull_request "$id" "$url" "$metadata"; then
-	warn "$PR_LINK_REASON"
+# 紐付けに失敗したときの終わり方。警告と、試み直しのためのマークと、404 のときの案内を出して 1 で終わる。
+fail_link() {
+	warn "$1"
 	# あとの区切りで試み直せるよう、マークを残す。作業先が PR のリポジトリと同じと分かるときだけ書く。
 	# 違うときは試み直しても断り、作業先がないときは同じと言えない。書けなくても、出力と終了コードは変えない。
-	repository=$(jq -r '.repository | select(. != null)' <<<"$metadata" | tr '[:upper:]' '[:lower:]')
-	url_repository=${url#https://github.com/}
-	url_repository=$(printf '%s' "${url_repository%/pull/*}" | tr '[:upper:]' '[:lower:]')
-	if [[ -n $repository && $repository == "$url_repository" ]]; then
+	if (( same_repository )); then
 		multica issue metadata set "$id" --key pr_link_pending --value "$url" --type string >/dev/null 2>&1 || true
 	fi
 	if [[ ${PR_LINK_NOT_FOUND:-0} == 1 ]]; then warn_not_found; fi
 	exit 1
+}
+# 連携なしの扱いにするために、metadata の 3 つの欄へ PR の URL を書く。pr_url を書けなければ 1 を返す。
+# ほかの 2 つは書けなくても続ける。link-check が後で書き直す。
+write_no_integration_marks() {
+	if ! multica issue metadata set "$id" --key pr_url --value "$url" --type string >/dev/null 2>&1; then
+		PR_LINK_REASON='metadata を書けない'
+		return 1
+	fi
+	multica issue metadata set "$id" --key pr_link_pending --value "$url" --type string >/dev/null 2>&1 || true
+	multica issue metadata set "$id" --key pr_link_no_integration --value "$url" --type string >/dev/null 2>&1 || true
+}
+
+repository=$(jq -r '.repository | select(. != null)' <<<"$metadata" | tr '[:upper:]' '[:lower:]')
+url_repository=${url#https://github.com/}
+url_repository=$(printf '%s' "${url_repository%/pull/*}" | tr '[:upper:]' '[:lower:]')
+same_repository=0
+if [[ -n $repository && $repository == "$url_repository" ]]; then same_repository=1; fi
+
+# 連携なしの記録を読むのは、プロジェクトがあり、作業先が PR のリポジトリと同じで、pr_url がまだないときだけにする。
+# 記録のパスを断ったときは、標準エラーに理由を 1 行出し、記録がないものとして今の動作で進める。
+project=$(jq -r '.project_id | select(type == "string")' <<<"$issue")
+record_state=off
+if [[ -n $project ]] && (( same_repository )) && ! jq -e 'has("pr_url")' <<<"$metadata" >/dev/null; then
+	if pr_link_record_locate "$project" "$url" && pr_link_record_safe; then
+		if [[ -f $PR_LINK_RECORD ]]; then record_state=present; else record_state=absent; fi
+	else
+		printf '%s\n' "$PR_LINK_RECORD_REASON" >&2
+	fi
+fi
+
+if [[ $record_state == present ]]; then
+	# 記録があるときは待たず、紐付けの API を 1 回だけ呼ぶ。
+	status=
+	if pr_link_check_api_env && pr_link_request_once "$id" "$url" 30; then status=$PR_LINK_STATUS; fi
+	if [[ $status == 200 ]]; then
+		if multica issue metadata set "$id" --key pr_url --value "$url" --type string >/dev/null 2>&1; then
+			pr_link_record_remove "$project" "$url" || true
+			printf '紐付けました: %s %s\n' "$identifier" "$url"
+			exit 0
+		fi
+		fail_link 'metadata を書けない'
+	fi
+	write_no_integration_marks || fail_link "$PR_LINK_REASON"
+	printf '紐付けていません（連携なし）: %s %s\n' "$identifier" "$url"
+	exit 0
+fi
+
+if ! pr_link_pull_request "$id" "$url" "$metadata"; then
+	# 記録がなく、期限まで 404 だけが続いたときだけ、連携なしに切り替える。
+	if [[ $record_state == absent && ${PR_LINK_ALL_404:-0} == 1 ]]; then
+		created=0
+		pr_link_record_create "$project" "$url" "$identifier" || created=$?
+		if (( created == 0 )); then
+			if ! write_no_integration_marks; then
+				reason=$PR_LINK_REASON
+				pr_link_record_discard_own
+				fail_link "$reason"
+			fi
+			pr_link_record_finish
+			printf '連携なしにしました: %s %s\n' "$identifier" "$url"
+			notice_text
+			exit 0
+		elif (( created == 2 )); then
+			# 同時に待ち切れた別の実行が、先に記録を作った。知らせはその実行が出すので、ここでは出さない。
+			write_no_integration_marks || fail_link "$PR_LINK_REASON"
+			printf '紐付けていません（連携なし）: %s %s\n' "$identifier" "$url"
+			exit 0
+		fi
+	fi
+	fail_link "$PR_LINK_REASON"
 fi
 if jq -e 'has("pr_url")' <<<"$metadata" >/dev/null; then
 	existing_url=$(jq -r '.pr_url' <<<"$metadata")
