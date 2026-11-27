@@ -146,10 +146,10 @@ PY
 
 # 設定を Codex の厳しい検証にかける。知らないキーなどで 0 以外なら止まる。
 # 古い Codex（引数を知らない）と時間切れは、確認できなかったと警告して先へ進む。
-# 時間切れの停止の手順は lib/codex-check.py が持つ。停止を確認できなければ、固定の診断で止まる。
+# 時間切れの停止の手順は lib/codex-check.py が持つ。拡張を使うと root が lib を持たない作業場所へ付け替わるので、原本の kit_root から呼ぶ。停止を確認できなければ、固定の診断で止まる。
 host_codex_validate() {
 	local config=$agent_home/codex/config.toml result status detail
-	if ! result=$(python3 "$root/lib/codex-check.py" "$agent_home/codex" "${codex_check_seconds:-30}" "${codex_grace_seconds:-5}" "${codex_confirm_seconds:-5}"); then
+	if ! result=$(python3 "${kit_root:-$root}/lib/codex-check.py" "$agent_home/codex" "${codex_check_seconds:-30}" "${codex_grace_seconds:-5}" "${codex_confirm_seconds:-5}"); then
 		die 'Codex の設定の検証を実行できませんでした。python3 を確認して流し直してください。'
 	fi
 	status=${result%%$'\n'*}
