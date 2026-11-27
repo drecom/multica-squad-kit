@@ -198,12 +198,12 @@ assert value == ' '.join(runtimes)
 assert (scenario / 'host/codex/config.toml').exists() == ('codex' in runtimes)
 assert (scenario / 'host/allowed-repos.d/projects-1').read_text() == 'example/project\n'
 calls = (scenario / 'runtime-calls').read_text().splitlines()
-# hooks/list の読み取りは、設定の検証より前に 1 回流れる。
+# hooks/list の読み取りは、書き換える前の確認として 1 回流れる。
 hook_reads = [call for call in calls if call.startswith('codex app-server --listen stdio:// -c ')]
 assert len(hook_reads) == (1 if 'codex' in runtimes else 0), calls
 calls = [call for call in calls if call not in hook_reads]
-# Codex の設定の検証は、設定ファイルの配置のあとで、ログインの確認より前に 1 回流れる。
-expected = (['codex app-server --strict-config --listen stdio://'] if 'codex' in runtimes else []) + [r + (' auth status' if r == 'claude' else ' login status') for r in runtimes]
+# ログインの確認は書き換える前に流れ、Codex の設定の検証は、設定ファイルの配置のあとに 1 回流れる。
+expected = [r + (' auth status' if r == 'claude' else ' login status') for r in runtimes] + (['codex app-server --strict-config --listen stdio://'] if 'codex' in runtimes else [])
 assert calls == expected, calls
 (scenario / 'first-db.json').write_text(json.dumps(db))
 PY

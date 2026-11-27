@@ -1,0 +1,40 @@
+# prepare_host（更新）が書くものと、止める確認の表。列は ID・Codex の設定の状態・止める条件・止めるときの表示の一部・止めたあとに残るものをタブで区切る。
+# 規則: docs/agent-guards.md の「更新の順序」の 1 のとおり、書き換える前に判定できる確認をすべて流す。
+# どれかが合わなければ、$agent_home の下のファイル（ガードのスクリプト・gh と pre-push・start-daemon・Codex の設定と信頼・共有の settings.json・監視のスクリプト）は 1 つも変わらない。
+# Codex の設定の状態: managed はマークのある設定、new はまだない設定、unmarked は人の設定（信頼なし）、unmarked-trusted は信頼の行を足した人の設定。
+# 止める条件: hooks:<モード> は tests/codex-hooks-stub.py のモード、env:<名前> は端末の認証の環境変数、gh-empty-file は空の gh の置き場のファイル、disable-all-hooks は共有の settings.json、
+# claude-auth と codex-auth はログインの確認、untrusted は人の設定に信頼がない、stale は信頼の値が古い、none は止めない（比べるための行で、止めずに書き換わる）。
+# tests/host-test.sh が行ごとに、止めたあとの $agent_home の全ファイルの内容が止める前と同じことを確認する。
+none-managed	managed	none		書き換わる（比べるための行）
+none-new	new	none		書き換わる（比べるための行）
+managed-pre-disabled	managed	hooks:pre-disabled	無効か、有効と確認できません	何も変わらない
+managed-stop-disabled	managed	hooks:stop-disabled	無効か、有効と確認できません	何も変わらない
+managed-no-enabled	managed	hooks:no-enabled	無効か、有効と確認できません	何も変わらない
+managed-enabled-null	managed	hooks:enabled-null	無効か、有効と確認できません	何も変わらない
+managed-enabled-string	managed	hooks:enabled-string	無効か、有効と確認できません	何も変わらない
+managed-user-same-pre-disabled	managed	hooks:same-user+pre-disabled	無効か、有効と確認できません	何も変わらない
+managed-dup-session	managed	hooks:dup-session	2 つ以上あります	何も変わらない
+managed-wrong-matcher	managed	hooks:wrong-matcher	キットのフックがありません	何も変わらない
+managed-pre-only	managed	hooks:pre-only	キットのフックがありません	何も変わらない
+managed-exit	managed	hooks:exit	hooks/list を読めませんでした	何も変わらない
+managed-garbled	managed	hooks:garbled	hooks/list を読めませんでした	何も変わらない
+new-pre-disabled	new	hooks:pre-disabled	無効か、有効と確認できません	何も変わらない（設定は作らない）
+new-stop-disabled	new	hooks:stop-disabled	無効か、有効と確認できません	何も変わらない（設定は作らない）
+new-no-enabled	new	hooks:no-enabled	無効か、有効と確認できません	何も変わらない（設定は作らない）
+new-enabled-number	new	hooks:enabled-number	無効か、有効と確認できません	何も変わらない（設定は作らない）
+new-dup-session	new	hooks:dup-session	2 つ以上あります	何も変わらない（設定は作らない）
+new-stop-only	new	hooks:stop-only	キットのフックがありません	何も変わらない（設定は作らない）
+new-hang	new	hooks:hang	hooks/list を読めませんでした	何も変わらない（設定は作らない）
+unmarked-pre-disabled	unmarked	hooks:pre-disabled	無効か、有効と確認できません	何も変わらない（人の設定は書き換えない）
+unmarked-dup-session	unmarked	hooks:dup-session	2 つ以上あります	何も変わらない
+unmarked-untrusted	unmarked	untrusted	の行を足してから	何も変わらない
+unmarked-stale	unmarked-trusted	stale	の行を足してから	何も変わらない
+managed-disable-all-hooks	managed	disable-all-hooks	disableAllHooks	何も変わらない
+new-disable-all-hooks	new	disable-all-hooks	disableAllHooks	何も変わらない
+managed-claude-auth	managed	claude-auth	エージェント用の Claude にログイン	何も変わらない（Codex の設定の信頼も古いまま）
+new-claude-auth	new	claude-auth	エージェント用の Claude にログイン	何も変わらない（設定は作らない）
+managed-codex-auth	managed	codex-auth	エージェント用の Codex にログイン	何も変わらない
+managed-token-env	managed	env:GH_TOKEN	GH_TOKEN	何も変わらない
+managed-github-token-env	managed	env:GITHUB_TOKEN	GITHUB_TOKEN	何も変わらない
+managed-gh-empty-file	managed	gh-empty-file	空の gh の置き場にファイルがあります	何も変わらない
+new-gh-empty-file	new	gh-empty-file	空の gh の置き場にファイルがあります	何も変わらない（設定は作らない）

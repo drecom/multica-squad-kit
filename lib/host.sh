@@ -170,16 +170,15 @@ PY
 	ui_notice warn "$config" "マークのない設定に、更新の確認と利用状況の送信を切るキーがありません: $missing" || ui_warning "マークのない設定に、更新の確認と利用状況の送信を切るキーがありません（${missing}）: $config"
 }
 
-# 役に渡すフックの信頼を、Codex の設定へ書く。値は、役と同じ引数で起こした app-server の hooks/list から読む。
-# マークのある設定と、まだない設定は、ひな形に値を埋めて書く。マークのない人の設定は上書きせず、信頼があるかだけを読む。
-# 信頼がないときは、足す行を codex_trust_lines に、フックが無効か有効と判定できないときは、対象を codex_disabled_hooks に残す（マークのない人の設定だけ）。止めるかは、Codex の役の有無を知る prepare_project が決める。
-host_codex_config() {
-	local config=$agent_home/codex/config.toml existing='' result status detail trust disabled
-	codex_trust_lines=
-	codex_disabled_hooks=
+# 役に渡すフックの信頼と有効を、書き換える前に確認する。何も書かない。値は、役と同じ引数で起こした app-server の hooks/list から読む。
+# 読めない・フックが足りない・一意に決まらない・無効か有効と判定できない・マークのない人の設定に信頼がない、のどれでも止まる。
+# 止まらないときは、設定に書く信頼の行を codex_trust に残す（host_codex_write が書く）。
+host_codex_check() {
+	local config=$agent_home/codex/config.toml existing='' result status detail trust disabled names lines
+	codex_trust=
 	if [[ -e $config ]] && ! grep -qx '# multica-squad-kit-managed' "$config"; then existing=$config; fi
 	if ! result=$(python3 "${kit_root:-$root}/lib/codex-hooks.py" "$agent_home/codex" "$agent_home/guard" "${codex_check_seconds:-30}" ${existing:+"$existing"}); then
-		die 'Codex のフックの信頼の値を読む処理を実行できませんでした。python3 を確認して流し直してください。'
+		die 'Codex のフックの信頼の値を読む処理を実行できませんでした。python3 を確認して流し直してください。何も書き換えていません。'
 	fi
 	status=${result%%$'\n'*}
 	result=${result#*$'\n'}
@@ -192,15 +191,28 @@ host_codex_config() {
 	ok) ;;
 	launch) die "Codex を起動できませんでした。信頼の値を読めないので、何も書いていません。PATH に codex があり実行できることを確認して、セットアップを流し直してください。" ;;
 	missing) die "Codex が返したフックの一覧に、キットのフックがありません（${detail}）。信頼の値を読めないので、何も書いていません。codex --version で Codex が新しいことを確認し、$config がフックを無効にしていないか確認してから、セットアップを流し直してください。" ;;
+	ambiguous) die "Codex が返したフックの一覧に、キットのフックに当たる項目が 2 つ以上あります（${detail}）。どれが効くか判定できないので、何も書いていません。codex --version で Codex が新しいことを確認し、同じコマンドのフックを設定している所がないか確認してから、セットアップを流し直してください。" ;;
 	*) die "Codex の hooks/list を読めませんでした。信頼の値を読めないので、何も書いていません。時間切れ、応答の誤り、Codex が古いことのどれかが考えられます。codex --version で Codex が新しいことを確認してから、セットアップを流し直してください。Codex の出力は秘密値を含みうるので表示しません。" ;;
 	esac
-	if [[ -n $existing ]]; then
-		[[ $detail == trusted ]] || codex_trust_lines=$trust
-		# 信頼の値はフックを無効にしても変わらない。マークのない人の設定は書き換えないので、止めるために対象を残す。
-		codex_disabled_hooks=$(jq -r 'map("\(.hook)（\(.key)）") | join("、")' <<<"$disabled") || die 'Codex のフックの有効を読めませんでした。'
+	# 信頼の値はフックを無効にしても変わらない。有効は、役のフックの項目の enabled で見る。
+	names=$(jq -r 'map("\(.hook)（\(.key)）") | join("、")' <<<"$disabled") || die 'Codex のフックの有効を読めませんでした。'
+	if [[ -n $names ]]; then
+		die "Codex の役のフックが、無効か、有効と確認できません: ${names}。Stop が無効だと最後のコメントの確認が、PreToolUse が無効だとガードが動きません。設定 $config の、上の鍵の [hooks.state.\"<鍵>\"] にある enabled = false を消すか true にし、フックを無効にしている設定がないか、codex --version で Codex が新しいかを確認してから、セットアップを流し直してください。何も書き換えていません。"
+	fi
+	if [[ -n $existing && $detail != trusted ]]; then
+		die "Codex の役のフックは、信頼の記録がないと飛ばされ、PreToolUse と Stop が動きません。マークのない設定 $config に、次の行を足してからセットアップを流し直してください。何も書き換えていません。キットの設定に替えるときは、そのファイルを退避してから流し直してください。
+$trust"
+	fi
+	codex_trust=$trust
+}
+
+# 確認したあとに、Codex の設定を書く。マークのある設定と、まだない設定は、ひな形に信頼を埋めて書く。マークのない人の設定は上書きしない。
+host_codex_config() {
+	local config=$agent_home/codex/config.toml
+	if [[ -e $config ]] && ! grep -qx '# multica-squad-kit-managed' "$config"; then
 		host_shared_file "$root/common/codex/config.toml" "$config" no
 	else
-		host_codex_template "$trust"
+		host_codex_template "$codex_trust"
 	fi
 }
 
@@ -438,12 +450,25 @@ PY
 }
 
 prepare_host() {
-	local file
+	local file real_gh_dir
 	host_paths
 	check_runtime_tools || die '選んだランタイムを導入してから流し直してください。'
 	(umask 077; mkdir -p "$agent_home/claude" "$agent_home/codex" "$agent_home/bin" "$agent_home/git-hooks" "$agent_home/guard/gh-empty") || die 'ホストの置き場を作れませんでした。'
 	# 役の GH_CONFIG_DIR に渡す空の置き場。ファイルがあると認証が成り立つので、権限を絞る。
 	chmod 700 "$agent_home/guard/gh-empty" || die '空の gh の置き場の権限を設定できませんでした。'
+	# 書き換える前に、前もって判定できる確認をすべて流す（docs/agent-guards.md の「更新の順序」の 1）。どれかが合わなければ、ガード・設定・許可・起動ファイルのどれも書かずに止まる。
+	real_gh_dir=$(host_real_gh_dir) || exit 1
+	host_check_isolation "$real_gh_dir"
+	host_isolation_checked=yes
+	if uses_runtime claude; then
+		host_claude_settings check
+		host_check_claude_auth
+	fi
+	if uses_runtime codex; then
+		host_codex_check
+		CODEX_HOME="$agent_home/codex" codex login status >/dev/null 2>&1 || die "エージェント用の Codex にログインしてください: CODEX_HOME=$agent_home/codex codex login"
+	fi
+	# ここから書く。ガードのスクリプトと、Codex の信頼。共有の settings.json のフックか役の引数が指すまで、役の動作を変えない。
 	host_guard_file "$root/common/guard/git-credential" "$agent_home/guard/git-credential"
 	host_guard_file "$root/common/guard/git-ssh" "$agent_home/guard/git-ssh"
 	# フックのスクリプトと、PreToolUse が読む分割の部品。settings.json のフックがこの置き場を指す。
@@ -485,14 +510,6 @@ PY
 			host_shared_file "$file" "$agent_home/bin/${file##*/}" yes
 		fi
 	done
-	if uses_runtime claude; then
-		# 共有の settings.json は、ここでは確認だけにする。書くのは、役の設定を書いたあとである（prepare_project）。
-		host_claude_settings check
-		host_check_claude_auth
-	fi
-	if uses_runtime codex; then
-		CODEX_HOME="$agent_home/codex" codex login status >/dev/null 2>&1 || die "エージェント用の Codex にログインしてください: CODEX_HOME=$agent_home/codex codex login"
-	fi
 	prepare_daemon
 }
 
@@ -576,22 +593,29 @@ host_check_isolation() {
 	fi
 }
 
-host_check_guards() (
-	umask 077
-	local content=$1 probe file escaped escaped_bin needle='{{ALLOWED_REPOS_FILE}}' bin_needle='{{AGENT_BIN_DIR}}' repo shell mode allowed shell_content
-	local guard_dir dir candidate real_gh_dir='' probe_path path_dirs
-	[[ -x $agent_home/bin/gh && -x $agent_home/git-hooks/pre-push ]] || die '使うガードに実行権限がありません。表示した gh と pre-push の置き場と権限を管理者に確認してもらってください。'
-	guard_dir=$(cd "$agent_home/bin" && pwd) || die 'gh のガードの置き場を読めませんでした。'
+# ガードの外の PATH にある本物の gh の置き場を返す。ガードの置き場（$agent_home/bin）はまだなくてもよい。
+host_real_gh_dir() {
+	local guard_dir dir candidate path_dirs
+	guard_dir=$(cd "$agent_home/bin" 2>/dev/null && pwd) || guard_dir=$agent_home/bin
 	IFS=: read -r -a path_dirs <<<"$PATH"
 	for dir in "${path_dirs[@]}"; do
 		[[ -n $dir && -x $dir/gh ]] || continue
 		candidate=$(cd "$dir" 2>/dev/null && pwd) || continue
 		[[ $candidate != "$guard_dir" ]] || continue
-		real_gh_dir=$candidate
-		break
+		printf '%s\n' "$candidate"
+		return 0
 	done
-	[[ -n $real_gh_dir ]] || die '本物の gh がガードの外の PATH に見つかりません。gh の導入と PATH を確認してください。'
-	host_check_isolation "$real_gh_dir"
+	die '本物の gh がガードの外の PATH に見つかりません。gh の導入と PATH を確認してください。'
+}
+
+host_check_guards() (
+	umask 077
+	local content=$1 probe file escaped escaped_bin needle='{{ALLOWED_REPOS_FILE}}' bin_needle='{{AGENT_BIN_DIR}}' repo shell mode allowed shell_content
+	local real_gh_dir='' probe_path
+	[[ -x $agent_home/bin/gh && -x $agent_home/git-hooks/pre-push ]] || die '使うガードに実行権限がありません。表示した gh と pre-push の置き場と権限を管理者に確認してもらってください。'
+	real_gh_dir=$(host_real_gh_dir) || exit 1
+	# 認証の分離は、prepare_host が書き換える前に確認する。ここだけを流すときは、ここで確認する。
+	[[ ${host_isolation_checked:-no} == yes ]] || host_check_isolation "$real_gh_dir"
 	probe_path="$real_gh_dir:$PATH"
 	mkdir -p "$root/tmp" || die 'ガードの確認の作業場所を作れませんでした。'
 	probe=$(mktemp -d "$root/tmp/guard-check.XXXXXX") || die 'ガードの確認の作業場所を作れませんでした。'

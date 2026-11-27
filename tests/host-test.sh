@@ -155,8 +155,6 @@ fi
 # 拡張を使うセットアップと同じく、root を lib を持たない作業場所へ付け替え、原本は kit_root が指す（lib/extensions.sh）。
 if [[ -n ${TEST_EXTENSION_WORK:-} ]]; then kit_root=$root; root=$TEST_EXTENSION_WORK; fi
 prepare_host
-[[ -z ${TEST_TRUST_OUT:-} ]] || printf '%s' "${codex_trust_lines:-}" >"$TEST_TRUST_OUT"
-[[ -z ${TEST_DISABLED_OUT:-} ]] || printf '%s' "${codex_disabled_hooks:-}" >"$TEST_DISABLED_OUT"
 RUN
 run() { /bin/bash "$test_dir/run.sh" "$root" >"$test_dir/out" 2>"$test_dir/err"; }
 deny() { if run; then exit 1; fi; [[ -s $test_dir/err ]]; }
@@ -177,6 +175,11 @@ for event, snake, script, value in (("preToolUse", "pre_tool_use", "pre-tool-use
     lines += ['[hooks.state."/<session-flags>/config.toml:%s:0:0"]' % snake, 'trusted_hash = "sha256:%s"' % digest]
 sys.stdout.write(template.replace("{{HOOKS_STATE}}", "\n".join(lines)))
 PY
+}
+# 人の設定（マークなし）に足す、信頼の行。値はスタブが返す hooks/list と同じ。
+trust_lines() {
+ expected_codex_config
+ sed -n '/^\[hooks\.state\./,$p' "$test_dir/expected-config"
 }
 set_mode stopped
 run
@@ -696,8 +699,7 @@ import sys
 
 actual = Path(sys.argv[1]).read_text()
 home = sys.argv[4]
-message = f"使用する gh のガード: {home}/bin/gh\n使用する git push のガード: {home}/git-hooks/pre-push\n使用する Codex の設定: {home}/codex/config.toml\n"
-message += f"エラー: エージェント用の Claude のログインを確認できませんでした。ログインが切れているとは限りません。端末から CLAUDE_CONFIG_DIR={home}/claude claude auth status を流して、ログインの状態を確認してから流し直してください。問い合わせるときは、下の診断の行だけを添えてください。\n"
+message = f"エラー: エージェント用の Claude のログインを確認できませんでした。ログインが切れているとは限りません。端末から CLAUDE_CONFIG_DIR={home}/claude claude auth status を流して、ログインの状態を確認してから流し直してください。問い合わせるときは、下の診断の行だけを添えてください。\n"
 message += f"  診断（claude auth status）:\n    分類: {sys.argv[6]}\n    終了コード: {sys.argv[3]}\n    標準出力の最初の値: {sys.argv[5]}\n"
 message += "    標準出力: " + ("あり（内容は省略）" if Path(sys.argv[2]).stat().st_size else "なし") + "\n"
 message += "    標準エラー: " + ("あり（内容は省略）" if Path(sys.argv[7]).stat().st_size else "なし") + "\n"
@@ -815,7 +817,7 @@ done
 # 同居する既存システムの Mac の代わり。マークのないファイルと資格情報を残す。
 sed '/^# multica-squad-kit-managed$/d' "$root/common/guard/gh" >"$TEMPLATE_AGENT_HOME/bin/gh"
 sed '/^# multica-squad-kit-managed$/d' "$root/common/guard/pre-push" >"$TEMPLATE_AGENT_HOME/git-hooks/pre-push"
-printf '# existing codex config\nallow_login_shell = false\n' >"$TEMPLATE_AGENT_HOME/codex/config.toml"
+printf '# existing codex config\nallow_login_shell = false\n%s\n' "$(trust_lines)" >"$TEMPLATE_AGENT_HOME/codex/config.toml"
 printf 'original allowed repository\n' >"$TEMPLATE_AGENT_HOME/allowed-repos"
 printf 'existing credential\n' >"$TEMPLATE_AGENT_HOME/claude/credentials.json"
 printf 'existing codex credential\n' >"$TEMPLATE_AGENT_HOME/codex/auth.json"
@@ -845,19 +847,20 @@ echo 'PASS host: 流し直しでマークのある PR の紐付けコマンド�
 for display in "使用する gh のガード: $TEMPLATE_AGENT_HOME/bin/gh" "使用する git push のガード: $TEMPLATE_AGENT_HOME/git-hooks/pre-push" "使用する Codex の設定: $TEMPLATE_AGENT_HOME/codex/config.toml"; do grep -qxF "$display" "$test_dir/err"; done
 echo 'PASS host: マークのない既存を保持する場合も、使用する三つの実ファイルを明示する'
 for invalid in '' 'allow_login_shell = true' 'allow_login_shell = "false"' 'allow_login_shell = 0' $'[profiles.other]\nallow_login_shell = false' $'allow_login_shell = false\nallow_login_shell = false' 'allow_login_shell = ['; do
- printf '%s\n' "$invalid" >"$TEMPLATE_AGENT_HOME/codex/config.toml"
+ printf '%s\n' "$invalid" "$(trust_lines)" >"$TEMPLATE_AGENT_HOME/codex/config.toml"
  cp "$TEMPLATE_AGENT_HOME/codex/config.toml" "$test_dir/invalid-config"
  : >"$test_dir/calls"
  deny
  cmp "$test_dir/invalid-config" "$TEMPLATE_AGENT_HOME/codex/config.toml"
- grep -qF 'allow_login_shell = false を確認できません' "$test_dir/err"
+ # TOML として読めない設定は、信頼の値も読めないので、信頼の確認で止める（どちらも何も書く前に止まる）。
+ grep -qE 'allow_login_shell = false を確認できません|信頼の記録がない' "$test_dir/err"
  [[ ! -s $test_dir/calls ]]
 done
 cp "$test_dir/original/codex/config.toml" "$TEMPLATE_AGENT_HOME/codex/config.toml"
 echo 'PASS host: 確認した起動ファイルを使えない Codex の既存設定は保持し、直し方を出してデーモン操作前に止まる'
 
 for valid in '"allow_login_shell" = false' "'allow_login_shell' = false" $'allow_login_shell = false # comment\n[profiles.other]\nallow_login_shell = true'; do
- printf '%s\n' "$valid" >"$TEMPLATE_AGENT_HOME/codex/config.toml"
+ printf '%s\n' "$valid" "$(trust_lines)" >"$TEMPLATE_AGENT_HOME/codex/config.toml"
  cp "$TEMPLATE_AGENT_HOME/codex/config.toml" "$test_dir/valid-config"
  set_mode running
  agent_env
@@ -868,7 +871,7 @@ done
 echo 'PASS host: TOML の引用キーとトップレベルの真偽値 false を読み、別テーブルの同名キーを混同しない'
 
 for delimiter in '"""' "'''"; do
- printf '%s\n' "model_instructions = $delimiter" 'allow_login_shell = false' "$delimiter" >"$TEMPLATE_AGENT_HOME/codex/config.toml"
+ printf '%s\n' "model_instructions = $delimiter" 'allow_login_shell = false' "$delimiter" "$(trust_lines)" >"$TEMPLATE_AGENT_HOME/codex/config.toml"
  cp "$TEMPLATE_AGENT_HOME/codex/config.toml" "$test_dir/multiline-config"
  : >"$test_dir/calls"
  deny
@@ -876,7 +879,7 @@ for delimiter in '"""' "'''"; do
  grep -qF 'allow_login_shell = false を確認できません' "$test_dir/err"
  [[ ! -s $test_dir/calls ]]
  # 文字列内に true があっても、本物のトップレベルの false を使う。
- printf '%s\n' 'allow_login_shell = false' "model_instructions = $delimiter" 'allow_login_shell = true' "$delimiter" >"$TEMPLATE_AGENT_HOME/codex/config.toml"
+ printf '%s\n' 'allow_login_shell = false' "model_instructions = $delimiter" 'allow_login_shell = true' "$delimiter" "$(trust_lines)" >"$TEMPLATE_AGENT_HOME/codex/config.toml"
  cp "$TEMPLATE_AGENT_HOME/codex/config.toml" "$test_dir/multiline-config"
  run
  cmp "$test_dir/multiline-config" "$TEMPLATE_AGENT_HOME/codex/config.toml"
@@ -898,7 +901,7 @@ echo 'PASS host: マークのある共有ファイルは 原本の内容へ更�
 # マークのない設定に 2 つのキーがないときは、警告して書き換えずに先へ進む。
 config=$TEMPLATE_AGENT_HOME/codex/config.toml
 for unmarked in $'allow_login_shell = false' $'allow_login_shell = false\ncheck_for_update_on_startup = true\n[analytics]\nenabled = false' $'allow_login_shell = false\ncheck_for_update_on_startup = false\n[analytics]\nenabled = "false"' $'allow_login_shell = false\ncheck_for_update_on_startup = false\n[analytics]\nother = false'; do
- printf '%s\n' "$unmarked" >"$config"
+ printf '%s\n' "$unmarked" "$(trust_lines)" >"$config"
  cp "$config" "$test_dir/unmarked-config"
  set_mode running
  agent_env
@@ -907,15 +910,15 @@ for unmarked in $'allow_login_shell = false' $'allow_login_shell = false\ncheck_
  grep -qF '警告: マークのない設定に、更新の確認と利用状況の送信を切るキーがありません' "$test_dir/err"
  grep -q '^daemon status' "$test_dir/calls"
 done
-printf '%s\n' $'allow_login_shell = false\ncheck_for_update_on_startup = false' >"$config"
+printf '%s\n' $'allow_login_shell = false\ncheck_for_update_on_startup = false' "$(trust_lines)" >"$config"
 run
 grep -qF '[analytics] の enabled = false' "$test_dir/err"
 ! grep -qF 'check_for_update_on_startup' "$test_dir/err"
-printf '%s\n' $'allow_login_shell = false\n[analytics]\nenabled = false' >"$config"
+printf '%s\n' $'allow_login_shell = false\n[analytics]\nenabled = false' "$(trust_lines)" >"$config"
 run
 grep -qF 'check_for_update_on_startup = false' "$test_dir/err"
 ! grep -qF 'analytics' "$test_dir/err"
-printf '%s\n' $'allow_login_shell = false\ncheck_for_update_on_startup = false\n[analytics]\nenabled = false' >"$config"
+printf '%s\n' $'allow_login_shell = false\ncheck_for_update_on_startup = false\n[analytics]\nenabled = false' "$(trust_lines)" >"$config"
 run
 ! grep -qF 'マークのない設定に' "$test_dir/err"
 echo 'PASS host: マークのない Codex の設定に 2 つのキーがないときだけ、書き換えずに警告して進む'
@@ -989,63 +992,100 @@ done
 echo ok >"$test_dir/codex-hooks"
 echo 'PASS host: hooks/list を読めない・応答が壊れている・フックが足りないとき、設定を書かず、Codex の出力を写さずに止まる'
 
-# マークのない設定は書き換えない。信頼が合うときは先へ進み、足りないときは足す行を出して役の登録で止まる。
+# マークのない設定は書き換えない。信頼が合うときは先へ進み、足りないときは足す行を出して、何も書く前に止まる。
 unmarked_keys=$'allow_login_shell = false\ncheck_for_update_on_startup = false\n[analytics]\nenabled = false'
-export TEST_TRUST_OUT="$test_dir/trust-lines"
+echo ok >"$test_dir/codex-hooks"
 printf '%s\n' "$unmarked_keys" >"$config"
 cp "$config" "$test_dir/unmarked-config"
 set_mode running
 agent_env
-run
+deny
 cmp "$config" "$test_dir/unmarked-config"
-# 信頼がないと、足す行（2 つの鍵と trusted_hash）をプロジェクトの準備に渡す。
-[[ $(grep -c '^\[hooks\.state\.' "$test_dir/trust-lines") == 2 && $(grep -c '^trusted_hash = "sha256:' "$test_dir/trust-lines") == 2 ]]
-# 信頼の行を足した設定は、書き換えず、止めない。
-rm -f "$config"
-run
-{ printf '%s\n' "$unmarked_keys"; grep -E '^\[hooks\.state\.|^trusted_hash' "$config"; } >"$test_dir/unmarked-trusted"
+# 信頼がないと、足す行（2 つの鍵と trusted_hash）を表示する。
+grep -qF "$config" "$test_dir/err"
+grep -qF 'の行を足してから' "$test_dir/err"
+[[ $(grep -c '^\[hooks\.state\.' "$test_dir/err") == 2 && $(grep -c '^trusted_hash = "sha256:' "$test_dir/err") == 2 ]]
+# 表示した行を足した設定は、書き換えず、止めない。
+{ printf '%s\n' "$unmarked_keys"; grep -E '^\[hooks\.state\.|^trusted_hash' "$test_dir/err"; } >"$test_dir/unmarked-trusted"
 cp "$test_dir/unmarked-trusted" "$config"
 run
 cmp "$config" "$test_dir/unmarked-trusted"
-[[ ! -s $test_dir/trust-lines ]]
-# 信頼の値が hooks/list と違うときは、合っていないものとして扱う。
+# 信頼の値が hooks/list と違うときは、合っていないものとして止める。
 sed 's/trusted_hash = "sha256:[0-9a-f]*"/trusted_hash = "sha256:old"/' "$test_dir/unmarked-trusted" >"$config"
 cp "$config" "$test_dir/unmarked-stale"
-run
+deny
 cmp "$config" "$test_dir/unmarked-stale"
-grep -qF 'trusted_hash = "sha256:' "$test_dir/trust-lines"
-! grep -qF 'sha256:old' "$test_dir/trust-lines"
+grep -qF 'trusted_hash = "sha256:' "$test_dir/err"
+! grep -qF 'sha256:old' "$test_dir/err"
 printf '%s\n' "$unmarked_keys" >"$config"
-unset TEST_TRUST_OUT
-echo 'PASS host: マークのない設定は信頼があってもなくても書き換えず、ホストの準備では止めない'
+echo 'PASS host: マークのない設定は、信頼がなければ足す行を出して何も書く前に止まり、信頼が合えば書き換えずに進む'
 
-# 信頼の値はフックを無効にしても変わらない。マークのない設定では、hooks/list が無効か有効と判定できないと返したフックを、プロジェクトの準備に渡す。
-export TEST_DISABLED_OUT="$test_dir/disabled-hooks"
-for case_mode in ok pre-disabled stop-disabled no-enabled; do
- echo "$case_mode" >"$test_dir/codex-hooks"
- printf '%s\n' "$unmarked_keys" >"$config"
- cp "$config" "$test_dir/unmarked-config"
+# 更新が書くものと止める確認の表（tests/fixtures/host-update-order.tsv）。行ごとに、止めたあとの $agent_home の全ファイルが止める前と同じことを確認する。
+# 書き換わる行（none）が実際に書き換えることも確認し、止めた行の「変わらない」が書く手順を流さなかっただけの結果でないようにする。
+snapshot_home() { (cd "$TEMPLATE_AGENT_HOME" && find . -type f -exec shasum {} + | LC_ALL=C sort | shasum | cut -d' ' -f1); }
+unset TEST_TRUST_OUT TEST_DISABLED_OUT
+order_rows=0
+rm -rf "$test_dir/before-table-home"
+cp -R "$TEMPLATE_AGENT_HOME" "$test_dir/before-table-home"
+rm -rf "$TEMPLATE_AGENT_HOME"
+mkdir -p "$TEMPLATE_AGENT_HOME"
+echo ok >"$test_dir/codex-hooks"
+set_mode running
+agent_env
+run
+rm -rf "$test_dir/installed-home"
+cp -R "$TEMPLATE_AGENT_HOME" "$test_dir/installed-home"
+while IFS=$'\t' read -r id state refusal message remain; do
+ [[ -n $id && $id != '#'* ]] || continue
+ order_rows=$((order_rows + 1))
+ # 入れたあとの状態から、管理するファイルを古くして、書けば変わる形にする。
+ echo ok >"$test_dir/codex-hooks"
+ rm -rf "$TEMPLATE_AGENT_HOME"
+ cp -R "$test_dir/installed-home" "$TEMPLATE_AGENT_HOME"
  set_mode running
  agent_env
- run
- cmp "$config" "$test_dir/unmarked-config"
- case $case_mode in
- ok) [[ ! -s $test_dir/disabled-hooks ]] ;;
- pre-disabled) [[ $(<"$test_dir/disabled-hooks") == PreToolUse（* && $(<"$test_dir/disabled-hooks") != *Stop* ]] ;;
- stop-disabled) [[ $(<"$test_dir/disabled-hooks") == Stop（* && $(<"$test_dir/disabled-hooks") != *PreToolUse* ]] ;;
- no-enabled) [[ $(<"$test_dir/disabled-hooks") == Stop（* ]] ;;
+ while IFS= read -r file; do
+  case $file in
+  "$settings" | "$config") ;;
+  *) printf '# stale\n' >>"$file" ;;
+  esac
+ done < <(find "$TEMPLATE_AGENT_HOME" -type f)
+ printf '%s\n' '{"theme":"dark"}' >"$settings"
+ case $state in
+ managed) sed 's/trusted_hash = "sha256:[0-9a-f]*"/trusted_hash = "sha256:old"/' "$config" >"$test_dir/old-config"; cp "$test_dir/old-config" "$config" ;;
+ new) rm -f "$config" ;;
+ unmarked) printf '%s\n' "$unmarked_keys" >"$config" ;;
+ unmarked-trusted) sed 's/trusted_hash = "sha256:[0-9a-f]*"/trusted_hash = "sha256:old"/' "$test_dir/unmarked-trusted" >"$config" ;;
+ *) echo "表の状態が不明です: $state" >&2; exit 1 ;;
  esac
-done
-# マークのある設定は、流し直しで書き直すので、止める対象にしない。
-rm -f "$config"
-echo pre-disabled >"$test_dir/codex-hooks"
-run
-grep -qx '# multica-squad-kit-managed' "$config"
-[[ ! -s $test_dir/disabled-hooks ]]
+ before=$(snapshot_home)
+ set_mode running
+ agent_env
+ case $refusal in
+ none) run ;;
+ hooks:*) echo "${refusal#hooks:}" >"$test_dir/codex-hooks"; TEST_CODEX_SECONDS=1 deny ;;
+ env:*) env "${refusal#env:}=x" /bin/bash "$test_dir/run.sh" "$root" >"$test_dir/out" 2>"$test_dir/err" && exit 1; [[ -s $test_dir/err ]] ;;
+ gh-empty-file) : >"$TEMPLATE_AGENT_HOME/guard/gh-empty/hosts.yml"; before=$(snapshot_home); deny ;;
+ disable-all-hooks) printf '%s\n' '{"disableAllHooks":true}' >"$settings"; before=$(snapshot_home); deny ;;
+ claude-auth) touch "$test_dir/no-claude-auth"; deny; rm -f "$test_dir/no-claude-auth" ;;
+ codex-auth) touch "$test_dir/no-codex-auth"; deny; rm -f "$test_dir/no-codex-auth" ;;
+ untrusted | stale) deny ;;
+ *) echo "表の止める条件が不明です: $refusal" >&2; exit 1 ;;
+ esac
+ if [[ $refusal == none ]]; then
+  [[ $(snapshot_home) != "$before" ]] || { echo "書き換わらない行: $id" >&2; exit 1; }
+ else
+  grep -qF -- "$message" "$test_dir/err" || { echo "表示が違う行: $id" >&2; cat "$test_dir/err" >&2; exit 1; }
+  [[ $(snapshot_home) == "$before" ]] || { echo "止めたのに書き換わった行: $id" >&2; exit 1; }
+  [[ ! -s $test_dir/calls ]] || { echo "止めたのにデーモンを操作した行: $id" >&2; exit 1; }
+  [[ $state != new || ! -e $config ]] || { echo "設定を作った行: $id" >&2; exit 1; }
+ fi
+done <"$root/tests/fixtures/host-update-order.tsv"
 echo ok >"$test_dir/codex-hooks"
-printf '%s\n' "$unmarked_keys" >"$config"
-unset TEST_DISABLED_OUT
-echo 'PASS host: マークのない設定で、PreToolUse と Stop の片方が無効か有効と判定できないとき対象を渡し、両方有効なら渡さず、人の設定は書き換えない'
+[[ $order_rows == $(grep -vc '^#' "$root/tests/fixtures/host-update-order.tsv") ]]
+rm -rf "$TEMPLATE_AGENT_HOME"
+cp -R "$test_dir/before-table-home" "$TEMPLATE_AGENT_HOME"
+echo "PASS host: 更新の表の ${order_rows} 行で、書き換える前に判定できる確認が合わなければ、ガード・Codex の設定と信頼・settings.json を含む全ファイルを書き換えずに止まる"
 
 # 設定の検証。0 で進み、0 以外で止まり、古い Codex と時間切れは警告して進む。
 cp "$test_dir/original/codex/config.toml" "$config"
@@ -1089,17 +1129,17 @@ grep -qF 'PATH に codex があり実行できることを確認' "$test_dir/err
 ! grep -qF '設定が厳しい検証を通りません' "$test_dir/err"
 ! grep -qF 'キーを直すか消して' "$test_dir/err"
 ! grep -qF '終了コード' "$test_dir/err"
-# 検証はログインの確認より前にあり、ログイン切れでも設定の誤りを先に出す。
+# ログインの確認は、書き換える前の確認なので、設定の検証より先にあり、ログイン切れなら設定の誤りより先に出す。
 echo fail >"$test_dir/codex-strict"
 touch "$test_dir/no-codex-auth"
 deny
-grep -qF 'Codex の設定が厳しい検証を通りません' "$test_dir/err"
-! grep -qF 'codex login' "$test_dir/err"
-echo ok >"$test_dir/codex-strict"
-deny
 grep -qF 'codex login' "$test_dir/err"
+! grep -qF 'Codex の設定が厳しい検証を通りません' "$test_dir/err"
 rm "$test_dir/no-codex-auth"
-echo 'PASS host: Codex の検証が 0 以外で書き換えずに止まり、ログインの確認より前に設定の誤りを出す'
+deny
+grep -qF 'Codex の設定が厳しい検証を通りません' "$test_dir/err"
+echo ok >"$test_dir/codex-strict"
+echo 'PASS host: Codex の検証が 0 以外で書き換えずに止まり、ログインの確認は設定の検証より先に止める'
 
 # 拡張を使うセットアップでは root が lib を持たない作業場所を指す。検証の処理は原本（kit_root）の lib から呼び、検証の結果も通常どおり扱う。
 mkdir -p "$test_dir/extension-work"

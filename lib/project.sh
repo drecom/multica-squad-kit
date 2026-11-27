@@ -86,7 +86,6 @@ prepare_project() (
 	ui_phase_done "$project_name$summary_repos"
 	ui_phase_start 4
 	# 条件の評価とモデルの確定は初期化用レコードを作る前に済ませる。
-	codex_role=no
 	for role in $enabled; do
 		ui_phase_subject "$role"
 		template_filter "$enabled" "$root/common/agents/$role.md" >"$project_work/$role.filtered" || die "役のマークが不正です: $role"
@@ -99,8 +98,7 @@ prepare_project() (
 			runtime=$claude_runtime_id ;;
 		gpt-*)
 			uses_runtime codex || die "使うランタイムにないモデルです: $role ($model)。拡張の front matter をランタイムのマークで分けてください。"
-			runtime=$codex_runtime_id
-			codex_role=yes ;;
+			runtime=$codex_runtime_id ;;
 		*) die "未知のモデルです: $model" ;;
 		esac
 		[[ -n $runtime ]] || die 'オンラインのランタイムがありません。'
@@ -114,7 +112,6 @@ prepare_project() (
 		[[ $max =~ ^[0-9]+$ && $max -ge 1 && $max -le 50 ]] || die '同時実行数が不正です。'
 		records=$(jq -c --arg role "$role" --arg name "$name" --arg model "$model" --arg thinking "$thinking" --arg runtime "$runtime" --argjson max "$max" '.+{($role):{name:$name,model:$model,thinking_level:$thinking,runtime_id:$runtime,max_concurrent_tasks:$max}}' <<<"$records")
 	done
-	project_check_codex_trust
 	result=$(mc agent list --output json) || die 'エージェントを取得できませんでした。'
 	agent_total=$(jq length <<<"$records")
 	ui_phase_progress 0 "$agent_total"
@@ -415,17 +412,6 @@ project_role() {
 	runtime=$(jq -r --arg role "$1" '.[$role].runtime_id' <<<"$records")
 	max=$(jq -r --arg role "$1" '.[$role].max_concurrent_tasks' <<<"$records")
 }
-# Codex の役があり、マークのない人の設定にフックの信頼がないときは、役を登録・更新する前に止まる。
-project_check_codex_trust() {
-	[[ $codex_role == yes ]] || return 0
-	if [[ -n ${codex_disabled_hooks:-} ]]; then
-		die "Codex の役のフックが、無効か、有効と確認できません: ${codex_disabled_hooks}。Stop が無効だと最後のコメントの確認が、PreToolUse が無効だとガードが動きません。マークのない設定 $agent_home/codex/config.toml の、上の鍵の [hooks.state.\"<鍵>\"] にある enabled = false を消すか true にし、フックを無効にしている設定がないか確認してから、セットアップを流し直してください。役はまだ登録も更新もしておらず、共有の設定も書き換えていません。マークのない設定は書き換えていません。"
-	fi
-	[[ -n ${codex_trust_lines:-} ]] || return 0
-	die "Codex の役のフックは、信頼の記録がないと飛ばされ、PreToolUse と Stop が動きません。マークのない設定 $agent_home/codex/config.toml に、次の行を足してからセットアップを流し直してください。役はまだ登録も更新もしていません。キットの設定に替えるときは、そのファイルを退避してから流し直してください。
-$codex_trust_lines"
-}
-
 project_desired_args() {
 	jq -c --arg model "$1" --arg g "$agent_home/guard" '
 		def sq: "\u0027" + gsub("\u0027"; "\u0027\\\u0027\u0027") + "\u0027";
@@ -439,7 +425,7 @@ project_desired_args() {
 			elif ($args[$i]=="--enable" and $args[$i+1]=="shell_snapshot") then .skip=true
 			elif $args[$i]=="--enable=shell_snapshot" then .
 			else .args+=[$args[$i]] end) |
-		.args + (if ($model|startswith("gpt-")) then ["-c","allow_login_shell=false","-c","features.shell_snapshot=false","-c","project_doc_max_bytes=65536","-c",("hooks.PreToolUse=[{matcher=\"^(Bash|shell|exec_command|local_shell)$\",hooks=[{type=\"command\",command="+((($g+"/pre-tool-use")|sq)|tojson)+"}]}]"),"-c",("hooks.Stop=[{hooks=[{type=\"command\",command="+((($g+"/stop")|sq)|tojson)+"}]}]")] else [] end)'
+		.args + (if ($model|startswith("gpt-")) then ["-c","allow_login_shell=false","-c","features.shell_snapshot=false","-c","project_doc_max_bytes=65536","-c",("hooks.PreToolUse=[{matcher=\"^(Bash|shell|exec_command|local_shell)$\",hooks=[{type=\"command\",command="+((($g+"/pre-tool-use")|sq)|tojson|gsub("\u007f";"\\u007f"))+"}]}]"),"-c",("hooks.Stop=[{hooks=[{type=\"command\",command="+((($g+"/stop")|sq)|tojson|gsub("\u007f";"\\u007f"))+"}]}]")] else [] end)'
 }
 
 project_desired_env() {

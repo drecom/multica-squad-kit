@@ -10,7 +10,8 @@
   ok        2 つのフックの値を読めた。有効かも 3 行目で読む。詳細は、人の config.toml を渡したときだけ trusted か untrusted
   launch    Codex を起動できなかった
   failed    hooks/list を読めなかった（詳細に理由の分類。Codex の出力は写さない）
-  missing   一覧にキットのフックがない（詳細に足りないフック）
+  missing   一覧にキットのフックがない（詳細に足りないフック）。source が sessionFlags で、コマンドと matcher が合う項目だけを、役のフックとして読む
+  ambiguous 役のフックに当たる項目が 2 つ以上ある（詳細に対象のフック）。どれが効くか判定できないので止める
 設計は docs/agent-guards.md の「フックの信頼」が決める。
 """
 import json
@@ -33,9 +34,15 @@ def command(guard, script):
     return "'" + (guard + "/" + script).replace("'", "'\\''") + "'"
 
 
+def toml_string(value):
+    # TOML の基本文字列。json.dumps の既定は、絵文字などを UTF-16 のサロゲートの対（\ud83d\ude00）に直し、
+    # TOML は読めない。非 ASCII はそのまま出し、DEL（0x7f）だけ TOML のために直す。
+    return json.dumps(value, ensure_ascii=False).replace("\x7f", "\\u007f")
+
+
 def hook_args(guard):
-    pre = 'hooks.PreToolUse=[{matcher="%s",hooks=[{type="command",command=%s}]}]' % (MATCHER, json.dumps(command(guard, "pre-tool-use")))
-    stop = 'hooks.Stop=[{hooks=[{type="command",command=%s}]}]' % json.dumps(command(guard, "stop"))
+    pre = 'hooks.PreToolUse=[{matcher="%s",hooks=[{type="command",command=%s}]}]' % (MATCHER, toml_string(command(guard, "pre-tool-use")))
+    stop = 'hooks.Stop=[{hooks=[{type="command",command=%s}]}]' % toml_string(command(guard, "stop"))
     return ["codex", "app-server", "--listen", "stdio://", "-c", pre, "-c", stop]
 
 
@@ -117,25 +124,34 @@ def find_kit_hooks(result, guard):
                 entries.extend(item.get("hooks") or [])
     found = {}
     disabled = []
+    ambiguous = []
     for event, script in EVENTS:
         wanted = command(guard, script)
-        for entry in entries:
-            if not isinstance(entry, dict) or entry.get("eventName") != event or entry.get("command") != wanted:
-                continue
-            key, current = entry.get("key"), entry.get("currentHash")
-            if isinstance(key, str) and key and isinstance(current, str) and current:
-                found[event] = (key, current)
-                if entry.get("enabled") is not True:
-                    disabled.append({"hook": NAMES[event], "key": key})
-                break
-    return found, [event for event, _ in EVENTS if event not in found], disabled
+        # 役の引数が作るのは、source が sessionFlags で、イベント・コマンド・matcher が合う項目だけである。
+        # 人の設定や管理の設定に同じコマンドの項目があっても、それは役のフックではない（信頼も有効も別に決まる）。
+        expected_matcher = MATCHER if event == "preToolUse" else None
+        matches = [entry for entry in entries
+                   if isinstance(entry, dict) and entry.get("eventName") == event and entry.get("command") == wanted
+                   and entry.get("source") == "sessionFlags" and (entry.get("matcher") or None) == expected_matcher]
+        if len(matches) > 1:
+            ambiguous.append(event)
+            continue
+        if not matches:
+            continue
+        entry = matches[0]
+        key, current = entry.get("key"), entry.get("currentHash")
+        if isinstance(key, str) and key and isinstance(current, str) and current:
+            found[event] = (key, current)
+            if entry.get("enabled") is not True:
+                disabled.append({"hook": NAMES[event], "key": key})
+    return found, [event for event, _ in EVENTS if event not in found and event not in ambiguous], ambiguous, disabled
 
 
 def render(found):
     lines = []
     for event, _ in EVENTS:
         key, current = found[event]
-        lines += ["[hooks.state.%s]" % json.dumps(key), "trusted_hash = %s" % json.dumps(current)]
+        lines += ["[hooks.state.%s]" % toml_string(key), "trusted_hash = %s" % toml_string(current)]
     return "\n".join(lines)
 
 
@@ -166,7 +182,13 @@ def main(argv):
         print("")
         print("[]")
         return
-    found, missing, disabled = find_kit_hooks(result, guard)
+    found, missing, ambiguous, disabled = find_kit_hooks(result, guard)
+    if ambiguous:
+        # 役のフックを 1 つに決められない。どちらが効くか判定できないので止める。
+        print("ambiguous")
+        print(",".join(ambiguous))
+        print("[]")
+        return
     if missing:
         print("missing")
         print(",".join(missing))

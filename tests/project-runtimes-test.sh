@@ -227,7 +227,7 @@ echo 'PASS project runtimes: 置き場に空白と単引用符があっても、
 snapshot_shared() { { cat "$TEMPLATE_AGENT_HOME/claude/settings.json"; agent_snapshot; } | shasum | cut -d' ' -f1; }
 unset TEST_COMPLETE TEST_REPOSITORIES
 export TEST_EXCLUDED='[]' TEST_ROLE_COUNT=17 TEST_RUNTIMES='["claude","codex"]'
-for stop in codex_hooks env_set; do
+for stop in env_set; do
  rm -rf "$TEST_DB" "$TEMPLATE_AGENT_HOME"
  cp -R "$test_dir/completed/db" "$TEST_DB"
  cp -R "$test_dir/completed/host" "$TEMPLATE_AGENT_HOME"
@@ -235,19 +235,12 @@ for stop in codex_hooks env_set; do
  printf '%s\n' '{"theme":"dark","permissions":{"allow":["Bash(ls)"]}}' >"$TEMPLATE_AGENT_HOME/claude/settings.json"
  before=$(snapshot_shared)
  : >"$TEST_DB/calls"
- if [[ $stop == codex_hooks ]]; then
-  # Codex のフックが無効と返る: 役の登録・更新の前に止まる。
-  export codex_disabled_hooks='Stop（/<session-flags>/config.toml:stop:0:0）'
-  deny
-  unset codex_disabled_hooks
- else
-  # 役の custom_env を書いている途中で止まる。
-  TEST_FAIL='agent env set' deny
- fi
+ # 役の custom_env を書いている途中で止まる。
+ TEST_FAIL='agent env set' deny
  [[ $(snapshot_shared) == "$before" ]]
  ! grep -q 'hooks' "$TEMPLATE_AGENT_HOME/claude/settings.json"
  # 止まったあとに流し直すと、フックと deny がそろって書かれる。
  run
  grep -q 'hooks' "$TEMPLATE_AGENT_HOME/claude/settings.json"
 done
-echo 'PASS project runtimes: 更新が確認の時点や custom_env の書き込みの途中で止まっても、共有の settings.json は変わらず、流し直すと書かれる'
+echo 'PASS project runtimes: 更新が custom_env の書き込みの途中で止まっても、共有の settings.json は変わらず、流し直すと書かれる'
