@@ -435,6 +435,24 @@ import traceback
 real_open, real_rename, real_unlink, real_register = builtins.open, os.rename, os.unlink, faulthandler.register
 
 
+class BrokenMark:
+    """一時のファイルの包み。印は書けるが、flush が失敗し、close は閉じたあとに失敗する（flush だけの失敗も作る）。"""
+
+    def __init__(self, inner, close_fails):
+        self._inner, self._close_fails = inner, close_fails
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+    def flush(self):
+        raise OSError('injected flush failure')
+
+    def close(self):
+        self._inner.close()
+        if self._close_fails:
+            raise OSError('injected close failure')
+
+
 class Injection:
     """表の失敗の種類ごとに、開く・改名・消す・登録を失敗させる。"""
 
@@ -464,6 +482,8 @@ class Injection:
                 raise OSError('injected open failure')
             opened = real_open(path, *args, **kwargs)
             if os.path.basename(name).startswith('registering-'):
+                if injection.kind in ('mark', 'mark-flush'):
+                    opened = BrokenMark(opened, injection.kind == 'mark')
                 injection.temporary.append(opened)
             return opened
 
@@ -550,7 +570,7 @@ def cell_checks(label, directory, module_, operation, kind, expect, parent):
     }[wanted], (label, wanted, target)
     if expect.get('previous_closed') is not None:
         assert previous.closed == expect['previous_closed'], (label, '前の書き先の閉じ方')
-    if kind in ('step2', 'step3', 'step4') and injection.temporary:
+    if kind in ('step2', 'step3', 'step4', 'mark', 'mark-flush') and injection.temporary:
         assert all(f.closed for f in injection.temporary), (label, '一時のファイルが開いたまま')
     if kind == 'restore':
         assert injection.temporary and target is injection.temporary[-1] and not target.closed, (label, '一時のファイルを持たない')
@@ -606,6 +626,12 @@ cell('登録: 手順 1 で替えられない', COLUMNS['stuck'], 'stuck', 'regis
 cell('登録: 手順 1 で替えられない', COLUMNS['forked'], 'forked', 'register_stack', 'step1', names=['parent'], signal=False, target='previous', previous_closed=False)
 for failure in ('step2', 'step3', 'step4'):
     row = f'登録: 手順 2 から 4 のどれかに失敗（{failure}）'
+    cell(row, COLUMNS['none'], 'none', 'register_stack', failure, names=[], target='null')
+    cell(row, COLUMNS['withdrawn'], 'withdrawn', 'register_stack', failure, names=[], target='null', previous_closed=False)
+    cell(row, COLUMNS['stuck'], 'stuck', 'register_stack', failure, names=[], target='null', previous_closed=True)
+    cell(row, COLUMNS['forked'], 'forked', 'register_stack', failure, names=['parent'], target='null', previous_closed=True)
+for failure, label in (('mark-flush', 'flush が失敗'), ('mark', 'flush と close が失敗')):
+    row = f'登録: 開いたあとに登録印を書けない（{label}）'
     cell(row, COLUMNS['none'], 'none', 'register_stack', failure, names=[], target='null')
     cell(row, COLUMNS['withdrawn'], 'withdrawn', 'register_stack', failure, names=[], target='null', previous_closed=False)
     cell(row, COLUMNS['stuck'], 'stuck', 'register_stack', failure, names=[], target='null', previous_closed=True)

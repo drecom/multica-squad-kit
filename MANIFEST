@@ -99,7 +99,7 @@ c380ac8fd57091fa1d1ad80ff9724cba6667a7199b440a40b4be9b0e25f83623  ./docs/agent-p
 cdf7277c8518409f57673b250845ef3ff69680946ac4232f5e11e1423f8432d8  ./docs/agent-settings.md
 e1053a8614b8876ec371c43684db9c0ab2a90ad31fe7699dcac0272127ca81e0  ./docs/autopilot-targets.md
 345e824a373fcf5a1f3f7b1254fb1ef340bce2cc436c77aa29122f72cbd29244  ./docs/bug-repro-test.md
-c0a02f07b74dc105eb52c213ddc5bcc788d30a5d603b59d1657551f70fd316a4  ./docs/ci-timeouts.md
+9ef814757f4d01cdcc96f7170de8e4726d1cff570b14d2b0b8b303a7661e5bc8  ./docs/ci-timeouts.md
 b77b3b0ea23e013eb3c31d778c4c062aa36c3facdc3a6ae77a35dc32ee400dce  ./docs/codex-models.md
 985fdb59c1e89be53c6ae4d7709af8b0e5f239d4ce0025f7b59cd056b8021e18  ./docs/decide-record-read.md
 5e2a86f6e2a46391d106f27386a5af76471ce03e017b0834085d62bf19360bb7  ./docs/default-branch.md
@@ -823,9 +823,9 @@ c0509d732b2b3fa99f882283848bc2ba1c82ed3a6d0a90ac8263045dfee07010  ./tests/termin
 bb7b764515248a871ceb26e80ed0d7a543675fe39a1813d3355767cb94475dc7  ./tests/terms-test.sh
 81cdf5bc9e1337df5df660a48956d98fbc210eae1e56bcfa2f4345ea8d2ee54d  ./tests/test-runner-test.sh
 aafe53504d959b1213d2c5a2d5f659226a75f214be7e30b8fe579cee82e4b3b0  ./tests/test-weights
-eddd43130566d5ce8a3cc8588ddf247bc4b43958b56fcc008b986db2254d3fff  ./tests/tty-session-cases.py
+d94f944f10cbc4a4e1578f5c2c82bd96d60a44e38218caebf76174d8d570f7de  ./tests/tty-session-cases.py
 037b266696a320864da9cdca9b7638c912b8e8f68f57f38c0b1d4f71640d5b0b  ./tests/tty-session-test.sh
-42688726003a8c35f941b921a594c1dce5ff4045402a0eefff2c58600a152083  ./tests/tty-session.py
+4fca0a5d480aee948e2076f067072b905caa9de4d4bd0c4cd84ac061c10abf37  ./tests/tty-session.py
 3e9e683ab3a2775d4f92aba2e8c84f8aa66cf7066ec328f9603728ded54ad6c6  ./tests/ui-contrast.py
 9b79bf0e9a21b198ce356ee7d6fc287316eef96040f5a4918b5c21ed09c2c607  ./tests/ui-steps-test.sh
 eb0a12120d36856588a0f63afb37cdfa1e2b253c19588fe385bafa439e1b2d4d  ./tests/ui-test.sh

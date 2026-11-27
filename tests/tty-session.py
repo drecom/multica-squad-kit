@@ -79,7 +79,10 @@ def register_stack():
         if opened is not None and stack_target is opened:
             point_stack(stack_null)
         if opened is not None and stack_target is not opened:
-            opened.close()
+            try:
+                opened.close()  # 書きかけの印を書き出して閉じるので、ここでも入出力エラーが出る
+            except OSError:
+                pass
         try:
             os.unlink(temporary)
         except OSError:
