@@ -830,13 +830,13 @@ set_mode running
 agent_env
 TEST_EXTENSION_WORK="$test_dir/extension-work" run
 [[ $(wc -l <"$test_dir/codex-checks") -eq 1 ]]
-! grep -qF 'Codex の設定の検証を実行できませんでした' "$test_dir/err"
+if grep -qF 'Codex の設定の検証を実行できませんでした' "$test_dir/err"; then exit 1; fi
 echo fail >"$test_dir/codex-strict"
 set_mode running
 agent_env
 TEST_EXTENSION_WORK="$test_dir/extension-work" deny
 grep -qF 'Codex の設定が厳しい検証を通りません' "$test_dir/err"
-! grep -qF 'Codex の設定の検証を実行できませんでした' "$test_dir/err"
+if grep -qF 'Codex の設定の検証を実行できませんでした' "$test_dir/err"; then exit 1; fi
 echo ok >"$test_dir/codex-strict"
 echo 'PASS host: 拡張の作業場所へ root を付け替えても、原本の lib の検証の処理を呼び、結果を通常どおり扱う'
 
