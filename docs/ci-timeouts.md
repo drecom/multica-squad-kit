@@ -288,6 +288,7 @@ PR #25 の影響を、負荷と順序に分けて判定する。読むのは終�
 | `docs/terminal-tests.md` | 「包みの動き」に通知の書き方を、「補助の回帰テスト」の表に T27 を足す |
 | `docs/terminal-tests-map.md` | ケースの番号の範囲を T01 から T27 に直す |
 | 分けたテストを引く文書（`docs/agent-settings.md`・`docs/terms.md`・`docs/usage-reduction.md`・`docs/terminal-tests-map.md`・`docs/pr-link-retry.md`・`docs/merge-request-reading.md`・`docs/decide-record-read.md`・`docs/usage-answer.md`） | テストのファイル名と行番号の参照を、移した先に直す。決めたことは変えない |
+| `tests/tty-session-cases.py` の T27 | 「再現のケース」の手順 3 で替えるハンドラは、自己パイプへは書かず、何もしないものでなく専用のパイプへ書くものにする。元のハンドラに戻したあとに残りの SIGCHLD が自己パイプへ書く順序を避け、届いたことを時計なしで確認するためである |
 
 実装では、`tests/` のテストと補助、`tests/test-weights`、`.github/workflows/check.yml` を変える。`CONTRIBUTING.md` の「テストを書く決まり」は変えない。
 
