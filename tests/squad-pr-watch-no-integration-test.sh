@@ -74,6 +74,8 @@ response.update(id="link-record-" + str(len(comments) + 1), content=body,
                 parent_id=parent or None, created_at=datetime.datetime.now(datetime.timezone.utc).isoformat())
 comment = json.loads((work / "comment-prototype.json").read_text())
 comment.update({key: response[key] for key in ("id", "content", "parent_id", "created_at")})
+# 見張りの知らせは、名簿のエージェント（リーダー）が書いたコメントとして残る。
+comment.update(author_type="agent", author_id="orchestrator")
 comments.append(comment)
 (work / "comments.json").write_text(json.dumps(comments))
 with (work / "posted.jsonl").open("a") as out:
@@ -129,6 +131,10 @@ dir=$PR_WATCH_TEST_DIR
 jq -cn --args '$ARGS.positional' -- "$@" >>"$dir/curl-calls.jsonl"
 cat >"$dir/curl-config"
 touch "$dir/api-called"
+# 試み直しの API を呼んでいるあいだに、別のタスクが同じプロジェクトとリポジトリの記録を結んだ場面を作る。
+if [[ -f $dir/record-on-api ]]; then
+	bash -c 'source "$PR_WATCH_TEST_ROOT/common/monitor/squad-pr-link-lib"; pr_link_record_create proj-1 "$(cat "$PR_WATCH_TEST_DIR/record-on-api")" TASK-2' >/dev/null
+fi
 cp "$dir/pulls-after.json" "$dir/pulls.json"
 [[ $(<"$dir/api-status") != transport ]] || exit 7
 cat "$dir/api-status"
@@ -144,7 +150,7 @@ reset_ni() {
 	update_task '.project_id = "proj-1"'
 	rm -rf -- "$PR_LINK_STATE_ROOT"
 	: >"$test_dir/curl-calls.jsonl"
-	rm -f "$test_dir/api-called" "$test_dir/fail-after" "$test_dir/curl-config" "$test_dir/now" "$test_dir/sleeps" "$test_dir"/fail-set-* "$test_dir/fail-status" "$test_dir/fail-members"
+	rm -f "$test_dir/api-called" "$test_dir/fail-after" "$test_dir/curl-config" "$test_dir/now" "$test_dir/sleeps" "$test_dir"/fail-set-* "$test_dir/fail-status" "$test_dir/fail-members" "$test_dir/record-on-api"
 	rm -f "$test_dir/fail-post" "$test_dir/fail-notice-squad" "$test_dir/roster-read" "$test_dir/rules-read" "$test_dir/rules-on-reread.json" "$test_dir/rules-after-status.json"
 	rm -f "$test_dir/comments-on-reread.json" "$test_dir/task-on-reread.json" "$test_dir/fail-on-reread" "$test_dir/fail"
 	printf 'trigger-1' >"$test_dir/trigger-comment"
@@ -567,10 +573,22 @@ for with_record in 0 1; do
 done
 echo 'PASS no-integration: unlinked-check の CI とコンフリクトの行と知らせは、記録があってもないときと同じ'
 
+# 記録がなく link-check を始め、試み直しの API を呼んでいるあいだに別のタスクが記録を結び、そのあとに紐付いた: 記録を読み直して消す。
+reset_ni
+update_task ".metadata.pr_link_pending = \"$pr\""
+printf '200' >"$test_dir/api-status"
+urls_json "$pr" >"$test_dir/pulls-after.json"
+printf '%s' "$pr" >"$test_dir/record-on-api"
+check_ni "紐付け: 紐付いている pr: $pr"
+api_once
+record_absent
+mark_absent pr_link_pending
+echo 'PASS no-integration: 試み直しの間に結ばれた記録は、紐付いたあとに消える'
+
 # unlinked-check のマージと閉じたときの扱い、見張りの終わりの知らせ。
-add_comment() { # ID 作者の種類 作者の ID 本文
-	jq --slurpfile base "$test_dir/comment-prototype.json" --arg id "$1" --arg type "$2" --arg author "$3" --arg content "$4" \
-		'. + [$base[0] + {id: $id, author_type: $type, author_id: $author, content: $content}]' "$test_dir/comments.json" >"$test_dir/changed.json"
+add_comment() { # ID 作者の種類 作者の ID 本文（返信にするときは、環境変数 reply_to に返信先のコメントの ID を入れる）
+	jq --slurpfile base "$test_dir/comment-prototype.json" --arg id "$1" --arg type "$2" --arg author "$3" --arg content "$4" --arg parent "${reply_to-}" \
+		'. + [($base[0] + {id: $id, author_type: $type, author_id: $author, content: $content}) | if $parent != "" then .parent_id = $parent else . end]' "$test_dir/comments.json" >"$test_dir/changed.json"
 	mv "$test_dir/changed.json" "$test_dir/comments.json"
 }
 round_body() { # 対象の PR の行に入れる URL...
@@ -798,9 +816,8 @@ edit_round_pr() {
 	mv "$test_dir/changed.json" "$test_dir/comments.json"
 }
 prepare_extra=edit_round_pr merged_refuses '登録した回のコメントの対象 PR が編集された'
-change_assignee() { update_task '.assignee_type = "agent" | .assignee_id = "orchestrator"'; }
-prepare_extra=change_assignee merged_refuses 'タスクの担当がスクワッドから変わった'
 unset prepare_extra
+# タスクの担当がスクワッドでなくなったときは、名簿を読めないので、知らせを書かず規則を残す（知らせ済みの判定の場面に置く）。
 echo 'PASS no-integration: 規則の行・回・metadata のどれかが合わないマージは、done にせず、理由と知らせを出して止める'
 
 same_pr_round() { add_comment round-2 agent orchestrator "$(round_body "$pr")"; }
@@ -875,16 +892,92 @@ assert_jq -s "$not_done_filter"' | length == 1 and (.[0].body | contains("mentio
 grep -q 'メンションを省きました' "$test_dir/err"
 echo 'PASS no-integration: 照合後に知らせの宛先のスクワッドを取得できなくても、マージ後の知らせをメンションなしで書く'
 
+# 知らせ済みと読むのは、ci_watch_thread への名簿のエージェントの返信だけ。同じ 1 行目でも、人間・名簿の外のエージェント・別のコメントへの返信・返信でないコメントは、知らせを省かない。
+not_done_first="連携なしのリポジトリの PR がマージされましたが、見張りはタスクを \`done\` にしませんでした（規則の確認した回（round-1）が今の回（round-2）と違う）。このタスクの成果をマージしたなら、タスクを \`done\` にしてください。PR: \`${pr}\`"
+not_done_scene() {
+	unlinked_scene record
+	same_pr_round
+	update_pr '.state = "MERGED"'
+}
+# 作者の種類・作者の ID・返信先（空なら返信でない）の組ごとに、知らせを書くか。
+for who in 'member human-1 ci-thread' 'agent outsider ci-thread' 'agent orchestrator other-comment' 'agent monitor' 'agent orchestrator ci-thread' 'agent monitor ci-thread'; do
+	read -r type author reply <<<"$who"
+	not_done_scene
+	reply_to=$reply add_comment existing-notice "$type" "$author" "$not_done_first"
+	unlinked_run
+	((unlinked_status == 0)) || { echo "FAIL 知らせ済み（$who）: 終了コード $unlinked_status" >&2; cat "$test_dir/err" >&2; exit 1; }
+	rule_gone
+	if [[ $reply == ci-thread && $author != outsider && $type == agent ]]; then
+		no_posts
+	else
+		assert_jq -s "$not_done_filter | length == 1" "$test_dir/posted.jsonl"
+	fi
+done
+echo 'PASS no-integration: マージ後の知らせは、ci_watch_thread への名簿のエージェントの返信だけを知らせ済みと読む'
+
+# 見張りの終わりの知らせも、同じ判定で読む。
+for who in 'member human-1 ci-thread' 'agent orchestrator other-comment' 'agent orchestrator ci-thread'; do
+	created=$(stamp -$((71 * 3600 + 60)))
+	read -r type author reply <<<"$who"
+	unlinked_scene record "$created"
+	end=$(python3 -c 'import datetime,sys;print((datetime.datetime.strptime(sys.argv[1],"%Y-%m-%dT%H:%M:%SZ")+datetime.timedelta(hours=72)).strftime("%Y-%m-%dT%H:%M:%SZ"))' "$created")
+	first_line="連携なしのリポジトリの PR のマージ待ちの見張りが、${end} に終わります。そのあとにマージしたときは、タスクを \`done\` にしてください。マージせずに閉じたときは、\`done\` にしません。PR: \`${pr}\`"
+	reply_to=$reply add_comment existing-notice "$type" "$author" "$first_line"
+	unlinked_run
+	((unlinked_status == 0)) || { echo "FAIL 終わりの知らせ（$who）: 終了コード $unlinked_status" >&2; cat "$test_dir/err" >&2; exit 1; }
+	if [[ $reply == ci-thread && $type == agent ]]; then
+		no_notice
+	else
+		assert_jq -s "$notice_filter | length == 1" "$test_dir/posted.jsonl"
+	fi
+done
+echo 'PASS no-integration: 見張りの終わりの知らせも、ci_watch_thread への名簿のエージェントの返信だけを知らせ済みと読む'
+
+# unlinked_link_stop の知らせも同じ判定で読む。タイトルと判定の行が同じでも、人間・名簿の外・別のコメントへの返信は、知らせを省かない。
+link_stop_scene() {
+	unlinked_scene record
+	update_task '.metadata.repository = "example/other"'
+}
+link_stop_scene
+unlinked_run
+((unlinked_status == 0))
+link_stop_body=$(jq -rs '.[0].body | split("\n") | .[0:2] | join("\n")' "$test_dir/posted.jsonl")
+[[ $link_stop_body == 'PR の URL を確認できませんでした。'$'\n''紐付け: '* ]]
+rule_gone
+for who in 'member human-1 ci-thread' 'agent outsider ci-thread' 'agent orchestrator ci-thread'; do
+	read -r type author reply <<<"$who"
+	link_stop_scene
+	reply_to=$reply add_comment existing-notice "$type" "$author" "$link_stop_body"$'\n\nメンション'
+	unlinked_run
+	((unlinked_status == 0)) || { echo "FAIL 紐付けの知らせ（$who）: 終了コード $unlinked_status" >&2; cat "$test_dir/err" >&2; exit 1; }
+	rule_gone
+	if [[ $reply == ci-thread && $type == agent && $author != outsider ]]; then
+		no_posts
+	else
+		assert_jq -s 'map(select(.body | startswith("PR の URL を確認できませんでした。"))) | length == 1' "$test_dir/posted.jsonl"
+	fi
+done
+echo 'PASS no-integration: 紐付けの知らせも、ci_watch_thread への名簿のエージェントの返信だけを知らせ済みと読む'
+
+# 名簿を読めないときは、3 つの知らせのどれも書かず、規則を残して 1 で終わる。
+roster_gone() { update_task '.assignee_type = "agent" | .assignee_id = "orchestrator"'; }
+link_stop_scene
+roster_gone
+unlinked_run
+((unlinked_status == 1))
+rule_kept
+no_posts
+grep -q '名簿を読めないため' "$test_dir/err"
 unlinked_scene record
 same_pr_round
 update_pr '.state = "MERGED"'
-first="連携なしのリポジトリの PR がマージされましたが、見張りはタスクを \`done\` にしませんでした（規則の確認した回（round-1）が今の回（round-2）と違う）。このタスクの成果をマージしたなら、タスクを \`done\` にしてください。PR: \`${pr}\`"
-add_comment existing-notice member human-1 "$first"
+roster_gone
 unlinked_run
-((unlinked_status == 0))
-rule_gone
+((unlinked_status == 1))
+rule_kept
 no_posts
-echo 'PASS no-integration: 人間が同じ 1 行目を投稿済みなら、マージ後の知らせを重ねない'
+# 見張りの終わりの知らせは、名簿を読めないと照合の段階で待つので、前の「名簿を読めるまで見張りの終わりの知らせを待つ」の場面で見ている。
+echo 'PASS no-integration: 名簿を読めないときは、知らせを書かず、規則を残して 1 で終わる'
 
 # 書き込み直前に規則が入れ替わったら、古い規則では done・マージ後の知らせ・期限の知らせのどれも書かない。
 for write in done not-done end; do

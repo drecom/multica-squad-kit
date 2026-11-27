@@ -128,6 +128,7 @@ PY
 # マージ待ちに入力が変わっても GitHub は読まず、安全な知らせを 1 回書いて規則を消す。
 for value in foreign invalid; do
 	reset_fixture
+	roster_ready
 	if [[ $value == foreign ]]; then url=https://github.com/other/repo/pull/67; else url=$'https://github.com/example/repo/pull/67\nINJECTED'; fi
 	jq --arg url "$url" '.status="in_review" | .metadata.pr_url=$url' "$test_dir/task.json" >"$test_dir/changed.json"
 	mv "$test_dir/changed.json" "$test_dir/task.json"

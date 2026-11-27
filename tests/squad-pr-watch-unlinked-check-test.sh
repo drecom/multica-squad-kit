@@ -22,6 +22,7 @@ linked_urls() {
 }
 reset_unlinked() {
 	reset_fixture
+	roster_ready
 	update_task ".status = \"in_review\" | .metadata.pr_url = \"$pr\""
 	fixture issue-wakeups | jq --arg mark "$mark" '. as $base | [$base + {id:"mine",instruction:($mark + "\n確認")},
 		$base + {id:"other",instruction:"PR の CI が終わりました。"}]' >"$test_dir/rules.json"

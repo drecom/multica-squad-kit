@@ -9,6 +9,7 @@
 # squad-review-next-decide-unlinked と squad-review-next-decide-fix は、連携なしの場面を足した分（手元の tests/run.sh で、decide の 1 回の実行が約 2 秒、足した実行が unlinked に 6 回、fix に 1 回）を、手元の秒数と CI の比（約 0.7）で直した見積もり。CI の ==== PASS の秒数が出たら写し直す。
 # squad-pr-watch-unlinked と squad-review-next-decide-unlinked は、回の照合と古い回の場面を足した分を、手元の tests/run.sh の秒数（squad-pr-watch-unlinked は 35 秒、squad-review-next-decide-unlinked は足した実行が 2 回で約 4 秒）に CI の比（約 0.7）を掛けた見積もり。CI の ==== PASS の秒数が出たら写し直す。
 # squad-pr-watch-no-integration は、done の照合に確認した回より後のマージの依頼を足した場面（unlinked_run が 30 回から 48 回）の分、手元の tests/run.sh の秒数（約 290 秒、CPU 時間 205 秒）に直した見積もり。CI の ==== PASS の秒数が出たら写し直す。
+# squad-pr-watch-no-integration と squad-pr-link-no-integration は、知らせ済みの判定と記録の読み直しの場面を足した分、手元の tests/run.sh の秒数（squad-pr-watch-no-integration は約 380 秒、CPU 時間 272 秒、squad-pr-link-no-integration は約 59 秒）に直した見積もり。CI の ==== PASS の秒数が出たら写し直す。
 tests/action-advisories-test.sh 6
 tests/agent-templates-test.sh 35
 tests/audit-targets-test.sh 1
@@ -101,7 +102,7 @@ tests/squad-dependabot-merge-escalate-scope-test.sh 21
 tests/squad-dependabot-merge-escalate-test.sh 14
 tests/squad-dependabot-merge-list-test.sh 110
 tests/squad-dispatch-pick-test.sh 23
-tests/squad-pr-link-no-integration-test.sh 80
+tests/squad-pr-link-no-integration-test.sh 100
 tests/squad-pr-link-test.sh 20
 tests/squad-pr-watch-ci-arg-limit-test.sh 15
 tests/squad-pr-watch-ci-handoff-test.sh 38
@@ -109,7 +110,7 @@ tests/squad-pr-watch-ci-now-test.sh 25
 tests/squad-pr-watch-ci-test.sh 41
 tests/squad-pr-watch-ci-wait-test.sh 101
 tests/squad-pr-watch-link-retry-test.sh 97
-tests/squad-pr-watch-no-integration-test.sh 300
+tests/squad-pr-watch-no-integration-test.sh 390
 tests/squad-pr-watch-register-test.sh 30
 tests/squad-pr-watch-unlinked-check-test.sh 69
 tests/squad-pr-watch-unlinked-concurrent-test.sh 5

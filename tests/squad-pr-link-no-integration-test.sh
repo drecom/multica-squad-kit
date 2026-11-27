@@ -590,6 +590,14 @@ for scene in 404 transport token; do
 	for key in pr_url pr_link_pending pr_link_no_integration; do expect "記録あり $scene: $key" "$(e2e_field "$key")" "$e2e_url"; done
 	[[ -f $e2e_record ]] || fail "記録あり $scene: 記録が消えた"
 done
+# 待っているあいだに別の実行が記録を作り、そのあと 404 を重ねてから紐付いた: 最初に記録がなくても、紐付いたあとに記録が残らない。
+e2e_reset
+printf '[404,404,200]\n' >"$e2e/statuses.json"
+echo "$e2e_record" >"$e2e/rival-record"
+e2e_run 0 TASK-7 "$e2e_url"
+expect '遅れて紐付いた: 出力' "$(cat "$e2e/out")" "紐付けました: TASK-7 $e2e_url"
+[[ ! -e $e2e_record ]] || fail '遅れて紐付いたあとに記録が残った'
+e2e_no_tmp
 # 記録があり、API が 200: 紐付けて、記録を消す。
 e2e_reset
 mkdir -p "$(dirname "$e2e_record")" && printf 'repository: example/template\n' >"$e2e_record"

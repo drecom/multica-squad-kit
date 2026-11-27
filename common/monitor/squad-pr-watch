@@ -367,7 +367,8 @@ link_check() {
 		link_record_post "$issue" "$parent" '紐付いていた' "$pr_url" >/dev/null 2>&1 || :
 	fi
 	if [[ $line == '紐付け: 紐付いている '* ]]; then
-		if ((record)); then link_record_drop "$project" "$pr_url"; fi
+		# 試み直しの間に別のタスクが記録を結ぶことがあるので、最初に読んだ結果を使わず、紐付いたと分かった今、記録を読み直して消す。
+		if [[ -n $project ]] && pr_link_record_exists "$project" "$pr_url"; then link_record_drop "$project" "$pr_url"; fi
 		link_marks_clear "$issue" "$mark" "$ni_key"
 	fi
 	printf '%s%s\n' "$line" "$suffix"
@@ -957,6 +958,24 @@ unlinked_seen() {
 	jq -e --arg prefix "$2" 'any(.[]; .author_type == "agent" and (.content | startswith($prefix)))' <<<"$1" >/dev/null
 }
 
+# 3 つの知らせを書いたかを、`ci_watch_thread` への名簿のエージェント（リーダーか役）の返信だけから読む。
+# 第 2 引数は issue-comments の出力、第 3 引数は `ci_watch_thread`、第 4 引数は比べ方（prefix は本文の先頭、first は 1 行目）、第 5 引数は知らせの先頭。
+# 書いてあれば 0、なければ 1、名簿を読めないときは理由を標準エラーに出して 2 を返す。
+unlinked_notified() {
+	local issue=$1 comments=$2 thread=$3 mode=$4 text=$5 roster status=0 ids
+	roster=$(unlinked_roster "$issue") || status=$?
+	if ((status == 0)); then
+		ids=$(jq -c '[.leader, (.roles // {} | .[] | .id)] | map(select(type == "string" and . != ""))' <<<"$roster") || status=1
+	fi
+	if ((status != 0)); then
+		echo '名簿を読めないため、知らせを書いたか判定できません。知らせを書かず、規則を残します。' >&2
+		return 2
+	fi
+	jq -e --arg thread "$thread" --arg mode "$mode" --arg text "$text" --argjson ids "$ids" \
+		'any(.[]; .parent_id == $thread and .author_type == "agent" and (.author_id as $a | $ids | index($a) != null)
+			and (if $mode == "prefix" then (.content | startswith($text)) else ((.content | split("\n"))[0] == $text) end))' <<<"$comments" >/dev/null
+}
+
 unlinked_stop() {
 	unlinked_clear "$1"
 	ci_record "止めた: $2"
@@ -964,20 +983,24 @@ unlinked_stop() {
 
 # 判定の行を安全な形で知らせ、同じ知らせを重ねずに自分の規則を消す。
 unlinked_link_stop() {
-	local issue=$1 leader=$2 monitor=$3 task=$4 link_line=$5 title=$6 thread comments prefix notice content
-	thread=$(jq -r '.metadata.ci_watch_thread | select(. != null)' <<<"$task")
+	local issue=$1 leader=$2 monitor=$3 task=$4 link_line=$5 title=$6 thread comments prefix notice content seen
+	# 呼び出し側が `|| return` で受けるので、この中では set -e が効かない。失敗は 1 つずつ明示して返す。
+	thread=$(jq -r '.metadata.ci_watch_thread | select(. != null)' <<<"$task") || return 1
 	if [[ -z $thread ]]; then
 		echo 'metadata に ci_watch_thread がありません。マージ待ちの見張りを登録し直してください。' >&2
 		return 1
 	fi
-	comments=$(squad_cli_read issue-comments "$issue")
+	comments=$(squad_cli_read issue-comments "$issue") || return 1
 	prefix="$title"$'\n'"$link_line"$'\n'
-	if ! unlinked_seen "$comments" "$prefix"; then
-		notice=$(unlinked_notice "$leader" "$monitor")
-		content=$(printf '%s' "$prefix"; if [[ -n $notice ]]; then printf '\n%s\n' "$notice"; fi)
+	seen=0
+	unlinked_notified "$issue" "$comments" "$thread" prefix "$prefix" || seen=$?
+	((seen != 2)) || return 1
+	if ((seen != 0)); then
+		notice=$(unlinked_notice "$leader" "$monitor") || return 1
+		content=$(printf '%s' "$prefix"; if [[ -n $notice ]]; then printf '\n%s\n' "$notice"; fi) || return 1
 		unlinked_post "$issue" "$thread" "$content" || return 1
 	fi
-	unlinked_clear "$issue"
+	unlinked_clear "$issue" || return 1
 	ci_record "$link_line"
 }
 
@@ -1038,13 +1061,15 @@ unlinked_rejudge() {
 # 同じ 1 行目の知らせは重ねない。判定が変わったら 2、メンションなしで書いたら 3 を返す。
 # 第 4 引数は unlinked_judge が出した判定の鍵、第 5 引数はその照合の範囲。
 unlinked_human_notice() {
-	local issue=$1 leader=$2 thread=$3 key=$4 mode=$5 first=$6 kind=$7 comments squad content reason=''
+	local issue=$1 leader=$2 thread=$3 key=$4 mode=$5 first=$6 kind=$7 comments squad content reason='' seen=0
 	if [[ -z $thread ]]; then
 		echo 'metadata に ci_watch_thread がありません。マージ待ちの見張りを登録し直してください。' >&2
 		return 1
 	fi
 	comments=$(squad_cli_read issue-comments "$issue") || return 1
-	if jq -e --arg first "$first" 'any(.[]; ((.content | split("\n"))[0] == $first))' <<<"$comments" >/dev/null; then
+	unlinked_notified "$issue" "$comments" "$thread" first "$first" || seen=$?
+	((seen != 2)) || return 1
+	if ((seen == 0)); then
 		unlinked_rejudge "$issue" "$mode" "$key"
 		return "$?"
 	fi
@@ -1226,7 +1251,7 @@ unlinked_check() {
 	data=$(pr_url_data "$task")
 	case $(jq -r .state <<<"$data") in
 	foreign | invalid)
-		unlinked_link_stop "$issue" "$leader" "$monitor" "$task" "$(jq -r .line <<<"$data")" 'PR の URL を確認できませんでした。'
+		unlinked_link_stop "$issue" "$leader" "$monitor" "$task" "$(jq -r .line <<<"$data")" 'PR の URL を確認できませんでした。' || return "$?"
 		return 0 ;;
 	absent) echo 'metadata に pr_url がない' >&2; return 1 ;;
 	esac
@@ -1255,10 +1280,10 @@ unlinked_check() {
 	case $link_line in
 	'紐付け: 紐付いている '*) unlinked_stop "$issue" 'PR がタスクに紐付いた'; return 0 ;;
 	'紐付け: 食い違い '*)
-		unlinked_link_stop "$issue" "$leader" "$monitor" "$task" "$link_line" '紐付けの食い違いを検出しました。'
+		unlinked_link_stop "$issue" "$leader" "$monitor" "$task" "$link_line" '紐付けの食い違いを検出しました。' || return "$?"
 		return 0 ;;
 	'紐付け: 作業先と違う '* | '紐付け: 不正な pr_url '*)
-		unlinked_link_stop "$issue" "$leader" "$monitor" "$task" "$link_line" 'PR の URL を確認できませんでした。'
+		unlinked_link_stop "$issue" "$leader" "$monitor" "$task" "$link_line" 'PR の URL を確認できませんでした。' || return "$?"
 		return 0 ;;
 	esac
 	thread=$(jq -r '.metadata.ci_watch_thread | select(. != null)' <<<"$task")
