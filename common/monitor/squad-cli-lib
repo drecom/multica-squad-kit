@@ -99,12 +99,27 @@ squad_cli_contracts() {
           "nullable": true
         },
         {
+          "path": "metadata.pr_link_no_integration",
+          "class": "optional",
+          "nullable": true
+        },
+        {
+          "path": "metadata.pr_link_tried_at",
+          "class": "optional",
+          "nullable": true
+        },
+        {
           "path": "metadata.pr_url",
           "class": "optional",
           "nullable": true
         },
         {
           "path": "metadata.repository",
+          "class": "optional",
+          "nullable": true
+        },
+        {
+          "path": "project_id",
           "class": "optional",
           "nullable": true
         }
@@ -114,6 +129,25 @@ squad_cli_contracts() {
           "name": "metadata.pr_link_pending-present",
           "where": ".metadata | has(\"pr_link_pending\")",
           "unavailable": "紐付けに失敗したときに書くアプリケーションの metadata。導入前の採取にはないため、契約で宣言した欄を紐付け直しのテストで設定する。"
+        },
+        {
+          "name": "metadata.pr_link_no_integration-present",
+          "where": ".metadata | has(\"pr_link_no_integration\")",
+          "unavailable": "連携なしの PR に squad-pr-link が書くアプリケーションの metadata。導入前の採取にはないため、契約で宣言した欄を連携なしのテストで設定する。"
+        },
+        {
+          "name": "metadata.pr_link_tried_at-present",
+          "where": ".metadata | has(\"pr_link_tried_at\")",
+          "unavailable": "連携なしの PR の試み直しが書くアプリケーションの metadata。導入前の採取にはないため、契約で宣言した欄を連携なしのテストで設定する。"
+        },
+        {
+          "name": "project_id-present",
+          "where": "has(\"project_id\") and .project_id != null"
+        },
+        {
+          "name": "project_id-absent",
+          "where": "(has(\"project_id\") | not) or .project_id == null",
+          "unavailable": "プロジェクトのないタスクが採取にない。契約は、欄のない応答（テストの代用品）を読める形にしておく。"
         },
         {
           "name": "assigned",
@@ -2155,6 +2189,29 @@ squad_cli_squad_for_round() {
 	done
 	printf '知らせるスクワッドを決められません: 回を書いたエージェント %s はどのスクワッドのリーダーでもなく、`前の回:` をたどってもリーダーの回に着きません\n' "${author:-不明}" >&2
 	return 2
+}
+
+# 呼ぶ人間を、スクワッド（JSON）の creator_id とメンバーの一覧から決める。HUMAN_ID と HUMAN_NAME に返す。
+# squad_cli_human_of_squad <スクワッドの JSON>
+# 決められなければ、理由を HUMAN_REASON に返して 1 を返す。理由の文は出さず、CLI の読み取りの診断だけを
+# squad_cli_read のまま標準エラーに出す。失敗の扱い（止まる、メンションを省く）は呼び出し元が決める。review-next と PR の見張りが同じ決め方を使う。
+squad_cli_human_of_squad() {
+	local squad=$1 members
+	HUMAN_ID='' HUMAN_NAME='' HUMAN_REASON=''
+	HUMAN_ID=$(jq -r '.creator_id // empty' <<<"$squad" 2>/dev/null) || HUMAN_ID=''
+	if [[ -z $HUMAN_ID ]]; then
+		HUMAN_REASON='呼ぶ人間を決められない（スクワッドの creator_id がない）'
+		return 1
+	fi
+	if ! members=$(squad_cli_read member-list); then
+		HUMAN_REASON='メンバーの一覧を読めない'
+		return 1
+	fi
+	HUMAN_NAME=$(jq -r --arg id "$HUMAN_ID" '[.[] | select(.user_id == $id)] | first | .name // empty' <<<"$members" 2>/dev/null) || HUMAN_NAME=''
+	if [[ -z $HUMAN_NAME ]]; then
+		HUMAN_REASON='呼ぶ人間の名前を読めない'
+		return 1
+	fi
 }
 
 # 制御記録と認める回の判定。review-next・review-wait・pr-watch が同じ判定を使う（docs/review-next-step.md の「制御記録の読み方」）。

@@ -1476,13 +1476,9 @@ post_request() {
 }
 
 # 呼ぶ人間を、回から決めたスクワッド（SQUAD）の creator_id で読む。HUMAN_ID と HUMAN_NAME を決める。
+# 決め方は squad-cli-lib の squad_cli_human_of_squad にあり、決められなければここで失敗にする。
 human_of_squad() {
-	local members
-	HUMAN_ID=$(jq -r '.creator_id // empty' <<<"$SQUAD")
-	[[ -n $HUMAN_ID ]] || dfail '呼ぶ人間を決められない（スクワッドの creator_id がない）'
-	members=$(squad_cli_read member-list) || dfail 'メンバーの一覧を読めない'
-	HUMAN_NAME=$(jq -r --arg id "$HUMAN_ID" '[.[] | select(.user_id == $id)] | first | .name // empty' <<<"$members")
-	[[ -n $HUMAN_NAME ]] || dfail '呼ぶ人間の名前を読めない'
+	squad_cli_human_of_squad "$SQUAD" || dfail "$HUMAN_REASON"
 }
 
 # 使用率の待ちが 24 時間を超えたとき、3 つの答え（待つ・進める・利用枠を足した）を示す人間を呼ぶコメントを書いてタスクを in_review にする。
