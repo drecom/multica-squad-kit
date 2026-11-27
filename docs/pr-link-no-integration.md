@@ -465,7 +465,7 @@ PR のタイトルは、GitHub で PR を直せる人なら誰でも書ける。
 | `docs/review-next-step.md` | `decide` の紐付けの確認・規則の登録・マージの依頼の行・使用率の待ちのコメントの節に、`連携: なし` の扱いを足す |
 | `docs/pr-link-retry.md` | 目的と範囲に、連携なしのリポジトリでは試み直しの記録の扱いがこの文書に従うと 1 文足す |
 | `lib/questions.sh` | 候補が 0 件のときの案内に、[セットアップの案内](#セットアップの案内)の文を足し、手順書の節の名前を直す |
-| `README.md`、`manual.md` | [README と手順書](#readme-と手順書)のとおりに直す |
+| `README.md`、`manual.md` | [README と手順書](#readme-と手順書)のとおりに直す。手順書の 0 件の案内の文は、STYLE.md に合わせて常体にする |
 | `tests/squad-pr-link-test.sh` | 120 秒のあいだ 404 で終わる今の場面を、タスクにプロジェクトのない入力にする。期待と、120 秒のうちに紐付く場面は変えない（[テスト](#テスト)） |
 | `tests/squad-pr-link-no-integration-test.sh` | 新しく足す（[テスト](#テスト)） |
 | `tests/squad-pr-watch-no-integration-test.sh` | 新しく足す（[テスト](#テスト)） |
