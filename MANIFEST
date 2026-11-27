@@ -99,7 +99,7 @@ c380ac8fd57091fa1d1ad80ff9724cba6667a7199b440a40b4be9b0e25f83623  ./docs/agent-p
 cdf7277c8518409f57673b250845ef3ff69680946ac4232f5e11e1423f8432d8  ./docs/agent-settings.md
 62062b7363a33eb140e814eeff5b3898d2d7d06aadc1ff95a07aa88aa001dbc7  ./docs/autopilot-targets.md
 3ca4ffccd35ce4ddcb26bc3c40ef34d2d2295eb27b8b0e08ea0522827b8bbb9c  ./docs/bug-repro-test.md
-abc8d8ae618ec85f794c5b4ff49927c8d4576ab46f2a8d2ff277769319cd3398  ./docs/ci-timeouts.md
+e8ba30bf955fc469ee205475a06c50478257c5d8852e1b4b74193d40ad82930c  ./docs/ci-timeouts.md
 ebdf260d83e27d572cf625fc1edb4b3ad30982a178e5848a00c4bc4d101d1167  ./docs/codex-models.md
 dd0d306edc139f7f67c1ec728f8119adc4ecd1af1e180d0fe1d8d69c80fcb8a1  ./docs/decide-record-read.md
 f0e5f01295e7cf698c436e9e5bbd7ca55a237a55b50964859cd918ac22c66a82  ./docs/default-branch.md
@@ -182,7 +182,6 @@ be9a67eb3b8da9a4012424d8ab5a9c61beecba7f11afcae4595541fbb56257de  ./skeleton/.ag
 33fd31cda4e988ef8116996f2d31db8f69fcd6e32cdfa5abc04f70fef3e0bc78  ./skeleton/README.md
 18454e4d0424a4c4e9474140fc9d5b0b3854a1b4f59d10258cd85c9ffb044da6  ./skeleton/project.md
 86d88f085a22c1879850188758a47bce16efb46c8ed45507a9bc2056bb09be58  ./skeleton/verify-repository.md
-2febc2d170ed2236bf343b820012868d2bff23a00d2880cdbc5afcec8905ffe8  ./tests/__pycache__/tty-session-cases.cpython-314.pyc
 ec94c1189f1071bf59f9c20765667893b12a24881b6a68739d14f2ecbe0ff678  ./tests/action-advisories-test.sh
 d73ff3a48a09de17889258d83ebeb0f3c68f9677dfd20bc831f63c438e574477  ./tests/agent-templates-test.sh
 2c4dce6d55a2bec00a23cf829eb9939041a27c4bb78891f0aeb0d485ad1713c4  ./tests/ansi-to-png.py

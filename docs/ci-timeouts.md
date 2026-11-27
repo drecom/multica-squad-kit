@@ -219,6 +219,7 @@ PR #25 のマージ前と後の main の実行を、それぞれ 3 回以上読�
 | `docs/test-trim.md` | 「CI の時間の上限とシャードの理由」の目安と「シャードの数」を、この文書の決まりに合わせる。「残る危うさ」の macOS の同時に流せる数の項目を直す |
 | `docs/terminal-tests.md` | 「包みの動き」に通知の書き方を、「補助の回帰テスト」の表に T27 を足す |
 | `docs/terminal-tests-map.md` | ケースの番号の範囲を T01 から T27 に直す |
+| 分けたテストを引く文書（`docs/agent-settings.md`・`docs/terms.md`・`docs/usage-reduction.md`・`docs/terminal-tests-map.md`・`docs/pr-link-retry.md`・`docs/merge-request-reading.md`・`docs/decide-record-read.md`・`docs/usage-answer.md`） | テストのファイル名と行番号の参照を、移した先に直す。決めたことは変えない |
 
 実装では、`tests/` のテストと補助、`tests/test-weights`、`.github/workflows/check.yml` を変える。`CONTRIBUTING.md` の「テストを書く決まり」は変えない。
 
