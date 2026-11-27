@@ -6,8 +6,10 @@ import itertools
 import os
 from pathlib import Path
 import signal
+import select
 import subprocess
 import sys
+import time
 
 root, scratch = map(Path, sys.argv[1:])
 helper = root / 'tests/tty-session.py'
@@ -326,6 +328,46 @@ assert int(caller) not in (command, os.getpid()) and (int(target), int(group)) =
 foreground = [i for i, e in enumerate(events) if e[0] == 'tcsetpgrp']
 assert [events[i][2] for i in foreground] == [str(command)] and foreground[0] > index, events
 print('PASS tty-session T26: C を作る setpgid は包みの 1 回だけで、前面にする前に済む', flush=True)
+
+# 子の終了の SIGCHLD が、Python のハンドラが動く前に届き、select に入る前に読まれない順序を作る。
+# 包みの最初の select（子が回収前）だけを差し替える。SIGCHLD のハンドラを何もしないものに替え、
+# 子が終わるまで待つ。そのあと通知の自己パイプが読めるかを、期限 0 の select で確認して記録する。
+# 読めなければ、本物の select なら止まる場所なので、空を返す。包みは次の WNOHANG の waitpid で回収する。
+original_select = select.select
+stalled = scratch / 'T27-record'
+def racing_select(readers, writers, errors, *timeout):
+    caller = sys._getframe(1)
+    if (os.getpid() == owner or caller.f_code.co_name != 'wrapper' or stalled.exists()
+            or not caller.f_locals.get('child') or caller.f_locals.get('child_reaped')):
+        return original_select(readers, writers, errors, *timeout)
+    stalled.write_text('')
+    fired = []
+    previous = signal.signal(signal.SIGCHLD, lambda *_: fired.append(True))
+    try:
+        notified = caller.f_locals['changed_r']
+        # ハンドラを替える前に書かれた分を捨てる。そのあと自分に SIGCHLD を送って、
+        # 替えたあとの通知が 1 回は届く状態にする。
+        while original_select([notified], [], [], 0)[0]:
+            os.read(notified, 4096)
+        os.waitid(os.P_PID, caller.f_locals['child'], os.WEXITED | os.WNOWAIT)
+        os.kill(os.getpid(), signal.SIGCHLD)
+        deadline = time.monotonic() + 5
+        while not fired and time.monotonic() < deadline:
+            pass
+        assert fired, 'T27: SIGCHLD が届かなかった'
+    finally:
+        signal.signal(signal.SIGCHLD, previous)
+    ready = original_select(readers, writers, errors, 0)
+    readable = notified in ready[0]
+    stalled.write_text('readable' if readable else 'unreadable')
+    return ready if readable else ([], [], [])
+select.select = racing_select
+try:
+    assert inline('pass')[0] == 0
+finally:
+    select.select = original_select
+assert stalled.read_text() == 'readable', ('T27: 子の終了の通知の自己パイプが、select の前に読めない', stalled.read_text())
+print('PASS tty-session T27: 子の終了の通知が select に入る前に届いても、自己パイプが読めて 0 を返す', flush=True)
 
 proc, case = launch('''import os,fcntl,termios,struct,signal
 changed=False

@@ -121,6 +121,9 @@ def wrapper(master, slave, status_r, status_w, control_r, control_w, targets, co
                 pass
 
         signal.signal(signal.SIGCHLD, changed)
+        # SIGCHLD が届くと、インタプリタの C のハンドラが自己パイプへ書く。
+        # Python のハンドラが動く前に届いた SIGCHLD でも、select が返る。
+        signal.set_wakeup_fd(changed_w, warn_on_full_buffer=False)
         child = os.fork()
         if child == 0:
             try:
@@ -221,6 +224,7 @@ def wrapper(master, slave, status_r, status_w, control_r, control_w, targets, co
         write_all(slave, b'\x1e' + nonce + b':' + str(child_status).encode() + b'\x1f')
         os.read(control_r, 1)
     finally:
+        signal.set_wakeup_fd(-1)
         signal.signal(signal.SIGCHLD, signal.SIG_DFL)
         try:
             if not termination_sent:
