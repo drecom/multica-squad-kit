@@ -303,6 +303,28 @@ for name in sleeper stubborn; do
 done
 echo 'PASS runner: 上限を超えたファイルを、別のグループの子ごと止めて時間切れの失敗にし、ほかのファイルは流す'
 
+# 行がないことを確認する。`! grep` は、bash の errexit の対象にならず、行があっても通ってしまう。
+# grep の終了コードが 1（一致なし）のときだけ通し、一致（0）も、読めないファイルや不正な式（2 以上）も失敗にする。
+no_line() {
+	local found=0
+	grep "$@" >/dev/null 2>&1 || found=$?
+	[[ $found == 1 ]]
+}
+# 上の no_line が、行があるときに失敗する（見逃さない）ことを、行のあるファイルで確認する。
+# errexit が効くよう、別の bash で流す。`! grep` の形は最後まで進み、no_line は途中で止まる。
+printf '123 1 1 S 0:01 sleep\n' >"$test_dir/sample-list"
+[[ $(bash -c 'set -e; ! grep -q "^123 " "$1"; echo reached' _ "$test_dir/sample-list") == reached ]]
+[[ -z $(bash -c "$(declare -f no_line); set -e; no_line -qE '^123 ' \"\$1\"; echo reached" _ "$test_dir/sample-list" || :) ]]
+if no_line -qE '^123 ' "$test_dir/sample-list"; then
+	echo 'no_line が、行のあるファイルで通った' >&2
+	exit 1
+fi
+no_line -qE '^124 ' "$test_dir/sample-list"
+if no_line -qE '^124 ' "$test_dir/missing-file"; then
+	echo 'no_line が、読めないファイルで通った' >&2
+	exit 1
+fi
+
 # 時間切れの記録。tty-session.py の下で眠るファイルを短い上限で止め、止める前のプロセスの一覧と、
 # 登録したプロセスのスタック（select で待つ行）がログに出ることを確認する。
 cat >"$fixtures/stacker.sh" <<'FIXTURE'
@@ -326,7 +348,11 @@ grep -qxF 'プロセスの一覧（PID 親 グループ 状態 経過 コマン�
 # 一覧は、PID・親・グループ・状態・経過時間・コマンドの順で、セッションの tty-session.py を含む。ゾンビの行は求めない。
 grep -qE '^[0-9]+ [0-9]+ [0-9]+ [A-Z][A-Za-z+<>]* +[0-9:.-]+ .*tty-session\.py' "$test_dir/out"
 # 一覧にセッションの外のプロセスはなく、外のプロセスは SIGUSR2 を受けていない。
-! grep -qE "^$outside " "$test_dir/out"
+# 外の PID の名前のファイルは、印がないので、送らなかった行に理由が出る。整数でない名前は何も出さない。
+no_line -E "^$outside [0-9]+ [0-9]+ " "$test_dir/out"
+grep -qxF "送らなかった $outside 印が合わない" "$test_dir/out"
+grep -qE '^送った [0-9]+$' "$test_dir/out"
+no_line -F 'not-a-pid' "$test_dir/out"
 kill -0 "$outside"
 kill "$outside"
 wait "$outside" 2>/dev/null || :
@@ -337,6 +363,231 @@ run_select=$(grep -n 'select.select(\[master, status_r\]' "$root/tests/tty-sessi
 grep -qE "tty-session\.py\", line $run_select in run\$" "$test_dir/out"
 pid_gone "$(cat "$TEST_RUNNER_STATE/test.pid")"
 echo 'PASS runner: 時間切れにプロセスの一覧と tty-session の select のスタックを出し、整数でない名前と外の PID へは送らない'
+
+# 送る相手を選ぶ STACKS。セッションの中と外に、登録した 1 つと、印や情報が合わない様々なプロセスを置き、
+# 送るのは登録を終えて印と OS の情報が合った 1 つだけで、ほかは理由つきで送らないことを確認する。
+# 送られたら default の動作で終わるプロセスを置き、送られていないことは、終了の状態が 0 のままであることで確認する。
+cat >"$test_dir/stacks-case.py" <<'PY'
+import faulthandler
+import json
+import os
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+
+stop = sys.argv[1]
+directory = tempfile.mkdtemp()
+hold_r, hold_w = os.pipe()
+report_r, report_w = os.pipe()
+info_r, info_w = os.pipe()
+result_r, result_w = os.pipe()
+
+
+def read_exact(descriptor, count):
+    data = b''
+    while len(data) < count:
+        data += os.read(descriptor, count - len(data))
+    return data
+
+
+def member(register):
+    """生成した位置のセッションに残り、親が hold_w を閉じるまで止まる。register なら、自分で登録する。"""
+    pid = os.fork()
+    if pid == 0:
+        if hold_w is not None:
+            os.close(hold_w)
+        if register:
+            temporary = os.path.join(directory, f'registering-{os.getpid()}')
+            opened = open(temporary, 'wb')
+            opened.write(f'{os.getpid()} {os.getppid()} {os.getpgrp()} {os.getsid(0)}\n'.encode())
+            opened.flush()
+            faulthandler.register(signal.SIGUSR2, file=opened, all_threads=True)
+            os.rename(temporary, os.path.join(directory, str(os.getpid())))
+        os.write(report_w, b'.')
+        os.read(hold_r, 1)
+        os._exit(0)
+    return pid
+
+
+kinds = ['good', 'ppid', 'smark', 'pmark', 'empty', 'link', 'fifo']
+leader = os.fork()
+if leader == 0:
+    os.setsid()
+    os.close(hold_w)
+    hold_w = None
+    pids = {kind: member(kind == 'good') for kind in kinds}
+    read_exact(report_r, len(kinds))
+    os.write(info_w, json.dumps(pids).encode())
+    os.read(hold_r, 1)
+    os.write(result_w, json.dumps({kind: os.waitpid(pid, 0)[1] for kind, pid in pids.items()}).encode())
+    os._exit(0)
+pids = json.loads(os.read(info_r, 65536))
+outside = {kind: member(False) for kind in ('claim', 'own')}
+read_exact(report_r, len(outside))
+dead = os.fork()
+if dead == 0:
+    os._exit(0)
+os.waitpid(dead, 0)
+session, group = leader, os.getpgrp()
+
+
+def put(name, text):
+    with open(os.path.join(directory, str(name)), 'w') as stream:
+        stream.write(text)
+
+
+put(pids['ppid'], f'{pids["ppid"]} 1 {session} {session}\n')
+put(pids['smark'], f'{pids["smark"]} {session} {session} {session + 1}\n')
+put(pids['pmark'], f'{pids["pmark"] + 1} {session} {session} {session}\n')
+put(pids['empty'], '')
+put('real-mark', f'{pids["link"]} {session} {session} {session}\n')
+os.symlink(os.path.join(directory, 'real-mark'), os.path.join(directory, str(pids['link'])))
+os.mkfifo(os.path.join(directory, str(pids['fifo'])))
+put(outside['claim'], f'{outside["claim"]} {os.getpid()} {group} {session}\n')
+put(outside['own'], f'{outside["own"]} {os.getpid()} {group} {os.getsid(0)}\n')
+put(dead, f'{dead} {os.getpid()} {group} {session}\n')
+for name in ('not-a-pid', 'registering-123', '0', '-5'):
+    put(name, '')
+
+
+def stacks(path, where):
+    return subprocess.run([sys.executable, '-I', path, str(session), 'STACKS', where],
+                          capture_output=True, text=True, timeout=60)
+
+
+outcome = stacks(stop, directory)
+expected = sorted([
+    f'送った {pids["good"]}',
+    f'送らなかった {pids["ppid"]} プロセスが合わない',
+    f'送らなかった {pids["smark"]} 印が合わない',
+    f'送らなかった {pids["pmark"]} 印が合わない',
+    f'送らなかった {pids["empty"]} 印が合わない',
+    f'送らなかった {pids["link"]} 印が合わない',
+    f'送らなかった {pids["fifo"]} 印が合わない',
+    f'送らなかった {outside["claim"]} プロセスが合わない',
+    f'送らなかった {outside["own"]} 印が合わない',
+    f'送らなかった {dead} プロセスが合わない',
+])
+try:
+    assert sorted(outcome.stdout.splitlines()) == expected, (outcome.stdout, expected)
+    assert outcome.returncode == 0, outcome
+finally:
+    os.close(hold_w)
+    results = json.loads(os.read(result_r, 65536) or b'{}')
+    statuses = {kind: os.waitpid(pid, 0)[1] for kind, pid in outside.items()}
+    os.waitpid(leader, 0)
+# 送られたのは登録した 1 つだけで、ほかのプロセスは SIGUSR2 を受けずに 0 で終わる。
+assert set(results) == set(kinds) and all(status == 0 for status in results.values()), results
+assert all(status == 0 for status in statuses.values()), statuses
+with open(os.path.join(directory, str(pids['good']))) as stream:
+    lines = stream.read().splitlines()
+assert lines[0] == f'{pids["good"]} {leader} {leader} {leader}' and any('File "' in line for line in lines[1:]), lines
+# 送れた PID が 0 のときは、何も出さず 1 で終わる。
+empty = tempfile.mkdtemp()
+nothing = stacks(stop, empty)
+assert (nothing.returncode, nothing.stdout) == (1, ''), nothing
+shutil.rmtree(directory)
+shutil.rmtree(empty)
+PY
+python3 -I "$test_dir/stacks-case.py" "$kit/tests/stop-session.py"
+# 選ぶ確認を外した原本のコピーでは、同じケースが失敗する（ケースが見逃さない）。
+n=0
+for fault in 's/if actual != mark:/if False:/' 's/mark is None or mark\[0\] != pid or mark\[3\] != session/mark is None/' 's/ | os.O_NOFOLLOW//'; do
+	n=$((n + 1))
+	sed "$fault" "$kit/tests/stop-session.py" >"$test_dir/stop-session-broken-$n.py"
+	if cmp -s "$kit/tests/stop-session.py" "$test_dir/stop-session-broken-$n.py"; then
+		echo "壊したコピー $n が、原本と同じ" >&2
+		exit 1
+	fi
+	if python3 -I "$test_dir/stacks-case.py" "$test_dir/stop-session-broken-$n.py" >/dev/null 2>&1; then
+		echo "壊したコピー $n でも、STACKS のケースが通った" >&2
+		exit 1
+	fi
+done
+echo 'PASS runner: STACKS は登録した同じプロセスにだけ送り、印や OS の情報が合わないものと整数でない名前には送らず、壊したコピーでは失敗する'
+
+# 登録（tests/tty-session.py の register_stack）は、印を書いてから登録し、成功したときだけ PID の名前で公開する。
+cat >"$test_dir/registration-case.py" <<'PY'
+import faulthandler
+import importlib.util
+import os
+import signal
+import sys
+import tempfile
+
+helper = sys.argv[1]
+
+
+def load():
+    spec = importlib.util.spec_from_file_location('tty_session', helper)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+# 変数がないとき、変数の場所がないとき、公開の改名が失敗したときは、何も公開せず、一時のファイルも残さず、登録も残さない。
+os.environ.pop('SQUAD_KIT_TEST_STACK_DIR', None)
+load().register_stack()
+assert not faulthandler.unregister(signal.SIGUSR2)
+missing = os.path.join(tempfile.mkdtemp(), 'no-such-directory')
+os.environ['SQUAD_KIT_TEST_STACK_DIR'] = missing
+load().register_stack()
+assert not os.path.exists(missing) and not faulthandler.unregister(signal.SIGUSR2)
+failing = tempfile.mkdtemp()
+os.environ['SQUAD_KIT_TEST_STACK_DIR'] = failing
+broken = load()
+original_rename = os.rename
+
+
+def refuse(*_):
+    raise OSError('injected rename failure')
+
+
+os.rename = refuse
+try:
+    broken.register_stack()
+finally:
+    os.rename = original_rename
+assert os.listdir(failing) == [] and not faulthandler.unregister(signal.SIGUSR2), os.listdir(failing)
+# 登録に失敗しても、run() の動作は変わらない。
+output, error = os.path.join(failing, 'out'), os.path.join(failing, 'err')
+os.environ['SQUAD_KIT_TEST_STACK_DIR'] = missing
+assert load().run(['true'], output=output, error=error) == 0
+# 成功したときは、PID の名前のファイルだけが残り、先頭に印があり、SIGUSR2 でスタックが続く。
+good = tempfile.mkdtemp()
+os.environ['SQUAD_KIT_TEST_STACK_DIR'] = good
+load().register_stack()
+assert os.listdir(good) == [str(os.getpid())], os.listdir(good)
+os.kill(os.getpid(), signal.SIGUSR2)
+with open(os.path.join(good, str(os.getpid()))) as stream:
+    lines = stream.read().splitlines()
+assert lines[0] == f'{os.getpid()} {os.getppid()} {os.getpgrp()} {os.getsid(0)}' and any('File "' in line for line in lines[1:]), lines
+PY
+python3 -I "$test_dir/registration-case.py" "$kit/tests/tty-session.py"
+echo 'PASS runner: 登録は印を書いてから登録し、成功したときだけ PID の名前で公開して、失敗しても動作を変えない'
+
+# 1 つも送れなくても、記録は進み、テストは今までどおり止まる。登録しないテストの PID の名前のファイルは、印がないので送らない。
+cat >"$fixtures/unregistered.sh" <<'FIXTURE'
+#!/usr/bin/env bash
+set -euo pipefail
+trap 'touch "$TEST_RUNNER_STATE/got-usr2"' USR2
+touch "$SQUAD_KIT_TEST_STACK_DIR/$$"
+printf '%s\n' "$$" >"$TEST_RUNNER_STATE/test.pid"
+sleep 60 &
+wait $!
+FIXTURE
+rm -rf -- "$TEST_RUNNER_STATE"
+mkdir -p "$TEST_RUNNER_STATE"
+SQUAD_KIT_TEST_TIMEOUT=2 run_suite 1 1 "$fixtures/unregistered.sh"
+grep -qxF "==== FAIL $fixtures/unregistered.sh（時間切れ: 2 秒で止めた）" "$test_dir/out"
+grep -qxF "送らなかった $(cat "$TEST_RUNNER_STATE/test.pid") 印が合わない" "$test_dir/out"
+no_line -E '^送った ' "$test_dir/out"
+no_line -F 'のスタック' "$test_dir/out"
+[[ ! -e $TEST_RUNNER_STATE/got-usr2 ]]
+pid_gone "$(cat "$TEST_RUNNER_STATE/test.pid")"
+echo 'PASS runner: 1 つも送れなくても、記録を終えて、テストを止める'
 
 # 終わったのに回収されていない子（ゾンビ）がいるセッションでも、LIST はほかのプロセスを出して 0 で終わる。
 # macOS ではゾンビの os.getsid() が失敗するので、ゾンビの行は求めない。出るなら、状態は Z になる。

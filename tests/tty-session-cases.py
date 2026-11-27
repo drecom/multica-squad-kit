@@ -14,9 +14,6 @@ root, scratch = map(Path, sys.argv[1:])
 helper = root / 'tests/tty-session.py'
 counter = itertools.count()
 os.environ["TERM"] = "xterm-256color"
-# 時間切れの記録の登録（register_stack）は、ここでは動かさない。同じプロセスで run() を呼ぶケースが、
-# 登録のファイルを開いて、fd の数の確認を崩すため。記録は tests/test-runner-test.sh が確認する。
-os.environ.pop('SQUAD_KIT_TEST_STACK_DIR', None)
 
 
 def launch(code, *, fds='in,out,err', answer=None, script=None, extra=(), command=None):
@@ -176,12 +173,13 @@ original_read, original_write = os.read, os.write
 owner = os.getpid()
 
 
-def inline(code, *, scripted=None, answer=None, fds=('in', 'out', 'err')):
+def inline(code, *, scripted=None, answer=None, fds=('in', 'out', 'err'), command=None):
     global last_diagnostic, last_pid_path
     case = scratch / str(next(counter))
     case.mkdir()
     pid_path = last_pid_path = case / 'pid'
     (case / 'command.py').write_text(f'import os\nopen({str(pid_path)!r},"w").write(str(os.getpid()))\n' + code)
+    command = command or [sys.executable, str(case / 'command.py')]
     script = None
     if scripted:
         script = case / 'script'
@@ -190,10 +188,13 @@ def inline(code, *, scripted=None, answer=None, fds=('in', 'out', 'err')):
     if answer is not None:
         input_path = case / 'input'
         input_path.write_bytes(answer)
+    # 時間切れの記録の登録（run() の始めの register_stack）が開くファイルを、比べる fd に数えない。
+    # 登録は同じプロセスで 1 回だけ開くので、比べる前に済ませておく。
+    getattr(module, 'register_stack', lambda: None)()
     before = set(os.listdir('/dev/fd'))
     diagnostic = io.StringIO()
     with contextlib.redirect_stderr(diagnostic):
-        result = module.run([sys.executable, str(case / 'command.py')], output=str(case / 'out'), error=str(case / 'err'), script=script, input_file=input_path, fds=fds)
+        result = module.run(command, output=str(case / 'out'), error=str(case / 'err'), script=script, input_file=input_path, fds=fds)
     last_diagnostic = diagnostic.getvalue()
     assert set(os.listdir('/dev/fd')) == before
     if pid_path.exists():
@@ -328,43 +329,68 @@ foreground = [i for i, e in enumerate(events) if e[0] == 'tcsetpgrp']
 assert [events[i][2] for i in foreground] == [str(command)] and foreground[0] > index, events
 print('PASS tty-session T26: C を作る setpgid は包みの 1 回だけで、前面にする前に済む', flush=True)
 
-# 子の終了の SIGCHLD が、Python のハンドラが動く前に届き、select に入る前に読まれない順序を作る。
-# 包みの最初の select（子が回収前）だけを差し替える。SIGCHLD のハンドラを何もしないものに替え、
-# 子が終わるまで待つ。そのあと通知の自己パイプが読めるかを、期限 0 の select で確認して記録する。
-# 読めなければ、本物の select なら止まる場所なので、空を返す。包みは次の WNOHANG の waitpid で回収する。
+# 子の終了の SIGCHLD が、Python のハンドラが自己パイプへ書く前に届き、通知が読まれない順序を、FIFO で作る。
+# コマンドは fd 9（保持）を閉じてから、ケースが作った FIFO の 1 行を読んで終わる。子は FIFO に書かれるまで終わらない。
+# 包みの select のうち、見張る fd が 2 本（制御と通知）だけで、子がまだ回収されていない最初の呼び出しを差し替える。
+# exec と保持のパイプは、それより前の呼び出しで終わりを読んで外れている。差し替えた呼び出しでは、SIGCHLD の
+# Python のハンドラを、自己パイプへ書かず専用のパイプへ書くものに替え、FIFO に書いて子を終わらせ、子がゾンビになるのを
+# waitid で待つ。専用のパイプの 1 バイトを読めば、SIGCHLD が届いてハンドラが動いたことを、時計なしで確認できる。
+# 元のハンドラに戻してから、本物の select を同じ fd・期限 0 で呼び、見張った fd の数と読めた fd を記録する。
+# 読めなければ、本物の select なら全 fd が待ちのまま止まる場所なので、空を返す。
+# 続けて、次の waitpid が WNOHANG を付けたかと、子を返したかを記録する。
 original_select = select.select
-stalled = scratch / 'T27-record'
-def racing_select(readers, writers, errors, *timeout):
+gate = fifo('T27-child')
+record_file = scratch / 'T27-record'
+intercepted, waited = [], []
+
+
+def gated_select(readers, writers, errors, *timeout):
     caller = sys._getframe(1)
-    if (os.getpid() == owner or caller.f_code.co_name != 'wrapper' or stalled.exists()
+    if (os.getpid() == owner or caller.f_code.co_name != 'wrapper' or intercepted or len(readers) != 2
             or not caller.f_locals.get('child') or caller.f_locals.get('child_reaped')):
         return original_select(readers, writers, errors, *timeout)
-    stalled.write_text('')
-    fired = []
-    previous = signal.signal(signal.SIGCHLD, lambda *_: fired.append(True))
+    intercepted.append(True)
+    notified, control = caller.f_locals['changed_r'], caller.f_locals['control_r']
+    assert sorted(readers) == sorted((notified, control)), ('T27: 見張る fd が制御と通知でない', readers)
+    while original_select([notified], [], [], 0)[0]:
+        os.read(notified, 4096)
+    arrived_r, arrived_w = os.pipe()
+    previous = signal.signal(signal.SIGCHLD, lambda *_: original_write(arrived_w, b'x'))
     try:
-        notified = caller.f_locals['changed_r']
-        # ハンドラを替える前に書かれた分を捨てる。そのあと自分に SIGCHLD を送って、
-        # 替えたあとの通知が 1 回は届く状態にする。
-        while original_select([notified], [], [], 0)[0]:
-            os.read(notified, 4096)
+        with gate.open('wb', buffering=0) as stream:
+            stream.write(b'go\n')
         os.waitid(os.P_PID, caller.f_locals['child'], os.WEXITED | os.WNOWAIT)
-        os.kill(os.getpid(), signal.SIGCHLD)
-        # CPython の os.kill は、自分に送ったシグナルのハンドラを、戻る前に動かす。
-        assert fired, 'T27: SIGCHLD が届かなかった'
+        assert os.read(arrived_r, 1) == b'x'
     finally:
         signal.signal(signal.SIGCHLD, previous)
+        os.close(arrived_r)
+        os.close(arrived_w)
     ready = original_select(readers, writers, errors, 0)
-    readable = notified in ready[0]
-    stalled.write_text('readable' if readable else 'unreadable')
-    return ready if readable else ([], [], [])
-select.select = racing_select
+    names = [name for fd, name in ((notified, 'notified'), (control, 'control')) if fd in ready[0]]
+    with record_file.open('a') as stream:
+        stream.write(f'select watched={len(readers)} readable={",".join(names) or "none"}\n')
+    return ready if names else ([], [], [])
+
+
+def recorded_waitpid(pid, flags):
+    result = original_waitpid(pid, flags)
+    if (os.getpid() != owner and intercepted and not waited
+            and sys._getframe(1).f_code.co_name == 'wrapper'):
+        waited.append(True)
+        with record_file.open('a') as stream:
+            stream.write(f'waitpid nohang={"yes" if flags & os.WNOHANG else "no"} reaped={"yes" if result[0] else "no"}\n')
+    return result
+
+
+select.select, os.waitpid = gated_select, recorded_waitpid
 try:
-    assert inline('pass')[0] == 0
+    result = inline('', command=['sh', '-c', 'exec 9>&-; read _ < "$1"', 'sh', str(gate)])[0]
 finally:
-    select.select = original_select
-assert stalled.read_text() == 'readable', ('T27: 子の終了の通知の自己パイプが、select の前に読めない', stalled.read_text())
-print('PASS tty-session T27: 子の終了の通知が select に入る前に届いても、自己パイプが読めて 0 を返す', flush=True)
+    select.select, os.waitpid = original_select, original_waitpid
+recorded = record_file.read_text() if record_file.exists() else ''
+assert recorded == 'select watched=2 readable=notified\nwaitpid nohang=no reaped=yes\n' and result == 0, \
+    ('T27: 子の終了の通知が自己パイプで読めない', result, recorded)
+print('PASS tty-session T27: 見張る fd が 2 本の select の前に子が終わっても、通知が読めて、待って回収し 0 を返す', flush=True)
 
 proc, case = launch('''import os,fcntl,termios,struct,signal
 changed=False

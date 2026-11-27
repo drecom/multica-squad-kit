@@ -22,6 +22,8 @@ def register_stack():
     """時間切れの記録のため、SIGUSR2 を受けたら、自分の PID の名前のファイルへスタックを書くよう登録する。
 
     SQUAD_KIT_TEST_STACK_DIR（tests/run-one.sh が渡す）があるときだけ動く。
+    先に `registering-<PID>` の名前で、先頭に印（PID・親・グループ・セッション）を書き、登録を終えてから
+    `<PID>` へ改名して公開する。送る側は PID の名前のファイルだけを見るので、登録の途中のプロセスへは送らない。
     fork の子は親の登録とファイルを引き継ぐので、子は自分の PID で登録し直す。
     記録のための補助なので、登録に失敗しても動作は変えない。
     """
@@ -29,12 +31,28 @@ def register_stack():
     directory = os.environ.get('SQUAD_KIT_TEST_STACK_DIR')
     if not directory or stack_pid == os.getpid():
         return
+    pid = os.getpid()
+    temporary = os.path.join(directory, f'registering-{pid}')
+    opened = None
+    registered = False
     try:
-        opened = open(os.path.join(directory, str(os.getpid())), 'wb')
+        opened = open(temporary, 'wb')
+        opened.write(f'{pid} {os.getppid()} {os.getpgrp()} {os.getsid(0)}\n'.encode())
+        opened.flush()
         faulthandler.register(signal.SIGUSR2, file=opened, all_threads=True)
+        registered = True
+        os.rename(temporary, os.path.join(directory, str(pid)))
     except (OSError, ValueError, RuntimeError):
+        if registered:
+            faulthandler.unregister(signal.SIGUSR2)
+        if opened:
+            opened.close()
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
         return
-    previous, stack_file, stack_pid = stack_file, opened, os.getpid()
+    previous, stack_file, stack_pid = stack_file, opened, pid
     if previous:
         previous.close()
 

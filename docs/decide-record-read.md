@@ -76,7 +76,7 @@
 | 共有の判定のソースを引数に持つ起動か | プログラムの文より後ろの引数のどれかが、共有の判定のソースと一致する |
 | モード | プログラムの文の次の引数 |
 
-包みは bash のスクリプトで、`tests/squad-review-next-decide-rework-record-test.sh` が置く。テストの偽の CLI も `python3` を起こすが、プログラムの文が共有の判定のソースではないので、どちらの数にも入らない。
+包みは bash のスクリプトで、共通の準備 `tests/review-next-decide-rework-record-lib.sh` が置く。テストの偽の CLI も `python3` を起こすが、プログラムの文が共有の判定のソースではないので、どちらの数にも入らない。
 
 共有の判定の解析・並べ替え・判定は、このソースの中にしかない。そのため、ソースをプログラムとして起こした回数と、引数で受け取った回数を数えれば、すべてのコメントの解析が何回流れたかが分かる。
 
@@ -147,7 +147,7 @@
 
 ## テスト
 
-`decide` のテスト（`tests/squad-review-next-decide-*-test.sh`）は、すべて通す。記録を読む場面の多くは `tests/squad-review-next-decide-fix-test.sh` にあり、`tests/squad-review-next-decide-rework-record-test.sh` は、そこにない場面と処理の数を置く。
+`decide` のテスト（`tests/squad-review-next-decide-*-test.sh`）は、すべて通す。記録を読む場面の多くは `tests/squad-review-next-decide-fix-rework-test.sh` にあり、`tests/squad-review-next-decide-rework-record-test.sh` は、そこにない場面と処理の数を置く。
 
 | テスト | 確認すること |
 | --- | --- |
