@@ -1,6 +1,6 @@
 # common/guard/git-ssh が受ける形の表。列は ID・扱い・引数（JSON の配列）・形の説明をタブで区切る。
 # 扱いは pass（本物の ssh に引数のまま渡す）か block:<止めたときの文に含む文字列>。
-# 許すリポジトリは example/template。tests/guard-git-test.sh が行ごとに確かめる。
+# 許すリポジトリは example/template。tests/guard-git-test.sh が行ごとに確認する。
 push-scp	pass	["git@github.com", "git-receive-pack 'example/template.git'"]	SCP の形で許すリポジトリ
 push-no-git	pass	["git@github.com", "git-receive-pack 'example/template'"]	.git なし
 push-case	pass	["git@github.com", "git-receive-pack 'EXAMPLE/template.git'"]	大文字小文字の違い

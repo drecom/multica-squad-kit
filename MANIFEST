@@ -13,7 +13,7 @@ e26217d9263a7ee07305e8624b87471bdf97acb3c4695c0046804fd6ffeb837a  ./.agents/rule
 413fd532816ee8052c4be65115622d62dffc68117c023ba598e9014c0553fbb1  ./.gitignore
 37feb6277999e20168efa6910ff4b72dcf7439b15ec664f04d67a6637f20506b  ./.markdownlint.json
 e34d5f4f1e74c19cff26ca20e7ca8c53ee8cb3c75bfe133a3a584ddf9bfcecc5  ./AGENTS.md
-b266d5ee77ee93445819f865df8be4a31be08c40811e126ed91a1810f777cf84  ./CHANGELOG.md
+2a429829f2316d827bc20f79c5728e647c0ce262175d846728aebd5ca8fdc841  ./CHANGELOG.md
 1eb99314d85723af288e50d11188f125f136b52e043917134038c50c02ef6a94  ./CONTRIBUTING.md
 35b6fce60988f9b9a34c897a147fc2304550a86189154497fd665bc8009dfc8e  ./EXTENSIONS.md
 c64ff136b0a19ba329f98b05b879ced23358f4863b7aa22d560c2359dba780a9  ./README.md
@@ -164,7 +164,7 @@ b8145ced477ed48eb7c0f599f44fc85c3e15990085d6de4521f276286cee6ff8  ./lib/terminal
 f57a7a829cf4cac51462f7a2dc04912b57a99927b8541727faf70f7e4fa701a4  ./lib/version.sh
 405d6c439cb72b4f19d46452714e5ef46f3b9517a1ce8bea0cd57d24afcd2836  ./lib/webhooks.sh
 50c2bfd06e66458d38fe423d6f4c2bf3223efe098dde74b561e21105c807af40  ./lib/workspace.sh
-e8665b458f0008b0f06a3d22ad7148747bad32552dff2f1e23a3dc2a661435d5  ./manual.md
+30685f68a5a6a406568b545f541659fe417f6996e1383a5dc5d920f1dcc098f5  ./manual.md
 633f1030aafe88149effa1a7c3d64247fd6100f682ffbaae2c212d44b443a538  ./scripts/build-assets.sh
 58a7f0238d3b698745dba710637832fad1c4dc3c051353b4a04505f77c798202  ./scripts/check-links.py
 44f95ffd36dfaf4829e3ea7a6c81dd60c6569595754aff1e8285e6d654c45eb1  ./scripts/check-style.py
@@ -303,7 +303,7 @@ df046aa906d1e0c1a4953e33de631f338d07208f315d040d3eab59942df4c222  ./tests/fixtur
 dbb62029d95e8f85b01008d88dcff6a7d5fce368188e140c4fc7b570fbf8a109  ./tests/fixtures/cli/metrics-runs.json
 6fc3cb7ba5d06fb02f9bc63cc2713aa4887cdc3af866c12252b2707f63b06aad  ./tests/fixtures/cli/squad-list.json
 04eada94fa34435d69e2d103e241c6133ac000dfc5deeca73e365e36b641339f  ./tests/fixtures/cli/squad-member-list.json
-0f0ec793d8f94320351e763d0e146da4def432bba2635a31e37a4d2cb63a8efa  ./tests/fixtures/git-ssh-forms.tsv
+6abce509b46e72c4766f2c2dfc86f1d946f0099c1a82161621dde1289d85d768  ./tests/fixtures/git-ssh-forms.tsv
 5e1c194e8f8d27dbd3fd8dddaf87198bf84b00c9677bcb1252128ea75e75a8b0  ./tests/fixtures/metrics/breakdown/breakdown-tasks.json
 9f6da941b906e6c92294493f0298d90b0dd25ecdedb7b9f31ddb5a9c841b9d60  ./tests/fixtures/metrics/breakdown/breakdown.json
 f88fe23da2738ad60080b079f078eaa05657c08ce744ee300387e3324c502019  ./tests/fixtures/metrics/breakdown/breakdown.md
