@@ -364,6 +364,37 @@ grep -qE "tty-session\.py\", line $run_select in run\$" "$test_dir/out"
 pid_gone "$(cat "$TEST_RUNNER_STATE/test.pid")"
 echo 'PASS runner: 時間切れにプロセスの一覧と tty-session の select のスタックを出し、整数でない名前と外の PID へは送らない'
 
+# スタックが書かれたら端末のコマンドを終え、親が登録を消してからも失敗ログにスタックが残ることを確認する。
+cat >"$fixtures/exit-after-stack.sh" <<'FIXTURE'
+#!/usr/bin/env bash
+set -euo pipefail
+python3 -I "$TEST_RUNNER_KIT/tests/tty-session.py" --output "$TMPDIR/out" --error "$TMPDIR/err" -- python3 -I -c '
+import os
+from pathlib import Path
+import time
+
+pid_file = Path(os.environ["TEST_RUNNER_STATE"]) / "tty.pid"
+while not pid_file.exists() or not pid_file.read_bytes().endswith(b"\n"):
+    time.sleep(0.01)
+stack = Path(os.environ["SQUAD_KIT_TEST_STACK_DIR"]) / pid_file.read_text().strip()
+while not stack.exists() or b"  File " not in stack.read_bytes():
+    time.sleep(0.01)
+' &
+tty_pid=$!
+printf '%s\n' "$tty_pid" >"$TEST_RUNNER_STATE/tty.pid"
+wait "$tty_pid"
+[[ ! -e $SQUAD_KIT_TEST_STACK_DIR/$tty_pid ]]
+echo '端末の親は正常終了し、登録を取り下げた'
+FIXTURE
+SQUAD_KIT_TEST_TIMEOUT=3 run_suite 1 1 "$fixtures/exit-after-stack.sh"
+tty_pid=$(cat "$TEST_RUNNER_STATE/tty.pid")
+grep -qxF "==== FAIL $fixtures/exit-after-stack.sh（時間切れ: 3 秒で止めた）" "$test_dir/out"
+grep -qxF '端末の親は正常終了し、登録を取り下げた' "$test_dir/out"
+grep -qxF "送った $tty_pid" "$test_dir/out"
+grep -A 5 -xF -- "-- PID $tty_pid のスタック" "$test_dir/out" |
+	grep -qE "tty-session\.py\", line $run_select in run\$"
+echo 'PASS runner: スタックを書いた端末の親が正常終了しても、失敗ログに親のスタックが残る'
+
 # 送る相手を選ぶ STACKS。セッションの中と外に、登録した 1 つと、印や情報が合わない様々なプロセスを置き、
 # 送るのは登録を終えて印と OS の情報が合った 1 つだけで、ほかは理由つきで送らないことを確認する。
 # 送られたら default の動作で終わるプロセスを置き、送られていないことは、終了の状態が 0 のままであることで確認する。
@@ -471,7 +502,9 @@ expected = sorted([
     f'送らなかった {dead} プロセスが合わない',
 ])
 try:
-    assert sorted(outcome.stdout.splitlines()) == expected, (outcome.stdout, expected)
+    destinations, heading, trace = outcome.stdout.partition(f'-- PID {pids["good"]} のスタック\n')
+    assert sorted(destinations.splitlines()) == expected, (outcome.stdout, expected)
+    assert heading and '-- PID ' not in trace, outcome.stdout
     assert outcome.returncode == 0, outcome
 finally:
     os.close(hold_w)
@@ -482,7 +515,8 @@ finally:
 assert set(results) == set(kinds) and all(status == 0 for status in results.values()), results
 assert all(status == 0 for status in statuses.values()), statuses
 with open(os.path.join(directory, str(pids['good']))) as stream:
-    lines = stream.read().splitlines()
+    assert trace == stream.read(), outcome.stdout
+lines = trace.splitlines()
 assert lines[0] == f'{pids["good"]} {leader} {leader} {leader}' and any('File "' in line for line in lines[1:]), lines
 # 送れた PID が 0 のときは、何も出さず 1 で終わる。
 empty = tempfile.mkdtemp()

@@ -17,38 +17,66 @@
 # 自分の PID の名前に改名して公開する）。ファイルの先頭の登録の印（PID・親の PID・プロセスグループ・セッション）の
 # PID がファイルの名前と同じで、セッションが引数のセッションと同じであり、さらに OS が答える親の PID・プロセスグループ・
 # セッションが印と同じときだけ、同じプロセスの中で続けて送る。合わない PID には送らず、理由を 1 行で出して、残りの確認を続ける。
-# 出力は 1 行ずつ「送った <PID>」か「送らなかった <PID> 印が合わない|プロセスが合わない」で、ほかの名前のファイルは何も出さずに読み飛ばす。
+# 送り先ごとに「送った <PID>」か「送らなかった <PID> 印が合わない|プロセスが合わない」を出す。
+# 送る前に開いたファイルを 1 秒の待ちのあとも使い、PID の名前が消えても書き出されたスタックを回収する。
 # 1 つでも送れたら 0、なければ 1 で終わる。
 #
 # pkill -s は macOS にないので、全プロセスの一覧から os.getsid() でセッションを引く。
 # テストが別のプロセスグループに移した子も、同じセッションに残るので止められる。
+from contextlib import ExitStack
 import os
+import shutil
 import signal
 import stat
 import subprocess
 import sys
+import time
 
 session = int(sys.argv[1])
 mode = sys.argv[2]
 
 
-def read_mark(path):
-    """登録の印を 4 つの整数で返す。読めない・形が違うときは None。FIFO などで止まらないよう、非ブロックで開く。"""
-    try:
-        descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
-    except OSError:
+def read_mark(descriptor):
+    """開いた通常ファイルの先頭にある登録の印を読む。"""
+    if not stat.S_ISREG(os.fstat(descriptor).st_mode):
         return None
-    try:
-        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
-            return None
-        line = os.read(descriptor, 256).split(b'\n', 1)[0].split()
-        if len(line) != 4 or not all(field.isdigit() for field in line):
-            return None
-        return tuple(int(field) for field in line)
-    except OSError:
+    line, newline, _ = os.read(descriptor, 256).partition(b'\n')
+    fields = line.split()
+    if not newline or len(fields) != 4 or not all(field.isdigit() for field in fields):
         return None
+    return tuple(int(field) for field in fields)
+
+
+def open_and_signal(path, pid):
+    """印とプロセスが合えば SIGUSR2 を送り、回収に使う fd を返す。"""
+    descriptor = None
+    sent = False
+    try:
+        try:
+            # FIFO などで止まらず、シンボリックリンクもたどらない。
+            descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+            mark = read_mark(descriptor)
+        except OSError:
+            mark = None
+        if mark is None or mark[0] != pid or mark[3] != session:
+            print(f'送らなかった {pid} 印が合わない', flush=True)
+            return None
+        try:
+            actual = (pid, parent_of(pid), os.getpgid(pid), os.getsid(pid))
+            if actual != mark:
+                raise ProcessLookupError
+            # プロセスを照合している間に取り下げられた登録を飛ばす。
+            if not os.fstat(descriptor).st_nlink:
+                raise ProcessLookupError
+            os.kill(pid, signal.SIGUSR2)
+        except OSError:
+            print(f'送らなかった {pid} プロセスが合わない', flush=True)
+            return None
+        sent = True
+        return descriptor
     finally:
-        os.close(descriptor)
+        if descriptor is not None and not sent:
+            os.close(descriptor)
 
 
 def parent_of(pid):
@@ -58,24 +86,31 @@ def parent_of(pid):
 
 
 def send_stacks(directory):
-    sent = False
-    for name in sorted((n for n in os.listdir(directory) if n.isascii() and n.isdigit() and int(n) > 0), key=int):
-        pid = int(name)
-        mark = read_mark(os.path.join(directory, name))
-        if mark is None or mark[0] != pid or mark[3] != session:
-            print(f'送らなかった {pid} 印が合わない', flush=True)
-            continue
-        try:
-            actual = (pid, parent_of(pid), os.getpgid(pid), os.getsid(pid))
-            if actual != mark:
-                raise ProcessLookupError
-            os.kill(pid, signal.SIGUSR2)
-        except OSError:
-            print(f'送らなかった {pid} プロセスが合わない', flush=True)
-            continue
-        sent = True
-        print(f'送った {pid}', flush=True)
-    return sent
+    sent = []
+    with ExitStack() as files:
+        for name in sorted((n for n in os.listdir(directory) if n.isascii() and n.isdigit() and int(n) > 0), key=int):
+            pid = int(name)
+            descriptor = open_and_signal(os.path.join(directory, name), pid)
+            if descriptor is None:
+                continue
+            files.callback(os.close, descriptor)
+            sent.append((pid, descriptor))
+            print(f'送った {pid}', flush=True)
+        if not sent:
+            return False
+        time.sleep(1)
+        for pid, descriptor in sent:
+            with open(descriptor, 'rb', closefd=False) as stream:
+                stream.seek(0)
+                mark = stream.readline(256)
+                first = stream.read(8192)
+                if first:
+                    print(f'-- PID {pid} のスタック', flush=True)
+                    sys.stdout.buffer.write(mark)
+                    sys.stdout.buffer.write(first)
+                    shutil.copyfileobj(stream, sys.stdout.buffer)
+                    sys.stdout.buffer.flush()
+    return True
 
 
 if mode == 'STACKS':

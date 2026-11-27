@@ -16,8 +16,8 @@
 #
 # 時間切れの記録: 止めるより前に、セッションのプロセスの一覧（stop-session.py の LIST）を残し、
 # スタックを登録したプロセス（tests/tty-session.py。SQUAD_KIT_TEST_STACK_DIR を渡す）に SIGUSR2 を送って
-# 1 秒待ち、書かれたスタックを残す。送るのは stop-session.py の STACKS で、登録の印とプロセスの情報が合った PID にだけ、
-# 確認した同じプロセスの中で続けて送る。登録していないプロセスは SIGUSR2 の既定の動作で終わり、止まった場所が消えるため。
+# 1 秒待ち、書かれたスタックを残す。stop-session.py の STACKS は、登録の印とプロセスの情報が合った PID にだけ送る。
+# 送る前に開いたファイルでスタックを回収するので、正常終了で PID の名前が消えても記録に残る。
 # 送った PID と送らなかった PID（理由つき）は記録に残す。1 つも送れなくても、TERM と KILL の後処理は続ける。
 # 記録は work/record に集め、テストを止めたあとでログの末尾へ足す（テストが開いたままのログを上書きしないため）。
 #
@@ -38,24 +38,13 @@ stop_session() {
 	python3 -I "$root/tests/stop-session.py" "$test_pid" "$@" 2>/dev/null
 }
 record_timeout() {
-	local listing sent word pid delivered=no
+	local listing
 	printf -- '---- 時間切れの記録（%s 秒）\n' "$limit" >"$work/record"
 	printf 'プロセスの一覧（PID 親 グループ 状態 経過 コマンド）\n' >>"$work/record"
 	listing=$(stop_session LIST) || :
 	printf '%s\n' "$listing" >>"$work/record"
 	printf 'SIGUSR2 の送り先（送った PID・送らなかった PID と理由）\n' >>"$work/record"
-	sent=$(stop_session STACKS "$work/stacks") || :
-	printf '%s\n' "$sent" >>"$work/record"
-	while read -r word pid _; do
-		if [[ $word == 送った && $pid =~ ^[1-9][0-9]*$ ]]; then delivered=yes; fi
-	done <<<"$sent"
-	if [[ $delivered == yes ]]; then sleep 1; fi
-	while read -r word pid _; do
-		if [[ $word == 送った && $pid =~ ^[1-9][0-9]*$ && -f $work/stacks/$pid && ! -L $work/stacks/$pid ]]; then
-			printf -- '-- PID %s のスタック\n' "$pid" >>"$work/record"
-			cat "$work/stacks/$pid" >>"$work/record"
-		fi
-	done <<<"$sent"
+	stop_session STACKS "$work/stacks" >>"$work/record" || :
 }
 # 割り込まれたら、セッションのテストを残さず、結果を残さずに終わる。
 trap 'if [[ -n $test_pid ]]; then stop_session KILL || :; fi; exit 143' HUP INT TERM
