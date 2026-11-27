@@ -191,7 +191,7 @@ PY
 host_codex_check() {
 	local config=$agent_home/codex/config.toml existing='' result status detail trust disabled names lines
 	codex_trust=
-	# 通常のファイルだけを読む。リンクや特殊ファイルは、あとの置き先の確認（host_check_targets）が止めるので、ここでは応答しない読み取りで待たない。
+	# 置き先は事前確認済み。通常の実体ファイルだけを読み、人の設定ならそのまま照合する。
 	if [[ -f $config && ! -L $config ]] && ! grep -qx '# multica-squad-kit-managed' "$config"; then existing=$config; fi
 	if ! result=$(python3 "${kit_root:-$root}/lib/codex-hooks.py" "$agent_home/codex" "$agent_home/guard" "${codex_check_seconds:-30}" ${existing:+"$existing"}); then
 		die 'Codex のフックの信頼の値を読む処理を実行できませんでした。python3 を確認して流し直してください。何も書き換えていません。'
@@ -471,7 +471,7 @@ PY
 
 # 更新で置くファイルの一覧。種類は guard（マークのない既存のファイルは止める）、exec（gh と pre-push。マークのない既存のファイルは実行できれば使う）、shared（マークのない既存のファイルは使う）、
 # codex-config（Codex の設定。マークのない既存の設定は使う）、claude-settings（共有の settings.json。マークを持たず、置き場へ一時ファイルを作って差し替える）。
-# 置く前の確認（host_check_targets）と置く処理が同じ一覧を読む。
+# 置く前の確認（host_check_targets）が、使うランタイムに応じてこの一覧を読む。
 host_list_targets() {
 	local file name
 	host_target_kind=() host_target_dst=()
@@ -495,63 +495,65 @@ host_list_targets() {
 	fi
 }
 
-# 置く前に、置き先を全件読み取りだけで確認する。どれか 1 件でも置けなければ、1 件も置かずに止まる。
-# 止める形: シンボリックリンク、通常のファイルでない置き先、マークのない既存のガード、マークのない既存の gh と pre-push が実行できない、
-# マークのある既存のファイルが書けない、置き場が書けない。通常のファイルかは、マークを読む前に見る（応答しない特殊ファイルを読んで待たないため）。
+# 置き先を読む前に、親の権限とファイルの種類を調べる。新しい置き場は最も近い既存の親で調べる。
+# 直接書く管理ファイルは自身にも書き込みが要る。設定・許可・起動ファイルの差し替えは親に一時ファイルを作る。
+host_check_target() {
+	local kind=$1 dst=$2 dir parent_error
+	dir=${dst%/*}
+	while [[ -n $dir && ! -e $dir && ! -L $dir ]]; do dir=${dir%/*}; done
+	dir=${dir:-/}
+	parent_error="置き場がないか、書けません: ${dst%/*}。置き場の書き込みと探索の権限を確認してください。何も書き換えていません。権限を直してから流し直してください。"
+	[[ -d $dir && -x $dir ]] || die "$parent_error"
+	if [[ -L $dst && $kind != shell-startup ]]; then
+		die "シンボリックリンクは上書きしません: ${dst}。実体のファイルに置き換えてください。何も書き換えていません。そのリンクを確認し、不要なら消してから流し直してください。"
+	fi
+	if [[ ! -e $dst && ! -L $dst ]]; then
+		[[ -w $dir ]] || die "$parent_error"
+		return 0
+	fi
+	[[ -f $dst ]] || die "更新するファイルが通常のファイルではありません: ${dst}。通常のファイルに置き換えてください。何も書き換えていません。そのファイルを確認し、不要なら移すか消してから流し直してください。"
+	[[ -r $dst ]] || die "更新するファイルが読めません: ${dst}。何も書き換えていません。権限を確認してから流し直してください。"
+	case $kind in
+	claude-settings | allowed-repos)
+		[[ -w $dir ]] || die "$parent_error"
+		return 0 ;;
+	esac
+	if grep -qx '# multica-squad-kit-managed' "$dst"; then
+		[[ -w $dir ]] || die "$parent_error"
+		if [[ $kind == shell-startup ]]; then
+			[[ ! -L $dst ]] || die "シンボリックリンクは上書きしません: ${dst}。何も書き換えていません。そのリンクを確認し、不要なら消してから流し直してください。"
+		else
+			[[ -w $dst ]] || die "更新するファイルが書けません: ${dst}。何も書き換えていません。権限を確認してから流し直してください。"
+		fi
+	else
+		case $kind in
+		guard) die "ガードのファイルが原本と一致しません: ${dst}。何も書き換えていません。マークのない既存のファイルが残っていると、役のフックが動きません。そのファイルの中身を確認して、不要なら移すか消してから、セットアップを流し直してください。既存のファイルは上書きしません。" ;;
+		exec) [[ -x $dst ]] || die "既存のガードを利用できません: ${dst}。何も書き換えていません。実行権限・読み取り権限を管理者に確認してもらい、流し直してください。既存のファイルは上書きしません。" ;;
+		esac
+	fi
+}
+
 host_check_targets() {
-	local i dst kind dir
+	local i
 	host_list_targets
 	for i in "${!host_target_dst[@]}"; do
-		dst=${host_target_dst[$i]} kind=${host_target_kind[$i]} dir=${dst%/*}
-		[[ ! -L $dst ]] || die "シンボリックリンクは上書きしません: ${dst}。何も書き換えていません。そのリンクを確認し、不要なら消してから流し直してください。"
-		if [[ -e $dst ]]; then
-			[[ -f $dst ]] || die "更新するファイルが通常のファイルではありません: ${dst}。何も書き換えていません。そのファイルを確認し、不要なら移すか消してから流し直してください。"
-		fi
-		if [[ $kind == claude-settings ]]; then
-			# 差し替えは置き場に一時ファイルを作るので、置き場が書けなければ書く前に止める。
-			[[ -d $dir && -w $dir ]] || die "置き場がないか、書けません: ${dir}。何も書き換えていません。権限を確認してから流し直してください。"
-			continue
-		fi
-		if [[ -e $dst ]]; then
-			if ! grep -qx '# multica-squad-kit-managed' "$dst"; then
-				case $kind in
-				guard) die "ガードのファイルが原本と一致しません: ${dst}。何も書き換えていません。マークのない既存のファイルが残っていると、役のフックが動きません。そのファイルの中身を確認して、不要なら移すか消してから、セットアップを流し直してください。既存のファイルは上書きしません。" ;;
-				exec) [[ -x $dst ]] || die "既存のガードを利用できません: ${dst}。何も書き換えていません。実行権限・読み取り権限を管理者に確認してもらい、流し直してください。既存のファイルは上書きしません。" ;;
-				esac
-			else
-				[[ -w $dst ]] || die "更新するファイルが書けません: ${dst}。何も書き換えていません。権限を確認してから流し直してください。"
-			fi
-		else
-			[[ -d $dir && -w $dir ]] || die "置き場がないか、書けません: ${dir}。何も書き換えていません。権限を確認してから流し直してください。"
-		fi
+		host_check_target "${host_target_kind[$i]}" "${host_target_dst[$i]}"
 	done
 }
 
-# プロジェクトの許可とシェルの起動ファイルを置く前に、置き先を読み取りだけで確認する。1 件でも置けなければ、許可も起動ファイルも書かずに止まる。
-# 置き場は、まだなければ作れる最も近い親で見る。マークのない起動ファイルは使うので、ここでは止めない。
+# 許可と起動ファイルも、読む前に同じ規則で調べる。
 host_check_project_targets() {
-	local dst dir
-	for dst in "$allowed_repos_file" "$project_shell_dir/.zshenv" "$project_shell_dir/env.sh"; do
-		if [[ -L $dst ]]; then
-			if [[ $dst == "$allowed_repos_file" ]] || grep -qx '# multica-squad-kit-managed' "$dst" 2>/dev/null; then
-				die "シンボリックリンクは上書きしません: ${dst}。何も書き換えていません。そのリンクを確認し、不要なら消してから流し直してください。"
-			fi
-			continue
-		fi
-		if [[ -e $dst && ! -f $dst ]]; then
-			[[ $dst != "$allowed_repos_file" ]] || die "許すリポジトリのファイルが通常のファイルではありません: ${dst}。何も書き換えていません。そのファイルを確認し、不要なら移すか消してから流し直してください。"
-			continue
-		fi
-		dir=${dst%/*}
-		while [[ ! -d $dir && $dir == */* ]]; do dir=${dir%/*}; done
-		[[ -d $dir && -w $dir ]] || die "置き場がないか、書けません: ${dst%/*}。何も書き換えていません。権限を確認してから流し直してください。"
-	done
+	host_check_target allowed-repos "$allowed_repos_file"
+	host_check_target shell-startup "$project_shell_dir/.zshenv"
+	host_check_target shell-startup "$project_shell_dir/env.sh"
 }
 
 prepare_host() {
 	local file real_gh_dir
 	host_paths
 	check_runtime_tools || die '選んだランタイムを導入してから流し直してください。'
+	# 置き場を作る前に全件を確認する。書けない置き先が一つでもあれば、既存のファイルや権限を変えない。
+	host_check_targets
 	(umask 077; mkdir -p "$agent_home/claude" "$agent_home/codex" "$agent_home/bin" "$agent_home/git-hooks" "$agent_home/guard/gh-empty") || die 'ホストの置き場を作れませんでした。'
 	# 書き換える前に、前もって判定できる確認をすべて流す（docs/agent-guards.md の「更新の順序」の 1）。どれかが合わなければ、ガード・設定・許可・起動ファイルのどれも書かずに止まる。
 	real_gh_dir=$(host_real_gh_dir) || exit 1
@@ -565,8 +567,6 @@ prepare_host() {
 		host_codex_check
 		CODEX_HOME="$agent_home/codex" codex login status >/dev/null 2>&1 || die "エージェント用の Codex にログインしてください: CODEX_HOME=$agent_home/codex codex login"
 	fi
-	# 置き先は全件を、書く前に読み取りだけで確認する。1 件でも置けなければ、共有のファイルも権限も変えずに止まる。
-	host_check_targets
 	# ここから書く。役の GH_CONFIG_DIR に渡す空の置き場は、ファイルがあると認証が成り立つので、権限を絞る。
 	chmod 700 "$agent_home/guard/gh-empty" || die '空の gh の置き場の権限を設定できませんでした。'
 	# ガードのスクリプトと、Codex の信頼。共有の settings.json のフックか役の引数が指すまで、役の動作を変えない。
@@ -618,7 +618,7 @@ prepare_project_host() {
 	host_paths
 	allowed_repos_file="$agent_home/allowed-repos.d/$id"
 	project_shell_dir="$agent_home/template/shell/$id"
-	[[ ! -L $allowed_repos_file ]] || die "シンボリックリンクは上書きしません: $allowed_repos_file"
+	host_check_project_targets
 	if [[ -f $allowed_repos_file ]]; then
 		previous=$(cat "$allowed_repos_file") || die '前の許すリポジトリを読めませんでした。'
 		while IFS= read -r repo; do
@@ -629,7 +629,6 @@ prepare_project_host() {
 	fi
 	# 既存のガードも含め、全選択を確認してから実際の許可を書き替える。
 	# 確認用の起動ファイルは同じひな形から作り、専用の一時許可を指す。
-	host_check_project_targets
 	host_check_guards "$content" || die 'ガードの確認に失敗しました。従来の許可とシェル起動ファイルを保って停止します。'
 	# プロジェクト登録から呼ぶ場合は、通信中の紐付け変更も最後に確認する。
 	# local のマークは prepare_project が付け、ホスト単体の準備では呼ばない。

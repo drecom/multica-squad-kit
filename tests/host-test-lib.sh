@@ -155,18 +155,27 @@ fi
 [[ -z ${TEST_CODEX_CONFIRM:-} ]] || codex_confirm_seconds=$TEST_CODEX_CONFIRM
 # 拡張を使うセットアップと同じく、root を lib を持たない作業場所へ付け替え、原本は kit_root が指す（lib/extensions.sh）。
 if [[ -n ${TEST_EXTENSION_WORK:-} ]]; then kit_root=$root; root=$TEST_EXTENSION_WORK; fi
-prepare_host
+if [[ ${2:-} == project ]]; then
+ prepare_project_host project-order example/next
+else
+ prepare_host
+fi
 RUN
 # TEST_LIMIT（秒）があるときは、その時間で打ち切る。応答しない特殊ファイルを読んで待つ実装を、止まらないテストにせず落とすため。
 run() {
  if [[ -n ${TEST_LIMIT:-} ]]; then
-  python3 -c 'import subprocess, sys
+  python3 -c 'import os, signal, subprocess, sys
+child = subprocess.Popen(["/bin/bash", sys.argv[1], sys.argv[2], *sys.argv[6:]],
+                         stdout=open(sys.argv[3], "w"), stderr=open(sys.argv[4], "w"),
+                         start_new_session=True)
 try:
-    sys.exit(subprocess.run(["/bin/bash", sys.argv[1], sys.argv[2]], stdout=open(sys.argv[3], "w"), stderr=open(sys.argv[4], "w"), timeout=int(sys.argv[5])).returncode)
+    sys.exit(child.wait(timeout=int(sys.argv[5])))
 except subprocess.TimeoutExpired:
-    sys.exit(124)' "$test_dir/run.sh" "$root" "$test_dir/out" "$test_dir/err" "$TEST_LIMIT"
+    os.killpg(child.pid, signal.SIGKILL)
+    child.wait()
+    sys.exit(124)' "$test_dir/run.sh" "$root" "$test_dir/out" "$test_dir/err" "$TEST_LIMIT" "$@"
  else
-  /bin/bash "$test_dir/run.sh" "$root" >"$test_dir/out" 2>"$test_dir/err"
+  /bin/bash "$test_dir/run.sh" "$root" "$@" >"$test_dir/out" 2>"$test_dir/err"
  fi
 }
 deny() { if run; then exit 1; fi; [[ -s $test_dir/err ]]; }

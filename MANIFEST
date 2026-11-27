@@ -151,7 +151,7 @@ b9a45cd63da0d056163d453d727352a611c2515299627c097ce072f28fc7f8b7  ./lib/autopilo
 1e160f76a6cca7b4fbbe71af2c50cd7adc413e33ea3f8a41a631aedd01087d09  ./lib/codex-hooks.py
 2d1ddbe078e69260fa06aaf0af9169dd68aff118151dcebe615059714a3dd674  ./lib/extensions.py
 10cd0eaaddfd83b11ff48f1fd07d4fd3b029a93afd0504449017603559529589  ./lib/extensions.sh
-ac783a4ca36119b4b74e279179f6707db01c8ec77f1c77ad171e2e25c8723af5  ./lib/host.sh
+8c0c905a45f4a34d0820700397e691f893536de16878469c8d57ecce467f19df  ./lib/host.sh
 23d61cb270e4f571520a230918feccc00e8b5b09cbcf430108e0a424244b5a96  ./lib/installation.sh
 98823f1dc43473fe56a1a8f1e37e3d5a3fc3e8dd2389a7dff8c71f0b4c40f6a1  ./lib/project-changes.sh
 e50659e5b14aedb6d52498bbf44efd83aafbbb15ba2bed43c1b52b78e5fb648f  ./lib/project.sh
@@ -307,7 +307,7 @@ dbb62029d95e8f85b01008d88dcff6a7d5fce368188e140c4fc7b570fbf8a109  ./tests/fixtur
 077a6ee0a3aa94073de201bb4b0b163345e20a097c3846ac572f5dba85b78862  ./tests/fixtures/codex-hooks-forms.tsv
 ebc0de81fe645e875d493af1f6cd26a89d2d2cc78ee893902d63bca66d7854f7  ./tests/fixtures/codex-hooks-paths.tsv
 6abce509b46e72c4766f2c2dfc86f1d946f0099c1a82161621dde1289d85d768  ./tests/fixtures/git-ssh-forms.tsv
-48745fea323799d1632a2f0e8505d544bd592d70c5e0b345625133633d43ebd0  ./tests/fixtures/host-update-order.tsv
+6b595357bb44345267f6d70714ea4eeb07b62469473ecdd55305efcf452c6139  ./tests/fixtures/host-update-order.tsv
 5e1c194e8f8d27dbd3fd8dddaf87198bf84b00c9677bcb1252128ea75e75a8b0  ./tests/fixtures/metrics/breakdown/breakdown-tasks.json
 9f6da941b906e6c92294493f0298d90b0dd25ecdedb7b9f31ddb5a9c841b9d60  ./tests/fixtures/metrics/breakdown/breakdown.json
 f88fe23da2738ad60080b079f078eaa05657c08ce744ee300387e3324c502019  ./tests/fixtures/metrics/breakdown/breakdown.md
@@ -331,8 +331,8 @@ ecd6f37c326cf97ab4c60f934a3168f56fd6923862d4a1de6831dbe7e96d3e23  ./tests/fixtur
 0588e09c36eb9e5e572291dfcbcaacf3a200ba6532abe6fe3e3926a235a38444  ./tests/host-order-1-test.sh
 bca3a3a455902a7b46d811ace46109fc540530e0503da1ee2ed847a8c4f8082d  ./tests/host-order-2-test.sh
 cf6f1a35ba9654bfe215d7a56bd6674cb24586a80be03953195749f135bfe22a  ./tests/host-order-3-test.sh
-b64d18dbb0cc45cfa03684e1e07d6d66d8ccceff7e5ed35ffc5b16077423faf3  ./tests/host-order-body.sh
-4551a118ece33fc04820b6f6baf6d642fc220a724dded405dbba02890bc9c32b  ./tests/host-test-lib.sh
+232465f2ca907c8fca2774dc0a5c034aec2498ee190eed5839a3da535d0eff6f  ./tests/host-order-body.sh
+f1caec498622c8bed76d324dee1137ec3a7f5903bbb63d2d560ebe2d4359ec6b  ./tests/host-test-lib.sh
 8327c2010558c65be073ea6bfe184ea10b90944522175ee53d5c66aa0d7bec1f  ./tests/host-test.sh
 c8532b22f7a86ec6590a5cde3f64a6295148663e9f9893255209fca16fdea5b0  ./tests/install-command-test.sh
 539275b12edb26069fca5bedf9bb83abf3a73a7f68dc3c3ed5456c2ce19228f8  ./tests/install-test.sh
