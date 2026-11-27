@@ -338,7 +338,7 @@ bb32949d8fdcbd671dd226e54a50265c3b730caf309a2477eefd452d8874be86  ./tests/host-o
 acd934e724c02eea735f7c23bb6fff6756c500df8007578c9940a059109e7f3f  ./tests/host-order-snapshot.py
 f1caec498622c8bed76d324dee1137ec3a7f5903bbb63d2d560ebe2d4359ec6b  ./tests/host-test-lib.sh
 5e1356c1f3485e9bd2e8962bb3ad72f0edfbb9078325dce2fdf772aba055ce8a  ./tests/host-test.sh
-1f54f70243e66f30f1760fd0abd735d936b42d1bc300190c11cdcfdd7eb82b5d  ./tests/host-timeout-test.sh
+260aacd088117b19e9724c45c8ff3154348d68f3711fd590e66829c9b37fa8d6  ./tests/host-timeout-test.sh
 c8532b22f7a86ec6590a5cde3f64a6295148663e9f9893255209fca16fdea5b0  ./tests/install-command-test.sh
 539275b12edb26069fca5bedf9bb83abf3a73a7f68dc3c3ed5456c2ce19228f8  ./tests/install-test.sh
 f1213037642326b587fadb22e6a05923d656ed63570e526e52a8f7444b7e08e4  ./tests/installation-fixture.py
