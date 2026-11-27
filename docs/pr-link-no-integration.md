@@ -560,6 +560,8 @@ PR のタイトルは、GitHub で PR を直せる人なら誰でも書ける。
 | `tests/setup-test.sh`、`tests/setup-repositories-test.sh` | 0 件の案内と、手順書の節の名前の期待を直す |
 | `tests/test-weights` | 新しいテストの行を、そのテストを足すのと同じコミットで足す。`tests/test-runner-test.sh` が重みの行とテストのファイルの一致を見るためで、場面を足したフェーズでは重みを手元の秒数に合わせて直す |
 | `tests/fixtures/base-size/rule-lines-changed.tsv` | `references/pr.md` で書き直した 2 行（識別子を持ち出さない項目と、push のたびにタイトルを直す段落）と `SKILL.md` の状態の表の `done` の行を、書き直した行として足す。理由の欄には、`pr.md` の 2 行は PR のタイトルの識別子を例外にしたため、`done` の行は連携のないリポジトリでは見張りが `done` にするためと書く |
+| `tests/fixtures/base-size/rule-lines-changed.tsv`（今ある行） | `leader-pr-link.md` の食い違いの行と `leader-pr-merge.md` の `unlinked` の行は、書き直した行の欄と理由の欄を直した文に合わせる。行は増やさない |
+| `tests/agent-templates-test.sh` | `leader-pr-merge.md` の手で流す `unlinked` の期待を、`<回のコメント>` の表記に直す |
 | `docs/usage-reduction.md` | 「大きさの上限」に、`leader-pr-merge.md` の上限との差が小さいことを 1 文足す。この文書と同じコミットで足した |
 | `MANIFEST` | `bash scripts/manifest.sh` で作り直す |
 | `docs/README.md` | 索引の「役の指示と、タスクが進む流れ」の表に、この文書の行を足す。この文書と同じコミットで足した |
