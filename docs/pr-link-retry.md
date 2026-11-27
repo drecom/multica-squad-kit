@@ -22,6 +22,8 @@ PR を作った直後の紐付けが失敗した PR を、あとの区切りで�
 - `squad-dependabot-merge` の紐付けの動作。扱いは [squad-dependabot-merge の経路](#squad-dependabot-merge-の経路)に書く
 - 更新の前に紐付けが失敗したタスク。[試み直す PR のマーク](#試み直す-pr-のマーク)がないので、試み直さない
 
+GitHub 連携なしとして扱うリポジトリでは、試み直しの記録の扱いが[連携なしのリポジトリの扱い](pr-link-no-integration.md#link-check-の動作)に従う。試み直す条件と時機は、この文書と同じである。
+
 ## 試み直す時機
 
 試み直しは、`squad-pr-watch link-check` が「紐付いていない」と判定する直前に 1 回行う。`link-check` は、要件の 3 つの時機にすでに流れているので、新しい呼び出しを足さずに済む。
