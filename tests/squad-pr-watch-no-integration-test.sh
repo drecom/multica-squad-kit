@@ -90,11 +90,22 @@ if [[ "${1-} ${2-} ${3-}" == 'issue status test-issue' ]]; then
 	if [[ -f $dir/rules-after-status.json ]]; then mv "$dir/rules-after-status.json" "$dir/rules.json"; fi
 	exit 0
 fi
-if [[ "${1-} ${2-} ${3-}" == 'issue wakeup list' && -f $dir/rules-on-reread.json ]]; then
-	if [[ -f $dir/rules-read ]]; then
-		mv "$dir/rules-on-reread.json" "$dir/rules.json"
-	else
-		touch "$dir/rules-read"
+# 2 回目の規則の一覧の読み取りの直前に、ファイルを差し替える（書く直前の読み直しの前に、データが変わる場面）。
+#   rules-on-reread.json → 規則、comments-on-reread.json → コメント、task-on-reread.json → タスク、fail-on-reread → fail（読めなくする）
+if [[ "${1-} ${2-} ${3-}" == 'issue wakeup list' ]]; then
+	reread=
+	for name in rules-on-reread.json comments-on-reread.json task-on-reread.json fail-on-reread; do
+		[[ ! -f $dir/$name ]] || reread=1
+	done
+	if [[ -n $reread ]]; then
+		if [[ -f $dir/rules-read ]]; then
+			if [[ -f $dir/rules-on-reread.json ]]; then mv "$dir/rules-on-reread.json" "$dir/rules.json"; fi
+			if [[ -f $dir/comments-on-reread.json ]]; then mv "$dir/comments-on-reread.json" "$dir/comments.json"; fi
+			if [[ -f $dir/task-on-reread.json ]]; then mv "$dir/task-on-reread.json" "$dir/task.json"; fi
+			if [[ -f $dir/fail-on-reread ]]; then mv "$dir/fail-on-reread" "$dir/fail"; fi
+		else
+			touch "$dir/rules-read"
+		fi
 	fi
 fi
 if [[ "${1-} ${2-} ${3-}" == 'workspace member list' ]]; then
@@ -135,6 +146,7 @@ reset_ni() {
 	: >"$test_dir/curl-calls.jsonl"
 	rm -f "$test_dir/api-called" "$test_dir/fail-after" "$test_dir/curl-config" "$test_dir/now" "$test_dir/sleeps" "$test_dir"/fail-set-* "$test_dir/fail-status" "$test_dir/fail-members"
 	rm -f "$test_dir/fail-post" "$test_dir/fail-notice-squad" "$test_dir/roster-read" "$test_dir/rules-read" "$test_dir/rules-on-reread.json" "$test_dir/rules-after-status.json"
+	rm -f "$test_dir/comments-on-reread.json" "$test_dir/task-on-reread.json" "$test_dir/fail-on-reread" "$test_dir/fail"
 	printf 'trigger-1' >"$test_dir/trigger-comment"
 	printf '404' >"$test_dir/api-status"
 	printf '{"pull_requests":[]}' >"$test_dir/pulls.json"
@@ -579,7 +591,10 @@ unlinked_prepare() {
 	# 名簿のリーダーが書いた回。回の判定は、登録と同じく名簿から読む。
 	fixture squad-member-list | jq '. as $base | [$base + {member_id: "orchestrator", member_type: "agent"}, $base + {member_id: "monitor", member_type: "agent"}]' >"$test_dir/members.json"
 	add_comment round-1 agent orchestrator "$(round_body "$pr")"
+	# 回の後のマージの依頼（done の照合の 5）。head は PR から読む 40 桁で、回の確認するコミット（abcdef0）で始まる。
+	add_comment merge-1 agent orchestrator "マージの依頼: $merge_head"
 }
+merge_head=abcdef0123456789abcdef0123456789abcdef01
 unlinked_scene() {
 	reset_ni
 	[[ ${1-} != record ]] || { make_record; set_marks "$pr"; }
@@ -913,6 +928,198 @@ unlinked_run
 assert_jq '.status == "done"' "$test_dir/task.json"
 rule_gone
 echo 'PASS no-integration: 規則の作り手が人間でも、照合が合えば done にする'
+
+# done の照合の 5。確認した回より後に、その回の確認するコミットを指すマージの依頼がなければ、マージされても done にしない。
+# レビュー中に人間が手でマージした PR は、依頼の前なので、done にせず、人間に知らせる。
+drop_request() {
+	jq 'map(select(.id != "merge-1"))' "$test_dir/comments.json" >"$test_dir/changed.json"
+	mv "$test_dir/changed.json" "$test_dir/comments.json"
+}
+no_request() { drop_request; }
+human_request() { drop_request; add_comment merge-x member human-1 "マージの依頼: $merge_head"; }
+rogue_request() { drop_request; add_comment merge-x agent rogue "マージの依頼: $merge_head"; }
+other_head_request() { drop_request; add_comment merge-x agent orchestrator 'マージの依頼: 1111111111111111111111111111111111111111'; }
+fenced_request() { drop_request; add_comment merge-x agent orchestrator $'```\nマージの依頼: '"$merge_head"$'\n```'; }
+result_request() { drop_request; add_comment merge-x agent orchestrator $'/note\n返事の回: round-1\nマージの依頼: '"$merge_head"; }
+before_round_request() {
+	drop_request
+	jq --slurpfile base "$test_dir/comment-prototype.json" --arg content "マージの依頼: $merge_head" \
+		'[$base[0] + {id: "merge-before", author_type: "agent", author_id: "orchestrator", content: $content}] + .' \
+		"$test_dir/comments.json" >"$test_dir/changed.json"
+	mv "$test_dir/changed.json" "$test_dir/comments.json"
+}
+prepare_extra=no_request merged_refuses 'レビュー中（マージの依頼の前）に人間がマージ'
+grep -q '確認した回より後に、確認するコミット（abcdef0）のマージの依頼がない' "$test_dir/err"
+prepare_extra=human_request merged_refuses 'マージの依頼が人間のコメント'
+prepare_extra=rogue_request merged_refuses 'マージの依頼が名簿の外のエージェントのコメント'
+prepare_extra=other_head_request merged_refuses 'マージの依頼が回のコミットと別の head'
+prepare_extra=fenced_request merged_refuses 'マージの依頼がコードの囲みの中'
+prepare_extra=result_request merged_refuses 'マージの依頼が結果のコメント'
+prepare_extra=before_round_request merged_refuses 'マージの依頼が回より前（前の回の依頼）'
+unset prepare_extra
+echo 'PASS no-integration: 確認した回より後のマージの依頼がなければ、マージされても done にせず、理由と知らせを出して止める'
+
+# 依頼として読むもの。名簿のリーダーのコメントと、回で待つ役の制御記録。回の確認するコミットは、接頭辞でも 40 桁でもよい。
+for case in leader control full; do
+	unlinked_scene record
+	case $case in
+	control)
+		drop_request
+		add_comment decide-1 agent monitor $'/note\n返事の待ち: 次の依頼を決めます'
+		add_comment merge-x agent monitor "マージの依頼: $merge_head"$'\n前の回: round-1' ;;
+	full)
+		jq --arg commit "$merge_head" 'map(if .id == "round-1" then .content |= sub("確認するコミット: abcdef0"; "確認するコミット: " + $commit) else . end)' \
+			"$test_dir/comments.json" >"$test_dir/changed.json"
+		mv "$test_dir/changed.json" "$test_dir/comments.json" ;;
+	esac
+	update_pr '.state = "MERGED"'
+	unlinked_run
+	((unlinked_status == 0)) || { echo "FAIL ${case}: 終了コード $unlinked_status" >&2; cat "$test_dir/err" >&2; exit 1; }
+	assert_jq '.status == "done"' "$test_dir/task.json" || { echo "FAIL ${case}: done でない" >&2; cat "$test_dir/err" >&2; exit 1; }
+	rule_gone
+	no_posts
+done
+echo 'PASS no-integration: リーダーの依頼と、待つ役の制御記録の依頼で done にする。回のコミットは 40 桁でもよい'
+
+# 依頼の候補を読めないとき（引用）は、done にも知らせにもせず、規則を残して 1 で終わる。読めるようになれば、次の確認で決める。
+unlinked_scene record
+drop_request
+add_comment merge-x agent orchestrator $'> マージの依頼: '"$merge_head"$'\n> 前の回: round-1'
+update_pr '.state = "MERGED"'
+unlinked_run
+((unlinked_status == 1))
+grep -q '照合できませんでした' "$test_dir/err"
+[[ $(done_calls) == '[]' ]]
+rule_kept
+no_posts
+drop_request
+jq 'map(select(.id != "merge-x"))' "$test_dir/comments.json" >"$test_dir/changed.json"
+mv "$test_dir/changed.json" "$test_dir/comments.json"
+add_comment merge-1 agent orchestrator "マージの依頼: $merge_head"
+unlinked_run
+((unlinked_status == 0))
+assert_jq '.status == "done"' "$test_dir/task.json"
+echo 'PASS no-integration: マージの依頼の候補を読めないときは、規則を残して 1 で終わり、読めれば次の確認で決める'
+
+# 見張りの終わりの知らせは、照合の 1 から 3 だけで書く。マージの依頼は要らない。
+unlinked_scene record "$(stamp -$((71 * 3600 + 60)))"
+drop_request
+unlinked_run
+((unlinked_status == 0))
+assert_jq -s "$notice_filter | length == 1" "$test_dir/posted.jsonl"
+echo 'PASS no-integration: 終わりの知らせは、マージの依頼がなくても書く'
+
+# 名簿は照合の 1 回だけ読み、書く直前の読み直しでは読み直さない。
+unlinked_scene record
+update_pr '.state = "MERGED"'
+unlinked_run
+((unlinked_status == 0))
+assert_jq -s '[.[] | select(.[0:3] == ["squad","member","list"])] | length == 1' "$test_dir/calls.jsonl"
+assert_jq -s '[.[] | select(.[0:3] == ["issue","wakeup","list"])] | length == 2' "$test_dir/calls.jsonl"
+echo 'PASS no-integration: done の前の読み直しで、名簿は読み直さない'
+
+# 照合のあと書く前にデータが変わったら、古い判定では何も書かず、規則を残して 0 で終わる。次の確認で決め直す。
+reread_add() { # ID 作者の種類 作者の ID 本文（読み直しのときに増えるコメント）
+	jq --slurpfile base "$test_dir/comment-prototype.json" --arg id "$1" --arg type "$2" --arg author "$3" --arg content "$4" \
+		'. + [$base[0] + {id: $id, author_type: $type, author_id: $author, content: $content}]' "$test_dir/comments.json" >"$test_dir/comments-on-reread.json"
+}
+reread_drop_request() { jq 'map(select(.id != "merge-1"))' "$test_dir/comments.json" >"$test_dir/comments-on-reread.json"; }
+changed_window() { # 名前
+	((unlinked_status == 0)) || { echo "FAIL $1: 終了コード $unlinked_status" >&2; cat "$test_dir/err" >&2; exit 1; }
+	[[ $(done_calls) == '[]' ]] || { echo "FAIL $1: done にした" >&2; exit 1; }
+	assert_jq '.status == "in_review"' "$test_dir/task.json"
+	assert_jq -s "$not_done_filter | length == 0" "$test_dir/posted.jsonl"
+	no_notice
+	rule_kept
+	assert_jq -s '[.[] | select(.[0:3] == ["issue","wakeup","list"])] | length == 2' "$test_dir/calls.jsonl"
+	grep -q '書かずに規則を残します' "$test_dir/err" || { echo "FAIL $1: 理由を出さない" >&2; cat "$test_dir/err" >&2; exit 1; }
+}
+# done: 別の PR の回が書かれる。次の確認は、確認した回が今の回でないので、知らせを 1 回だけ書く。
+unlinked_scene record
+update_pr '.state = "MERGED"'
+reread_add round-2 agent orchestrator "$(round_body "$other")"
+unlinked_run
+changed_window 'done: 別の PR の回'
+rm -f "$test_dir/rules-read"
+unlinked_run
+((unlinked_status == 0))
+[[ $(done_calls) == '[]' ]]
+assert_jq -s "$not_done_filter | length == 1" "$test_dir/posted.jsonl"
+rule_gone
+# done: マージの依頼がコメントから消える。次の確認で知らせを書く。
+unlinked_scene record
+update_pr '.state = "MERGED"'
+reread_drop_request
+unlinked_run
+changed_window 'done: 依頼が消えた'
+rm -f "$test_dir/rules-read"
+unlinked_run
+assert_jq -s "$not_done_filter | length == 1" "$test_dir/posted.jsonl"
+# done: metadata の PR とマークが別の PR に変わる。
+unlinked_scene record
+update_pr '.state = "MERGED"'
+jq ".metadata.pr_url = \"$other\" | .metadata.pr_link_pending = \"$other\" | .metadata.pr_link_no_integration = \"$other\"" "$test_dir/task.json" >"$test_dir/task-on-reread.json"
+unlinked_run
+changed_window 'done: metadata が変わった'
+# done にしなかったときの知らせ: 依頼が書かれて照合が合う。次の確認で done にする。
+unlinked_scene record
+no_request
+update_pr '.state = "MERGED"'
+reread_add merge-x agent orchestrator "マージの依頼: $merge_head"
+unlinked_run
+changed_window 'not-done: 依頼が書かれた'
+rm -f "$test_dir/rules-read"
+unlinked_run
+((unlinked_status == 0))
+assert_jq '.status == "done"' "$test_dir/task.json"
+no_posts
+# done にしなかったときの知らせ: 理由が変わる（別の PR の回）。次の確認で、新しい理由の知らせを 1 回だけ書く。
+unlinked_scene record
+no_request
+update_pr '.state = "MERGED"'
+reread_add round-2 agent orchestrator "$(round_body "$pr")"
+unlinked_run
+changed_window 'not-done: 回が変わった'
+rm -f "$test_dir/rules-read"
+unlinked_run
+assert_jq -s "$not_done_filter"' | length == 1 and (.[0].body | contains("確認した回（round-1）が今の回（round-2）と違う"))' "$test_dir/posted.jsonl"
+# 終わりの知らせ: 別の PR の回が書かれる。次の確認は照合が合わないので、書かない。
+unlinked_scene record "$(stamp -$((71 * 3600 + 60)))"
+reread_add round-2 agent orchestrator "$(round_body "$other")"
+unlinked_run
+changed_window 'end: 別の PR の回'
+rm -f "$test_dir/rules-read"
+unlinked_run
+((unlinked_status == 0))
+no_notice
+echo 'PASS no-integration: 照合のあと書く前に回・依頼・metadata が変わったら、何も書かず規則を残し、次の確認で決め直す'
+
+# 書く直前の読み直しで、コメントを読めなければ、何も書かず規則を残して 1 で終わる。読めるようになれば決め直す。
+for write in done not-done end; do
+	case $write in
+	end) unlinked_scene record "$(stamp -$((71 * 3600 + 60)))" ;;
+	*) unlinked_scene record; update_pr '.state = "MERGED"' ;;
+	esac
+	if [[ $write == not-done ]]; then no_request; fi
+	echo 'issue comment list' >"$test_dir/fail-on-reread"
+	unlinked_run
+	((unlinked_status == 1)) || { echo "FAIL ${write}: 終了コード $unlinked_status" >&2; cat "$test_dir/err" >&2; exit 1; }
+	grep -q '書く直前の読み直しで' "$test_dir/err"
+	[[ $(done_calls) == '[]' ]]
+	assert_jq '.status == "in_review"' "$test_dir/task.json"
+	assert_jq -s "$not_done_filter | length == 0" "$test_dir/posted.jsonl"
+	no_notice
+	rule_kept
+	rm -f "$test_dir/fail" "$test_dir/rules-read"
+	unlinked_run
+	((unlinked_status == 0))
+	case $write in
+	done) assert_jq '.status == "done"' "$test_dir/task.json" ;;
+	not-done) assert_jq -s "$not_done_filter | length == 1" "$test_dir/posted.jsonl" ;;
+	end) assert_jq -s "$notice_filter | length == 1" "$test_dir/posted.jsonl" ;;
+	esac
+done
+echo 'PASS no-integration: 書く直前の読み直しで読めないものがあれば、何も書かず規則を残して 1 で終わる'
 
 # 照合が合わないときは、71 時間を過ぎても終わりの知らせを書かない。標準エラーに理由を出し、CI とコンフリクトの行は今のままにする。
 for case in line round latest; do
