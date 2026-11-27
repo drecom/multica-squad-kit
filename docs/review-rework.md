@@ -742,7 +742,7 @@ git diff origin/<base>...HEAD
 
 `lib/extensions.sh` と、メンバーの一覧の箇所には、大きさのテストがない。前者は引数そのものがなく、拡張のテストには包みがない。後者は人数が数百人になって初めて起きる大きさの問題で、偽の CLI に大きな一覧を作る費用に見合わない。
 
-Linux での確認は、CI の `scripts (ubuntu-24.04, 1/2)`・`2/2`・`checks-passed` を読む。手元の macOS では、包みを入れた状態で `setup-runtimes-both` の 3 本を流す。
+Linux での確認は、CI の `scripts (ubuntu-24.04, 1/3)`・`2/3`・`3/3`・`checks-passed` を読む。手元の macOS では、包みを入れた状態で `setup-runtimes-both` の 3 本を流す。
 
 包みを入れた状態で、セットアップと偽の一覧が上の決まりに従っていなければ 3 本が落ち、従っていれば通る。そのため、包みは Linux の失敗を再現していると分かる。Docker の `ubuntu:24.04` で流す方法もあるが、jq と Python の用意が要るので必須にしない。
 

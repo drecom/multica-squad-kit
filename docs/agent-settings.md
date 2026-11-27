@@ -396,14 +396,14 @@ custom_env、引数、設定は、役の次の実行から効く。デーモン�
 | `tests/host-test.sh` | キットのキーの人の値を上書きして警告すること。「やめたキー」を消し、キットの項目だけを消すこと |
 | `tests/host-test.sh` | 変わらなければ書かず、書くときは権限を 600 にすること |
 | `tests/host-test.sh` | シンボリックリンク、壊れた JSON、`permissions`・deny・`pluginConfigs` の形の違いで、書かずに止まること |
-| `tests/host-test.sh` | Codex の検証が、0 で進み、0 以外で止まり、古い Codex で警告して進むこと。マークのない設定にキーがないとき警告すること |
+| `tests/host-test.sh`・`tests/host-config-test.sh`・`tests/host-timeout-test.sh` | Codex の検証が、0 で進み、0 以外で止まり、古い Codex で警告して進むこと。マークのない設定にキーがないとき警告すること |
 | `tests/codex-check-test.sh` | 差し替えた送る処理・状態・回収・時計で、上限の直後・TERM の直前・猶予の間・KILL の直前・状態を読む間の終了を起こし、どの順でも表の結果になること |
 | `tests/codex-check-test.sh` | 送った結果の成功・ESRCH・EPERM・ほかの失敗と、`ps` の失敗で、EPERM を停止済みと読まず、状態の読み取りで分けること。期限で終わり、例外でも直接の子の回収を試みること |
 | `tests/codex-check-test.sh` | KILL を TERM から 5 秒より前に送らず、最後の確認の前に直接の子を回収せず、回収のあとにグループへ送らないこと |
-| `tests/host-test.sh` | 実際のプロセスの 6 通り（親の終了・無視と子孫のなし・終了処理・無視）で、猶予を待ち、子孫の終了処理を最後まで残し、実行中のプロセスを残さないこと |
-| `tests/host-test.sh` | 親だけ、子孫だけがゾンビのグループで、例外で落ちず、時間切れの警告で進むこと。macOS では signal 0・TERM・KILL の EPERM を確認し、Linux では観測した結果をログに出すこと |
-| `tests/host-test.sh` | 子孫の PID を親が記録して数値かを確認し、生存を `ps` の状態で読んでゾンビと実行中を分けること。別のグループの対照のプロセスが残ること |
-| `tests/host-test.sh` | 停止を確認できないとき、設定の誤りや python3 の不足と別の診断で止まること |
+| `tests/host-timeout-test.sh` | 実際のプロセスの 6 通り（親の終了・無視と子孫のなし・終了処理・無視）で、猶予を待ち、子孫の終了処理を最後まで残し、実行中のプロセスを残さないこと |
+| `tests/host-timeout-test.sh` | 親だけ、子孫だけがゾンビのグループで、例外で落ちず、時間切れの警告で進むこと。macOS では signal 0・TERM・KILL の EPERM を確認し、Linux では観測した結果をログに出すこと |
+| `tests/host-timeout-test.sh` | 子孫の PID を親が記録して数値かを確認し、生存を `ps` の状態で読んでゾンビと実行中を分けること。別のグループの対照のプロセスが残ること |
+| `tests/host-timeout-test.sh` | 停止を確認できないとき、設定の誤りや python3 の不足と別の診断で止まること |
 | `tests/project-create-test.sh`・`tests/project-runtimes-test.sh`・`tests/project-runtimes-first-test.sh` | Claude のモデルの役にだけ 3 つの変数が付き、Codex の役にだけ上限の引数が付き、ランタイムを替えると外れること |
 
 実機では、認証済みのデーモンで、同じプロジェクトのセットアップを流し直してから次を確認する。`--settings` ではなく設定ディレクトリの `settings.json` で効くことを、ここで確認する。戻し方は[戻し方](#戻し方)にある。

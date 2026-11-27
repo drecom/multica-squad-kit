@@ -6,6 +6,7 @@ import itertools
 import os
 from pathlib import Path
 import signal
+import select
 import subprocess
 import sys
 
@@ -146,10 +147,16 @@ for target, expected in (('wrapper', 125), ('parent', -9), ('term', 143)):
         wrapper, child = map(int, stream.readline().split())
         with notice.open('rb') as entered:
             assert entered.read(1) == b'x'
-        os.kill(wrapper if target == 'wrapper' else proc.pid, signal.SIGTERM if target == 'term' else signal.SIGKILL)
+        victim = wrapper if target == 'wrapper' else proc.pid
+        os.kill(victim, signal.SIGTERM if target == 'term' else signal.SIGKILL)
         assert stream.read() == b''
     finish(proc, case, expected)
     no_process(wrapper, child)
+    if target != 'term':
+        # SIGKILL されたプロセスは、スタックの名前を取り下げられず、名前が残る。残った名前はここで消し、
+        # tty-session-test.sh が、スタックの場所に名前が 1 つも残らないことを確認できるようにする。
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(Path(os.environ['SQUAD_KIT_TEST_STACK_DIR']) / str(victim))
 print('PASS tty-session T12/T13/T14: 包み・親の終了と補助への TERM で子を残さない', flush=True)
 
 spec = importlib.util.spec_from_file_location('tty_session', helper)
@@ -172,12 +179,13 @@ original_read, original_write = os.read, os.write
 owner = os.getpid()
 
 
-def inline(code, *, scripted=None, answer=None, fds=('in', 'out', 'err')):
+def inline(code, *, scripted=None, answer=None, fds=('in', 'out', 'err'), command=None):
     global last_diagnostic, last_pid_path
     case = scratch / str(next(counter))
     case.mkdir()
     pid_path = last_pid_path = case / 'pid'
     (case / 'command.py').write_text(f'import os\nopen({str(pid_path)!r},"w").write(str(os.getpid()))\n' + code)
+    command = command or [sys.executable, str(case / 'command.py')]
     script = None
     if scripted:
         script = case / 'script'
@@ -186,10 +194,14 @@ def inline(code, *, scripted=None, answer=None, fds=('in', 'out', 'err')):
     if answer is not None:
         input_path = case / 'input'
         input_path.write_bytes(answer)
+    # 時間切れの記録の登録（run() の始めの register_stack）が開くファイルを、比べる fd に数えない。
+    # run() は終わるときに名前を取り下げ、書き先を /dev/null の 1 つの fd に替えて残すので、比べる前も同じ状態にそろえる。
+    getattr(module, 'register_stack', lambda: None)()
+    getattr(module, 'withdraw_stack', lambda: None)()
     before = set(os.listdir('/dev/fd'))
     diagnostic = io.StringIO()
     with contextlib.redirect_stderr(diagnostic):
-        result = module.run([sys.executable, str(case / 'command.py')], output=str(case / 'out'), error=str(case / 'err'), script=script, input_file=input_path, fds=fds)
+        result = module.run(command, output=str(case / 'out'), error=str(case / 'err'), script=script, input_file=input_path, fds=fds)
     last_diagnostic = diagnostic.getvalue()
     assert set(os.listdir('/dev/fd')) == before
     if pid_path.exists():
@@ -324,6 +336,69 @@ foreground = [i for i, e in enumerate(events) if e[0] == 'tcsetpgrp']
 assert [events[i][2] for i in foreground] == [str(command)] and foreground[0] > index, events
 print('PASS tty-session T26: C を作る setpgid は包みの 1 回だけで、前面にする前に済む', flush=True)
 
+# 子の終了の SIGCHLD が、Python のハンドラが自己パイプへ書く前に届き、通知が読まれない順序を、FIFO で作る。
+# コマンドは fd 9（保持）を閉じてから、ケースが作った FIFO の 1 行を読んで終わる。子は FIFO に書かれるまで終わらない。
+# 包みの select のうち、見張る fd が 2 本（制御と通知）だけで、子がまだ回収されていない最初の呼び出しを差し替える。
+# exec と保持のパイプは、それより前の呼び出しで終わりを読んで外れている。差し替えた呼び出しでは、SIGCHLD の
+# Python のハンドラを、自己パイプへ書かず専用のパイプへ書くものに替え、FIFO に書いて子を終わらせ、子がゾンビになるのを
+# waitid で待つ。専用のパイプの 1 バイトを読めば、SIGCHLD が届いてハンドラが動いたことを、時計なしで確認できる。
+# 元のハンドラに戻してから、本物の select を同じ fd・期限 0 で呼び、見張った fd の数と読めた fd を記録する。
+# 読めなければ、本物の select なら全 fd が待ちのまま止まる場所なので、空を返す。
+# 続けて、次の waitpid が WNOHANG を付けたかと、子を返したかを記録する。
+original_select = select.select
+gate = fifo('T27-child')
+record_file = scratch / 'T27-record'
+intercepted, waited = [], []
+
+
+def gated_select(readers, writers, errors, *timeout):
+    caller = sys._getframe(1)
+    if (os.getpid() == owner or caller.f_code.co_name != 'wrapper' or intercepted or len(readers) != 2
+            or not caller.f_locals.get('child') or caller.f_locals.get('child_reaped')):
+        return original_select(readers, writers, errors, *timeout)
+    intercepted.append(True)
+    notified, control = caller.f_locals['changed_r'], caller.f_locals['control_r']
+    assert sorted(readers) == sorted((notified, control)), ('T27: 見張る fd が制御と通知でない', readers)
+    while original_select([notified], [], [], 0)[0]:
+        os.read(notified, 4096)
+    arrived_r, arrived_w = os.pipe()
+    previous = signal.signal(signal.SIGCHLD, lambda *_: original_write(arrived_w, b'x'))
+    try:
+        with gate.open('wb', buffering=0) as stream:
+            stream.write(b'go\n')
+        os.waitid(os.P_PID, caller.f_locals['child'], os.WEXITED | os.WNOWAIT)
+        assert os.read(arrived_r, 1) == b'x'
+    finally:
+        signal.signal(signal.SIGCHLD, previous)
+        os.close(arrived_r)
+        os.close(arrived_w)
+    ready = original_select(readers, writers, errors, 0)
+    names = [name for fd, name in ((notified, 'notified'), (control, 'control')) if fd in ready[0]]
+    with record_file.open('a') as stream:
+        stream.write(f'select watched={len(readers)} readable={",".join(names) or "none"}\n')
+    return ready if names else ([], [], [])
+
+
+def recorded_waitpid(pid, flags):
+    result = original_waitpid(pid, flags)
+    if (os.getpid() != owner and intercepted and not waited
+            and sys._getframe(1).f_code.co_name == 'wrapper'):
+        waited.append(True)
+        with record_file.open('a') as stream:
+            stream.write(f'waitpid nohang={"yes" if flags & os.WNOHANG else "no"} reaped={"yes" if result[0] else "no"}\n')
+    return result
+
+
+select.select, os.waitpid = gated_select, recorded_waitpid
+try:
+    result = inline('', command=['sh', '-c', 'exec 9>&-; read _ < "$1"', 'sh', str(gate)])[0]
+finally:
+    select.select, os.waitpid = original_select, original_waitpid
+recorded = record_file.read_text() if record_file.exists() else ''
+assert recorded == 'select watched=2 readable=notified\nwaitpid nohang=no reaped=yes\n' and result == 0, \
+    ('T27: 子の終了の通知が自己パイプで読めない', result, recorded)
+print('PASS tty-session T27: 見張る fd が 2 本の select の前に子が終わっても、通知が読めて、待って回収し 0 を返す', flush=True)
+
 proc, case = launch('''import os,fcntl,termios,struct,signal
 changed=False
 def winch(*_):
@@ -346,3 +421,227 @@ assert proc.returncode == 125 and watch.read_bytes() == b''
 proc, case = launch('import os\nos.write(1,b"\\x1e"+b"x"*32+b":0\\x1f")')
 assert finish(proc, case)[0] == b'\x1e' + b'x' * 32 + b':0\x1f'
 print('PASS tty-session T21/T24/T25: WINCH、未知の台本を起動前に拒否、異なる nonce は出力', flush=True)
+
+
+# 「スタックの書き出し」（docs/ci-timeouts.md）の状態の表を、「何もしない」と「起きない」を除くセルごとに確認する。
+# 失敗は、open・os.rename・os.unlink・faulthandler.register の差し替えで起こす。ケースごとに fork し、登録と環境を持ち越さない。
+# 見るのは、操作のあとに自分へ送った SIGUSR2 で止まらないこと、操作のあとに開いた別のファイルへ書かれないこと、
+# 残る名前、書き先がいつも開いたままのファイルであること、fork の子のスタックが親の PID のファイルに入らないことである。
+import builtins
+import faulthandler
+import tempfile
+import traceback
+
+real_open, real_rename, real_unlink, real_register = builtins.open, os.rename, os.unlink, faulthandler.register
+
+
+class BrokenMark:
+    """一時のファイルの包み。印は書けるが、flush が失敗し、close は閉じたあとに失敗する（flush だけの失敗も作る）。"""
+
+    def __init__(self, inner, close_fails):
+        self._inner, self._close_fails = inner, close_fails
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+    def flush(self):
+        raise OSError('injected flush failure')
+
+    def close(self):
+        self._inner.close()
+        if self._close_fails:
+            raise OSError('injected close failure')
+
+
+class Injection:
+    """表の失敗の種類ごとに、開く・改名・消す・登録を失敗させる。"""
+
+    def __init__(self, kind):
+        self.kind = kind
+        self.temporary = []
+        self.null_registrations = 0
+
+    def fails_register(self, file):
+        name = os.fspath(getattr(file, 'name', ''))
+        if self.kind in ('step1', 'withdraw-point'):
+            return name == os.devnull
+        if self.kind == 'step3':
+            return os.path.basename(name).startswith('registering-')
+        if self.kind == 'restore' and name == os.devnull:
+            self.null_registrations += 1
+            return self.null_registrations > 1  # 手順 1 の /dev/null へは替えられ、戻すときだけ失敗する
+        return False
+
+    def __enter__(self):
+        injection = self
+
+        def patched_open(path, *args, **kwargs):
+            name = os.fspath(path) if isinstance(path, (str, os.PathLike)) else ''
+            if (injection.kind == 'null-open' and name == os.devnull) or \
+               (injection.kind == 'step2' and os.path.basename(name).startswith('registering-')):
+                raise OSError('injected open failure')
+            opened = real_open(path, *args, **kwargs)
+            if os.path.basename(name).startswith('registering-'):
+                if injection.kind in ('mark', 'mark-flush'):
+                    opened = BrokenMark(opened, injection.kind == 'mark')
+                injection.temporary.append(opened)
+            return opened
+
+        def patched_rename(*_):
+            raise OSError('injected rename failure')
+
+        def patched_unlink(*_):
+            raise OSError('injected unlink failure')
+
+        def patched_register(signum, *, file, all_threads):
+            if injection.fails_register(file):
+                raise RuntimeError('injected register failure')
+            return real_register(signum, file=file, all_threads=all_threads)
+
+        builtins.open = patched_open
+        faulthandler.register = patched_register
+        if self.kind in ('step4', 'restore'):
+            os.rename = patched_rename
+        if self.kind == 'unlink':
+            os.unlink = patched_unlink
+        return self
+
+    def __exit__(self, *_):
+        builtins.open, os.rename, os.unlink, faulthandler.register = real_open, real_rename, real_unlink, real_register
+
+
+def load_cell_module():
+    spec = importlib.util.spec_from_file_location('tty_session_cell', helper)
+    loaded = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(loaded)
+    return loaded
+
+
+def forked(body):
+    """子で body を流し、失敗したら例外を出して親へ伝える。"""
+    child = os.fork()
+    if child == 0:
+        try:
+            body()
+        except BaseException:
+            traceback.print_exc()
+            os._exit(1)
+        os._exit(0)
+    _, status = os.waitpid(child, 0)
+    assert status == 0, ('ケースの子が失敗した', status)
+
+
+def cell_body(label, state, operation, kind, expect):
+    faulthandler.unregister(signal.SIGUSR2)  # 登録のない状態から始める
+    directory = tempfile.mkdtemp(dir=scratch)
+    os.environ['SQUAD_KIT_TEST_STACK_DIR'] = directory
+    module_ = load_cell_module()
+    if state != 'none':
+        module_.register_stack()
+        assert os.listdir(directory) == [str(os.getpid())], (label, os.listdir(directory))
+    if state in ('withdrawn', 'stuck'):
+        with Injection('withdraw-point') if state == 'stuck' else contextlib.nullcontext():
+            module_.withdraw_stack()
+        assert os.listdir(directory) == [], (label, os.listdir(directory))
+    if state == 'forked':
+        parent = os.getpid()
+        parent_file = os.path.join(directory, str(parent))
+        forked(lambda: cell_checks(label, directory, module_, operation, kind, expect, parent))
+        return
+    cell_checks(label, directory, module_, operation, kind, expect, None)
+
+
+def cell_checks(label, directory, module_, operation, kind, expect, parent):
+    previous = module_.stack_target
+    with (Injection(kind) if kind else contextlib.nullcontext()) as injection:
+        getattr(module_, operation)()
+    own = str(os.getpid())
+    assert sorted(os.listdir(directory)) == sorted(
+        {'own': own, 'parent': str(parent)}[token] for token in expect['names']), (label, os.listdir(directory))
+    target = module_.stack_target
+    # 書き先は、いつもこのプロセスが開いたままのファイルである。
+    assert target is None or not target.closed, (label, '書き先が閉じている')
+    wanted = expect['target']
+    assert {
+        'none': target is None,
+        'null': target is module_.stack_null,
+        'previous': target is previous and previous is not None,
+        'new': target is not None and target is not previous and target is not module_.stack_null,
+    }[wanted], (label, wanted, target)
+    if expect.get('previous_closed') is not None:
+        assert previous.closed == expect['previous_closed'], (label, '前の書き先の閉じ方')
+    if kind in ('step2', 'step3', 'step4', 'mark', 'mark-flush') and injection.temporary:
+        assert all(f.closed for f in injection.temporary), (label, '一時のファイルが開いたまま')
+    if kind == 'restore':
+        assert injection.temporary and target is injection.temporary[-1] and not target.closed, (label, '一時のファイルを持たない')
+    if expect['registered'] is False:
+        assert not faulthandler.unregister(signal.SIGUSR2), (label, '登録が残っている')
+        assert not os.listdir(directory)
+        return
+    if expect['signal']:
+        # 操作のあとに開いた別のファイルは、閉じた書き先の番号を使うことがある。遅れた SIGUSR2 は、そこへ書かない。
+        other = real_open(os.path.join(tempfile.mkdtemp(dir=scratch), 'other'), 'wb')
+        os.kill(os.getpid(), signal.SIGUSR2)
+        assert os.path.getsize(other.name) == 0, (label, '別のファイルへ書かれた')
+        other.close()
+        published = os.path.join(directory, own)
+        mark = f'{own} {os.getppid()} {os.getpgrp()} {os.getsid(0)}\n'.encode()
+        if expect['stack'] == 'held':
+            # 名前を消した一時のファイルを書き先として持つ。読めないので、印のあとに書かれた大きさで見る。
+            assert os.fstat(target.fileno()).st_size > len(mark), (label, 'スタックが書かれない')
+        elif expect['stack'] == 'own':
+            lines = Path(published).read_text().splitlines()
+            assert lines[0].split()[0] == own and any('File "' in line for line in lines[1:]), (label, lines)
+        elif os.path.exists(published):
+            assert len(Path(published).read_text().splitlines()) == 1, (label, 'スタックが入った')
+    if parent is not None:
+        # 子のスタックは、親の PID のファイルに入らない。
+        lines = Path(directory, str(parent)).read_text().splitlines()
+        assert len(lines) == 1 and lines[0].split()[0] == str(parent), (label, lines)
+
+
+cells = []
+
+
+def cell(row, column, state, operation, kind, **expect):
+    expect.setdefault('registered', None)
+    expect.setdefault('signal', True)
+    expect.setdefault('stack', 'none')
+    label = f'{row} × {column}'
+    forked(lambda: cell_body(label, state, operation, kind, expect))
+    cells.append(label)
+    print(f'PASS tty-session 表のセル: {label}', flush=True)
+
+
+COLUMNS = {'none': '登録なし', 'withdrawn': '取り下げ済み', 'stuck': '取り下げで替えられなかった', 'forked': 'fork の直後の子'}
+published = dict(names=['own'], stack='own', target='new')
+cell('登録: 成功', COLUMNS['none'], 'none', 'register_stack', None, **published)
+cell('登録: 成功', COLUMNS['withdrawn'], 'withdrawn', 'register_stack', None, previous_closed=False, **published)
+cell('登録: 成功', COLUMNS['stuck'], 'stuck', 'register_stack', None, previous_closed=True, **published)
+cell('登録: 成功', COLUMNS['forked'], 'forked', 'register_stack', None, previous_closed=True, names=['parent', 'own'], stack='own', target='new')
+cell('登録: /dev/null を開けない', COLUMNS['none'], 'none', 'register_stack', 'null-open', names=[], signal=False, target='none', registered=False)
+cell('登録: 手順 1 で替えられない', COLUMNS['none'], 'none', 'register_stack', 'step1', names=[], signal=False, target='none', registered=False)
+cell('登録: 手順 1 で替えられない', COLUMNS['withdrawn'], 'withdrawn', 'register_stack', 'step1', names=[], target='previous', previous_closed=False)
+cell('登録: 手順 1 で替えられない', COLUMNS['stuck'], 'stuck', 'register_stack', 'step1', names=[], target='previous', previous_closed=False)
+cell('登録: 手順 1 で替えられない', COLUMNS['forked'], 'forked', 'register_stack', 'step1', names=['parent'], signal=False, target='previous', previous_closed=False)
+for failure in ('step2', 'step3', 'step4'):
+    row = f'登録: 手順 2 から 4 のどれかに失敗（{failure}）'
+    cell(row, COLUMNS['none'], 'none', 'register_stack', failure, names=[], target='null')
+    cell(row, COLUMNS['withdrawn'], 'withdrawn', 'register_stack', failure, names=[], target='null', previous_closed=False)
+    cell(row, COLUMNS['stuck'], 'stuck', 'register_stack', failure, names=[], target='null', previous_closed=True)
+    cell(row, COLUMNS['forked'], 'forked', 'register_stack', failure, names=['parent'], target='null', previous_closed=True)
+for failure, label in (('mark-flush', 'flush が失敗'), ('mark', 'flush と close が失敗')):
+    row = f'登録: 開いたあとに登録印を書けない（{label}）'
+    cell(row, COLUMNS['none'], 'none', 'register_stack', failure, names=[], target='null')
+    cell(row, COLUMNS['withdrawn'], 'withdrawn', 'register_stack', failure, names=[], target='null', previous_closed=False)
+    cell(row, COLUMNS['stuck'], 'stuck', 'register_stack', failure, names=[], target='null', previous_closed=True)
+    cell(row, COLUMNS['forked'], 'forked', 'register_stack', failure, names=['parent'], target='null', previous_closed=True)
+row = '登録: 失敗し、/dev/null へも戻せない'
+cell(row, COLUMNS['none'], 'none', 'register_stack', 'restore', names=[], target='new', stack='held')
+cell(row, COLUMNS['withdrawn'], 'withdrawn', 'register_stack', 'restore', names=[], target='new', previous_closed=False, stack='held')
+cell(row, COLUMNS['stuck'], 'stuck', 'register_stack', 'restore', names=[], target='new', previous_closed=True, stack='held')
+cell(row, COLUMNS['forked'], 'forked', 'register_stack', 'restore', names=['parent'], target='new', previous_closed=True, stack='held')
+cell('取り下げ: 成功', '公開済み', 'published', 'withdraw_stack', None, names=[], target='null', previous_closed=True)
+cell('取り下げ: 替えられない', '公開済み', 'published', 'withdraw_stack', 'withdraw-point', names=[], target='previous', previous_closed=False)
+cell('取り下げ: 名前を消せない', '公開済み', 'published', 'withdraw_stack', 'unlink', names=['own'], target='null', previous_closed=True)
+print(f'PASS tty-session 表のセル: {len(cells)} 件', flush=True)

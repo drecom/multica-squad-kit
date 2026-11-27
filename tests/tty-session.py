@@ -1,6 +1,7 @@
 """単一端末でコマンドを動かし、包みの終端マークを受領して回収する。"""
 import argparse
 import errno
+import faulthandler
 import fcntl
 import os
 from pathlib import Path
@@ -13,6 +14,102 @@ import termios
 
 HOLD_FD = 9
 CSI = re.compile(rb'\x1b\[[0-?]*[ -/]*[@-~]')
+stack_target = None  # faulthandler が SIGUSR2 を受けて書くファイル。このプロセスが開いたまま持つ
+stack_null = None  # /dev/null。登録の前に開き、プロセスが終わるまで閉じない
+stack_name = None  # 公開した (PID, 名前のパス)
+
+
+def point_stack(new):
+    """SIGUSR2 の書き先を `new` へ替える。書き先を替えて前の書き先を閉じるのは、ここだけである。
+
+    登録は外さない。外すと SIGUSR2 は既定の動作（終了）に戻り、遅れて届いた SIGUSR2 で止まる。
+    閉じたファイルの番号は後から開いた別のファイルに使われ、遅れた SIGUSR2 がそこへ書くので、
+    前の書き先を閉じるのは、替えられたあとだけにする。替えられなければ、前の書き先を開いたまま持つ。
+    `faulthandler.register` を呼ぶのも、ここだけである。
+    """
+    global stack_target
+    try:
+        faulthandler.register(signal.SIGUSR2, file=new, all_threads=True)
+    except (OSError, ValueError, RuntimeError):
+        return False
+    previous, stack_target = stack_target, new
+    if previous is not None and previous is not new and previous is not stack_null:
+        try:
+            previous.close()
+        except OSError:
+            pass
+    return True
+
+
+def register_stack():
+    """時間切れの記録のため、SIGUSR2 を受けたら、自分の PID の名前のファイルへスタックを書くよう登録する。
+
+    SQUAD_KIT_TEST_STACK_DIR（tests/run-one.sh が渡す）があるときだけ動く。手順は docs/ci-timeouts.md の「スタックの書き出し」。
+    1. /dev/null を持ち、書き先を /dev/null へ替える。fork の子は、これで親のファイルから離れる
+    2. `registering-<PID>` を開き、先頭に印（PID・親・グループ・セッション）を書く
+    3. 書き先をそのファイルへ替える
+    4. `<PID>` へ改名して公開する。送る側は PID の名前のファイルだけを見るので、登録の途中のプロセスへは送らない
+    5. 2 から 4 に失敗したら、書き先を /dev/null へ戻し、一時のファイルを閉じて名前を消す。
+       戻せなければ、一時のファイルを書き先として開いたまま持ち、名前だけを消す
+    記録のための補助なので、登録に失敗しても動作は変えない。
+    """
+    global stack_null, stack_name
+    directory = os.environ.get('SQUAD_KIT_TEST_STACK_DIR')
+    pid = os.getpid()
+    if not directory or (stack_name or (None,))[0] == pid:
+        return
+    if stack_null is None:
+        try:
+            stack_null = open(os.devnull, 'wb')
+        except OSError:
+            return
+    if not point_stack(stack_null):
+        return
+    temporary = os.path.join(directory, f'registering-{pid}')
+    published = os.path.join(directory, str(pid))
+    opened = None
+    try:
+        opened = open(temporary, 'wb')
+        opened.write(f'{pid} {os.getppid()} {os.getpgrp()} {os.getsid(0)}\n'.encode())
+        opened.flush()
+        if not point_stack(opened):
+            raise OSError('SIGUSR2 の書き先を替えられない')
+        os.rename(temporary, published)
+    except OSError:
+        if opened is not None and stack_target is opened:
+            point_stack(stack_null)
+        if opened is not None and stack_target is not opened:
+            try:
+                opened.close()  # 書きかけの印を書き出して閉じるので、ここでも入出力エラーが出る
+            except OSError:
+                pass
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+        return
+    stack_name = (pid, published)
+
+
+def withdraw_stack():
+    """正常に終わる前に、自分の PID の名前を取り下げる。書き先を /dev/null に替え、名前を消す。
+
+    登録は外さない（point_stack の説明）。送る側の最後の確認と送信の間に取り下げられても、
+    遅れた SIGUSR2 は /dev/null へ書かれ、終わるテストのプロセスは止まらない。替えられなければ、
+    今のファイルを開いたまま持つ。名前を消せなければ名前が残り、同じプロセスが次に登録すると改名で置き換える。
+    fork の子（親の登録を引き継いだだけ）は、公開した PID が自分のときだけ動き、親の名前を消さない。
+    `os._exit` は atexit を呼ばないので、終わる直前に明示して呼ぶ。KILL などで正常に終わらなかったプロセスの名前は残る。
+    """
+    global stack_name
+    if stack_name is None or stack_name[0] != os.getpid():
+        return
+    _, published = stack_name
+    stack_name = None
+    point_stack(stack_null)
+    try:
+        os.unlink(published)
+    except OSError:
+        pass
 
 
 def write_all(fd, value):
@@ -79,7 +176,10 @@ def wrapper(master, slave, status_r, status_w, control_r, control_w, targets, co
         close(master)
         close(status_r)
         close(control_w)
+        # 閉じた番号は、次に開くファイル（スタックの登録）が使う。終わりの片付けで閉じ直さない。
+        descriptors.difference_update((master, status_r, control_w))
         os.setsid()
+        register_stack()  # 別のセッションへ移ったあとに公開する。移る前は、親と同じセッションの印で診断が包みへも届く
         fcntl.ioctl(slave, termios.TIOCSCTTY, 0)
         for sig in (signal.SIGHUP, signal.SIGTTOU, signal.SIGTTIN, signal.SIGTERM):
             signal.signal(sig, signal.SIG_IGN)
@@ -97,6 +197,9 @@ def wrapper(master, slave, status_r, status_w, control_r, control_w, targets, co
                 pass
 
         signal.signal(signal.SIGCHLD, changed)
+        # SIGCHLD が届くと、インタプリタの C のハンドラが自己パイプへ書く。
+        # Python のハンドラが動く前に届いた SIGCHLD でも、select が返る。
+        signal.set_wakeup_fd(changed_w, warn_on_full_buffer=False)
         child = os.fork()
         if child == 0:
             try:
@@ -115,6 +218,8 @@ def wrapper(master, slave, status_r, status_w, control_r, control_w, targets, co
                 for target, source in enumerate(targets):
                     os.dup2(source, target)
                 os.dup2(held_w, HOLD_FD, inheritable=True)
+                # スタックの書き先と /dev/null も、ここで閉じる。C は登録せず PID の名前がないので、SIGUSR2 は送られない。
+                # exec で登録も消えるので、この閉じ方は書き先の条件の例外にする（docs/ci-timeouts.md の「スタックの書き出し」）。
                 for name in os.listdir('/dev/fd'):
                     fd = int(name)
                     if fd > 2 and fd not in (HOLD_FD, exec_w):
@@ -197,6 +302,7 @@ def wrapper(master, slave, status_r, status_w, control_r, control_w, targets, co
         write_all(slave, b'\x1e' + nonce + b':' + str(child_status).encode() + b'\x1f')
         os.read(control_r, 1)
     finally:
+        signal.set_wakeup_fd(-1)
         signal.signal(signal.SIGCHLD, signal.SIG_DFL)
         try:
             if not termination_sent:
@@ -240,6 +346,7 @@ def run(command, *, fds=('in', 'out', 'err'), output, error, input_file=None,
         raise InterruptedSession()
 
     try:
+        register_stack()
         signal.signal(signal.SIGTERM, interrupted)
         for path in (output, error):
             handles.append(open(path, 'w+b'))
@@ -262,9 +369,11 @@ def run(command, *, fds=('in', 'out', 'err'), output, error, input_file=None,
             try:
                 wrapper(master, slave, status_r, status_w, control_r, control_w,
                         targets, command, nonce, watch)
+                withdraw_stack()
                 os._exit(0)
             except BaseException as failure:
                 print(f'tty-session: wrapper: {type(failure).__name__}: {failure}', file=sys.stderr)
+                withdraw_stack()
                 os._exit(125)
         close(slave)
         slave = None
@@ -364,6 +473,7 @@ def run(command, *, fds=('in', 'out', 'err'), output, error, input_file=None,
         for handle in handles:
             handle.close()
         signal.signal(signal.SIGTERM, old_term)
+        withdraw_stack()
     return result
 
 

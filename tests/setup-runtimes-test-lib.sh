@@ -102,6 +102,17 @@ STUB
  export TEMPLATE_STATE_ROOT="$scenario_dir/answers" TEMPLATE_AGENT_HOME="$scenario_dir/host" TEMPLATE_DAEMON_ID_FILE="$scenario_dir/daemon.id"
  unset MULTICA_SERVER_URL MULTICA_WORKSPACE_ID USAGE_CHECK_RUNTIMES
  printf '\n1\nRuntime test\ndemo\n1\nowner\n1\n%s\n0\n2\nyes\n' "$choice" >"$scenario_dir/input"
+ if [[ $runtime_part == issues ]]; then
+  # 最後の起票に失敗しても登録済みの完了を表示し、入口の終了コードを 0 以外にする。初回の入口で失敗させ、登録済みの状態を作る。
+  # 初回の登録の全体の確認は main と changes が通すので、ここでは通さない。
+  printf '%s\n' 'スクワッドの動きを試す' >"$scenario_dir/fail-issue"
+  if /bin/bash "$test_dir/package/setup.sh" <"$scenario_dir/input" >"$scenario_dir/out" 2>"$scenario_dir/err"; then exit 1; fi
+  assert_no_rejected_calls
+  grep -q '^✔ ' "$scenario_dir/out"
+  grep -qF '  ✖ スクワッドの動きを試す  タスクを作れませんでした。' "$scenario_dir/out"
+  jq -e '.issues|length==3' "$scenario_dir/db.json" >/dev/null
+  rm "$scenario_dir/fail-issue"
+ else
  /bin/bash "$test_dir/package/setup.sh" <"$scenario_dir/input" >"$scenario_dir/out" 2>"$scenario_dir/err"
  assert_no_rejected_calls
  grep -q '^✔ ' "$scenario_dir/out"
@@ -207,6 +218,7 @@ expected = [r + (' auth status' if r == 'claude' else ' login status') for r in 
 assert calls == expected, calls
 (scenario / 'first-db.json').write_text(json.dumps(db))
 PY
+ fi
  # 旧回答も含め、同じ設定の再実行で登録・割り当てを増やさない。
  if [[ $selected == both && $runtime_part != issues ]]; then
   jq 'del(.runtimes)' "$TEMPLATE_STATE_ROOT/ws-a/demo.json" >"$scenario_dir/old-answer"
@@ -234,17 +246,8 @@ PY
  ! jq -es 'any(.[]; .[1]=="create" or .[1]=="update" or .[1]=="import" or .[1]=="trigger-add" or .[0:3]==["agent","env","set"] or .[0:3]==["agent","skills","set"] or .[0:3]==["squad","member","add"])' "$scenario_dir/calls.jsonl" >/dev/null
  jq -e --arg words "$runtime_words" '.runtimes==($words|split(" ")) and .excluded_roles==[]' "$TEMPLATE_STATE_ROOT/ws-a/demo.json" >/dev/null
  fi
- # 最後の起票に失敗しても登録済みの完了を表示し、入口の終了コードを 0 以外にする。
+ # 失敗した起票を、登録済みの状態からの再実行で復旧する。
  if [[ $selected == both && $runtime_part != main ]]; then
-  jq '.issues |= map(select(.metadata.squad_kit_task!="squad-trial"))' "$scenario_dir/db.json" >"$scenario_dir/new"
-  mv "$scenario_dir/new" "$scenario_dir/db.json"
-  printf '%s\n' 'スクワッドの動きを試す' >"$scenario_dir/fail-issue"
-  if /bin/bash "$test_dir/package/setup.sh" <"$scenario_dir/input" >"$scenario_dir/out" 2>"$scenario_dir/err"; then exit 1; fi
-  assert_no_rejected_calls
-  grep -q '^✔ ' "$scenario_dir/out"
-  grep -qF '  ✖ スクワッドの動きを試す  タスクを作れませんでした。' "$scenario_dir/out"
-  jq -e '.issues|length==3' "$scenario_dir/db.json" >/dev/null
-  rm "$scenario_dir/fail-issue"
   /bin/bash "$test_dir/package/setup.sh" <"$scenario_dir/input" >"$scenario_dir/out" 2>"$scenario_dir/err"
   assert_no_rejected_calls
   [[ $(grep -c '^  + ' "$scenario_dir/out") == 1 && $(grep -c '^  · ' "$scenario_dir/out") == 3 ]]
