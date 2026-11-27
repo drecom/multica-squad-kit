@@ -9,7 +9,6 @@ import signal
 import select
 import subprocess
 import sys
-import time
 
 root, scratch = map(Path, sys.argv[1:])
 helper = root / 'tests/tty-session.py'
@@ -351,9 +350,7 @@ def racing_select(readers, writers, errors, *timeout):
             os.read(notified, 4096)
         os.waitid(os.P_PID, caller.f_locals['child'], os.WEXITED | os.WNOWAIT)
         os.kill(os.getpid(), signal.SIGCHLD)
-        deadline = time.monotonic() + 5
-        while not fired and time.monotonic() < deadline:
-            pass
+        # CPython の os.kill は、自分に送ったシグナルのハンドラを、戻る前に動かす。
         assert fired, 'T27: SIGCHLD が届かなかった'
     finally:
         signal.signal(signal.SIGCHLD, previous)
