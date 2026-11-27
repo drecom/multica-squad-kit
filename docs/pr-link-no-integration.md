@@ -670,6 +670,8 @@ PR のタイトルは、GitHub で PR を直せる人なら誰でも書ける。
 | `tests/squad-review-next-decide-fix-test.sh` | 使用率の待ちのコメントに、`連携: なし` の場面を足す |
 | `tests/squad-pr-watch-link-retry-test.sh`、`tests/squad-pr-watch-unlinked-test.sh` | `PR_LINK_STATE_ROOT` を空の一時ディレクトリに向ける 1 行を足す。`unlinked` のテストは、約束の欄の比較に `link_source` を加えて[登録の照合](#登録の照合)の場面を足し、今の場面の期待は規則の 2 行と標準エラーの理由の行のほかは変えない |
 | `tests/squad-pr-watch-unlinked-check-test.sh` | 約束の欄の比較に、`squad-cli-lib` で足した `link_source` を加える。知らせの投稿に失敗したとき、規則を残して 1 で終わる場面を足し、今の場面の期待は変えずに、[時間の流れで変わる場面](#時間の流れで変わる場面)の場面を足す（[テスト](#テスト)） |
+| `tests/pr-watch-test-lib.sh` | 名簿を読める材料を作る `roster_ready` を足し、投稿したコメントに作者の ID と返信先を付ける。[知らせ済みの判定](#知らせ済みの判定)が、名簿のエージェントの返信だけを読むため |
+| `tests/squad-pr-watch-url-test.sh`、`tests/squad-pr-watch-unlinked-check-test.sh`（名簿） | 知らせを書く場面の準備で `roster_ready` を呼ぶ。期待は変えない |
 | `tests/setup-test.sh`、`tests/setup-repositories-test.sh` | 0 件の案内と、手順書の節の名前の期待を直す |
 | `tests/test-weights` | 新しいテストの行を、そのテストを足すのと同じコミットで足す。`tests/test-runner-test.sh` が重みの行とテストのファイルの一致を見るためで、場面を足したフェーズでは重みを手元の秒数に合わせて直す |
 | `tests/fixtures/base-size/rule-lines-changed.tsv` | `references/pr.md` で書き直した 2 行（識別子を持ち出さない項目と、push のたびにタイトルを直す段落）と `SKILL.md` の状態の表の `done` の行を、書き直した行として足す。理由の欄には、`pr.md` の 2 行は PR のタイトルの識別子を例外にしたため、`done` の行は連携のないリポジトリでは見張りが `done` にするためと書く |
