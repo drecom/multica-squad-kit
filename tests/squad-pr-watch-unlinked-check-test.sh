@@ -188,3 +188,26 @@ line=$(run_unlinked)
 [[ $line == *'CI abcdef0: 失敗あり'* && $line == *'コンフリクト: MERGEABLE'* ]]
 assert_jq -s 'length == 1' "$test_dir/posted.jsonl"
 echo 'PASS unlinked-check: 見張り役なしで片方が失敗しても取得済みの行を出し、回復後は CI を重ねない'
+
+# 見張りの期限が過ぎたあとに起きても、マージだけで自動的に done にしない。
+reset_unlinked
+update_pr '.state = "MERGED"'
+jq 'map(select(.id != "mine"))' "$test_dir/rules.json" >"$test_dir/updated.json"
+mv "$test_dir/updated.json" "$test_dir/rules.json"
+mv "$test_dir/bin/multica" "$test_dir/bin/multica-base"
+cat >"$test_dir/bin/multica" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+base=$PR_WATCH_TEST_DIR/bin/multica-base
+if [[ "${1-} ${2-} ${3-}" == 'issue get test-issue' ]]; then
+	"$base" "$@" | jq '.metadata.pr_link_no_integration = .metadata.pr_url'
+else
+	exec "$base" "$@"
+fi
+EOF
+chmod +x "$test_dir/bin/multica"
+line=$(run_unlinked monitor)
+[[ -z $line && ! -s $test_dir/posted.jsonl ]]
+assert_jq -s 'all(.[]; .[0:2] != ["issue","status"] and .[0:3] != ["issue","wakeup","delete"])' "$test_dir/calls.jsonl"
+assert_mine_deleted
+echo 'PASS unlinked-check: 期限後に連携なしの PR がマージされても、規則がなければ done や知らせを書かない'

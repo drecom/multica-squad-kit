@@ -54,6 +54,7 @@ if [[ "${1-} ${2-} ${3-}" == 'issue metadata set' ]]; then
 	fi
 fi
 if [[ "${1-} ${2-} ${3-}" == 'issue comment add' ]]; then
+	if [[ -f $dir/fail-post ]]; then echo 'CLI mock failure' >&2; exit 1; fi
 	python3 - "$@" <<'POSTPY'
 import datetime
 import json
@@ -86,7 +87,15 @@ if [[ "${1-} ${2-} ${3-}" == 'issue status test-issue' ]]; then
 	if [[ -f $dir/fail-status ]]; then echo 'CLI mock failure' >&2; exit 1; fi
 	jq --arg status "$4" '.status = $status' "$dir/task.json" >"$dir/task-status.json"
 	mv "$dir/task-status.json" "$dir/task.json"
+	if [[ -f $dir/rules-after-status.json ]]; then mv "$dir/rules-after-status.json" "$dir/rules.json"; fi
 	exit 0
+fi
+if [[ "${1-} ${2-} ${3-}" == 'issue wakeup list' && -f $dir/rules-on-reread.json ]]; then
+	if [[ -f $dir/rules-read ]]; then
+		mv "$dir/rules-on-reread.json" "$dir/rules.json"
+	else
+		touch "$dir/rules-read"
+	fi
 fi
 if [[ "${1-} ${2-} ${3-}" == 'workspace member list' ]]; then
 	if [[ -f $dir/fail-members ]]; then echo 'CLI mock failure' >&2; exit 1; fi
@@ -121,6 +130,7 @@ reset_ni() {
 	rm -rf -- "$PR_LINK_STATE_ROOT"
 	: >"$test_dir/curl-calls.jsonl"
 	rm -f "$test_dir/api-called" "$test_dir/fail-after" "$test_dir/curl-config" "$test_dir/now" "$test_dir/sleeps" "$test_dir"/fail-set-* "$test_dir/fail-status" "$test_dir/fail-members"
+	rm -f "$test_dir/fail-post" "$test_dir/rules-read" "$test_dir/rules-on-reread.json" "$test_dir/rules-after-status.json"
 	printf 'trigger-1' >"$test_dir/trigger-comment"
 	printf '404' >"$test_dir/api-status"
 	printf '{"pull_requests":[]}' >"$test_dir/pulls.json"
@@ -580,6 +590,7 @@ unlinked_run() {
 done_calls() { jq -s '[.[] | select(.[0:3] == ["issue","status","test-issue"])]' "$test_dir/calls.jsonl"; }
 # 見張りの終わりの知らせだけを数える（CI の知らせは同じ場面で出る）。
 notice_filter='[.[] | select(.body | startswith("連携なしのリポジトリの PR のマージ待ちの見張りが、"))]'
+not_done_filter='[.[] | select(.body | startswith("連携なしのリポジトリの PR がマージされましたが、"))]'
 no_notice() { assert_jq -s "$notice_filter | length == 0" "$test_dir/posted.jsonl"; }
 rule_kept() { assert_jq 'length == 1' "$test_dir/rules.json"; }
 rule_gone() { assert_jq 'length == 0' "$test_dir/rules.json"; }
@@ -685,9 +696,9 @@ assert_jq -s "$notice_filter"' | length == 1 and (.[0].body | contains("mention:
 echo 'PASS no-integration: 呼ぶ人間を決められないときは、メンションなしで書いて 1 で終わる'
 
 # done の照合。規則の 2 行・回の判定と対象の PR・metadata のどれかが合わなければ、マージされても done にしない。
-# どの場合も、見張りは止め、標準エラーに理由を 1 行出し、done も知らせも書かない。
+# どの場合も、標準エラーと知らせに同じ理由を書き、見張りを止める。
 merged_refuses() { # 名前 [規則の最後の 2 行 [created]]
-	local name=$1 created=${3-}
+	local name=$1 created=${3-} reason url first
 	if (($# > 1)); then unlinked_scene record "$created" "$2"; else unlinked_scene record; fi
 	"${prepare_extra:-:}"
 	update_pr '.state = "MERGED"'
@@ -696,8 +707,17 @@ merged_refuses() { # 名前 [規則の最後の 2 行 [created]]
 	[[ $(done_calls) == '[]' ]] || { echo "FAIL $name: done にした" >&2; exit 1; }
 	assert_jq '.status == "in_review"' "$test_dir/task.json"
 	rule_gone
-	no_posts
 	[[ $(grep -c 'done にしません' "$test_dir/err") == 1 ]] || { echo "FAIL $name: 理由が 1 行でない" >&2; cat "$test_dir/err" >&2; exit 1; }
+	reason=$(grep -F 'PR はマージされましたが、done にしません（' "$test_dir/err")
+	reason=${reason#*done にしません（}
+	reason=${reason%）。}
+	[[ -n $reason ]] || { echo "FAIL $name: 照合の理由が空" >&2; cat "$test_dir/err" >&2; exit 1; }
+	url=$(jq -r '.metadata.pr_url' "$test_dir/task.json")
+	first="連携なしのリポジトリの PR がマージされましたが、見張りはタスクを \`done\` にしませんでした（${reason}）。このタスクの成果をマージしたなら、タスクを \`done\` にしてください。PR: \`${url}\`"
+	assert_jq -s --arg first "$first" "$not_done_filter"' | length == 1
+		and (.[0].args | index("--parent") as $i | .[$i + 1] == "ci-thread")
+		and (.[0].body | rtrimstr("\n") | split("\n") == [$first, "[@Owner](mention://member/human-1)"])' "$test_dir/posted.jsonl" \
+		|| { echo "FAIL $name: 知らせの内容か宛先が違う" >&2; cat "$test_dir/posted.jsonl" >&2; exit 1; }
 }
 other_round() { add_comment other-round agent orchestrator "$(round_body "$other")"; }
 merged_refuses '見張る PR が同じリポジトリの別の PR' "$(rule_lines "$other")"
@@ -717,8 +737,131 @@ prepare_extra=result_round merged_refuses '回が結果のコメント' "$(rule_
 # 登録のあとに pr_url と連携なしのマークを別のマージ済みの PR に書き換えても、回の PR と合わないので done にしない。
 swapped_marks() { update_task ".metadata.pr_url = \"$other\" | .metadata.pr_link_pending = \"$other\" | .metadata.pr_link_no_integration = \"$other\""; }
 prepare_extra=swapped_marks merged_refuses 'pr_url とマークが別の PR に変わった'
+edit_round_pr() {
+	jq --arg content "$(round_body "$other")" 'map(if .id == "round-1" then .content = $content else . end)' \
+		"$test_dir/comments.json" >"$test_dir/changed.json"
+	mv "$test_dir/changed.json" "$test_dir/comments.json"
+}
+prepare_extra=edit_round_pr merged_refuses '登録した回のコメントの対象 PR が編集された'
+change_assignee() { update_task '.assignee_type = "agent" | .assignee_id = "orchestrator"'; }
+prepare_extra=change_assignee merged_refuses 'タスクの担当がスクワッドから変わった'
 unset prepare_extra
-echo 'PASS no-integration: 規則の行・回・metadata のどれかが合わないマージは、done にせず理由を 1 行出して止める'
+echo 'PASS no-integration: 規則の行・回・metadata のどれかが合わないマージは、done にせず、理由と知らせを出して止める'
+
+same_pr_round() { add_comment round-2 agent orchestrator "$(round_body "$pr")"; }
+prepare_extra=same_pr_round merged_refuses '同じ PR の新しい回の途中でマージ'
+grep -q '確認した回（round-1）が今の回（round-2）と違う' "$test_dir/err"
+unlinked_run
+((unlinked_status == 0))
+[[ $(done_calls) == '[]' ]]
+assert_jq -s "$not_done_filter | length == 1" "$test_dir/posted.jsonl"
+prepare_extra=other_round merged_refuses 'PR 差し替え後に規則と metadata とマークがすべて旧 PR に戻り、旧 PR がマージ'
+grep -q '確認した回（round-1）が今の回（other-round）と違う' "$test_dir/err"
+echo 'PASS no-integration: 同じ PR の再レビューや PR の差し替え後は、古い回で done にせず、人間に一度だけ知らせる'
+
+# 差し替えた PR は OPEN のまま、旧 PR だけが MERGED になったときも done にしない。
+unlinked_scene record
+other_round
+swapped_marks
+mv "$test_dir/bin/gh" "$test_dir/bin/gh-base"
+cat >"$test_dir/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+dir=$PR_WATCH_TEST_DIR
+if [[ "${1-} ${2-} ${3-} ${5-}" == 'pr view https://github.com/example/repo/pull/67 state,headRefOid,mergeable' ]]; then
+	jq '.state = "MERGED"' "$dir/mergeable.json"
+else
+	exec "$dir/bin/gh-base" "$@"
+fi
+EOF
+chmod +x "$test_dir/bin/gh"
+unlinked_run
+mv "$test_dir/bin/gh-base" "$test_dir/bin/gh"
+((unlinked_status == 0))
+[[ $(done_calls) == '[]' ]]
+assert_jq '.status == "in_review"' "$test_dir/task.json"
+assert_jq -s "$not_done_filter | length == 0" "$test_dir/posted.jsonl"
+echo 'PASS no-integration: metadata が差し替え先を指したまま、旧 PR だけがマージされても done にしない'
+
+unlinked_scene record
+same_pr_round
+update_pr '.state = "MERGED"'
+: >"$test_dir/fail-post"
+unlinked_run
+((unlinked_status == 1))
+rule_kept
+no_posts
+rm "$test_dir/fail-post"
+unlinked_run
+((unlinked_status == 0))
+rule_gone
+assert_jq -s "$not_done_filter | length == 1" "$test_dir/posted.jsonl"
+echo 'PASS no-integration: done にしなかったときの知らせの投稿に失敗したら規則を残し、次の確認で一度だけ書く'
+
+unlinked_scene record
+same_pr_round
+update_pr '.state = "MERGED"'
+: >"$test_dir/fail-members"
+unlinked_run
+((unlinked_status == 1))
+rule_gone
+assert_jq -s "$not_done_filter"' | length == 1 and (.[0].body | contains("mention://") | not)' "$test_dir/posted.jsonl"
+grep -q 'メンションを省きました' "$test_dir/err"
+echo 'PASS no-integration: 呼ぶ人間を決められないときは、マージ後の知らせをメンションなしで書いて 1 で終わる'
+
+unlinked_scene record
+same_pr_round
+update_pr '.state = "MERGED"'
+echo 'squad list --output' >"$test_dir/fail"
+unlinked_run
+((unlinked_status == 1))
+rule_gone
+assert_jq -s "$not_done_filter"' | length == 1 and (.[0].body | contains("mention://") | not)' "$test_dir/posted.jsonl"
+grep -q 'メンションを省きました' "$test_dir/err"
+echo 'PASS no-integration: スクワッドの取得に失敗しても、マージ後の知らせをメンションなしで書く'
+
+unlinked_scene record
+same_pr_round
+update_pr '.state = "MERGED"'
+first="連携なしのリポジトリの PR がマージされましたが、見張りはタスクを \`done\` にしませんでした（規則の確認した回（round-1）が今の回（round-2）と違う）。このタスクの成果をマージしたなら、タスクを \`done\` にしてください。PR: \`${pr}\`"
+add_comment existing-notice member human-1 "$first"
+unlinked_run
+((unlinked_status == 0))
+rule_gone
+no_posts
+echo 'PASS no-integration: 人間が同じ 1 行目を投稿済みなら、マージ後の知らせを重ねない'
+
+# 書き込み直前に規則が入れ替わったら、古い規則では done・マージ後の知らせ・期限の知らせのどれも書かない。
+for write in done not-done end; do
+	unlinked_scene record "$(stamp -$((71 * 3600 + 60)))"
+	if [[ $write != end ]]; then update_pr '.state = "MERGED"'; fi
+	if [[ $write == not-done ]]; then same_pr_round; fi
+	jq --arg created "$(stamp -3600)" '.[0] += {id:"replacement",created_at:$created}' \
+		"$test_dir/rules.json" >"$test_dir/rules-on-reread.json"
+	unlinked_run
+	((unlinked_status == 0))
+	[[ $(done_calls) == '[]' ]]
+	assert_jq -s "$not_done_filter | length == 0" "$test_dir/posted.jsonl"
+	no_notice
+	assert_jq 'map(.id) == ["replacement"]' "$test_dir/rules.json"
+	assert_jq -s '[.[] | select(.[0:3] == ["issue","wakeup","list"])] | length == 2' "$test_dir/calls.jsonl"
+	if [[ $write == end ]]; then
+		unlinked_run
+		((unlinked_status == 0))
+		no_notice
+	fi
+done
+echo 'PASS no-integration: 書く直前に規則が入れ替わったら何も書かず、新しい規則の時刻を次の確認で使う'
+
+# done を書いたあとに新しい規則が入っても、停止でその規則を消さない。
+unlinked_scene record
+update_pr '.state = "MERGED"'
+jq '. + [.[0] + {id:"replacement"}]' "$test_dir/rules.json" >"$test_dir/rules-after-status.json"
+unlinked_run
+((unlinked_status == 0))
+assert_jq '.status == "done"' "$test_dir/task.json"
+assert_jq 'map(.id) == ["replacement"]' "$test_dir/rules.json"
+echo 'PASS no-integration: done を書いたあとの停止では、確認に使った一覧の規則だけを消す'
 
 # 規則の作り手が人間でも、照合がすべて合えば done にする。作り手は信頼の根拠にしない。
 unlinked_scene record
@@ -732,10 +875,15 @@ rule_gone
 echo 'PASS no-integration: 規則の作り手が人間でも、照合が合えば done にする'
 
 # 照合が合わないときは、71 時間を過ぎても終わりの知らせを書かない。標準エラーに理由を出し、CI とコンフリクトの行は今のままにする。
-for case in line round; do
-	if [[ $case == line ]]; then lines=$'確認した回: round-1'; else lines=$(rule_lines "$pr" other-round); fi
+for case in line round latest; do
+	case $case in
+	line) lines='確認した回: round-1' ;;
+	round) lines=$(rule_lines "$pr" other-round) ;;
+	latest) lines=$(rule_lines) ;;
+	esac
 	unlinked_scene record "$(stamp -$((71 * 3600 + 60)))" "$lines"
-	[[ $case == line ]] || other_round
+	if [[ $case == round ]]; then other_round; fi
+	if [[ $case == latest ]]; then same_pr_round; fi
 	unlinked_run
 	((unlinked_status == 0))
 	no_notice
