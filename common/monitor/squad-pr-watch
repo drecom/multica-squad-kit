@@ -8,6 +8,10 @@
 #     紐付け直しのマーク（pr_link_pending）があるときだけ、紐付けを試み直し、タスクに記録を書く。
 #     記録は、きっかけのコメントへの返信にする。きっかけを渡さないときだけ、根のコメントにする。
 #     マークがなければ書き込まない。読めないときも「未確認」の行を出し、0 で終わる。
+#     紐付いていない PR が連携なしの扱い（そのプロジェクトとリポジトリの記録か、pr_link_no_integration）のときは、
+#     2 つのマークを pr_url に書き直し、書けたら行の末尾に「連携: なし」を足す。
+#     連携なしの試み直しは、紐付かなかった結果の記録を書かず、pr_link_tried_at で間隔を測る。
+#     紐付いている PR にそのプロジェクトとリポジトリの記録があれば、記録を消す。
 #   squad-pr-watch conflicts <タスク> [--leader <リーダーの ID>]
 #     古いコンフリクトの規則を消し、呼び出した orchestrator 自身を起こす規則を作る。
 #     --leader を渡すと、その ID のリーダーを起こす。役の実行（squad-review-next decide）から呼ぶときに使う。
@@ -63,6 +67,7 @@ require_commands() {
 # JSON のまま渡し、シェルの変数で失われる NUL も検証する。
 pr_url_data() {
 	python3 - "$@" <<'URLPY'
+import datetime
 import json
 import re
 import sys
@@ -123,17 +128,35 @@ if len(sys.argv) > 2 and state in ("valid", "absent"):
     except (ValueError, KeyError, TypeError):
         line = "紐付け: 未確認 pr: " + (url or "不明") + " 理由: PR の URL を判定できない"
 pending_matches = False
+no_integration_matches = False
 if state == "valid":
+    for key in ("pr_link_pending", "pr_link_no_integration"):
+        try:
+            matches = canonical(metadata.get(key)).casefold() == url.casefold()
+        except ValueError:
+            matches = False
+        if key == "pr_link_pending":
+            pending_matches = matches
+        else:
+            no_integration_matches = matches
+# 試み直した時刻。形に合わないものはないものとして読む。今より後かは、間隔を測るときに見る。
+tried_epoch = None
+tried = metadata.get("pr_link_tried_at")
+if isinstance(tried, str) and re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z", tried):
     try:
-        pending_matches = canonical(metadata.get("pr_link_pending")).casefold() == url.casefold()
-    except ValueError:
+        tried_epoch = int(datetime.datetime.strptime(tried, "%Y-%m-%dT%H:%M:%SZ")
+                          .replace(tzinfo=datetime.timezone.utc).timestamp())
+    except (ValueError, OverflowError, OSError):
         pass
 print(json.dumps(dict(state=state, url=url, reason=reason, line=line,
-                     pending_matches=pending_matches), ensure_ascii=False))
+                     pending_matches=pending_matches,
+                     no_integration_matches=no_integration_matches,
+                     tried_epoch=tried_epoch), ensure_ascii=False))
 URLPY
 }
 
 # コメントの一覧は標準入力で受け、間隔に数える記録と、一度紐付いたかを検証する。記録はどのスレッドのものも数える。
+# 第 4 引数は、連携なしの試み直しが metadata に書いた時刻（秒）。今より後なら読まない。省くと、コメントの記録だけで測る。
 link_record_data() {
 	python3 -c '
 import datetime
@@ -142,8 +165,11 @@ import re
 import sys
 
 url, now, interval = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+tried = int(sys.argv[4]) if len(sys.argv) > 4 and sys.argv[4] else None
 prefix = "紐付けの試み直し:"
 latest, linked = None, False
+if tried is not None and tried <= now:
+    latest = tried
 for comment in json.load(sys.stdin):
     content = comment.get("content")
     lines = content.splitlines() if isinstance(content, str) else []
@@ -180,11 +206,24 @@ link_record_post() (
 	squad_cli_read issue-comment-add "$issue" "$parent" "$body" >/dev/null || return 1
 )
 
+# 連携なしの記録（プロジェクトとリポジトリに 1 つ）を消す。ないか消せなければ何もしない。
+link_record_drop() {
+	pr_link_record_remove "$1" "$2" >/dev/null 2>&1 || :
+}
+
+# 紐付いたあとに、あるマークだけを消す。第 2・3 引数は、pr_link_pending と pr_link_no_integration があるか（1 か 0）。
+link_marks_clear() {
+	local issue=$1
+	if (($2)); then multica issue metadata delete "$issue" --key pr_link_pending >/dev/null 2>&1 || :; fi
+	if (($3)); then multica issue metadata delete "$issue" --key pr_link_no_integration >/dev/null 2>&1 || :; fi
+}
+
 # 第 2 引数は、前の記録からこの秒数がたつまで試み直さない間隔。省くと 5 分にする。
 # 第 3 引数は、記録を返信にする元のコメント。省くと記録は根のコメントになる。
 link_check() {
 	local issue=$1 interval=${2:-300} parent=${3-} cmd task data pr_url prs line
 	local comments info result='' now mark=0 readable=1
+	local project record=0 pending=0 marked=0 ni_key=0 no_integration=0 suffix='' tried_epoch='' called=0 unwritten
 	for cmd in jq python3 multica; do
 		if ! command -v "$cmd" >/dev/null 2>&1; then
 			printf '紐付け: 未確認 pr: 不明 理由: %s が見つからない\n' "$cmd"
@@ -206,38 +245,84 @@ link_check() {
 	data=$(pr_url_data "$task" "$prs")
 	line=$(jq -r .line <<<"$data")
 	jq -e '.metadata | has("pr_link_pending")' <<<"$task" >/dev/null && mark=1
-	if { [[ $line == '紐付け: 紐付いていない '* ]] && jq -e '.pending_matches' <<<"$data" >/dev/null; } \
+	jq -e '.metadata | has("pr_link_no_integration")' <<<"$task" >/dev/null && ni_key=1
+	jq -e '.pending_matches' <<<"$data" >/dev/null && pending=1
+	jq -e '.no_integration_matches' <<<"$data" >/dev/null && marked=1
+	# 連携なしの記録は、紐付いている・紐付いていないの判定のときだけ読む。パスを断ったときは、標準エラーに理由が 1 行出る。
+	project=$(jq -r '.project_id | select(type == "string")' <<<"$task")
+	case $line in
+	'紐付け: 紐付いていない '* | '紐付け: 紐付いている '*)
+		if [[ -n $project ]] && pr_link_record_exists "$project" "$pr_url"; then record=1; fi ;;
+	esac
+	if [[ $line == '紐付け: 紐付いている '* ]] && ((record)); then
+		# 自動の関連付けで紐付いたときも、そのリポジトリは連携ありと分かる。
+		link_record_drop "$project" "$pr_url"
+		record=0
+	fi
+	if [[ $line == '紐付け: 紐付いていない '* ]] && { ((record)) || ((marked)); }; then
+		# 連携なしの扱い。2 つのマークを pr_url に書き直し、両方が揃ったときだけ「連携: なし」を足す。
+		# 試み直しの条件を見る前に書くので、pr_link_pending を書けなかった PR も、同じ確認から試み直す。
+		unwritten=''
+		if ((! pending)); then
+			if multica issue metadata set "$issue" --key pr_link_pending --value "$pr_url" --type string >/dev/null 2>&1; then
+				pending=1
+				mark=1
+			else
+				unwritten=pr_link_pending
+			fi
+		fi
+		if ((! marked)); then
+			if multica issue metadata set "$issue" --key pr_link_no_integration --value "$pr_url" --type string >/dev/null 2>&1; then
+				marked=1
+				ni_key=1
+			else
+				unwritten=${unwritten:+$unwritten と }pr_link_no_integration
+			fi
+		fi
+		if [[ -z $unwritten ]]; then
+			no_integration=1
+			suffix=' 連携: なし'
+			tried_epoch=$(jq -r '.tried_epoch // empty' <<<"$data")
+		else
+			printf '連携なしの扱いのマーク（%s）を書けないため、連携: なし を足しません。\n' "$unwritten" >&2
+		fi
+	fi
+	if { [[ $line == '紐付け: 紐付いていない '* ]] && ((pending)); } \
 		|| { [[ $line == '紐付け: 紐付いている '* ]] && ((mark)); }; then
 		now=$(date +%s)
 		if ! comments=$(squad_cli_read issue-comments "$issue") \
-			|| ! info=$(printf '%s\n' "$comments" | link_record_data "$pr_url" "$now" "$interval"); then
+			|| ! info=$(printf '%s\n' "$comments" | link_record_data "$pr_url" "$now" "$interval" "$tried_epoch"); then
 			readable=0
 		fi
 		if [[ $line == '紐付け: 紐付いていない '* ]]; then
 			# コメントを読めないときと、一度紐付いたときは試み直さない。一度紐付いたときはマークを消し直す。
 			if ((! readable)); then
-				printf '%s\n' "$line"
+				printf '%s%s\n' "$line" "$suffix"
 				return 0
 			fi
 			if jq -e '.linked' <<<"$info" >/dev/null; then
-				multica issue metadata delete "$issue" --key pr_link_pending >/dev/null 2>&1 || :
-				printf '%s\n' "$line"
+				# 連携なしのマークは進行中の PR への約束なので、連携なしのときは消さない。
+				if ((! no_integration)); then
+					multica issue metadata delete "$issue" --key pr_link_pending >/dev/null 2>&1 || :
+				fi
+				printf '%s%s\n' "$line" "$suffix"
 				return 0
 			fi
 			if jq -e '.recent' <<<"$info" >/dev/null; then
-				printf '%s\n' "$line"
+				printf '%s%s\n' "$line" "$suffix"
 				return 0
 			fi
 		elif ((! readable)) || jq -e '.linked' <<<"$info" >/dev/null; then
 			# 記録を書けないか、すでにあるので、記録は書かずにマークだけを消す。
-			multica issue metadata delete "$issue" --key pr_link_pending >/dev/null 2>&1 || :
+			link_marks_clear "$issue" "$mark" "$ni_key"
 			printf '%s\n' "$line"
 			return 0
 		fi
 	fi
-	if [[ $line == '紐付け: 紐付いていない '* ]] && jq -e '.pending_matches' <<<"$data" >/dev/null; then
+	if [[ $line == '紐付け: 紐付いていない '* ]] && ((pending)); then
 		# 応答よりも、呼び出し後に読み直した一覧を優先して判定する。
 		if pr_link_check_api_env; then
+			called=1
 			if pr_link_request_once "$issue" "$pr_url" 30; then
 				case $PR_LINK_STATUS in
 				200) result='一覧にない（200）' ;;
@@ -250,6 +335,10 @@ link_check() {
 		else
 			result="失敗（${PR_LINK_REASON}）"
 		fi
+		if ((no_integration && called)); then
+			# 連携なしは紐付かなかった結果の記録を書かないので、API を呼んだ時刻を間隔のために残す。書けなくても出力は変えない。
+			multica issue metadata set "$issue" --key pr_link_tried_at --value "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --type string >/dev/null 2>&1 || :
+		fi
 		if ! prs=$(squad_cli_read issue-pull-requests "$issue"); then
 			line="紐付け: 未確認 pr: $pr_url 理由: 紐付いた PR の一覧を読めない（CLI の失敗か欄の不正）"
 		else
@@ -261,14 +350,19 @@ link_check() {
 		'紐付け: 紐付いている '*) result='紐付いた' ;;
 		'紐付け: 食い違い '*) result='食い違い' ;;
 		esac
-		link_record_post "$issue" "$parent" "$result" "$pr_url" >/dev/null 2>&1 || :
+		[[ $line == '紐付け: 紐付いていない '* ]] || suffix=''
+		# 連携なしでは、紐付かなかった結果の記録を書かない。紐付いたときだけ書く。
+		if ((! no_integration)) || [[ $result == 紐付いた ]]; then
+			link_record_post "$issue" "$parent" "$result" "$pr_url" >/dev/null 2>&1 || :
+		fi
 	elif [[ $line == '紐付け: 紐付いている '* ]] && ((mark)); then
 		link_record_post "$issue" "$parent" '紐付いていた' "$pr_url" >/dev/null 2>&1 || :
 	fi
-	if [[ $line == '紐付け: 紐付いている '* ]] && ((mark)); then
-		multica issue metadata delete "$issue" --key pr_link_pending >/dev/null 2>&1 || :
+	if [[ $line == '紐付け: 紐付いている '* ]]; then
+		if ((record)); then link_record_drop "$project" "$pr_url"; fi
+		link_marks_clear "$issue" "$mark" "$ni_key"
 	fi
-	printf '%s\n' "$line"
+	printf '%s%s\n' "$line" "$suffix"
 }
 
 conflicts() {

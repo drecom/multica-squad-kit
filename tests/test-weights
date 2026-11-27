@@ -5,6 +5,7 @@
 # 試行 1、macOS 全 4 シャード、並列 3。全 100 本。
 # autopilot-targets の 3 本は、d5f96eaed7ba58076dafca6190a4e0a959fb49e3 の CI（macOS 全 5 シャード）の実測に直した。
 # 絞ったテストの 6 本は、0a980cc40edb7f02484a148833de6c31da716132 の CI（macOS 全 5 シャード）の実測に直した。
+# squad-pr-link-no-integration と squad-pr-watch-no-integration は、手元の tests/run.sh の秒数（24 秒と 41 秒）に、同じ手元で測った squad-pr-watch-link-retry の CI との比（97 秒対 57 秒、約 1.7 倍）を掛けた見積もり。CI の ==== PASS の秒数が出たら写し直す。
 tests/action-advisories-test.sh 6
 tests/agent-templates-test.sh 35
 tests/audit-targets-test.sh 1
@@ -97,7 +98,7 @@ tests/squad-dependabot-merge-escalate-scope-test.sh 21
 tests/squad-dependabot-merge-escalate-test.sh 14
 tests/squad-dependabot-merge-list-test.sh 110
 tests/squad-dispatch-pick-test.sh 23
-tests/squad-pr-link-no-integration-test.sh 5
+tests/squad-pr-link-no-integration-test.sh 40
 tests/squad-pr-link-test.sh 20
 tests/squad-pr-watch-ci-arg-limit-test.sh 15
 tests/squad-pr-watch-ci-handoff-test.sh 38
@@ -105,6 +106,7 @@ tests/squad-pr-watch-ci-now-test.sh 25
 tests/squad-pr-watch-ci-test.sh 41
 tests/squad-pr-watch-ci-wait-test.sh 101
 tests/squad-pr-watch-link-retry-test.sh 97
+tests/squad-pr-watch-no-integration-test.sh 70
 tests/squad-pr-watch-register-test.sh 30
 tests/squad-pr-watch-unlinked-check-test.sh 40
 tests/squad-pr-watch-unlinked-concurrent-test.sh 5
