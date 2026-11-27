@@ -1,186 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
-root=$(cd "$(dirname "$0")/.." && pwd)
-mkdir -p "$root/tmp"
-test_dir=$(mktemp -d "$root/tmp/host-test.XXXXXX")
-# 標準エラーを err に向けたまま止まっても、trap が err 自身へ書き足し続けないよう、元の標準エラーを控えて出す。
-exec 8>&2
-trap 'test_exit=$?; if [[ $test_exit != 0 ]]; then cat "$test_dir/out" "$test_dir/err" >&8; fi; rm -rf -- "$test_dir"' EXIT
-mkdir -p "$test_dir/bin"
-cp "$root/tests/guard-backend.sh" "$test_dir/bin/gh"
-cat >"$test_dir/bin/multica" <<'STUB'
-#!/bin/bash
-set -euo pipefail
-base=${0%/*}/..
-mode=$(<"$base/mode")
-printf '%s\n' "$*" >>"$base/calls"
-if [[ -f $base/fail && $(<"$base/fail") == "$*" ]]; then echo 'intentional CLI failure' >&2; exit 77; fi
-case "$*" in
-'user profile get --output json') echo '{"id":"member-a"}' ;;
-'daemon status --output json')
- case $mode in
- stopped|desktop) echo '{"status":"stopped","pid":null}' ;;
- busy) echo '{"status":"running","pid":4242,"daemon_id":"daemon-a","running_task_count":3,"active_task_count":3,"server_url":"https://example.test"}' ;;
- unknown) echo '{"status":"running","pid":4242,"daemon_id":"daemon-a"}' ;;
- *) echo '{"status":"running","pid":4242,"daemon_id":"daemon-a","running_task_count":0,"active_task_count":0,"server_url":"https://example.test"}' ;;
- esac ;;
-'runtime list --output json')
- if [[ $mode == stopped || -f $base/no-runtimes ]]; then echo '[]'; elif [[ -n ${TEST_RUNTIME_LIST:-} ]]; then cat "$TEST_RUNTIME_LIST"; else
-  echo '[{"id":"runtime-claude","owner_id":"member-a","daemon_id":"daemon-a","provider":"claude","status":"online"},{"id":"runtime-codex","owner_id":"member-a","daemon_id":"daemon-a","provider":"codex","status":"online"},{"id":"foreign","owner_id":"member-b","daemon_id":"daemon-a","provider":"claude","status":"online"},{"id":"other-host","owner_id":"member-a","daemon_id":"daemon-b","provider":"codex","status":"online"}]'
- fi ;;
-'daemon stop') echo stopped >"$base/mode" ;;
-'daemon start')
- [[ -z ${VSCODE_TEST_MARKER:-} && -z ${MULTICA_WORKSPACE_ID:-} && $SHELL == /bin/zsh ]] || exit 78
- printf 'CODEX_HOME=%s PATH=%s\n' "$CODEX_HOME" "$PATH" >"$base/process-env"
- printf '%s\n' "$MULTICA_SERVER_URL" >"$base/started-server"
- echo running >"$base/mode" ;;
-*) echo "unexpected CLI call: $*" >&2; exit 90 ;;
-esac
-STUB
-cat >"$test_dir/bin/ps" <<'STUB'
-#!/bin/bash
-base=${0%/*}/..
-# Codex の検証が、停止の確認に読む一覧は、本物の ps から返す。
-[[ $* != '-A -o pid,pgid,stat' && $* != '-A -o pid,pgid,stat,command' ]] || PATH=/bin:/usr/bin exec ps "$@"
-cat "$base/process-env"
-STUB
-cat >"$test_dir/bin/claude" <<'STUB'
-#!/bin/bash
-base=${0%/*}/..
-[[ $* == 'auth status' && $CLAUDE_CONFIG_DIR == */claude ]] || exit 91
-if [[ -t 0 ]]; then
- echo 'error: EINVAL: invalid argument, kqueue' >&2
- exit 1
-fi
-printf 'notty\n' >"$base/claude-stdin"
-if [[ -n ${TEST_CLAUDE_STDOUT:-} ]]; then
- cat "$TEST_CLAUDE_STDOUT"
- cat "$TEST_CLAUDE_STDERR" >&2
- exit "$TEST_CLAUDE_EXIT"
-fi
-if [[ -f $base/no-claude-auth ]]; then echo '{"loggedIn":false}'; else echo '{"loggedIn":true}'; fi
-STUB
-cat >"$test_dir/bin/codex" <<'STUB'
-#!/bin/bash
-base=${0%/*}/..
-if [[ $* == 'app-server --strict-config --listen stdio://' ]]; then
- [[ $CODEX_HOME == */codex && ! -t 0 ]] || exit 93
- printf '%s\n' "$CODEX_HOME" >>"$base/codex-checks"
- mode=$(cat "$base/codex-strict" 2>/dev/null || echo ok)
- case $mode in
- ok) exit 0 ;;
- fail) echo 'Error: /agent/codex/config.toml:3:1: unknown configuration field `bogus`' >&2; exit 1 ;;
- silent) exit 1 ;;
- old) echo "error: unexpected argument '--strict-config' found" >&2; exit 2 ;;
- other2) echo 'error: another usage error' >&2; exit 2 ;;
- secret) echo 'invalid type: string "SYNTHETIC_SECRET_VALUE", expected a map' >&2; exit 1 ;;
- zombie-desc)
-  # 子孫が先に終わり、TERM を無視する親が回収しない。子孫はゾンビのまま、親が動き続ける。子孫の PID は親が記録する。
-  exec python3 -c 'import os, signal, sys, time
-signal.signal(signal.SIGTERM, signal.SIG_IGN)
-pid = os.fork()
-if pid == 0:
-    os._exit(0)
-open(sys.argv[1], "w").write("%d\n" % pid)
-open(sys.argv[2], "w").write("%d\n" % os.getpid())
-time.sleep(300)' "$base/desc-pid" "$base/codex-pid" ;;
- term-*)
-  # term-<親>-<子孫>。親は TERM で終わる（exit）か無視する（ignore）。子孫は、なし（none）、TERM のあと 0.5 秒で終わる（finish）、無視する（ignore）。
-  spec=${mode#term-}; p=${spec%-*}; d=${spec#*-}
-  case $d in
-  finish) ( trap '/bin/sleep 0.5; echo done >"$base/desc-done"; exit 0' TERM; /bin/sleep 300 & wait ) & ;;
-  ignore) ( trap '' TERM; exec /bin/sleep 300 ) & ;;
-  esac
-  [[ $d == none ]] || printf '%s\n' "$!" >"$base/desc-pid"
-  printf '%s\n' "$$" >"$base/codex-pid"
-  case $p in
-  exit) trap 'exit 0' TERM; /bin/sleep 300 & wait $! ;;
-  ignore) trap '' TERM; exec /bin/sleep 300 ;;
-  esac ;;
- esac
-fi
-# 役と同じ引数で起こした app-server が hooks/list を返す。応答は codex-hooks-stub.py が作る。
-if [[ $1 == app-server && $2 == --listen ]]; then exec python3 "$base/codex-hooks-stub.py" "$base" "$@"; fi
-[[ $* == 'login status' && $CODEX_HOME == */codex ]] || exit 92
-[[ ! -f $base/no-codex-auth ]]
-STUB
-cp "$root/tests/codex-hooks-stub.py" "$test_dir/codex-hooks-stub.py"
-printf '#!/bin/bash\nexit 0\n' >"$test_dir/bin/sleep"
-chmod +x "$test_dir/bin/"*
-export PATH="$test_dir/bin:$PATH" TEMPLATE_AGENT_HOME="$test_dir/agent's home" TEMPLATE_DAEMON_ID_FILE="$test_dir/daemon.id"
-export VSCODE_TEST_MARKER=must-not-be-inherited GH_CONFIG_DIR="$test_dir/human-gh"
-printf daemon-a >"$TEMPLATE_DAEMON_ID_FILE"
-# 人の gh の置き場は、セットアップが見つけられる場所に置く。端末のトークンは、手元の環境から切り離す。
-mkdir -p "$GH_CONFIG_DIR"
-unset GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN
-cat >"$test_dir/run.sh" <<'RUN'
-#!/bin/bash
-set -euo pipefail
-root=$1
-source "${DRAW_UI:-$root/lib/ui.sh}"
-source "$root/lib/check.sh"
-source "$root/lib/host.sh"
-die() { ui_phase_fail; ui_error "$*"; exit 1; }
-mc() { multica "$@"; }
-server_url=https://example.test
-runtimes=${TEST_RUNTIMES:-[\"claude\",\"codex\"]}
-command() {
- if [[ $* == "-v ${TEST_MISSING_RUNTIME:-__none__}" ]]; then return 1; fi
- builtin command "$@"
-}
-mktemp() {
- local path
- path=$(builtin command mktemp "$@") || return
- case $path in */claude-auth.*) printf '%s\n' "$path" >>"${TEMPLATE_DAEMON_ID_FILE%/*}/auth-work" ;; esac
- printf '%s\n' "$path"
-}
-if [[ ${TEST_AUTH_READER_FAIL:-no} == yes ]]; then
- test_python=$(type -P python3)
- python3() {
-  if [[ ${2:-} == */claude-auth.*/stdout ]]; then
-   echo 'reader exception: private-reader-value' >&2
-   return 1
-  fi
-  "$test_python" "$@"
- }
-fi
-if [[ ${TEST_HOST_STEPS:-no} == yes ]]; then
- ui_init
- ui_steps_begin err 2 'ホストを準備'
- ui_phase_start 1
-fi
-[[ -z ${TEST_CODEX_SECONDS:-} ]] || codex_check_seconds=$TEST_CODEX_SECONDS
-[[ -z ${TEST_CODEX_GRACE:-} ]] || codex_grace_seconds=$TEST_CODEX_GRACE
-[[ -z ${TEST_CODEX_CONFIRM:-} ]] || codex_confirm_seconds=$TEST_CODEX_CONFIRM
-# 拡張を使うセットアップと同じく、root を lib を持たない作業場所へ付け替え、原本は kit_root が指す（lib/extensions.sh）。
-if [[ -n ${TEST_EXTENSION_WORK:-} ]]; then kit_root=$root; root=$TEST_EXTENSION_WORK; fi
-prepare_host
-RUN
-run() { /bin/bash "$test_dir/run.sh" "$root" >"$test_dir/out" 2>"$test_dir/err"; }
-deny() { if run; then exit 1; fi; [[ -s $test_dir/err ]]; }
-set_mode() { printf '%s\n' "$1" >"$test_dir/mode"; : >"$test_dir/calls"; }
-agent_env() { printf 'CODEX_HOME=%s/codex PATH=%s/bin:/usr/bin\n' "$TEMPLATE_AGENT_HOME" "$TEMPLATE_AGENT_HOME" >"$test_dir/process-env"; }
-# ひな形に、スタブが返す hooks/list の値（役と同じ定義から決まる）を埋めた、書かれるはずの設定。
-expected_codex_config() {
- python3 - "$root/common/codex/config.toml" "$TEMPLATE_AGENT_HOME" >"$test_dir/expected-config" <<'PY'
-import hashlib
-import sys
-
-template = open(sys.argv[1], encoding="utf-8").read()
-guard = sys.argv[2] + "/guard"
-matcher = "^(Bash|shell|exec_command|local_shell)$"
-lines = []
-for event, snake, script, value in (("preToolUse", "pre_tool_use", "pre-tool-use", matcher), ("stop", "stop", "stop", None)):
-    digest = hashlib.sha256(("%s|%s|%s" % (event, "'" + (guard + "/" + script).replace("'", "'\\''") + "'", value)).encode()).hexdigest()
-    lines += ['[hooks.state."/<session-flags>/config.toml:%s:0:0"]' % snake, 'trusted_hash = "sha256:%s"' % digest]
-sys.stdout.write(template.replace("{{HOOKS_STATE}}", "\n".join(lines)))
-PY
-}
-# 人の設定（マークなし）に足す、信頼の行。値はスタブが返す hooks/list と同じ。
-trust_lines() {
- expected_codex_config
- sed -n '/^\[hooks\.state\./,$p' "$test_dir/expected-config"
-}
+source "${0%/*}/host-test-lib.sh"
 set_mode stopped
 run
 for file in "$root/common/monitor/"squad-*; do
@@ -1020,123 +839,8 @@ grep -qF 'trusted_hash = "sha256:' "$test_dir/err"
 printf '%s\n' "$unmarked_keys" >"$config"
 echo 'PASS host: マークのない設定は、信頼がなければ足す行を出して何も書く前に止まり、信頼が合えば書き換えずに進む'
 
-# 更新が書くものと止める確認の表（tests/fixtures/host-update-order.tsv）。行ごとに、止めたあとの $agent_home の全ファイルが止める前と同じことを確認する。
-# 書き換わる行（none）が実際に書き換えることも確認し、止めた行の「変わらない」が書く手順を流さなかっただけの結果でないようにする。
-# 内容だけでなく、種類・権限・リンク先と、ディレクトリの有無と権限も比べる。
-snapshot_home() {
- python3 - "$TEMPLATE_AGENT_HOME" <<'PY'
-import hashlib, os, stat, sys
-root = sys.argv[1]
-rows = []
-for base, dirs, files in os.walk(root):
-    for name in dirs + files:
-        path = os.path.join(base, name)
-        info = os.lstat(path)
-        kind = "link" if stat.S_ISLNK(info.st_mode) else "dir" if stat.S_ISDIR(info.st_mode) else "file"
-        detail = os.readlink(path) if kind == "link" else hashlib.sha256(open(path, "rb").read()).hexdigest() if kind == "file" else ""
-        rows.append("%s %s %o %s" % (os.path.relpath(path, root), kind, stat.S_IMODE(info.st_mode), detail))
-print(hashlib.sha256("\n".join(sorted(rows)).encode()).hexdigest())
-PY
-}
 unset TEST_TRUST_OUT TEST_DISABLED_OUT
-order_rows=0
-rm -rf "$test_dir/before-table-home"
-cp -R "$TEMPLATE_AGENT_HOME" "$test_dir/before-table-home"
-rm -rf "$TEMPLATE_AGENT_HOME"
-mkdir -p "$TEMPLATE_AGENT_HOME"
 echo ok >"$test_dir/codex-hooks"
-set_mode running
-agent_env
-run
-rm -rf "$test_dir/installed-home"
-cp -R "$TEMPLATE_AGENT_HOME" "$test_dir/installed-home"
-while IFS=$'\t' read -r id state refusal message remain; do
- [[ -n $id && $id != '#'* ]] || continue
- order_rows=$((order_rows + 1))
- # 入れたあとの状態から、管理するファイルを古くして、書けば変わる形にする。
- echo ok >"$test_dir/codex-hooks"
- rm -rf "$TEMPLATE_AGENT_HOME"
- cp -R "$test_dir/installed-home" "$TEMPLATE_AGENT_HOME"
- set_mode running
- agent_env
- while IFS= read -r file; do
-  case $file in
-  "$settings" | "$config") ;;
-  *) printf '# stale\n' >>"$file" ;;
-  esac
- done < <(find "$TEMPLATE_AGENT_HOME" -type f)
- printf '%s\n' '{"theme":"dark"}' >"$settings"
- case $state in
- managed) sed 's/trusted_hash = "sha256:[0-9a-f]*"/trusted_hash = "sha256:old"/' "$config" >"$test_dir/old-config"; cp "$test_dir/old-config" "$config" ;;
- new) rm -f "$config" ;;
- unmarked) printf '%s\n' "$unmarked_keys" >"$config" ;;
- unmarked-fresh) cp "$test_dir/unmarked-trusted" "$config" ;;
- unmarked-trusted) sed 's/trusted_hash = "sha256:[0-9a-f]*"/trusted_hash = "sha256:old"/' "$test_dir/unmarked-trusted" >"$config" ;;
- *) echo "表の状態が不明です: $state" >&2; exit 1 ;;
- esac
- # 空の置き場の権限は、止めた行で変わらないことを見るため、既定の 700 と違う値にしておく。
- chmod 750 "$TEMPLATE_AGENT_HOME/guard/gh-empty"
- target='' fixed=no
- case $refusal in
- guard:* | guard-link:*) target=$TEMPLATE_AGENT_HOME/guard/${refusal#*:} ;;
- link:*) target=$TEMPLATE_AGENT_HOME/${refusal#link:} ;;
- noexec:*) target=$TEMPLATE_AGENT_HOME/${refusal#noexec:} ;;
- login-shell) target=$config ;;
- esac
- case $refusal in
- guard:*) printf '# 人のファイル\n' >"$target" ;;
- guard-link:* | link:*) rm -f "$target"; ln -s "$test_dir/codex-hooks" "$target" ;;
- noexec:*) printf '# 人のファイル\n' >"$target"; chmod 644 "$target" ;;
- login-shell) sed 's/allow_login_shell = false/allow_login_shell = true/' "$test_dir/unmarked-trusted" >"$config" ;;
- esac
- before=$(snapshot_home)
- set_mode running
- agent_env
- case $refusal in
- none) run ;;
- hooks:*) echo "${refusal#hooks:}" >"$test_dir/codex-hooks"; TEST_CODEX_SECONDS=1 deny ;;
- env:*) env "${refusal#env:}=x" /bin/bash "$test_dir/run.sh" "$root" >"$test_dir/out" 2>"$test_dir/err" && exit 1; [[ -s $test_dir/err ]] ;;
- gh-empty-file) : >"$TEMPLATE_AGENT_HOME/guard/gh-empty/hosts.yml"; before=$(snapshot_home); deny ;;
- disable-all-hooks) printf '%s\n' '{"disableAllHooks":true}' >"$settings"; before=$(snapshot_home); deny ;;
- claude-auth) touch "$test_dir/no-claude-auth"; deny; rm -f "$test_dir/no-claude-auth" ;;
- codex-auth) touch "$test_dir/no-codex-auth"; deny; rm -f "$test_dir/no-codex-auth" ;;
- untrusted | stale) deny ;;
- guard:* | guard-link:* | link:* | noexec:* | login-shell) fixed=yes; deny ;;
- *) echo "表の止める条件が不明です: $refusal" >&2; exit 1 ;;
- esac
- if [[ $refusal == none ]]; then
-  [[ $(snapshot_home) != "$before" ]] || { echo "書き換わらない行: $id" >&2; exit 1; }
- else
-  grep -qF -- "$message" "$test_dir/err" || { echo "表示が違う行: $id" >&2; cat "$test_dir/err" >&2; exit 1; }
-  [[ $(snapshot_home) == "$before" ]] || { echo "止めたのに書き換わった行: $id" >&2; exit 1; }
-  [[ ! -s $test_dir/calls ]] || { echo "止めたのにデーモンを操作した行: $id" >&2; exit 1; }
-  [[ $state != new || ! -e $config ]] || { echo "設定を作った行: $id" >&2; exit 1; }
- fi
- if [[ $fixed == yes ]]; then
-  # 原因を直して流し直すと全件がそろい、もう一度流しても何も変わらない。
-  case $refusal in
-  login-shell) cp "$test_dir/unmarked-trusted" "$config" ;;
-  *) rm -f "$target"; cp -P "$test_dir/installed-home/${target#"$TEMPLATE_AGENT_HOME"/}" "$target" ;;
-  esac
-  set_mode running
-  agent_env
-  run
-  for name in git-credential git-ssh pre-tool-use stop shell_split.py; do
-   cmp -s "$root/common/guard/$name" "$TEMPLATE_AGENT_HOME/guard/$name" && [[ ! -L $TEMPLATE_AGENT_HOME/guard/$name ]] || { echo "流し直してもそろわない行: $id ($name)" >&2; exit 1; }
-  done
-  cmp -s "$root/common/guard/gh" "$TEMPLATE_AGENT_HOME/bin/gh" && cmp -s "$root/common/guard/pre-push" "$TEMPLATE_AGENT_HOME/git-hooks/pre-push" || { echo "流し直してもそろわない行: $id (gh と pre-push)" >&2; exit 1; }
-  settled=$(snapshot_home)
-  set_mode running
-  agent_env
-  run
-  [[ $(snapshot_home) == "$settled" ]] || { echo "2 回目の流し直しで変わった行: $id" >&2; exit 1; }
- fi
-done <"$root/tests/fixtures/host-update-order.tsv"
-echo ok >"$test_dir/codex-hooks"
-[[ $order_rows == $(grep -vc '^#' "$root/tests/fixtures/host-update-order.tsv") ]]
-rm -rf "$TEMPLATE_AGENT_HOME"
-cp -R "$test_dir/before-table-home" "$TEMPLATE_AGENT_HOME"
-echo "PASS host: 更新の表の ${order_rows} 行で、書き換える前に判定できる確認が合わなければ、ガード・Codex の設定と信頼・settings.json を含む全ファイルを書き換えずに止まる"
 
 # 設定の検証。0 で進み、0 以外で止まり、古い Codex と時間切れは警告して進む。
 cp "$test_dir/original/codex/config.toml" "$config"
@@ -1505,6 +1209,33 @@ done
 if /bin/bash "$test_dir/project.sh" "$root" project-new >"$test_dir/out" 2>"$test_dir/err"; then exit 1; fi
 [[ ! -e $TEMPLATE_AGENT_HOME/allowed-repos.d/project-new ]]
 echo 'PASS host: 空の選択や後ろの不正な値で前の許可を壊さず、空の許可ファイルも作らない'
+
+# プロジェクト作成の置き先（許可ファイルと起動ファイル）も、書く前に確認して、1 件でも置けなければ何も書かずに止まる。
+stage_dir="$TEMPLATE_AGENT_HOME/template/shell/project-stage"
+stage_allowed="$TEMPLATE_AGENT_HOME/allowed-repos.d/project-stage"
+stage_stop() {
+ local pattern=$1
+ if /bin/bash "$test_dir/project.sh" "$root" project-stage example/one >"$test_dir/out" 2>"$test_dir/err"; then echo "止まらなかった: $pattern" >&2; exit 1; fi
+ grep -qF "$pattern" "$test_dir/err" || { echo "メッセージが違う: $pattern" >&2; cat "$test_dir/err" >&2; exit 1; }
+ grep -qF '何も書き換えていません' "$test_dir/err"
+ [[ -d $stage_allowed && ! -L $stage_allowed ]] || [[ ! -e $stage_allowed && ! -L $stage_allowed ]]
+ [[ -z $(ls -A "$stage_allowed" 2>/dev/null) ]]
+}
+mkdir -p "$stage_dir"
+printf '# multica-squad-kit-managed\n' >"$test_dir/stage-managed"
+ln -s "$test_dir/stage-managed" "$stage_dir/.zshenv"
+stage_stop 'シンボリックリンクは上書きしません'
+rm "$stage_dir/.zshenv"
+chmod 555 "$stage_dir"
+stage_stop '置き場がないか、書けません'
+chmod 755 "$stage_dir"
+mkdir "$stage_allowed"
+stage_stop '通常のファイルではありません'
+rmdir "$stage_allowed"
+/bin/bash "$test_dir/project.sh" "$root" project-stage example/one >"$test_dir/out" 2>"$test_dir/err"
+[[ $(cat "$stage_allowed") == example/one ]]
+rm -rf "$stage_dir" "$stage_allowed"
+echo 'PASS host: プロジェクト作成の置き先（許可ファイルのリンク・起動ファイルのリンク・書けない置き場）で、許可を書かずに止まり、直して流し直せば通る'
 
 # 本物の gh が PATH の先でも、起動時と Claude の順の両方を確認する。
 export TEST_GUARD_CALLS="$test_dir/guard-calls"

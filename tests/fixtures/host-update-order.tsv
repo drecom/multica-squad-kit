@@ -7,8 +7,11 @@
 # 置き先で止める条件: guard:<名前> は共有のガード 5 本（git-credential・git-ssh・pre-tool-use・stop・shell_split.py）のうち 1 本をマークのないファイルにする、guard-link:<名前> は同じ 1 本をシンボリックリンクにする、
 # link:<置き場からの相対パス> は gh・pre-push・start-daemon・監視のスクリプトをシンボリックリンクにする、noexec:<相対パス> はマークのない gh か pre-push を実行できないファイルにする。
 # login-shell は信頼が合う人の設定の allow_login_shell を true にする（状態は unmarked-fresh。信頼の行が今のキットの値と合う人の設定）。
+# readonly:<相対パス> は置き先をマークのあるまま書き込み不可（444）にする、dirro:<相対パス> は置き先の親ディレクトリを書き込み不可（555）にする、special:<相対パス> は置き先を FIFO にする（読みに行って待ち続けないことも、30 秒の上限で確認する）。
+# 置き先は、5 本のガード・gh・pre-push・start-daemon・17 本の監視のスクリプト・Codex の設定（codex/config.toml）・Claude の共有設定（claude/settings.json）。マークのない既存のファイルは、ガードと実行ファイルだけが止める行で、共有のファイルと設定は人のものとして残す（止めない）ので、行にしない。
 # 置き先の行は、ほかのガードを古い管理済みのファイルにしたまま、止めるファイルだけを変える。先に処理するファイルも後に処理するファイルも、止めたあとに変わらないことを見る。
-# tests/host-test.sh が行ごとに、止めたあとの $agent_home の全ファイルの内容・種類・権限・リンク先が止める前と同じことを確認する。
+# 行ごとの確認は tests/host-order-body.sh が流す。行は番号の余りで 3 つに分け（tests/host-order-1-test.sh・-2-・-3-）、1 本が 1 つのテストの時間の上限に収まるようにする。
+# 各行で、止めたあとの $agent_home の全ファイルの内容・種類・権限・リンク先が止める前と同じことを確認する。
 # 置き先の行は、止めた原因を直して流し直すと、共有のガード 5 本と gh・pre-push が原本と同じになり、もう一度流しても何も変わらないことも確認する。
 none-managed	managed	none		書き換わる（比べるための行）
 none-new	new	none		書き換わる（比べるための行）
@@ -63,3 +66,100 @@ managed-link-monitor	managed	link:bin/squad-usage-wait	シンボリックリン�
 managed-noexec-bin-gh	managed	noexec:bin/gh	既存のガードを利用できません	何も変わらない（直して流し直すとそろう）
 managed-noexec-git-hooks-pre-push	managed	noexec:git-hooks/pre-push	既存のガードを利用できません	何も変わらない（直して流し直すとそろう）
 unmarked-fresh-login-shell	unmarked-fresh	login-shell	allow_login_shell = false を確認できません	何も変わらない（直して流し直すとそろう）
+managed-readonly-guard-git-credential	managed	readonly:guard/git-credential	更新するファイルが書けません	何も変わらない（直して流し直すとそろう）
+managed-dirro-guard-git-credential	managed	dirro:guard/git-credential	置き場がないか、書けません	何も変わらない（直して流し直すとそろう）
+managed-special-guard-git-credential	managed	special:guard/git-credential	通常のファイルではありません	何も変わらない（直して流し直すとそろう）
+managed-readonly-guard-git-ssh	managed	readonly:guard/git-ssh	更新するファイルが書けません	何も変わらない（直して流し直すとそろう）
+managed-dirro-guard-git-ssh	managed	dirro:guard/git-ssh	置き場がないか、書けません	何も変わらない（直して流し直すとそろう）
+managed-special-guard-git-ssh	managed	special:guard/git-ssh	通常のファイルではありません	何も変わらない（直して流し直すとそろう）
+managed-readonly-guard-pre-tool-use	managed	readonly:guard/pre-tool-use	更新するファイルが書けません	何も変わらない（直して流し直すとそろう）
+managed-dirro-guard-pre-tool-use	managed	dirro:guard/pre-tool-use	置き場がないか、書けません	何も変わらない（直して流し直すとそろう）
+managed-special-guard-pre-tool-use	managed	special:guard/pre-tool-use	通常のファイルではありません	何も変わらない（直して流し直すとそろう）
+managed-readonly-guard-stop	managed	readonly:guard/stop	更新するファイルが書けません	何も変わらない（直して流し直すとそろう）
+managed-dirro-guard-stop	managed	dirro:guard/stop	置き場がないか、書けません	何も変わらない（直して流し直すとそろう）
+managed-special-guard-stop	managed	special:guard/stop	通常のファイルではありません	何も変わらない（直して流し直すとそろう）
+managed-readonly-guard-shell_split.py	managed	readonly:guard/shell_split.py	更新するファイルが書けません	何も変わらない（直して流し直すとそろう）
+managed-dirro-guard-shell_split.py	managed	dirro:guard/shell_split.py	置き場がないか、書けません	何も変わらない（直して流し直すとそろう）
+managed-special-guard-shell_split.py	managed	special:guard/shell_split.py	通常のファイルではありません	何も変わらない（直して流し直すとそろう）
+managed-readonly-bin-gh	managed	readonly:bin/gh	更新するファイルが書けません	何も変わらない（直して流し直すとそろう）
+managed-dirro-bin-gh	managed	dirro:bin/gh	置き場がないか、書けません	何も変わらない（直して流し直すとそろう）
+managed-special-bin-gh	managed	special:bin/gh	通常のファイルではありません	何も変わらない（直して流し直すとそろう）
+managed-readonly-git-hooks-pre-push	managed	readonly:git-hooks/pre-push	更新するファイルが書けません	何も変わらない（直して流し直すとそろう）
+managed-dirro-git-hooks-pre-push	managed	dirro:git-hooks/pre-push	置き場がないか、書けません	何も変わらない（直して流し直すとそろう）
+managed-special-git-hooks-pre-push	managed	special:git-hooks/pre-push	通常のファイルではありません	何も変わらない（直して流し直すとそろう）
+managed-readonly-start-daemon	managed	readonly:start-daemon	更新するファイルが書けません	何も変わらない（直して流し直すとそろう）
+managed-dirro-start-daemon	managed	dirro:start-daemon	置き場がないか、書けません	何も変わらない（直して流し直すとそろう）
+managed-special-start-daemon	managed	special:start-daemon	通常のファイルではありません	何も変わらない（直して流し直すとそろう）
+managed-readonly-bin-squad-cli-lib	managed	readonly:bin/squad-cli-lib	更新するファイルが書けません	何も変わらない（直して流し直すとそろう）
+managed-dirro-bin-squad-cli-lib	managed	dirro:bin/squad-cli-lib	置き場がないか、書けません	何も変わらない（直して流し直すとそろう）
+managed-special-bin-squad-cli-lib	managed	special:bin/squad-cli-lib	通常のファイルではありません	何も変わらない（直して流し直すとそろう）
+managed-readonly-bin-squad-dependabot-merge	managed	readonly:bin/squad-dependabot-merge	更新するファイルが書けません	何も変わらない（直して流し直すとそろう）
+managed-dirro-bin-squad-dependabot-merge	managed	dirro:bin/squad-dependabot-merge	置き場がないか、書けません	何も変わらない（直して流し直すとそろう）
+managed-special-bin-squad-dependabot-merge	managed	special:bin/squad-dependabot-merge	通常のファイルではありません	何も変わらない（直して流し直すとそろう）
+managed-readonly-bin-squad-dispatch-pick	managed	readonly:bin/squad-dispatch-pick	更新するファイルが書けません	何も変わらない（直して流し直すとそろう）
+managed-dirro-bin-squad-dispatch-pick	managed	dirro:bin/squad-dispatch-pick	置き場がないか、書けません	何も変わらない（直して流し直すとそろう）
+managed-special-bin-squad-dispatch-pick	managed	special:bin/squad-dispatch-pick	通常のファイルではありません	何も変わらない（直して流し直すとそろう）
+managed-readonly-bin-squad-pr-link	managed	readonly:bin/squad-pr-link	更新するファイルが書けません	何も変わらない（直して流し直すとそろう）
+managed-dirro-bin-squad-pr-link	managed	dirro:bin/squad-pr-link	置き場がないか、書けません	何も変わらない（直して流し直すとそろう）
+managed-special-bin-squad-pr-link	managed	special:bin/squad-pr-link	通常のファイルではありません	何も変わらない（直して流し直すとそろう）
+managed-readonly-bin-squad-pr-link-lib	managed	readonly:bin/squad-pr-link-lib	更新するファイルが書けません	何も変わらない（直して流し直すとそろう）
+managed-dirro-bin-squad-pr-link-lib	managed	dirro:bin/squad-pr-link-lib	置き場がないか、書けません	何も変わらない（直して流し直すとそろう）
+managed-special-bin-squad-pr-link-lib	managed	special:bin/squad-pr-link-lib	通常のファイルではありません	何も変わらない（直して流し直すとそろう）
+managed-readonly-bin-squad-pr-watch	managed	readonly:bin/squad-pr-watch	更新するファイルが書けません	何も変わらない（直して流し直すとそろう）
+managed-dirro-bin-squad-pr-watch	managed	dirro:bin/squad-pr-watch	置き場がないか、書けません	何も変わらない（直して流し直すとそろう）
+managed-special-bin-squad-pr-watch	managed	special:bin/squad-pr-watch	通常のファイルではありません	何も変わらない（直して流し直すとそろう）
+managed-readonly-bin-squad-preflight	managed	readonly:bin/squad-preflight	更新するファイルが書けません	何も変わらない（直して流し直すとそろう）
+managed-dirro-bin-squad-preflight	managed	dirro:bin/squad-preflight	置き場がないか、書けません	何も変わらない（直して流し直すとそろう）
+managed-special-bin-squad-preflight	managed	special:bin/squad-preflight	通常のファイルではありません	何も変わらない（直して流し直すとそろう）
+managed-readonly-bin-squad-review-next	managed	readonly:bin/squad-review-next	更新するファイルが書けません	何も変わらない（直して流し直すとそろう）
+managed-dirro-bin-squad-review-next	managed	dirro:bin/squad-review-next	置き場がないか、書けません	何も変わらない（直して流し直すとそろう）
+managed-special-bin-squad-review-next	managed	special:bin/squad-review-next	通常のファイルではありません	何も変わらない（直して流し直すとそろう）
+managed-readonly-bin-squad-review-wait	managed	readonly:bin/squad-review-wait	更新するファイルが書けません	何も変わらない（直して流し直すとそろう）
+managed-dirro-bin-squad-review-wait	managed	dirro:bin/squad-review-wait	置き場がないか、書けません	何も変わらない（直して流し直すとそろう）
+managed-special-bin-squad-review-wait	managed	special:bin/squad-review-wait	通常のファイルではありません	何も変わらない（直して流し直すとそろう）
+managed-readonly-bin-squad-run-cut	managed	readonly:bin/squad-run-cut	更新するファイルが書けません	何も変わらない（直して流し直すとそろう）
+managed-dirro-bin-squad-run-cut	managed	dirro:bin/squad-run-cut	置き場がないか、書けません	何も変わらない（直して流し直すとそろう）
+managed-special-bin-squad-run-cut	managed	special:bin/squad-run-cut	通常のファイルではありません	何も変わらない（直して流し直すとそろう）
+managed-readonly-bin-squad-run-cut-values	managed	readonly:bin/squad-run-cut-values	更新するファイルが書けません	何も変わらない（直して流し直すとそろう）
+managed-dirro-bin-squad-run-cut-values	managed	dirro:bin/squad-run-cut-values	置き場がないか、書けません	何も変わらない（直して流し直すとそろう）
+managed-special-bin-squad-run-cut-values	managed	special:bin/squad-run-cut-values	通常のファイルではありません	何も変わらない（直して流し直すとそろう）
+managed-readonly-bin-squad-task-post	managed	readonly:bin/squad-task-post	更新するファイルが書けません	何も変わらない（直して流し直すとそろう）
+managed-dirro-bin-squad-task-post	managed	dirro:bin/squad-task-post	置き場がないか、書けません	何も変わらない（直して流し直すとそろう）
+managed-special-bin-squad-task-post	managed	special:bin/squad-task-post	通常のファイルではありません	何も変わらない（直して流し直すとそろう）
+managed-readonly-bin-squad-task-read	managed	readonly:bin/squad-task-read	更新するファイルが書けません	何も変わらない（直して流し直すとそろう）
+managed-dirro-bin-squad-task-read	managed	dirro:bin/squad-task-read	置き場がないか、書けません	何も変わらない（直して流し直すとそろう）
+managed-special-bin-squad-task-read	managed	special:bin/squad-task-read	通常のファイルではありません	何も変わらない（直して流し直すとそろう）
+managed-readonly-bin-squad-usage-check	managed	readonly:bin/squad-usage-check	更新するファイルが書けません	何も変わらない（直して流し直すとそろう）
+managed-dirro-bin-squad-usage-check	managed	dirro:bin/squad-usage-check	置き場がないか、書けません	何も変わらない（直して流し直すとそろう）
+managed-special-bin-squad-usage-check	managed	special:bin/squad-usage-check	通常のファイルではありません	何も変わらない（直して流し直すとそろう）
+managed-readonly-bin-squad-usage-lib	managed	readonly:bin/squad-usage-lib	更新するファイルが書けません	何も変わらない（直して流し直すとそろう）
+managed-dirro-bin-squad-usage-lib	managed	dirro:bin/squad-usage-lib	置き場がないか、書けません	何も変わらない（直して流し直すとそろう）
+managed-special-bin-squad-usage-lib	managed	special:bin/squad-usage-lib	通常のファイルではありません	何も変わらない（直して流し直すとそろう）
+managed-readonly-bin-squad-usage-read	managed	readonly:bin/squad-usage-read	更新するファイルが書けません	何も変わらない（直して流し直すとそろう）
+managed-dirro-bin-squad-usage-read	managed	dirro:bin/squad-usage-read	置き場がないか、書けません	何も変わらない（直して流し直すとそろう）
+managed-special-bin-squad-usage-read	managed	special:bin/squad-usage-read	通常のファイルではありません	何も変わらない（直して流し直すとそろう）
+managed-readonly-bin-squad-usage-wait	managed	readonly:bin/squad-usage-wait	更新するファイルが書けません	何も変わらない（直して流し直すとそろう）
+managed-dirro-bin-squad-usage-wait	managed	dirro:bin/squad-usage-wait	置き場がないか、書けません	何も変わらない（直して流し直すとそろう）
+managed-special-bin-squad-usage-wait	managed	special:bin/squad-usage-wait	通常のファイルではありません	何も変わらない（直して流し直すとそろう）
+managed-readonly-codex-config.toml	managed	readonly:codex/config.toml	更新するファイルが書けません	何も変わらない（直して流し直すとそろう）
+managed-dirro-codex-config.toml	managed	dirro:codex/config.toml	置き場がないか、書けません	何も変わらない（直して流し直すとそろう）
+managed-special-codex-config.toml	managed	special:codex/config.toml	通常のファイルではありません	何も変わらない（直して流し直すとそろう）
+managed-link-codex-config.toml	managed	link:codex/config.toml	シンボリックリンクは上書きしません	何も変わらない（直して流し直すとそろう）
+managed-dirro-claude-settings.json	managed	dirro:claude/settings.json	置き場がないか、書けません	何も変わらない（直して流し直すとそろう）
+managed-special-claude-settings.json	managed	special:claude/settings.json	通常のファイルに置き換えてください	何も変わらない（直して流し直すとそろう）
+managed-link-claude-settings.json	managed	link:claude/settings.json	実体のファイルに置き換えてください	何も変わらない（直して流し直すとそろう）
+managed-link-bin-squad-dependabot-merge	managed	link:bin/squad-dependabot-merge	シンボリックリンクは上書きしません	何も変わらない（直して流し直すとそろう）
+managed-link-bin-squad-dispatch-pick	managed	link:bin/squad-dispatch-pick	シンボリックリンクは上書きしません	何も変わらない（直して流し直すとそろう）
+managed-link-bin-squad-pr-link	managed	link:bin/squad-pr-link	シンボリックリンクは上書きしません	何も変わらない（直して流し直すとそろう）
+managed-link-bin-squad-pr-link-lib	managed	link:bin/squad-pr-link-lib	シンボリックリンクは上書きしません	何も変わらない（直して流し直すとそろう）
+managed-link-bin-squad-pr-watch	managed	link:bin/squad-pr-watch	シンボリックリンクは上書きしません	何も変わらない（直して流し直すとそろう）
+managed-link-bin-squad-preflight	managed	link:bin/squad-preflight	シンボリックリンクは上書きしません	何も変わらない（直して流し直すとそろう）
+managed-link-bin-squad-review-next	managed	link:bin/squad-review-next	シンボリックリンクは上書きしません	何も変わらない（直して流し直すとそろう）
+managed-link-bin-squad-review-wait	managed	link:bin/squad-review-wait	シンボリックリンクは上書きしません	何も変わらない（直して流し直すとそろう）
+managed-link-bin-squad-run-cut	managed	link:bin/squad-run-cut	シンボリックリンクは上書きしません	何も変わらない（直して流し直すとそろう）
+managed-link-bin-squad-run-cut-values	managed	link:bin/squad-run-cut-values	シンボリックリンクは上書きしません	何も変わらない（直して流し直すとそろう）
+managed-link-bin-squad-task-post	managed	link:bin/squad-task-post	シンボリックリンクは上書きしません	何も変わらない（直して流し直すとそろう）
+managed-link-bin-squad-task-read	managed	link:bin/squad-task-read	シンボリックリンクは上書きしません	何も変わらない（直して流し直すとそろう）
+managed-link-bin-squad-usage-check	managed	link:bin/squad-usage-check	シンボリックリンクは上書きしません	何も変わらない（直して流し直すとそろう）
+managed-link-bin-squad-usage-lib	managed	link:bin/squad-usage-lib	シンボリックリンクは上書きしません	何も変わらない（直して流し直すとそろう）
+managed-link-bin-squad-usage-read	managed	link:bin/squad-usage-read	シンボリックリンクは上書きしません	何も変わらない（直して流し直すとそろう）

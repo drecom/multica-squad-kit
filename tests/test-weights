@@ -28,7 +28,10 @@ tests/guard-check-test.sh 9
 tests/guard-git-test.sh 3
 tests/guard-hook-test.sh 45
 tests/host-daemon-test.sh 35
-tests/host-test.sh 135
+tests/host-order-1-test.sh 165
+tests/host-order-2-test.sh 165
+tests/host-order-3-test.sh 165
+tests/host-test.sh 170
 tests/install-command-test.sh 7
 tests/install-test.sh 30
 tests/installation-test.sh 82

@@ -191,7 +191,8 @@ PY
 host_codex_check() {
 	local config=$agent_home/codex/config.toml existing='' result status detail trust disabled names lines
 	codex_trust=
-	if [[ -e $config ]] && ! grep -qx '# multica-squad-kit-managed' "$config"; then existing=$config; fi
+	# 通常のファイルだけを読む。リンクや特殊ファイルは、あとの置き先の確認（host_check_targets）が止めるので、ここでは応答しない読み取りで待たない。
+	if [[ -f $config && ! -L $config ]] && ! grep -qx '# multica-squad-kit-managed' "$config"; then existing=$config; fi
 	if ! result=$(python3 "${kit_root:-$root}/lib/codex-hooks.py" "$agent_home/codex" "$agent_home/guard" "${codex_check_seconds:-30}" ${existing:+"$existing"}); then
 		die 'Codex のフックの信頼の値を読む処理を実行できませんでした。python3 を確認して流し直してください。何も書き換えていません。'
 	fi
@@ -468,7 +469,8 @@ PY
 	fi
 }
 
-# 更新で置くファイルの一覧。種類は guard（マークのない既存のファイルは止める）、exec（gh と pre-push。マークのない既存のファイルは実行できれば使う）、shared（マークのない既存のファイルは使う）。
+# 更新で置くファイルの一覧。種類は guard（マークのない既存のファイルは止める）、exec（gh と pre-push。マークのない既存のファイルは実行できれば使う）、shared（マークのない既存のファイルは使う）、
+# codex-config（Codex の設定。マークのない既存の設定は使う）、claude-settings（共有の settings.json。マークを持たず、置き場へ一時ファイルを作って差し替える）。
 # 置く前の確認（host_check_targets）と置く処理が同じ一覧を読む。
 host_list_targets() {
 	local file name
@@ -483,30 +485,66 @@ host_list_targets() {
 		host_target_kind+=(shared)
 		host_target_dst+=("$agent_home/bin/${file##*/}")
 	done
+	if uses_runtime codex; then
+		host_target_kind+=(codex-config)
+		host_target_dst+=("$agent_home/codex/config.toml")
+	fi
+	if uses_runtime claude; then
+		host_target_kind+=(claude-settings)
+		host_target_dst+=("$agent_home/claude/settings.json")
+	fi
 }
 
 # 置く前に、置き先を全件読み取りだけで確認する。どれか 1 件でも置けなければ、1 件も置かずに止まる。
-# 止める形: シンボリックリンク、マークのない既存のガード、マークのない既存の gh と pre-push が実行できない、
-# マークのある既存のファイルが通常のファイルでない・書けない、置き場が書けない。
+# 止める形: シンボリックリンク、通常のファイルでない置き先、マークのない既存のガード、マークのない既存の gh と pre-push が実行できない、
+# マークのある既存のファイルが書けない、置き場が書けない。通常のファイルかは、マークを読む前に見る（応答しない特殊ファイルを読んで待たないため）。
 host_check_targets() {
 	local i dst kind dir
 	host_list_targets
 	for i in "${!host_target_dst[@]}"; do
-		dst=${host_target_dst[$i]} kind=${host_target_kind[$i]}
+		dst=${host_target_dst[$i]} kind=${host_target_kind[$i]} dir=${dst%/*}
 		[[ ! -L $dst ]] || die "シンボリックリンクは上書きしません: ${dst}。何も書き換えていません。そのリンクを確認し、不要なら消してから流し直してください。"
+		if [[ -e $dst ]]; then
+			[[ -f $dst ]] || die "更新するファイルが通常のファイルではありません: ${dst}。何も書き換えていません。そのファイルを確認し、不要なら移すか消してから流し直してください。"
+		fi
+		if [[ $kind == claude-settings ]]; then
+			# 差し替えは置き場に一時ファイルを作るので、置き場が書けなければ書く前に止める。
+			[[ -d $dir && -w $dir ]] || die "置き場がないか、書けません: ${dir}。何も書き換えていません。権限を確認してから流し直してください。"
+			continue
+		fi
 		if [[ -e $dst ]]; then
 			if ! grep -qx '# multica-squad-kit-managed' "$dst"; then
 				case $kind in
 				guard) die "ガードのファイルが原本と一致しません: ${dst}。何も書き換えていません。マークのない既存のファイルが残っていると、役のフックが動きません。そのファイルの中身を確認して、不要なら移すか消してから、セットアップを流し直してください。既存のファイルは上書きしません。" ;;
-				exec) [[ -f $dst && -x $dst ]] || die "既存のガードを利用できません: ${dst}。何も書き換えていません。実行権限・読み取り権限を管理者に確認してもらい、流し直してください。既存のファイルは上書きしません。" ;;
+				exec) [[ -x $dst ]] || die "既存のガードを利用できません: ${dst}。何も書き換えていません。実行権限・読み取り権限を管理者に確認してもらい、流し直してください。既存のファイルは上書きしません。" ;;
 				esac
 			else
-				[[ -f $dst && -w $dst ]] || die "更新するファイルが通常のファイルでないか、書けません: ${dst}。何も書き換えていません。権限と種類を確認してから流し直してください。"
+				[[ -w $dst ]] || die "更新するファイルが書けません: ${dst}。何も書き換えていません。権限を確認してから流し直してください。"
 			fi
 		else
-			dir=${dst%/*}
 			[[ -d $dir && -w $dir ]] || die "置き場がないか、書けません: ${dir}。何も書き換えていません。権限を確認してから流し直してください。"
 		fi
+	done
+}
+
+# プロジェクトの許可とシェルの起動ファイルを置く前に、置き先を読み取りだけで確認する。1 件でも置けなければ、許可も起動ファイルも書かずに止まる。
+# 置き場は、まだなければ作れる最も近い親で見る。マークのない起動ファイルは使うので、ここでは止めない。
+host_check_project_targets() {
+	local dst dir
+	for dst in "$allowed_repos_file" "$project_shell_dir/.zshenv" "$project_shell_dir/env.sh"; do
+		if [[ -L $dst ]]; then
+			if [[ $dst == "$allowed_repos_file" ]] || grep -qx '# multica-squad-kit-managed' "$dst" 2>/dev/null; then
+				die "シンボリックリンクは上書きしません: ${dst}。何も書き換えていません。そのリンクを確認し、不要なら消してから流し直してください。"
+			fi
+			continue
+		fi
+		if [[ -e $dst && ! -f $dst ]]; then
+			[[ $dst != "$allowed_repos_file" ]] || die "許すリポジトリのファイルが通常のファイルではありません: ${dst}。何も書き換えていません。そのファイルを確認し、不要なら移すか消してから流し直してください。"
+			continue
+		fi
+		dir=${dst%/*}
+		while [[ ! -d $dir && $dir == */* ]]; do dir=${dir%/*}; done
+		[[ -d $dir && -w $dir ]] || die "置き場がないか、書けません: ${dst%/*}。何も書き換えていません。権限を確認してから流し直してください。"
 	done
 }
 
@@ -591,6 +629,7 @@ prepare_project_host() {
 	fi
 	# 既存のガードも含め、全選択を確認してから実際の許可を書き替える。
 	# 確認用の起動ファイルは同じひな形から作り、専用の一時許可を指す。
+	host_check_project_targets
 	host_check_guards "$content" || die 'ガードの確認に失敗しました。従来の許可とシェル起動ファイルを保って停止します。'
 	# プロジェクト登録から呼ぶ場合は、通信中の紐付け変更も最後に確認する。
 	# local のマークは prepare_project が付け、ホスト単体の準備では呼ばない。
@@ -611,7 +650,7 @@ prepare_project_host() {
 		content=$(cat "$root/common/shell/$file") || die 'シェルのひな形を読めませんでした。'
 		content=${content//"$needle"/"$escaped"}
 		content=${content//"$bin_needle"/"$escaped_bin"}
-		if [[ -e $project_shell_dir/$file || -L $project_shell_dir/$file ]] && ! grep -qx '# multica-squad-kit-managed' "$project_shell_dir/$file"; then
+		if [[ -e $project_shell_dir/$file || -L $project_shell_dir/$file ]] && ! { [[ -f $project_shell_dir/$file ]] && grep -qx '# multica-squad-kit-managed' "$project_shell_dir/$file"; }; then
 			ui_notice warn "$project_shell_dir/$file" "マークのない既存のファイルをそのまま使います" || ui_warning "マークのない既存のファイルをそのまま使います: $project_shell_dir/$file"
 			continue
 		fi

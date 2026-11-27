@@ -405,7 +405,7 @@ Codex のフックは `-c` の形で入れ、コマンドのルールは外し�
 | `CHANGELOG.md` | 先頭の `## 次のバージョン` の節に、流し直しで変わることを書く |
 | `tests/` | [テストと実機の確認](#テストと実機の確認)のとおりに足す。SSH のコマンドの形の表は `tests/fixtures/git-ssh-forms.tsv` に置く |
 | `tests/codex-hooks-test.sh` | `hooks/list` の項目の形とフックのパスの形の表（`tests/fixtures/codex-hooks-forms.tsv`・`tests/fixtures/codex-hooks-paths.tsv`）を読み、`lib/codex-hooks.py` の扱いを行ごとに見る |
-| `tests/host-test.sh` の表 | 更新の順序の表を `tests/fixtures/host-update-order.tsv` に置き、止まる行で書いたものと残るものを見る |
+| `tests/host-order-1-test.sh`・`-2-`・`-3-` の表 | 更新の順序の表を `tests/fixtures/host-update-order.tsv` に置き、止まる行で書いたものと残るものを見る |
 | `tests/manifest-test.sh` | `scripts/manifest.sh` が、追跡しない `__pycache__/` と `*.pyc` を一覧に入れないことを見る |
 | `scripts/manifest.sh` | Python の実行で生まれる `__pycache__/` と `*.pyc` を、`.gitignore` と同じく一覧から除く |
 | `CONTRIBUTING.md` | `MANIFEST` の節の、一覧から除くものに `__pycache__/` と `*.pyc` を足す |
