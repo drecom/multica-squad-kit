@@ -97,11 +97,13 @@ git の設定を環境変数の `GIT_CONFIG_COUNT` と `GIT_CONFIG_KEY_n`・`GIT
 
 ### SSH の push を止める
 
-キットの SSH のコマンドは、git が SSH で送るコマンドを読む。`git-receive-pack` で、行き先が `github.com` の許すリポジトリでないときは、止めて理由を出す。ほかのコマンドと許すリポジトリへの push は、本物の `ssh` にそのまま渡す。
+キットの SSH のコマンドは、git が SSH で送るリモートコマンド（最後の引数）を、形で分類する。`git-receive-pack '<OWNER>/<REPO>'` は、行き先が `github.com` の許すリポジトリでないときに止めて、理由を出す。`git-upload-pack` と `git-upload-archive` の読み取りと、`-G`・`-V` の照会は、本物の `ssh` にそのまま渡す。
+
+分類できない形は止める。コマンド名の引用、`;` や `&&` の連結、`git-lfs-authenticate` などほかのコマンド、リモートコマンドがない呼び出しが当たる。SSH の `git-lfs-authenticate` は通らなくなる。
 
 git は、SCP の形の URL では `git-receive-pack 'OWNER/REPO.git'` を、`ssh://` の URL では `git-receive-pack '/OWNER/REPO.git'` を送る。どちらの形も、実機の git で確認した。
 
-push かどうかは、最後の引数の最初の単引用符より前のコマンド名で決め、リポジトリの名前は見ない。名前に `receive-pack` を含むリポジトリの fetch と `ls-remote` は、読み取りとして通す。
+リポジトリやホストの名前に `receive-pack` があっても、コマンドの形だけで分類する。形ごとの扱いは `tests/fixtures/git-ssh-forms.tsv` の表にあり、`tests/guard-git-test.sh` が行ごとに確認する。
 
 ### 置き場と変数の一覧
 
@@ -346,7 +348,7 @@ Codex のフックは `-c` の形で入れ、コマンドのルールは外し�
 | 許すリポジトリのファイル（セットアップが書く。同じ OS の利用者も書ける） | `gh` のガード、ヘルパー、SSH のコマンド | 今の `gh` のガードと同じ形 | 読めなければ、どのリポジトリにも答えず止める |
 | ヘルパーの標準入力（git が書く。URL は役が決める） | 認証情報のヘルパー | `github.com` の HTTPS で、パスが許すリポジトリ | 何も返さずに終わる |
 | ヘルパーの親のプロセス（同じ OS の利用者のプロセス） | 認証情報のヘルパー | 親をたどって `git-remote-https` がある | 何も返さずに終わる |
-| SSH のコマンドの引数（git が書く。URL は役が決める） | SSH のコマンド | `git-receive-pack` なら、`github.com` の許すリポジトリ | 止めて、理由を出す |
+| SSH のコマンドの引数（git が書く。URL は役が決める） | SSH のコマンド | `git-receive-pack` なら、`github.com` の許すリポジトリ。読み取りと照会以外の分類できない形は止める | 止めて、理由を出す |
 | 役の環境変数（キットが custom_env に書く。役も変えられる） | `gh` のガード、`gh`、git | 流し直しのときに、キットの値と同じ。実行の間は PreToolUse の照合と分離の確認だけ | 照合に当たれば止める。当たらない書き換えは止まらない |
 | 端末とデーモンの環境のトークンの変数（人が書く） | セットアップと起動入口のガードの確認、PreToolUse | ない | セットアップと起動入口は止まる。役の実行では `multica` のほかを止める |
 | 空の `gh` の置き場の中身（キットが作る。同じ OS の利用者も書ける） | セットアップのガードの確認、PreToolUse | ファイルがなく、本物の `gh` が未認証を返す | セットアップは役を変える前に止まる。役の実行では `multica` のほかを止める |

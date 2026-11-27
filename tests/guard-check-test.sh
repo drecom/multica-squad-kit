@@ -260,6 +260,11 @@ for code in 126 2; do
 	TEST_GH_AUTH_EXIT=$code deny
 	grep -q '未認証かを確認できませんでした' "$test_dir/err"
 	grep -q "gh auth status の終了コード: $code" "$test_dir/err"
+	grep -q '確認した gh: ' "$test_dir/err"
+	if grep -q '端末で' "$test_dir/err"; then
+		echo '端末で gh auth status を流す案内が残っている' >&2
+		exit 1
+	fi
 	grep -q '何も変更していません' "$test_dir/err"
 	[[ ! -s $TEST_GUARD_CALLS ]]
 done

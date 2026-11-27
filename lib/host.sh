@@ -563,7 +563,7 @@ host_check_isolation() {
 	fi
 	# 未認証の終了は、終了コード 1 と「not logged」の表示で見分ける。実行できない・異常終了などは未認証と確認できないので止める。
 	if [[ $status != 1 ]] || ! grep -qi 'not logged' <<<"$status_output"; then
-		die "空の gh の置き場で、本物の gh（${real_gh_dir}/gh）が未認証かを確認できませんでした（gh auth status の終了コード: ${status}）。gh の実行権限と導入を確認し、端末で gh auth status を流して表示を確認してから、セットアップを流し直してください。何も変更していません。表示: $(printf '%s' "$status_output" | tr '\n' ' ')"
+		die "空の gh の置き場で、本物の gh が未認証かを確認できませんでした。確認した gh: ${real_gh_dir}/gh。gh auth status の終了コード: ${status}。gh の表示: $(printf '%s' "$status_output" | tr '\n' ' ')。上の gh の実行権限と導入を確認し、セットアップを流し直してください。何も変更していません。"
 	fi
 }
 

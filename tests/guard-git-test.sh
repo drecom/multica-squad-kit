@@ -218,37 +218,25 @@ ssh_block() {
 	grep -qF -- "$reason" "$test_dir/err"
 }
 
-# SCP の形の URL（git@github.com:OWNER/REPO.git）と ssh:// の URL で、git が送るコマンド。
-ssh_allow git@github.com "git-receive-pack 'example/template.git'"
-ssh_allow git@github.com "git-receive-pack 'example/template'"
-ssh_allow git@github.com "git-receive-pack 'EXAMPLE/template.git'"
-ssh_allow git@github.com "git-receive-pack '/example/template.git'"
-ssh_allow -o SendEnv=GIT_PROTOCOL -p 22 git@github.com "git-receive-pack '/example/template.git'"
-ssh_allow -4 github.com "git-receive-pack 'example/template.git'"
-# 名前に receive-pack を含むリポジトリの読み取り（fetch・ls-remote）は、許可リストになくても本物の ssh に渡す。
-ssh_allow git@github.com "git-upload-pack 'other/x-receive-pack.git'"
-ssh_allow git@github.com "git-upload-pack '/other/receive-pack'"
-ssh_allow -o SendEnv=GIT_PROTOCOL git@github.com "git-upload-pack '/other/git-receive-pack.git'"
-echo 'PASS ssh: 2 つの URL の形で、許すリポジトリへの push は本物の ssh に元の引数のまま渡す'
-
-ssh_block 'other/repo への SSH の push は止めた' git@github.com "git-receive-pack 'other/repo.git'"
-ssh_block 'other/x-receive-pack への SSH の push は止めた' git@github.com "git-receive-pack 'other/x-receive-pack.git'"
-ssh_block 'other/repo への SSH の push は止めた' git@github.com "git-receive-pack '/other/repo.git'"
-ssh_block 'other/repo への SSH の push は止めた' -o SendEnv=GIT_PROTOCOL git@github.com "git-receive-pack '/other/repo'"
-ssh_block 'example/other への SSH の push は止めた' git@github.com "git-receive-pack 'example/other.git'"
-echo 'PASS ssh: 2 つの URL の形で、許していないリポジトリへの push は、自分の文で止めて ssh を呼ばない'
-
-ssh_block '行き先 git@outside.example は止めた' git@outside.example "git-receive-pack 'example/template.git'"
-ssh_block '行き先 git@github.com.evil.example は止めた' git@github.com.evil.example "git-receive-pack 'example/template.git'"
-ssh_block '行き先 git@ssh.github.com は止めた' git@ssh.github.com "git-receive-pack 'example/template.git'"
-ssh_block '判定できないので止めた' git@github.com "git-receive-pack 'example/template.git/extra'"
-ssh_block '判定できないので止めた' git@github.com "git-receive-pack example/template.git"
-ssh_block '判定できないので止めた' git@github.com "git-receive-pack '../example/template.git'"
-ssh_block '判定できないので止めた' git@github.com "git-receive-pack 'example/template.git' 'other/repo.git'"
-ssh_block '判定できないので止めた' git@github.com "git receive-pack 'example/template.git'"
-ssh_block '判定できないので止めた' git@github.com "/usr/bin/git-receive-pack 'example/template.git'"
-ssh_block '判定できないので止めた' git-receive-pack
-echo 'PASS ssh: github.com 以外の行き先と、形を判定できない push のコマンドは止める'
+# 受ける形の表（tests/fixtures/git-ssh-forms.tsv）を入力にして、1 行ごとに扱いを確認する。
+# 扱いは pass（本物の ssh に元の引数のまま渡す）か block:<文>（自分の文で止めて ssh を呼ばない）。
+forms_file="$root/tests/fixtures/git-ssh-forms.tsv"
+form_count=0
+trap 'echo "表の行 ${form_id:-?}（${form_desc:-}）が、表の扱いのとおりにならなかった" >&2' ERR
+while IFS=$'\t' read -r form_id form_treatment form_args form_desc; do
+	[[ -z $form_id || $form_id == '#'* ]] && continue
+	form_argv=()
+	while IFS= read -r -d '' item; do form_argv+=("$item"); done < <(jq -j '.[] | ., "\u0000"' <<<"$form_args")
+	form_count=$((form_count + 1))
+	case $form_treatment in
+	pass) ssh_allow ${form_argv[@]+"${form_argv[@]}"} ;;
+	block:*) ssh_block "${form_treatment#block:}" ${form_argv[@]+"${form_argv[@]}"} ;;
+	*) echo "表の行 ${form_id} の扱いが読めない: ${form_treatment}" >&2; exit 1 ;;
+	esac
+done <"$forms_file"
+trap - ERR
+(( form_count >= 40 ))
+echo "PASS ssh: 受ける形の表 ${form_count} 行が、行ごとの扱いのとおり（通す・許すものだけ渡す・分類できない形は止める）"
 
 printf '%s\n' other/template >"$SQUAD_KIT_ALLOWED_REPOS"
 ssh_block 'example/template への SSH の push は止めた' git@github.com "git-receive-pack 'example/template.git'"
@@ -258,19 +246,6 @@ rm "$SQUAD_KIT_ALLOWED_REPOS"
 ssh_block 'example/template への SSH の push は止めた' git@github.com "git-receive-pack 'example/template.git'"
 printf '%s\n' example/template >"$SQUAD_KIT_ALLOWED_REPOS"
 echo 'PASS ssh: 許すリポジトリのファイルに載っていない・空・読めないときは、push を止める'
-
-ssh_allow git@github.com "git-upload-pack 'other/repo.git'"
-ssh_allow git@github.com "git-upload-pack '/other/repo.git'"
-ssh_allow git@github.com "git-upload-pack 'example/template.git'"
-ssh_allow -o SendEnv=GIT_PROTOCOL git@github.com "git-upload-pack '/other/repo.git'"
-ssh_allow git@outside.example "git-upload-pack 'other/repo.git'"
-echo 'PASS ssh: fetch（upload-pack）は、許していないリポジトリでも本物の ssh に元の引数のまま渡す'
-
-# git が core.sshCommand の種類を調べる -G などの引数も、そのまま本物の ssh に渡す。
-ssh_allow -G ''
-ssh_allow -V
-ssh_allow git@github.com
-echo 'PASS ssh: push でない呼び出し（-G・-V・コマンドなし）は、そのまま本物の ssh に渡す'
 
 # 実際の git の push が、ssh のコマンドに送る引数の形を確認する。ssh のコマンドの差し替えが、受け取った引数を記録する。
 if command -v git >/dev/null; then
@@ -302,6 +277,19 @@ EOF
 	# git が種類を調べる -G などの呼び出しは数えず、receive-pack の呼び出しだけを見る。
 	jq -se '[.[] | select(.[-1] | test("receive-pack"))] | length == 2 and all(.[]; .[-1] | test("^git-receive-pack .(/)?example/template.git.$"))' "$test_dir/ssh-calls" >/dev/null
 	echo 'PASS ssh: 実際の git の push で、2 つの URL の形のうち、許していないものを自分の文で止め、許すものを ssh に渡す'
+fi
+
+# host 名に receive-pack を含み、ポートも付く URL の読み取りで、git が種類を調べる -G を、ガードが止めない。
+if command -v git >/dev/null; then
+	reset_calls
+	(
+		cd "$test_dir/repo"
+		export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_TERMINAL_PROMPT=0
+		git -c "core.sshCommand=bash $ssh_guard" ls-remote ssh://git@receive-pack.example:2222/other/repo.git >"$test_dir/git-out" 2>&1 || true
+	)
+	! grep -q 'git push のガード' "$test_dir/git-out"
+	jq -se 'map(select(.[-1] | test("^git-upload-pack "))) | length == 1' "$test_dir/ssh-calls" >/dev/null
+	echo 'PASS ssh: 実際の git の ls-remote で、host 名に receive-pack とポートがあっても、止めずに本物の ssh に渡す'
 fi
 
 # 置き場に空白と単引用符があっても、役の環境の credential.helper と core.sshCommand を、git が起動できる。
