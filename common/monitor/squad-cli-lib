@@ -2773,30 +2773,31 @@ squad_cli_read_roster_for_caller() {
 # squad は名簿を決めたスクワッドの ID で、使用率の答えの記録を同じスクワッドで探すために使う。
 # 2 つ目の引数にスクワッドの ID があれば、そのスクワッドの名簿を読む（回から決めたスクワッド）。
 # なければ、タスクの担当のスクワッドを使う。
+# 読み取りの失敗は 1、担当のスクワッドがないと確認できたときは 2 を返す。
 squad_cli_read_roster() {
 	local issue=$1 squad_id=${2-} task squads squad key member members ids id agent roles='{}' name role
 	if [[ -z $squad_id ]]; then
 		task=$(squad_cli_read issue-get "$issue") || return 1
-		squad_id=$(jq -r 'if .assignee_type == "squad" then .assignee_id else "" end' <<<"$task")
+		squad_id=$(jq -r 'if .assignee_type == "squad" then .assignee_id else "" end' <<<"$task") || return 1
 		if [[ -z $squad_id ]]; then
 			echo "タスクの担当がスクワッドではないため、名簿を読めない: $issue" >&2
-			return 1
+			return 2
 		fi
 	fi
 	squads=$(squad_cli_read squad-list) || return 1
 	squad=$(jq -c --arg id "$squad_id" '[.[] | select(.id == $id and .archived_at == null)] | first // empty' <<<"$squads") || return 1
 	if [[ -z $squad ]]; then
 		echo "タスクの担当のスクワッドが一覧にない、またはアーカイブ済み: $squad_id" >&2
-		return 1
+		return 2
 	fi
 	if ! jq -e '.name | ascii_downcase | split("-") | length == 2' <<<"$squad" >/dev/null; then
 		echo 'スクワッドの名前から、キーとメンバーのキーを読めない' >&2
 		return 1
 	fi
-	key=$(jq -r '.name | ascii_downcase | split("-")[0]' <<<"$squad")
-	member=$(jq -r '.name | ascii_downcase | split("-")[1]' <<<"$squad")
+	key=$(jq -r '.name | ascii_downcase | split("-")[0]' <<<"$squad") || return 1
+	member=$(jq -r '.name | ascii_downcase | split("-")[1]' <<<"$squad") || return 1
 	members=$(squad_cli_read squad-member-list "$squad_id") || return 1
-	ids=$(jq -r '.[] | select(.member_type == "agent") | .member_id' <<<"$members")
+	ids=$(jq -r '.[] | select(.member_type == "agent") | .member_id' <<<"$members") || return 1
 	while IFS= read -r id; do
 		[[ -n $id ]] || continue
 		agent=$(squad_cli_read agent-get "$id") || return 1
@@ -2809,7 +2810,7 @@ squad_cli_read_roster() {
 		[[ -n $role ]] || continue
 		# agent get の記録は指示を含み大きくなるので、引数でなく標準入力で渡す（名簿、記録の順）。
 		roles=$(printf '%s\n%s\n' "$roles" "$agent" | jq -sc --arg role "$role" \
-			'.[0] as $roles | .[1] as $agent | $roles | if has($role) then . else .[$role] = {id: $agent.id, model: $agent.model, name: $agent.name} end')
+			'.[0] as $roles | .[1] as $agent | $roles | if has($role) then . else .[$role] = {id: $agent.id, model: $agent.model, name: $agent.name} end') || return 1
 	done <<<"$ids"
 	jq -c --argjson roles "$roles" '{leader: .leader_id, squad: .id, roles: $roles}' <<<"$squad"
 }

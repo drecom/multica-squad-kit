@@ -791,34 +791,42 @@ unlinked_deduplicate() {
 
 # 回のコメントを名簿で回と認め、その `対象の PR:` の正規形を標準出力に出す。認められないときは理由を 1 行出して 1 を返す。
 # 認める回でも、認める回のうちコメントの並びで最も新しい回（今の回）でないときは、今の回の ID を出して 2 を返す。
+# 照合に使うデータを読めないときは、理由を出して 3 を返す。
 # 名簿はタスクの担当のスクワッドから読む。呼び出しの --leader と規則のリーダーの ID は、回の判定に使わない。
 unlinked_round_pr() {
-	local issue=$1 round=$2 comments roster leader principals judge lines value data
-	comments=$(squad_cli_read issue-comments "$issue" 2>/dev/null) || { echo 'コメントを読めない'; return 1; }
-	roster=$(squad_cli_read_roster "$issue" 2>/dev/null) || { echo '名簿を読めない'; return 1; }
-	leader=$(jq -r '.leader // empty' <<<"$roster") || return 1
+	local issue=$1 round=$2 comments roster leader principals judge verdict lines value data status=0
+	comments=$(squad_cli_read issue-comments "$issue" 2>/dev/null) || { echo 'コメントを読めない'; return 3; }
+	roster=$(squad_cli_read_roster "$issue" 2>/dev/null) || status=$?
+	case $status in
+	0) ;;
+	2) echo 'タスクの担当のスクワッドがない'; return 1 ;;
+	*) echo '名簿を読めない'; return 3 ;;
+	esac
+	leader=$(jq -r '.leader // empty' <<<"$roster") || { echo '名簿からリーダーを読めない'; return 3; }
 	[[ -n $leader ]] || { echo 'スクワッドのリーダーを決められない'; return 1; }
 	principals=$(jq -c '[.roles["claude-principal"].id?, .roles["codex-principal"].id?] | map(select(. != null))' <<<"$roster") \
-		|| { echo '最上位の役を名簿から読めない'; return 1; }
+		|| { echo '最上位の役を名簿から読めない'; return 3; }
 	judge=$(squad_cli_control analyze "$comments" "$(jq -cn --arg leader "$leader" '[$leader]')" "$principals" "$round" 2>/dev/null) \
-		|| { echo '制御記録を判定できない'; return 1; }
-	if [[ $(jq -r --arg round "$round" '.rounds[$round].ok // false' <<<"$judge") != true ]]; then
+		|| { echo '制御記録を判定できない'; return 3; }
+	verdict=$(jq -r --arg round "$round" '.rounds[$round].ok // false' <<<"$judge") \
+		|| { echo '回の判定を読めない'; return 3; }
+	if [[ $verdict != true ]]; then
 		echo "回を認められない（$(jq -r --arg round "$round" '.rounds[$round].reason // "回のコメントでない"' <<<"$judge")）"
 		return 1
 	fi
-	value=$(jq -r '.latest // empty' <<<"$judge") || { echo '今の回を読めない'; return 1; }
+	value=$(jq -r '.latest // empty' <<<"$judge") || { echo '今の回を読めない'; return 3; }
 	if [[ $value != "$round" ]]; then
 		echo "$value"
 		return 2
 	fi
 	lines=$(jq -r --arg round "$round" '[.[] | select(.id == $round) | (.content // "") | gsub("\r\n?"; "\n") | split("\n")[]
-		| select(startswith("対象の PR:"))] | .[]' <<<"$comments") || { echo '回のコメントを読めない'; return 1; }
+		| select(startswith("対象の PR:"))] | .[]' <<<"$comments") || { echo '回のコメントを読めない'; return 3; }
 	if [[ $(grep -c . <<<"$lines") != 1 ]]; then
 		echo '回のコメントの `対象の PR:` の行が 1 つでない'
 		return 1
 	fi
 	value=$(sed -e 's/^対象の PR:[[:space:]]*//' -e 's/[[:space:]]*$//' <<<"$lines")
-	data=$(pr_url_data "$(jq -cn --arg url "$value" '{metadata: {pr_url: $url}}')") || { echo '回の `対象の PR:` を読めない'; return 1; }
+	data=$(pr_url_data "$(jq -cn --arg url "$value" '{metadata: {pr_url: $url}}')") || { echo '回の `対象の PR:` を読めない'; return 3; }
 	if [[ $(jq -r .state <<<"$data") != foreign && $(jq -r .state <<<"$data") != valid ]]; then
 		echo '回の `対象の PR:` が GitHub の PR の URL の形でない'
 		return 1
@@ -1026,29 +1034,31 @@ if stamp.tzinfo is not None and now >= stamp.timestamp() + 71 * 3600:
 }
 
 unlinked_end_notice() {
-	local issue=$1 leader=$2 thread=$3 pr_url=$4 data=$5 rules rule rule_id created end first reason status
+	local issue=$1 leader=$2 thread=$3 pr_url=$4 data=$5 rules rule rule_id created end first reason status=0
 	rules=$(unlinked_watch_rules "$issue") || return 1
 	rule=$(jq -c '.[0] // empty' <<<"$rules") || return 1
 	[[ -n $rule ]] || return 0
 	created=$(jq -r '.created_at' <<<"$rule") || return 1
 	end=$(unlinked_end_data "$created" "$(date +%s)") || return 1
 	[[ -n $end ]] || return 0
-	if ! reason=$(unlinked_watch_check "$issue" "$data" "$rule"); then
+	reason=$(unlinked_watch_check "$issue" "$data" "$rule") || status=$?
+	if ((status != 0)); then
 		printf '見張りの終わりの知らせを書きません（%s）。\n' "$reason" >&2
-		return 0
+		if ((status == 1)); then return 0; fi
+		return 1
 	fi
 	rule_id=$(jq -r '.id' <<<"$rule") || return 1
 	first="連携なしのリポジトリの PR のマージ待ちの見張りが、${end} に終わります。そのあとにマージしたときは、タスクを \`done\` にしてください。マージせずに閉じたときは、\`done\` にしません。PR: \`${pr_url}\`"
-	status=0
 	unlinked_human_notice "$issue" "$leader" "$thread" "$rule_id" "$first" '見張りの終わりの知らせ' || status=$?
 	[[ $status == 0 || $status == 2 ]]
 }
 
 # 選んだ規則の `見張る PR:` と `確認した回:` を、今の回と metadata に照合する。
 # 第 2 引数は pr_url_data の出力。そろうときは何も出さずに 0 を返す。そろわないときは理由を 1 行出して 1 を返す。
+# 照合に使うデータを読めないときは、理由を出して 3 を返す。
 unlinked_watch_check() {
 	local issue=$1 data=$2 rule=$3 instruction watch_lines round_lines watch round watch_data round_pr url status
-	instruction=$(jq -r '.instruction' <<<"$rule") || { echo '規則を読めない'; return 1; }
+	instruction=$(jq -r '.instruction' <<<"$rule") || { echo '規則を読めない'; return 3; }
 	instruction=$(tr -d '\r' <<<"$instruction")
 	watch_lines=$(grep '^見張る PR:' <<<"$instruction" || true)
 	round_lines=$(grep '^確認した回:' <<<"$instruction" || true)
@@ -1058,7 +1068,7 @@ unlinked_watch_check() {
 	fi
 	watch=$(sed -e 's/^見張る PR:[[:space:]]*//' -e 's/[[:space:]]*$//' <<<"$watch_lines")
 	round=$(sed -e 's/^確認した回:[[:space:]]*//' -e 's/[[:space:]]*$//' <<<"$round_lines")
-	watch_data=$(pr_url_data "$(jq -cn --arg url "$watch" '{metadata: {pr_url: $url}}')") || { echo '規則の `見張る PR:` を読めない'; return 1; }
+	watch_data=$(pr_url_data "$(jq -cn --arg url "$watch" '{metadata: {pr_url: $url}}')") || { echo '規則の `見張る PR:` を読めない'; return 3; }
 	case $(jq -r .state <<<"$watch_data") in
 	foreign | valid) ;;
 	*) echo '規則の `見張る PR:` が GitHub の PR の URL の形でない'; return 1 ;;
@@ -1068,10 +1078,10 @@ unlinked_watch_check() {
 		status=$?
 		if ((status == 2)); then
 			echo "規則の確認した回（${round}）が今の回（${round_pr}）と違う"
-		else
-			echo "確認した回: $round_pr"
+			return 1
 		fi
-		return 1
+		echo "確認した回: $round_pr"
+		return "$status"
 	}
 	if [[ $(jq -rn --arg a "$round_pr" --arg b "$watch" '($a | ascii_downcase) == ($b | ascii_downcase)') != true ]]; then
 		echo "回の PR（${round_pr}）が規則の見張る PR（${watch}）と違う"
@@ -1092,7 +1102,8 @@ unlinked_merged() {
 	rule=$(jq -c '.[0] // empty' <<<"$rules") || return 1
 	[[ -n $rule ]] || return 0
 	rule_id=$(jq -r '.id' <<<"$rule") || return 1
-	if reason=$(unlinked_watch_check "$issue" "$data" "$rule"); then
+	reason=$(unlinked_watch_check "$issue" "$data" "$rule") || status=$?
+	if ((status == 0)); then
 		# 終了判定で MERGED と読んだ PR は、ここで規則の見張る PR と一致したものだけを使う。
 		unlinked_rule_unchanged "$issue" "$rule_id" || status=$?
 		if ((status == 2)); then return 0; fi
@@ -1105,6 +1116,11 @@ unlinked_merged() {
 		ci_record '止めた: PR がマージされたので、タスクを done にした'
 		return 0
 	fi
+	if ((status != 1)); then
+		printf 'PR はマージされましたが、照合できませんでした（%s）。規則は残します。\n' "$reason" >&2
+		return 1
+	fi
+	status=0
 	thread=$(jq -r '.metadata.ci_watch_thread | select(. != null)' <<<"$task") || return 1
 	pr_url=$(jq -r '.url' <<<"$data") || return 1
 	first="連携なしのリポジトリの PR がマージされましたが、見張りはタスクを \`done\` にしませんでした（${reason}）。このタスクの成果をマージしたなら、タスクを \`done\` にしてください。PR: \`${pr_url}\`"

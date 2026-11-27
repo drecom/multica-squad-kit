@@ -128,6 +128,8 @@ grep -q 'プロジェクト を取得できません' "$test_dir/err"
 TEST_MALFORMED=yes deny
 TEST_NO_REPO=yes deny
 grep -q 'リポジトリの登録と GitHub 連携' "$test_dir/err"
+grep -qF 'A. GitHub 連携で許可する' "$test_dir/err"
+grep -qF 'B. 連携を使わずに登録する' "$test_dir/err"
 grep -qF 'multica repo add <リポジトリの URL>' "$test_dir/err"
 cmp "$saved" "$test_dir/previous"
 echo 'PASS setup: CLI の失敗・不正 JSON・未連携では止め、前の答えを保つ'

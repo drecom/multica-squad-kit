@@ -14,7 +14,7 @@ source "$root/common/monitor/squad-pr-link-lib"
 
 fail() { echo "FAIL $*" >&2; exit 1; }
 expect() { [[ $2 == "$3" ]] || fail "$1: 期待 [$3]、実際 [$2]"; }
-mode_of() { stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"; }
+mode_of() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"; }
 
 project=proj-1
 pr_url=https://github.com/Owner-A/Repo.Name/pull/12
@@ -312,9 +312,18 @@ e2e=$test_dir/e2e
 export PR_LINK_TEST_DIR=$e2e PR_LINK_TEST_ROOT=$root
 script=$root/common/monitor/squad-pr-link
 mkdir -p "$e2e/bin" "$e2e/work/tmp"
-for cmd in bash dirname jq tr cat python3 mkdir mktemp rm sed ln chmod wc; do
+for cmd in bash dirname jq tr cat python3 mkdir mktemp rm sed chmod wc; do
 	ln -s "$(command -v "$cmd")" "$e2e/bin/$cmd"
 done
+ln -s "$(command -v ln)" "$e2e/bin/ln-real"
+cat >"$e2e/bin/ln" <<'MOCK'
+#!/bin/bash
+set -euo pipefail
+dir=$PR_LINK_TEST_DIR
+[[ ! -f $dir/fail-ln ]] || exit 1
+if [[ -f $dir/rival-at-ln ]]; then printf 'repository: rival\n' >"$3"; fi
+exec "$dir/bin/ln-real" "$@"
+MOCK
 squad_cli_contracts >"$e2e/contracts.json"
 cat >"$e2e/bin/multica" <<'MOCK'
 #!/bin/bash
@@ -381,7 +390,7 @@ if [[ -f $dir/rival-record && ! -e $(<"$dir/rival-record") ]]; then
 	printf 'repository: rival\n' >"$(<"$dir/rival-record")"
 fi
 MOCK
-chmod +x "$e2e/bin/multica" "$e2e/bin/curl" "$e2e/bin/date" "$e2e/bin/sleep"
+chmod +x "$e2e/bin/multica" "$e2e/bin/curl" "$e2e/bin/date" "$e2e/bin/sleep" "$e2e/bin/ln"
 e2e_url=https://github.com/Example/Template/pull/33
 e2e_record=$PR_LINK_STATE_ROOT/fixture-id-000036/example/template
 e2e_notice='example/template を、このプロジェクトでは GitHub 連携なしとして扱います。サーバーが 120 秒待っても PR を見つけなかったためです。このあとの PR では紐付けを待たず、紐付けの警告と依頼を出さず、マージ待ちの見張りがマージを確認してタスクを done にします。連携しているはずなら、ワークスペースの設定のコードの画面で example/template がつながっていることを確認してください。このリポジトリの PR が 1 つでも紐付けば、自動で連携ありの扱いに戻ります。'
@@ -396,7 +405,7 @@ e2e_reset() {
 	: >"$e2e/multica.jsonl"
 	: >"$e2e/curl.jsonl"
 	: >"$e2e/sleeps"
-	rm -rf -- "$e2e"/fail-* "$e2e/record-visible" "$e2e/watch-record" "$e2e/transport-fail-from" "$e2e/ignore-timeout" "$e2e/rival-record" "$PR_LINK_STATE_ROOT"
+	rm -rf -- "$e2e"/fail-* "$e2e/record-visible" "$e2e/watch-record" "$e2e/transport-fail-from" "$e2e/ignore-timeout" "$e2e/rival-record" "$e2e/rival-at-ln" "$PR_LINK_STATE_ROOT"
 }
 e2e_run() {
 	local expected=$1 status=0
@@ -406,6 +415,11 @@ e2e_run() {
 	[[ $status == "$expected" ]] || { cat "$e2e/out" "$e2e/err" >&2; fail "終了コード $status、期待 $expected"; }
 }
 e2e_field() { jq -r --arg key "$1" '.metadata[$key] // "なし"' "$e2e/issue.json"; }
+e2e_warn_reason() {
+	grep -qF "タスク TASK-7 に PR $e2e_url を紐付けられませんでした（$1）" "$e2e/err" ||
+		{ cat "$e2e/err" >&2; fail "警告に理由がない: $1"; }
+	[[ ! -s $e2e/out ]] || fail '標準出力が空でない'
+}
 e2e_warn_not_found() {
 	grep -qF "タスク TASK-7 に PR $e2e_url を紐付けられませんでした" "$e2e/err" || fail '今と同じ警告がない'
 	[[ ! -s $e2e/out ]] || fail '標準出力が空でない'
@@ -485,6 +499,18 @@ touch "$e2e/fail-pr_url"
 e2e_run 1 TASK-7 "$e2e_url"
 e2e_warn_not_found
 expect '別の実行が先で pr_url を書けない: 記録は先の実行のもの' "$(cat "$e2e_record")" 'repository: rival'
+e2e_warn_reason 'サーバーが PR を見つけられない（120 秒待った）'
+expect '別の実行が先で pr_url を書けない: 連携なしの欄' "$(e2e_field pr_link_no_integration)" なし
+e2e_no_tmp
+
+# pr_url を書いたあとに別の実行が記録を結んでも、先の記録を保ち、マークを両方書く。
+e2e_reset
+touch "$e2e/rival-at-ln"
+e2e_run 0 TASK-7 "$e2e_url"
+expect '結ぶときに別の実行が先: 出力' "$(cat "$e2e/out")" "紐付けていません（連携なし）: TASK-7 $e2e_url"
+[[ ! -s $e2e/err ]] || fail '結ぶときに別の実行が先: 標準エラーが空でない'
+expect '結ぶときに別の実行が先: 記録' "$(cat "$e2e_record")" 'repository: rival'
+for key in pr_url pr_link_pending pr_link_no_integration; do expect "結ぶときに別の実行が先: $key" "$(e2e_field "$key")" "$e2e_url"; done
 e2e_no_tmp
 
 # 記録は pr_url を書いたあとに見えるようにする: pr_url を書く時点では見えず、書いたあとに見える。
@@ -509,7 +535,7 @@ e2e_no_tmp
 e2e_reset
 touch "$e2e/fail-pr_url"
 e2e_run 1 TASK-7 "$e2e_url"
-e2e_warn_not_found
+e2e_warn_reason 'サーバーが PR を見つけられない（120 秒待った）'
 e2e_no_record
 e2e_no_tmp
 expect 'pr_url を書けない: マーク' "$(e2e_field pr_link_pending)" "$e2e_url"
@@ -519,9 +545,20 @@ expect 'pr_url を書けない: 連携なしの欄' "$(e2e_field pr_link_no_inte
 e2e_reset
 : >"$e2e/not-a-directory"
 PR_LINK_STATE_ROOT=$e2e/not-a-directory e2e_run 1 TASK-7 "$e2e_url"
-e2e_warn_not_found
+e2e_warn_reason 'サーバーが PR を見つけられない（120 秒待った）'
 expect '記録を書けない: pr_url' "$(e2e_field pr_url)" なし
 expect '記録を書けない: 連携なしの欄' "$(e2e_field pr_link_no_integration)" なし
+
+# 記録を結べなければ、通常の試み直し用のマークだけが残る。
+e2e_reset
+touch "$e2e/fail-ln"
+e2e_run 1 TASK-7 "$e2e_url"
+e2e_warn_reason 'サーバーが PR を見つけられない（120 秒待った）'
+expect '記録を結べない: pr_url' "$(e2e_field pr_url)" "$e2e_url"
+expect '記録を結べない: 試み直しの欄' "$(e2e_field pr_link_pending)" "$e2e_url"
+expect '記録を結べない: 連携なしの欄' "$(e2e_field pr_link_no_integration)" なし
+e2e_no_record
+e2e_no_tmp
 
 # 404 だけでない失敗・トークンがない・作業先が違う・作業先がない・プロジェクトがない: 記録ができず、出力は今と同じ。
 for scene in status500 token other-repository no-repository no-project; do
@@ -562,16 +599,21 @@ expect '記録あり 200: 出力' "$(cat "$e2e/out")" "紐付けました: TASK-
 [[ ! -e $e2e_record ]] || fail '記録あり 200: 記録が消えていない'
 expect '記録あり 200: pr_url' "$(e2e_field pr_url)" "$e2e_url"
 expect '記録あり 200: 連携なしの欄は書かない' "$(e2e_field pr_link_no_integration)" なし
-# 記録があり、pr_url を書けない: 今と同じ警告で 1 で終わり、記録は変えない。
-for status in 404 200; do
+# 記録があり、pr_url を書けない: 紐付けの結果に応じた警告で 1 で終わり、記録は変えない。
+for scene in 404 500 transport token 200; do
 	e2e_reset
 	mkdir -p "$(dirname "$e2e_record")" && printf 'repository: example/template\n' >"$e2e_record"
-	printf '[%s]\n' "$status" >"$e2e/statuses.json"
 	touch "$e2e/fail-pr_url"
-	e2e_run 1 TASK-7 "$e2e_url"
-	[[ ! -s $e2e/out ]] || fail "記録ありで pr_url を書けない($status): 標準出力が空でない"
-	grep -qF "タスク TASK-7 に PR $e2e_url を紐付けられませんでした" "$e2e/err" || fail "記録ありで pr_url を書けない($status): 警告がない"
-	expect "記録ありで pr_url を書けない($status): 記録" "$(cat "$e2e_record")" 'repository: example/template'
+	case $scene in
+	404 | 500) printf '[%s]\n' "$scene" >"$e2e/statuses.json"; reason="応答の状態コード $scene" ;;
+	transport) echo 0 >"$e2e/transport-fail-from"; reason='通信に失敗した' ;;
+	token) reason='トークンがない' ;;
+	200) printf '[200]\n' >"$e2e/statuses.json"; reason='metadata を書けない' ;;
+	esac
+	if [[ $scene == token ]]; then E2E_TOKEN='' e2e_run 1 TASK-7 "$e2e_url"; else e2e_run 1 TASK-7 "$e2e_url"; fi
+	e2e_warn_reason "$reason"
+	expect "記録ありで pr_url を書けない($scene): 記録" "$(cat "$e2e_record")" 'repository: example/template'
+	expect "記録ありで pr_url を書けない($scene): 連携なしの欄" "$(e2e_field pr_link_no_integration)" なし
 done
 # 記録があっても、pr_url がすでにあれば API を呼ばず、今と同じ行を出す。
 e2e_reset

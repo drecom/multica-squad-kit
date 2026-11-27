@@ -58,15 +58,15 @@ fail_link() {
 	if [[ ${PR_LINK_NOT_FOUND:-0} == 1 ]]; then warn_not_found; fi
 	exit 1
 }
-# 連携なしの扱いにするために、metadata の 3 つの欄へ PR の URL を書く。pr_url を書けなければ 1 を返す。
-# ほかの 2 つは書けなくても続ける。link-check が後で書き直す。
+# 記録を結んだか、すでにあることを確認してからマークを書く。
+# 書けなくても続ける。link-check が後で書き直す。
 write_no_integration_marks() {
-	if ! multica issue metadata set "$id" --key pr_url --value "$url" --type string >/dev/null 2>&1; then
-		PR_LINK_REASON='metadata を書けない'
-		return 1
-	fi
 	multica issue metadata set "$id" --key pr_link_pending --value "$url" --type string >/dev/null 2>&1 || true
 	multica issue metadata set "$id" --key pr_link_no_integration --value "$url" --type string >/dev/null 2>&1 || true
+}
+
+write_pr_url() {
+	multica issue metadata set "$id" --key pr_url --value "$url" --type string >/dev/null 2>&1
 }
 
 # 紐付けに失敗したあと、タスクの PR の一覧を 1 回だけ読み直す（docs/pr-link-no-integration.md の「一覧の読み直し」）。
@@ -117,7 +117,7 @@ PY
 # 一覧に PR があったときの終わり方。pr_url を書き、記録があれば消し、紐付いていた行を出して 0 で終わる。
 # マークと pr_link_no_integration は書かない。pr_url を書けなければ、今と同じ警告で 1 で終わる。
 finish_listed() {
-	if ! multica issue metadata set "$id" --key pr_url --value "$url" --type string >/dev/null 2>&1; then
+	if ! write_pr_url; then
 		# サーバーは PR を知っているので、PR を見つけられないという案内は出さない。
 		PR_LINK_NOT_FOUND=0
 		fail_link 'metadata を書けない'
@@ -148,9 +148,16 @@ fi
 if [[ $record_state == present ]]; then
 	# 記録があるときは待たず、紐付けの API を 1 回だけ呼ぶ。
 	status=
-	if pr_link_check_api_env && pr_link_request_once "$id" "$url" 30; then status=$PR_LINK_STATUS; fi
+	if pr_link_check_api_env; then
+		if pr_link_request_once "$id" "$url" 30; then
+			status=$PR_LINK_STATUS
+			PR_LINK_REASON="応答の状態コード $status"
+		else
+			PR_LINK_REASON='通信に失敗した'
+		fi
+	fi
 	if [[ $status == 200 ]]; then
-		if multica issue metadata set "$id" --key pr_url --value "$url" --type string >/dev/null 2>&1; then
+		if write_pr_url; then
 			pr_link_record_remove "$project" "$url" || true
 			printf '紐付けました: %s %s\n' "$identifier" "$url"
 			exit 0
@@ -159,7 +166,8 @@ if [[ $record_state == present ]]; then
 	fi
 	# 200 でなければ、紐付けの失敗として扱う前に、一覧に PR がないかを読み直す。
 	if reread_listed; then finish_listed; fi
-	write_no_integration_marks || fail_link "$PR_LINK_REASON"
+	write_pr_url || fail_link "$PR_LINK_REASON"
+	write_no_integration_marks
 	printf '紐付けていません（連携なし）: %s %s\n' "$identifier" "$url"
 	exit 0
 fi
@@ -174,31 +182,26 @@ if ! pr_link_pull_request "$id" "$url" "$metadata"; then
 		# 記録は、pr_url を書いたあとに結ぶ。結ぶ前に pr_url の書き込みに失敗しても、見える記録が残らないようにするため。
 		prepared=0
 		pr_link_record_prepare "$project" "$url" "$identifier" || prepared=$?
+		if (( prepared != 0 && prepared != 2 )); then fail_link "$PR_LINK_REASON"; fi
+		if ! write_pr_url; then
+			pr_link_record_finish
+			fail_link "$PR_LINK_REASON"
+		fi
+		committed=2
 		if (( prepared == 0 )); then
-			if ! write_no_integration_marks; then
-				reason=$PR_LINK_REASON
-				pr_link_record_finish
-				fail_link "$reason"
-			fi
 			committed=0
 			pr_link_record_commit || committed=$?
-			if (( committed == 0 )); then
-				printf '連携なしにしました: %s %s\n' "$identifier" "$url"
-				notice_text
-				exit 0
-			elif (( committed == 2 )); then
-				# 同時に待ち切れた別の実行が、先に記録を結んだ。知らせはその実行が出すので、ここでは出さない。
-				printf '紐付けていません（連携なし）: %s %s\n' "$identifier" "$url"
-				exit 0
-			fi
-			fail_link "$PR_LINK_RECORD_REASON"
-		elif (( prepared == 2 )); then
-			# 別の実行がすでに記録を結んでいる。知らせはその実行が出す。
-			write_no_integration_marks || fail_link "$PR_LINK_REASON"
-			printf '紐付けていません（連携なし）: %s %s\n' "$identifier" "$url"
+			if (( committed != 0 && committed != 2 )); then fail_link "$PR_LINK_REASON"; fi
+		fi
+		write_no_integration_marks
+		if (( committed == 0 )); then
+			printf '連携なしにしました: %s %s\n' "$identifier" "$url"
+			notice_text
 			exit 0
 		fi
-		fail_link "$PR_LINK_RECORD_REASON"
+		# 別の実行が先に記録を結んでいる。知らせはその実行が出す。
+		printf '紐付けていません（連携なし）: %s %s\n' "$identifier" "$url"
+		exit 0
 	fi
 	fail_link "$PR_LINK_REASON"
 fi

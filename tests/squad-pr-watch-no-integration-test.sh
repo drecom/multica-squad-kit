@@ -102,6 +102,10 @@ if [[ "${1-} ${2-} ${3-}" == 'workspace member list' ]]; then
 	cat "$dir/human-members.json"
 	exit 0
 fi
+if [[ "${1-} ${2-} ${3-}" == 'squad list --output' && -f $dir/fail-notice-squad ]]; then
+	[[ ! -f $dir/roster-read ]] || exit 1
+	touch "$dir/roster-read"
+fi
 if [[ "${1-} ${2-} ${3-}" == 'issue pull-requests test-issue' && -f $dir/api-called && -f $dir/fail-after ]]; then
 	exit 1
 fi
@@ -130,7 +134,7 @@ reset_ni() {
 	rm -rf -- "$PR_LINK_STATE_ROOT"
 	: >"$test_dir/curl-calls.jsonl"
 	rm -f "$test_dir/api-called" "$test_dir/fail-after" "$test_dir/curl-config" "$test_dir/now" "$test_dir/sleeps" "$test_dir"/fail-set-* "$test_dir/fail-status" "$test_dir/fail-members"
-	rm -f "$test_dir/fail-post" "$test_dir/rules-read" "$test_dir/rules-on-reread.json" "$test_dir/rules-after-status.json"
+	rm -f "$test_dir/fail-post" "$test_dir/fail-notice-squad" "$test_dir/roster-read" "$test_dir/rules-read" "$test_dir/rules-on-reread.json" "$test_dir/rules-after-status.json"
 	printf 'trigger-1' >"$test_dir/trigger-comment"
 	printf '404' >"$test_dir/api-status"
 	printf '{"pull_requests":[]}' >"$test_dir/pulls.json"
@@ -607,6 +611,42 @@ rule_gone
 no_posts
 echo 'PASS no-integration: unlinked-check は、連携なしのマークの PR がマージされたら done にして止める'
 
+# 照合に必要な読み取りが失敗しても、規則を残す。次の確認で読めれば同じ規則で done にする。
+for query in 'issue comment list' 'squad list --output' 'squad member list' 'agent get monitor'; do
+	unlinked_scene record
+	update_pr '.state = "MERGED"'
+	printf '%s\n' "$query" >"$test_dir/fail"
+	unlinked_run
+	((unlinked_status == 1))
+	grep -qF '照合できませんでした' "$test_dir/err"
+	[[ $(done_calls) == '[]' ]]
+	assert_jq '.status == "in_review"' "$test_dir/task.json"
+	rule_kept
+	no_posts
+	rm -f "$test_dir/fail"
+	unlinked_run
+	((unlinked_status == 0))
+	assert_jq '.status == "done"' "$test_dir/task.json"
+	rule_gone
+	no_posts
+done
+echo 'PASS no-integration: コメントや名簿を読めないときは規則を残し、読めるようになれば done にする'
+
+# 終わりの知らせでも、照合に必要な名簿を読めるまで知らせを待つ。
+unlinked_scene record "$(stamp -$((71 * 3600 + 60)))"
+echo 'squad member list' >"$test_dir/fail"
+unlinked_run
+((unlinked_status == 1))
+grep -qF '名簿を読めない' "$test_dir/err"
+rule_kept
+no_notice
+rm -f "$test_dir/fail"
+unlinked_run
+((unlinked_status == 0))
+rule_kept
+assert_jq -s "$notice_filter | length == 1" "$test_dir/posted.jsonl"
+echo 'PASS no-integration: 名簿を読めるまで見張りの終わりの知らせを待つ'
+
 # マークがない（または別の PR の）マージは、今と同じく done にせず止める。
 for kind in none other; do
 	unlinked_scene record
@@ -812,13 +852,13 @@ echo 'PASS no-integration: 呼ぶ人間を決められないときは、マー�
 unlinked_scene record
 same_pr_round
 update_pr '.state = "MERGED"'
-echo 'squad list --output' >"$test_dir/fail"
+touch "$test_dir/fail-notice-squad"
 unlinked_run
 ((unlinked_status == 1))
 rule_gone
 assert_jq -s "$not_done_filter"' | length == 1 and (.[0].body | contains("mention://") | not)' "$test_dir/posted.jsonl"
 grep -q 'メンションを省きました' "$test_dir/err"
-echo 'PASS no-integration: スクワッドの取得に失敗しても、マージ後の知らせをメンションなしで書く'
+echo 'PASS no-integration: 照合後に知らせの宛先のスクワッドを取得できなくても、マージ後の知らせをメンションなしで書く'
 
 unlinked_scene record
 same_pr_round
