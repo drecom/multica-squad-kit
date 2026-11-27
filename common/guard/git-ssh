@@ -15,12 +15,15 @@ deny() {
 	exit 1
 }
 
+# push かどうかは、リモートのコマンド名（最後の引数の、最初の単引用符より前）で決める。リポジトリの名前に
+# receive-pack を含む fetch や ls-remote（git-upload-pack 'OWNER/x-receive-pack.git'）は読み取りなので止めない。
 push=false
-for arg in "$@"; do
-	case $arg in
+if (( $# >= 1 )); then
+	last=${!#}
+	case ${last%%\'*} in
 	*receive-pack*) push=true ;;
 	esac
-done
+fi
 
 if $push; then
 	args=("$@")

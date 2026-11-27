@@ -97,7 +97,7 @@ git の設定を環境変数の `GIT_CONFIG_COUNT` と `GIT_CONFIG_KEY_n`・`GIT
 
 ### SSH の push を止める
 
-キットの SSH のコマンドは、git が SSH で送るコマンドを読む。`git-receive-pack` で、行き先が `github.com` の許すリポジトリでないときは、止めて理由を出す。ほかのコマンドと許すリポジトリへの push は、本物の `ssh` にそのまま渡す。
+キットの SSH のコマンドは、git が SSH で送るコマンドを読む。`git-receive-pack` で、行き先が `github.com` の許すリポジトリでないときは、止めて理由を出す。ほかのコマンドと許すリポジトリへの push は、本物の `ssh` にそのまま渡す。push かどうかは、最後の引数の最初の単引用符より前のコマンド名で決め、リポジトリの名前は見ない。名前に `receive-pack` を含むリポジトリの fetch と `ls-remote` は、読み取りとして通す。
 
 git は、SCP の形の URL では `git-receive-pack 'OWNER/REPO.git'` を、`ssh://` の URL では `git-receive-pack '/OWNER/REPO.git'` を送る。どちらの形も、実機の git で確認した。
 
@@ -430,7 +430,7 @@ Codex のフックは `-c` の形で入れ、コマンドのルールは外し�
 1. エージェント用の設定ディレクトリの `settings.json` から、キットのフックの項目と、[書くキー](#書くキー)の deny の項目と `blockWritesOutsideWorkingDirectories` を消す
 2. 役ごとに、`multica agent env get` で今の custom_env を読み、`GH_CONFIG_DIR`・`SQUAD_KIT_GH_CONFIG_DIR`・`GIT_CONFIG_KEY_1` 以降と値を消したファイルを `multica agent env set --custom-env-file` で書く
 3. Codex の役ごとに、`multica agent update --custom-args` で、フックの引数を除いた配列を書く
-4. Claude の役ごとに、拡張の MCP がなければ、`multica agent update --mcp-config` で MCP の設定を外す
+4. Claude の役ごとに、拡張の MCP がなければ、`multica agent update <役の ID> --mcp-config null` で MCP の設定を外す（`null` が解除の値で、役の ID は `multica agent list` で調べる）
 5. エージェント用の置き場の `guard/` を消す
 
 ## テストと実機の確認

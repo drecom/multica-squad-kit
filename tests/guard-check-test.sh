@@ -254,6 +254,17 @@ grep -q 'Logged in (test)' "$test_dir/err"
 [[ ! -s $TEST_GUARD_CALLS ]]
 echo 'PASS guard-check: 空の置き場でも本物の gh が認証済みなら、認証の置き場を探す案内を出して止まる'
 
+# gh auth status が実行できない（終了コード 126）か異常終了なら、未認証と確認できないので止まる。
+for code in 126 2; do
+	reset_guards
+	TEST_GH_AUTH_EXIT=$code deny
+	grep -q '未認証かを確認できませんでした' "$test_dir/err"
+	grep -q "gh auth status の終了コード: $code" "$test_dir/err"
+	grep -q '何も変更していません' "$test_dir/err"
+	[[ ! -s $TEST_GUARD_CALLS ]]
+done
+echo 'PASS guard-check: gh auth status が 126 などで異常終了したときは、未認証と同じに扱わず、確認できないと案内して止まる'
+
 # 人の gh の置き場が見つからなければ、gh auth login を案内して止まる。
 reset_guards
 saved_config=$GH_CONFIG_DIR

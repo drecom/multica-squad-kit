@@ -481,6 +481,8 @@ for file in git-credential git-ssh pre-tool-use stop shell_split.py; do
  cmp "$target" "$test_dir/guard-unmarked"
  grep -qF "ガードのファイルが原本と一致しません: $target" "$test_dir/err"
  grep -qF '流し直してください' "$test_dir/err"
+ # 止まるときは「そのまま使います」の行を出さず、停止エラーに対象と直し方をまとめる。
+ ! grep -qF 'そのまま使います' "$test_dir/err" "$test_dir/out"
  ! grep -Eq '^daemon (stop|start)$' "$test_dir/calls"
  # 管理マークのある古い内容は、原本に戻る。
  printf '#!/bin/sh\n# multica-squad-kit-managed\nexit 0\n' >"$target"

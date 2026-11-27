@@ -235,7 +235,7 @@ Codex の設定の検証は、`codex app-server --strict-config` で 30 秒ま�
 1. エージェント用の置き場の `settings.json` から、キットのフックの項目と、`permissions.deny` のキットの項目（`Read` の認証情報の置き場と `PushNotification`）と `permissions.blockWritesOutsideWorkingDirectories` を消す
 2. 役ごとに、`multica agent env get` で今の custom_env を読み、`GH_CONFIG_DIR`・`SQUAD_KIT_GH_CONFIG_DIR`・`GIT_CONFIG_KEY_1` 以降の変数と値を消す。`GIT_CONFIG_COUNT` は `1` に戻して、`multica agent env set --custom-env-file` で書く
 3. Codex の役ごとに、`multica agent update --custom-args` で、フックの引数を除いた配列を書く
-4. Claude の役ごとに、拡張の MCP がなければ、`multica agent update --mcp-config` で MCP の設定を外す
+4. Claude の役ごとに、拡張の MCP がなければ、`multica agent update <役の ID> --mcp-config null` で MCP の設定を外す（`null` が解除の値で、役の ID は `multica agent list` で調べる）
 5. エージェント用の置き場の `guard/` を消す
 
 #### ガードと古いバージョンの混在

@@ -32,6 +32,10 @@ host_install() {
 # 原本と内容が違うファイルが残るときは、人のファイルを上書きせず、役の登録の前に止めて対処を案内する。
 host_guard_file() {
 	local src=$1 dst=$2
+	# マークのない既存のファイルは、「そのまま使います」の警告を出さず、ここで止める。
+	if [[ -e $dst ]] && ! grep -qx '# multica-squad-kit-managed' "$dst"; then
+		die "ガードのファイルが原本と一致しません: ${dst}。マークのない既存のファイルが残っていると、役のフックが動きません。そのファイルの中身を確認して、不要なら移すか消してから、セットアップを流し直してください。既存のファイルは上書きしません。"
+	fi
 	host_shared_file "$src" "$dst" yes
 	if [[ -f $dst && -x $dst ]] && cmp -s "$src" "$dst"; then
 		return
@@ -540,7 +544,7 @@ prepare_project_host() {
 # 役の gh の認証の分離を確認できないときに止める。変数の名前だけを出し、値は出さない。
 # 引数は、ガードの外にある本物の gh の置き場。
 host_check_isolation() {
-	local real_gh_dir=$1 name set_names='' human_gh empty entries status_output
+	local real_gh_dir=$1 name set_names='' human_gh empty entries status_output status
 	for name in GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN; do
 		[[ -z ${!name:-} ]] || set_names+=${set_names:+、}$name
 	done
@@ -552,8 +556,14 @@ host_check_isolation() {
 	entries=$(cd "$empty" && shopt -s dotglob nullglob && files=(*) && printf '%s\n' ${files[@]+"${files[@]}"}) || die "空の gh の置き場を読めませんでした: ${empty}"
 	[[ -z $entries ]] || die "空の gh の置き場にファイルがあります: ${empty}（$(printf '%s' "$entries" | tr '\n' ' ')）。中のファイルを消してから、セットアップを流し直してください。何も変更していません。"
 	# 役と同じ空の置き場で、本物の gh が未認証を返すかを見る。
-	if status_output=$(env -u GH_HOST -u GH_TOKEN -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN -u GITHUB_ENTERPRISE_TOKEN GH_CONFIG_DIR="$empty" GH_PROMPT_DISABLED=1 "$real_gh_dir/gh" auth status 2>&1); then
+	status=0
+	status_output=$(env -u GH_HOST -u GH_TOKEN -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN -u GITHUB_ENTERPRISE_TOKEN GH_CONFIG_DIR="$empty" GH_PROMPT_DISABLED=1 "$real_gh_dir/gh" auth status 2>&1) || status=$?
+	if [[ $status == 0 ]]; then
 		die "空の gh の置き場でも、本物の gh（${real_gh_dir}/gh）が認証されています。gh auth status の表示から認証の置き場（環境変数、キーチェーン、設定ファイルなど）を探して外し、セットアップを流し直してください。何も変更していません。表示: $(printf '%s' "$status_output" | tr '\n' ' ')"
+	fi
+	# 未認証の終了は、終了コード 1 と「not logged」の表示で見分ける。実行できない・異常終了などは未認証と確認できないので止める。
+	if [[ $status != 1 ]] || ! grep -qi 'not logged' <<<"$status_output"; then
+		die "空の gh の置き場で、本物の gh（${real_gh_dir}/gh）が未認証かを確認できませんでした（gh auth status の終了コード: ${status}）。gh の実行権限と導入を確認し、端末で gh auth status を流して表示を確認してから、セットアップを流し直してください。何も変更していません。表示: $(printf '%s' "$status_output" | tr '\n' ' ')"
 	fi
 }
 

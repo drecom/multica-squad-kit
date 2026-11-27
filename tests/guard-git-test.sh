@@ -225,9 +225,14 @@ ssh_allow git@github.com "git-receive-pack 'EXAMPLE/template.git'"
 ssh_allow git@github.com "git-receive-pack '/example/template.git'"
 ssh_allow -o SendEnv=GIT_PROTOCOL -p 22 git@github.com "git-receive-pack '/example/template.git'"
 ssh_allow -4 github.com "git-receive-pack 'example/template.git'"
+# 名前に receive-pack を含むリポジトリの読み取り（fetch・ls-remote）は、許可リストになくても本物の ssh に渡す。
+ssh_allow git@github.com "git-upload-pack 'other/x-receive-pack.git'"
+ssh_allow git@github.com "git-upload-pack '/other/receive-pack'"
+ssh_allow -o SendEnv=GIT_PROTOCOL git@github.com "git-upload-pack '/other/git-receive-pack.git'"
 echo 'PASS ssh: 2 つの URL の形で、許すリポジトリへの push は本物の ssh に元の引数のまま渡す'
 
 ssh_block 'other/repo への SSH の push は止めた' git@github.com "git-receive-pack 'other/repo.git'"
+ssh_block 'other/x-receive-pack への SSH の push は止めた' git@github.com "git-receive-pack 'other/x-receive-pack.git'"
 ssh_block 'other/repo への SSH の push は止めた' git@github.com "git-receive-pack '/other/repo.git'"
 ssh_block 'other/repo への SSH の push は止めた' -o SendEnv=GIT_PROTOCOL git@github.com "git-receive-pack '/other/repo'"
 ssh_block 'example/other への SSH の push は止めた' git@github.com "git-receive-pack 'example/other.git'"
