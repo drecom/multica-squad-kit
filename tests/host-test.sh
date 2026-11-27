@@ -152,6 +152,8 @@ fi
 [[ -z ${TEST_CODEX_SECONDS:-} ]] || codex_check_seconds=$TEST_CODEX_SECONDS
 [[ -z ${TEST_CODEX_GRACE:-} ]] || codex_grace_seconds=$TEST_CODEX_GRACE
 [[ -z ${TEST_CODEX_CONFIRM:-} ]] || codex_confirm_seconds=$TEST_CODEX_CONFIRM
+# 拡張を使うセットアップと同じく、root を lib を持たない作業場所へ付け替え、原本は kit_root が指す（lib/extensions.sh）。
+if [[ -n ${TEST_EXTENSION_WORK:-} ]]; then kit_root=$root; root=$TEST_EXTENSION_WORK; fi
 prepare_host
 [[ -z ${TEST_TRUST_OUT:-} ]] || printf '%s' "${codex_trust_lines:-}" >"$TEST_TRUST_OUT"
 RUN
@@ -1060,6 +1062,26 @@ deny
 grep -qF 'codex login' "$test_dir/err"
 rm "$test_dir/no-codex-auth"
 echo 'PASS host: Codex の検証が 0 以外で書き換えずに止まり、ログインの確認より前に設定の誤りを出す'
+
+# 拡張を使うセットアップでは root が lib を持たない作業場所を指す。検証の処理は原本（kit_root）の lib から呼び、検証の結果も通常どおり扱う。
+mkdir -p "$test_dir/extension-work"
+cp -R "$root/common" "$root/skeleton" "$test_dir/extension-work/"
+[[ ! -e $test_dir/extension-work/lib ]]
+: >"$test_dir/codex-checks"
+echo ok >"$test_dir/codex-strict"
+set_mode running
+agent_env
+TEST_EXTENSION_WORK="$test_dir/extension-work" run
+[[ $(wc -l <"$test_dir/codex-checks") -eq 1 ]]
+if grep -qF 'Codex の設定の検証を実行できませんでした' "$test_dir/err"; then exit 1; fi
+echo fail >"$test_dir/codex-strict"
+set_mode running
+agent_env
+TEST_EXTENSION_WORK="$test_dir/extension-work" deny
+grep -qF 'Codex の設定が厳しい検証を通りません' "$test_dir/err"
+if grep -qF 'Codex の設定の検証を実行できませんでした' "$test_dir/err"; then exit 1; fi
+echo ok >"$test_dir/codex-strict"
+echo 'PASS host: 拡張の作業場所へ root を付け替えても、原本の lib の検証の処理を呼び、結果を通常どおり扱う'
 
 echo old >"$test_dir/codex-strict"
 set_mode running
