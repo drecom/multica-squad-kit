@@ -456,7 +456,7 @@ PR のタイトルは、GitHub で PR を直せる人なら誰でも書ける。
 | `common/monitor/squad-pr-watch` | `link-check` に `連携: なし` の判定・[マークの書き直し](#マークの書き直し)・記録の削除・`連携: なし` のときの試み直しを足し、使い方のコメントを直す。`unlinked-check` に `done` と見張りの終わりの知らせを足す |
 | `common/monitor/squad-review-next` | `連携: なし` を読み、マージの依頼と使用率の待ちのコメントの行を出し分け、見張りの登録に失敗したら 3 で終わる（[リーダーの手順と decide](#リーダーの手順と-decide)）。呼ぶ人間の関数は `squad-cli-lib` のものを使う |
 | `common/skills/squad-handoff/SKILL.md` | 状態の表の `done` の変える人に、連携なしのリポジトリではマージ待ちの見張りが変えると足す |
-| `common/skills/squad-handoff/references/pr.md` | 「PR を作る・実装を積む」に、0 で終わる 3 つの行の読み方と、`連携なし:` の段落の形を足す。[タイトルの形](#タイトルの形)の決まりを 1 項目足し、識別子を持ち出さない項目と push のたびにタイトルを直す段落に、下の[識別子の決まりの例外](#識別子の決まりの例外)の文を足す |
+| `common/skills/squad-handoff/references/pr.md` | 「PR を作る・実装を積む」に、0 で終わる新しい 3 つの行（`連携なしにしました:`・`紐付けていません（連携なし）:`・`紐付いていました:`）の読み方と、`連携なし:` の段落の形を足す。[タイトルの形](#タイトルの形)の決まりを 1 項目足し、識別子を持ち出さない項目と push のたびにタイトルを直す段落に、下の[識別子の決まりの例外](#識別子の決まりの例外)の文を足す |
 | `CONTRIBUTING.md` | 「手順を足す条件」の識別子の段落に、例外の文を足す |
 | `STYLE.md` | 「用語とコメントの型」に、識別子の決まりと例外の項目を 1 つ足す |
 | `docs/procedure-review.md` | 「タスクの識別子の置き場所」に、例外の文を足す |
@@ -472,9 +472,9 @@ PR のタイトルは、GitHub で PR を直せる人なら誰でも書ける。
 | `tests/squad-pr-watch-no-integration-test.sh` | 新しく足す（[テスト](#テスト)） |
 | `tests/squad-review-next-decide-unlinked-test.sh` | `連携: なし` の場面と、見張りの登録に失敗する場面を足す |
 | `tests/squad-review-next-decide-fix-test.sh` | 使用率の待ちのコメントに、`連携: なし` の場面を足す |
-| `tests/squad-pr-watch-link-retry-test.sh`、`tests/squad-pr-watch-unlinked-test.sh` | `PR_LINK_STATE_ROOT` を空の一時ディレクトリに向ける 1 行を足す。場面と期待は変えない |
+| `tests/squad-pr-watch-link-retry-test.sh`、`tests/squad-pr-watch-unlinked-test.sh` | `PR_LINK_STATE_ROOT` を空の一時ディレクトリに向ける 1 行を足す。場面と期待は変えないが、`unlinked` のテストの約束の欄の比較には、足した `link_source` の要素を加える |
 | `tests/setup-test.sh`、`tests/setup-repositories-test.sh` | 0 件の案内と、手順書の節の名前の期待を直す |
-| `tests/test-weights` | 新しいテストの行を、そのテストを足すのと同じコミットで足す。`tests/test-runner-test.sh` が、重みの行とテストのファイルの一致を見るため |
+| `tests/test-weights` | 新しいテストの行を、そのテストを足すのと同じコミットで足す。`tests/test-runner-test.sh` が重みの行とテストのファイルの一致を見るためで、場面を足したフェーズでは重みを手元の秒数に合わせて直す |
 | `MANIFEST` | `bash scripts/manifest.sh` で作り直す |
 | `docs/README.md` | 索引の「役の指示と、タスクが進む流れ」の表に、この文書の行を足す。この文書と同じコミットで足した |
 
