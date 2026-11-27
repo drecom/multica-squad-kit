@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # lib/codex-check.py の停止の手順を、差し替えた操作（送る・状態の読み取り・回収・時計）で流す。
-# 手順と表は、docs/agent-settings.md の「時間切れの扱い」が決める。実プロセスの行は tests/host-test.sh が流す。
+# 手順と表は、docs/agent-settings.md の「時間切れの扱い」が決める。実プロセスの行は tests/host-timeout-test.sh が流す。
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 python3 -I - "$root/lib/codex-check.py" <<'PY'

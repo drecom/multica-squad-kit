@@ -5,6 +5,7 @@
 # 試行 1、macOS 全 4 シャード、並列 3。全 100 本。
 # autopilot-targets の 3 本は、d5f96eaed7ba58076dafca6190a4e0a959fb49e3 の CI（macOS 全 5 シャード）の実測に直した。
 # 絞ったテストの 6 本は、0a980cc40edb7f02484a148833de6c31da716132 の CI（macOS 全 5 シャード）の実測に直した。
+# 150 秒を超えて分けたファイルの重みは、分ける前の重みを分けたあとの CPU 時間の比で割った見積り（setup-runtimes-both-issues は 3 回の setup.sh が 2 回になった分）。CI の実測は次のフェーズで写す。
 tests/action-advisories-test.sh 6
 tests/agent-templates-test.sh 35
 tests/audit-targets-test.sh 1
@@ -25,13 +26,13 @@ tests/extensions-test.sh 2
 tests/gh-test.sh 5
 tests/guard-check-test.sh 9
 tests/host-daemon-test.sh 35
-tests/host-test.sh 135
+tests/host-test.sh 54
 tests/install-command-test.sh 7
 tests/install-test.sh 30
 tests/installation-test.sh 82
 tests/leader-eval-identities-test.sh 1
 tests/leader-eval-picks-test.sh 5
-tests/leader-eval-test.sh 30
+tests/leader-eval-test.sh 12
 tests/link-scope-questions-test.sh 9
 tests/links-test.sh 2
 tests/manual-test.sh 14
@@ -52,7 +53,7 @@ tests/project-issues-test.sh 28
 tests/project-linking-test.sh 77
 tests/project-progress-test.sh 18
 tests/project-runtimes-first-test.sh 40
-tests/project-runtimes-test.sh 37
+tests/project-runtimes-test.sh 18
 tests/project-select-test.sh 34
 tests/questions-fold-test.sh 55
 tests/questions-ui-test.sh 100
@@ -71,7 +72,7 @@ tests/setup-issues-test.sh 32
 tests/setup-progress-test.sh 1
 tests/setup-repositories-test.sh 38
 tests/setup-runtimes-both-changes-test.sh 132
-tests/setup-runtimes-both-issues-test.sh 124
+tests/setup-runtimes-both-issues-test.sh 83
 tests/setup-runtimes-both-test.sh 88
 tests/setup-tag-test.sh 2
 tests/setup-test.sh 110
@@ -95,14 +96,14 @@ tests/squad-dependabot-merge-escalate-contract-test.sh 6
 tests/squad-dependabot-merge-escalate-failure-test.sh 13
 tests/squad-dependabot-merge-escalate-scope-test.sh 21
 tests/squad-dependabot-merge-escalate-test.sh 14
-tests/squad-dependabot-merge-list-test.sh 110
+tests/squad-dependabot-merge-list-test.sh 53
 tests/squad-dispatch-pick-test.sh 23
 tests/squad-pr-link-test.sh 20
 tests/squad-pr-watch-ci-arg-limit-test.sh 15
 tests/squad-pr-watch-ci-handoff-test.sh 38
 tests/squad-pr-watch-ci-now-test.sh 25
 tests/squad-pr-watch-ci-test.sh 41
-tests/squad-pr-watch-ci-wait-test.sh 101
+tests/squad-pr-watch-ci-wait-test.sh 33
 tests/squad-pr-watch-link-retry-test.sh 97
 tests/squad-pr-watch-register-test.sh 30
 tests/squad-pr-watch-unlinked-check-test.sh 40
@@ -122,16 +123,16 @@ tests/squad-review-next-decide-route-test.sh 34
 tests/squad-review-next-decide-requirement-test.sh 17
 tests/squad-review-next-decide-written-test.sh 10
 tests/squad-review-next-decide-retry-test.sh 27
-tests/squad-review-next-decide-fix-test.sh 50
-tests/squad-review-next-decide-rework-record-test.sh 31
-tests/squad-review-next-decide-final-test.sh 100
+tests/squad-review-next-decide-fix-test.sh 15
+tests/squad-review-next-decide-rework-record-test.sh 15
+tests/squad-review-next-decide-final-test.sh 38
 tests/squad-review-next-decide-pr-test.sh 35
 tests/squad-review-next-decide-unlinked-test.sh 55
-tests/squad-review-next-decide-merge-test.sh 75
-tests/squad-review-next-decide-merge-note-test.sh 98
+tests/squad-review-next-decide-merge-test.sh 19
+tests/squad-review-next-decide-merge-note-test.sh 25
 tests/squad-review-next-decide-merge-short-test.sh 25
-tests/squad-review-next-decide-ciwait-test.sh 45
-tests/squad-review-wait-report-test.sh 30
+tests/squad-review-next-decide-ciwait-test.sh 22
+tests/squad-review-wait-report-test.sh 10
 tests/squad-review-wait-status-test.sh 12
 tests/squad-usage-check-test.sh 28
 tests/squad-usage-read-test.sh 45
@@ -161,7 +162,7 @@ tests/workflow-rules-test.sh 3
 tests/workspace-test.sh 9
 tests/squad-cli-lib-control-test.sh 5
 tests/squad-cli-lib-fence-test.sh 5
-tests/squad-review-next-decide-control-test.sh 70
+tests/squad-review-next-decide-control-test.sh 25
 tests/squad-review-next-decide-recognize-test.sh 60
 tests/squad-cli-lib-body-table-test.sh 27
 tests/squad-review-next-decide-body-test.sh 55
@@ -176,3 +177,24 @@ tests/terminal-test.sh 1
 tests/tty-session-test.sh 4
 tests/extensions-key-file-test.sh 3
 tests/base-size-test.sh 3
+tests/squad-review-next-decide-control-kinds-test.sh 32
+tests/squad-review-next-decide-control-resume-test.sh 14
+tests/squad-review-next-decide-fix-rework-test.sh 21
+tests/squad-review-next-decide-fix-wait-test.sh 14
+tests/squad-review-next-decide-merge-note-body-test.sh 35
+tests/squad-review-next-decide-merge-note-depth-test.sh 38
+tests/squad-review-next-decide-final-scope-test.sh 29
+tests/squad-review-next-decide-final-done-test.sh 33
+tests/squad-review-next-decide-rework-record-merge-test.sh 16
+tests/squad-review-next-decide-merge-conflict-test.sh 30
+tests/squad-review-next-decide-merge-check-test.sh 25
+tests/squad-review-next-decide-ciwait-fail-test.sh 23
+tests/squad-review-wait-report-failure-test.sh 10
+tests/squad-review-wait-report-proceed-test.sh 9
+tests/squad-pr-watch-ci-wait-rule-test.sh 26
+tests/squad-pr-watch-ci-wait-record-test.sh 43
+tests/host-config-test.sh 40
+tests/host-timeout-test.sh 42
+tests/project-runtimes-rerun-test.sh 19
+tests/leader-eval-all-scenes-test.sh 18
+tests/squad-dependabot-merge-list-large-test.sh 57

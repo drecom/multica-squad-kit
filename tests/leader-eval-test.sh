@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # リーダーの評価の場面の形と、流す仕組みを、本物のモデルを呼ばずに確認する。
+# この部分は、場面の形・採点の判定・スタブでの実行・各種の指定と拒否を確認する（全場面を流す確認は leader-eval-all-scenes-test.sh）。
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 export PYTHONDONTWRITEBYTECODE=1
@@ -1237,75 +1238,6 @@ for name in CLAUDE.md AGENTS.md AGENTS.override.md CLAUDE.local.md .claude .code
 	[[ ! -e $anc/sub/out/runs.jsonl && ! -d $anc/sub/out/runs ]] || { echo "祖先に $name があるのに場面を流しました" >&2; exit 1; }
 done
 echo "PASS leader-eval: 結果は TMPDIR の下に置き、パスを解いて使い、祖先に指示やスキルがあれば流さない"
-
-# --- 全場面をスタブで流す（合否は問わず、場面が読めて 1 行ずつ出ることだけを見る）---
-all_out="$test_dir/all"
-PATH="$stub_bin:$PATH" bash "$eval_dir/run.sh" --baseline HEAD --runs 1 --only new --jobs 4 --out "$all_out" >"$test_dir/all.out" 2>"$test_dir/all.err" ||
-	{ cat "$test_dir/all.err" >&2; exit 1; }
-[[ $(wc -l <"$all_out/runs.jsonl" | tr -d ' ') == "$(wc -w <<<"$present" | tr -d ' ')" ]] || { echo "全場面の runs.jsonl の行数が違います" >&2; exit 1; }
-for id in $present; do
-	jq -e -s --arg id "$id" 'any(.[]; .scene == $id and .which == "new" and (.criteria | length) > 0)' "$all_out/runs.jsonl" >/dev/null ||
-		{ echo "$id: 全場面の結果に行がありません" >&2; exit 1; }
-done
-jq -e -s 'any(.[]; .scene == "keep-22" and .exit_code == 0)' "$all_out/runs.jsonl" >/dev/null
-grep -q 'agent-ci-monitor' "$all_out/instructions/new/instructions.md"
-if grep -q 'agent-ci-monitor' "$all_out/instructions/new/scenes/keep-22/instructions.md"; then
-	echo "keep-22: CI の見張り役が指示に残っています" >&2; exit 1
-fi
-for id in add-1 add-2 add-3 add-5 add-6 add-7 add-8; do
-	jq -e -s --arg id "$id" 'any(.[]; .scene == $id and .exit_code == 0)' "$all_out/runs.jsonl" >/dev/null
-	if grep -q 'agent-planner' "$all_out/instructions/new/scenes/$id/instructions.md"; then
-		echo "$id: 要件を決める役が指示に残っています" >&2; exit 1
-	fi
-	grep -q 'agent-ci-monitor' "$all_out/instructions/new/scenes/$id/instructions.md"
-done
-for id in add-9 add-10 add-11 add-12 add-13 add-14 add-15 add-16 add-17 add-18 add-19 add-20 add-21 add-22; do
-	jq -e -s --arg id "$id" 'any(.[]; .scene == $id and .exit_code == 0)' "$all_out/runs.jsonl" >/dev/null
-	if grep -q 'agent-designer' "$all_out/instructions/new/scenes/$id/instructions.md"; then
-		echo "$id: 設計の役が指示に残っています" >&2; exit 1
-	fi
-	grep -q 'agent-security-reviewer' "$all_out/instructions/new/scenes/$id/instructions.md" ||
-		{ echo "$id: security-reviewer が指示にありません" >&2; exit 1; }
-done
-for id in add-23 add-24 add-25 add-26 add-27 add-28 add-29 add-30; do
-	jq -e -s --arg id "$id" 'any(.[]; .scene == $id and .exit_code == 0)' "$all_out/runs.jsonl" >/dev/null
-	if grep -q 'agent-designer' "$all_out/instructions/new/scenes/$id/instructions.md"; then
-		echo "$id: 設計の役が指示に残っています" >&2; exit 1
-	fi
-	if grep -q 'agent-security-reviewer' "$all_out/instructions/new/scenes/$id/instructions.md"; then
-		echo "$id: security-reviewer が指示に残っています" >&2; exit 1
-	fi
-	grep -q 'agent-claude-principal' "$all_out/instructions/new/scenes/$id/instructions.md" ||
-		{ echo "$id: 最上位の役が指示にありません" >&2; exit 1; }
-done
-for id in add-31 add-32 add-33 add-34 add-35 add-36 add-37 add-38 add-39 add-40 add-41 add-42 add-43 add-44 add-45 add-46; do
-	jq -e -s --arg id "$id" 'any(.[]; .scene == $id and .exit_code == 0)' "$all_out/runs.jsonl" >/dev/null
-done
-if [[ -f $all_out/instructions/new/scenes/add-44/instructions.md ]]; then
-	grep -q 'agent-designer' "$all_out/instructions/new/scenes/add-44/instructions.md" ||
-		{ echo "add-44: 設計の役が指示にありません" >&2; exit 1; }
-	grep -q 'agent-claude-principal' "$all_out/instructions/new/scenes/add-44/instructions.md" ||
-		{ echo "add-44: 最上位の役が指示にありません" >&2; exit 1; }
-	if grep -q 'agent-security-reviewer' "$all_out/instructions/new/scenes/add-44/instructions.md"; then
-		echo "add-44: security-reviewer が指示に残っています" >&2; exit 1
-	fi
-else
-	echo "add-44: 場面ごとの指示がありません" >&2; exit 1
-fi
-if [[ -f $all_out/instructions/new/scenes/add-35/instructions.md ]]; then
-	for key in agent-claude-principal agent-codex-principal; do
-		if grep -q "$key" "$all_out/instructions/new/scenes/add-35/instructions.md"; then
-			echo "add-35: 最上位の役が指示に残っています" >&2; exit 1
-		fi
-	done
-	grep -q 'agent-designer' "$all_out/instructions/new/scenes/add-35/instructions.md" ||
-		{ echo "add-35: 設計の役が指示にありません" >&2; exit 1; }
-else
-	echo "add-35: 場面ごとの指示がありません" >&2; exit 1
-fi
-jq -e -s 'any(.[]; .scene == "add-4" and .exit_code == 0)' "$all_out/runs.jsonl" >/dev/null
-grep -q 'agent-planner' "$all_out/instructions/new/instructions.md"
-echo "PASS leader-eval: 置いてある $(wc -w <<<"$present" | tr -d ' ') 場面すべてをスタブで流し、場面ごとに基準の結果が出て、外した役は指示にも残さない"
 
 # 比較する前の指示にも、場面に合わせた役の構成を使う。
 no_monitor_out="$test_dir/no-monitor"

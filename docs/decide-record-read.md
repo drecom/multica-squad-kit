@@ -151,9 +151,9 @@
 
 | テスト | 確認すること |
 | --- | --- |
-| `tests/squad-review-next-decide-fix-test.sh` | リーダーの行があれば、止まらずに修正の依頼を書く。リーダー以外の役の行とメンバーの行、囲み・HTML のコメント・引用・字下げ・項目の中の行、閉じない囲みや制御文字のある本文の行では、リーダーを起こして止まる |
+| `tests/squad-review-next-decide-fix-rework-test.sh` | リーダーの行があれば、止まらずに修正の依頼を書く。リーダー以外の役の行とメンバーの行、囲み・HTML のコメント・引用・字下げ・項目の中の行、閉じない囲みや制御文字のある本文の行では、リーダーを起こして止まる |
 | `tests/squad-cli-lib-control-test.sh` | リーダーのエージェントが読める本文に書いた行で、`rework_reviewed` が `true` になる。行がない・リーダー以外の役の行・メンバーの行・囲みの中の行・読めない本文の行・リーダーの ID を渡さない呼び出しでは `false` になる |
-| `tests/squad-review-next-decide-rework-record-test.sh` | 下の表の場面と、[処理の数](#処理の数で確認する)と、[規模の場面](#想定規模で-1-回測る) |
+| `tests/squad-review-next-decide-rework-record-test.sh`・`tests/squad-review-next-decide-rework-record-merge-test.sh` | 下の表の場面と、[処理の数](#処理の数で確認する)と、[規模の場面](#想定規模で-1-回測る) |
 
 `tests/squad-review-next-decide-rework-record-test.sh` に置く、記録を読む場面は次のとおりである。どれも、`設計の変更: 実装を始めたあと` の行があり、マークがなく、❌ の結果がある。
 

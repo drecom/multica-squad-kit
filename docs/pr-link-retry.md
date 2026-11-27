@@ -260,7 +260,7 @@ PR を作った役の引き継ぎにある `紐付けの失敗:` の段落は、
 | `tests/squad-pr-link-test.sh` | マークの確認を足す（[テスト](#テスト)） |
 | `tests/squad-pr-watch-link-retry-test.sh` | 新しく足す（[テスト](#テスト)） |
 | `tests/squad-review-next-decide-unlinked-test.sh` | 試み直しで紐付いたときと紐付かないときの、マージの依頼の確認を足す |
-| `tests/squad-review-next-decide-fix-test.sh` | 人間を呼ぶコメントの期待を直す。紐付いているときは段落と連携の案内がなく、紐付いていないときはある |
+| `tests/squad-review-next-decide-fix-wait-test.sh` | 人間を呼ぶコメントの期待を直す。紐付いているときは段落と連携の案内がなく、紐付いていないときはある |
 | `tests/test-weights` | 新しいテストの行を足す |
 | `MANIFEST` | `bash scripts/manifest.sh` で作り直す |
 | `docs/README.md` | 索引の「役の指示と、タスクが進む流れ」の表に、この文書の行を足す。この文書と同じコミットで足した |
@@ -324,7 +324,7 @@ PR を作った役の引き継ぎにある `紐付けの失敗:` の段落は、
 
 `tests/squad-review-next-decide-unlinked-test.sh` には、マークがある紐付いていない PR で、2 つの場面を足す。試み直しで紐付けば、マージの依頼に紐付けの依頼の行と `紐付けの失敗:` の段落がない。404 のままなら、今と同じく両方がある。どちらの場面でも、試み直しの記録が回のコメントへの返信として書かれることを見る。
 
-`tests/squad-review-next-decide-fix-test.sh` の人間を呼ぶコメントの確認は、紐付いているときに段落と連携の案内がないことを見る形に直す。紐付いていないときは、紐付けの依頼の行、段落、連携の案内があることを見る。
+`tests/squad-review-next-decide-fix-wait-test.sh` の人間を呼ぶコメントの確認は、紐付いているときに段落と連携の案内がないことを見る形に直す。紐付いていないときは、紐付けの依頼の行、段落、連携の案内があることを見る。
 
 `squad-dependabot-merge` のテスト（`tests/squad-dependabot-merge-*-test.sh`）は、変えずに通す。
 
