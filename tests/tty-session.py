@@ -122,6 +122,7 @@ def wrapper(master, slave, status_r, status_w, control_r, control_w, targets, co
         close(status_r)
         close(control_w)
         os.setsid()
+        register_stack()  # 別のセッションへ移ったあとに公開する。移る前は、親と同じセッションの印で診断が包みへも届く
         fcntl.ioctl(slave, termios.TIOCSCTTY, 0)
         for sig in (signal.SIGHUP, signal.SIGTTOU, signal.SIGTTIN, signal.SIGTERM):
             signal.signal(sig, signal.SIG_IGN)
@@ -307,7 +308,6 @@ def run(command, *, fds=('in', 'out', 'err'), output, error, input_file=None,
         wrapper_pid = os.fork()
         if wrapper_pid == 0:
             try:
-                register_stack()
                 wrapper(master, slave, status_r, status_w, control_r, control_w,
                         targets, command, nonce, watch)
                 os._exit(0)
