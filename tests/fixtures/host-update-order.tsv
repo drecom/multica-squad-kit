@@ -17,6 +17,7 @@
 none-managed	managed	none		書き換わる（比べるための行）
 none-new	new	none		書き換わる（比べるための行）
 managed-pre-disabled	managed	hooks:pre-disabled	無効か、有効と確認できません	何も変わらない
+managed-pre-disabled-guide	managed	hooks:pre-disabled	に enabled = false があれば、消すか true にしてから	何も変わらない
 managed-stop-disabled	managed	hooks:stop-disabled	無効か、有効と確認できません	何も変わらない
 managed-no-enabled	managed	hooks:no-enabled	無効か、有効と確認できません	何も変わらない
 managed-enabled-null	managed	hooks:enabled-null	無効か、有効と確認できません	何も変わらない
@@ -28,6 +29,7 @@ managed-pre-only	managed	hooks:pre-only	キットのフックがありません	
 managed-exit	managed	hooks:exit	hooks/list を読めませんでした	何も変わらない
 managed-garbled	managed	hooks:garbled	hooks/list を読めませんでした	何も変わらない
 new-pre-disabled	new	hooks:pre-disabled	無効か、有効と確認できません	何も変わらない（設定は作らない）
+new-pre-disabled-guide	new	hooks:pre-disabled	このフックを無効にする enabled = false がないので、編集するものはありません	何も変わらない（設定は作らない）
 new-stop-disabled	new	hooks:stop-disabled	無効か、有効と確認できません	何も変わらない（設定は作らない）
 new-no-enabled	new	hooks:no-enabled	無効か、有効と確認できません	何も変わらない（設定は作らない）
 new-enabled-number	new	hooks:enabled-number	無効か、有効と確認できません	何も変わらない（設定は作らない）

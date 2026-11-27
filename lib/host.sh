@@ -213,7 +213,10 @@ host_codex_check() {
 	# 信頼の値はフックを無効にしても変わらない。有効は、役のフックの項目の enabled で見る。
 	names=$(jq -r 'map("\(.hook)（\(.key)）") | join("、")' <<<"$disabled") || die 'Codex のフックの有効を読めませんでした。'
 	if [[ -n $names ]]; then
-		die "Codex の役のフックが、無効か、有効と確認できません: ${names}。Stop が無効だと最後のコメントの確認が、PreToolUse が無効だとガードが動きません。設定 $config の、上の鍵の [hooks.state.\"<鍵>\"] にある enabled = false を消すか true にし、フックを無効にしている設定がないか、codex --version で Codex が新しいかを確認してから、セットアップを流し直してください。何も書き換えていません。"
+		if [[ -f $config ]] && grep -q '^\[hooks\.state\.' "$config"; then
+			die "Codex の役のフックが、無効か、有効と確認できません: ${names}。Stop が無効だと最後のコメントの確認が、PreToolUse が無効だとガードが動きません。まず codex --version で Codex が新しいことと、フックを無効にしている設定がないことを確認してください。設定 $config の、上の鍵の [hooks.state.\"<鍵>\"] に enabled = false があれば、消すか true にしてから、セットアップを流し直してください。何も書き換えていません。"
+		fi
+		die "Codex の役のフックが、無効か、有効と確認できません: ${names}。Stop が無効だと最後のコメントの確認が、PreToolUse が無効だとガードが動きません。設定 $config には、このフックを無効にする enabled = false がないので、編集するものはありません。codex --version で Codex が新しいことと、フックを無効にしている設定（Codex の管理者の設定など）がないことを確認してから、セットアップを流し直してください。何も書き換えていません。"
 	fi
 	if [[ -n $existing && $detail != trusted ]]; then
 		die "Codex の役のフックは、信頼の記録がないと飛ばされ、PreToolUse と Stop が動きません。マークのない設定 $config に、次の行を足してからセットアップを流し直してください。何も書き換えていません。キットの設定に替えるときは、そのファイルを退避してから流し直してください。

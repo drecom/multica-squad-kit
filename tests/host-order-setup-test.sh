@@ -56,7 +56,7 @@ check_setup_order() {
    fi
    cmp -s "$answers" "$scenario_dir/answer-before"
    jq -e --slurpfile before "$scenario_dir/first-db.json" '. == $before[0]' "$scenario_dir/db.json" >/dev/null
-   ! jq -es 'any(.[]; .[1]=="create" or .[1]=="update" or .[1]=="import" or .[1]=="trigger-add" or .[0:3]==["agent","env","set"] or .[0:3]==["agent","skills","set"] or .[0:3]==["squad","member","add"])' "$scenario_dir/calls.jsonl" >/dev/null
+   jq -es 'any(.[]; .[1]=="create" or .[1]=="update" or .[1]=="import" or .[1]=="trigger-add" or .[0:3]==["agent","env","set"] or .[0:3]==["agent","skills","set"] or .[0:3]==["squad","member","add"]) | not' "$scenario_dir/calls.jsonl" >/dev/null
   fi
   /bin/bash "$test_dir/package/setup.sh" <"$scenario_dir/input" >"$scenario_dir/out" 2>"$scenario_dir/err"
   assert_no_rejected_calls

@@ -218,6 +218,20 @@ ssh_block() {
 	grep -qF -- "$reason" "$test_dir/err"
 }
 
+ssh_undecided() {
+	reset_calls
+	if bash "$ssh_guard" "$@" >"$test_dir/out" 2>"$test_dir/err"; then
+		echo "止まらなかった: $*" >&2
+		exit 1
+	fi
+	[[ ! -s $test_dir/out && ! -s $test_dir/ssh-calls ]]
+	grep -q '^git push のガード: SSH のコマンドを判定できないので止めた' "$test_dir/err"
+	grep -qF 'LFS' "$test_dir/err"
+	grep -qF '許可の一覧の問題ではありません' "$test_dir/err"
+	! grep -qF '紐付いた' "$test_dir/err"
+	! grep -qF 'への SSH の push' "$test_dir/err"
+}
+
 # 受ける形の表（tests/fixtures/git-ssh-forms.tsv）を入力にして、1 行ごとに扱いを確認する。
 # 扱いは pass（本物の ssh に元の引数のまま渡す）か block:<文>（自分の文で止めて ssh を呼ばない）。
 forms_file="$root/tests/fixtures/git-ssh-forms.tsv"
@@ -231,6 +245,7 @@ while IFS=$'\t' read -r form_id form_treatment form_args form_desc; do
 	case $form_treatment in
 	pass) ssh_allow ${form_argv[@]+"${form_argv[@]}"} ;;
 	block:*) ssh_block "${form_treatment#block:}" ${form_argv[@]+"${form_argv[@]}"} ;;
+	undecided) ssh_undecided ${form_argv[@]+"${form_argv[@]}"} ;;
 	*) echo "表の行 ${form_id} の扱いが読めない: ${form_treatment}" >&2; exit 1 ;;
 	esac
 done <"$forms_file"
