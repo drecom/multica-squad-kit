@@ -397,6 +397,8 @@ Codex のフックは `-c` の形で入れ、コマンドのルールは外し�
 | `lib/host.sh` | スクリプトと空のディレクトリを置き、`settings.json` にフックと deny の項目を足す。`config.toml` に信頼を書き、[認証の分離](#認証の分離を確認できないときに止める)・`disableAllHooks`・ガードのファイルと、Codex を選んだときの信頼とフックの有効が合わなければ、[更新の順序](#更新の順序)のとおり書き換える前に止める |
 | `lib/codex-hooks.py` | `lib/host.sh` が使う補助で、役と同じ引数で起こした app-server から `hooks/list` の値と 2 つのフックの有効を読む |
 | `lib/project.sh` | すべての役の custom_env に変数を足し、Claude の役の MCP の設定を `{}` にする。Codex の役の引数にフックを足し、役の設定を書いたあとに共有の `settings.json` のフックを書く |
+| `setup.sh` | 既存のプロジェクトを更新するとき、ホストの準備より前に、選んだプロジェクトを照合し、許す一覧と起動ファイル 2 本の置き先を見る。[更新の順序](#更新の順序)の 1 に当たり、答えの保存もこの確認のあとにする |
+| `lib/questions.sh` | 質問で選んだプロジェクトの名前が、ホストの準備の前にも同じ 1 つの ID を指すかを見る。違えば、何も書き換えずに止まる |
 | `common/host/start-daemon` | 起動する端末に 4 つのトークンの変数があれば、デーモンを起動せずに止める |
 | `common/codex/config.toml` | 信頼の値を埋めるひな形にする |
 | `manual.md` | 「ホストとエージェント用のログイン」の節に、足すガード、新しく止まる場合、戻し方を書く |
@@ -405,7 +407,7 @@ Codex のフックは `-c` の形で入れ、コマンドのルールは外し�
 | `CHANGELOG.md` | 先頭の `## 次のバージョン` の節に、流し直しで変わることを書く |
 | `tests/` | [テストと実機の確認](#テストと実機の確認)のとおりに足す。SSH のコマンドの形の表は `tests/fixtures/git-ssh-forms.tsv` に置く |
 | `tests/codex-hooks-test.sh` | `hooks/list` の項目の形とフックのパスの形の表（`tests/fixtures/codex-hooks-forms.tsv`・`tests/fixtures/codex-hooks-paths.tsv`）を読み、`lib/codex-hooks.py` の扱いを行ごとに見る |
-| `tests/host-order-1-test.sh`・`-2-`・`-3-` の表 | 更新の順序の表を `tests/fixtures/host-update-order.tsv` に置き、止まる行で書いたものと残るものを見る |
+| `tests/host-order-1-test.sh`・`-2-`・`-3-`・`tests/host-order-setup-test.sh` の表 | 更新の順序の表を `tests/fixtures/host-update-order.tsv` に置き、止まる行で書いたものと残るものを見る |
 | `tests/manifest-test.sh` | `scripts/manifest.sh` が、追跡しない `__pycache__/` と `*.pyc` を一覧に入れないことを見る |
 | `scripts/manifest.sh` | Python の実行で生まれる `__pycache__/` と `*.pyc` を、`.gitignore` と同じく一覧から除く |
 | `CONTRIBUTING.md` | `MANIFEST` の節の、一覧から除くものに `__pycache__/` と `*.pyc` を足す |
