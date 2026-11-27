@@ -12,6 +12,7 @@
 # 置き先の行は、ほかのガードを古い管理済みのファイルにしたまま、止めるファイルだけを変える。先に処理するファイルも後に処理するファイルも、止めたあとに変わらないことを見る。
 # 行ごとの確認は tests/host-order-body.sh が流す。行は番号の余りで 3 つに分け（tests/host-order-1-test.sh・-2-・-3-）、1 本が 1 つのテストの時間の上限に収まるようにする。
 # 各行で、止めたあとの $agent_home の全ファイルの内容・種類・権限・リンク先が止める前と同じことを確認する。
+# 状態が setup の行は tests/host-order-setup-test.sh が既存プロジェクトの更新を setup.sh から流し、保存した答えと Multica の登録も比べる。
 # 置き先の行は、止めた原因を直して流し直すと、共有のガード 5 本と gh・pre-push が原本と同じになり、もう一度流しても何も変わらないことも確認する。
 none-managed	managed	none		書き換わる（比べるための行）
 none-new	new	none		書き換わる（比べるための行）
@@ -261,3 +262,6 @@ project-000-template-shell-project-order-env.sh	project	project:000:template/she
 project-special-template-shell-project-order-env.sh	project	project:special:template/shell/project-order/env.sh	通常のファイルではありません	何も変わらない（直して流し直すとそろう）
 project-special-link-template-shell-project-order-env.sh	project	project:special-link:template/shell/project-order/env.sh	通常のファイルではありません	何も変わらない（直して流し直すとそろう）
 project-preserve-shell	project	project:preserve:template/shell/project-order/.zshenv		人の起動ファイルと親の権限を保ち、許可一覧を更新する
+setup-shell-parent-readonly	setup	shell-parent-readonly	置き場がないか、書けません	共有・プロジェクト・役を変えずに止まり、親の権限を直すと全件がそろう
+setup-gh-empty-unreadable	setup	gh-empty-unreadable	空の gh の置き場を読めませんでした	共有・プロジェクト・役を変えずに止まり、読み取れるようにすると全件がそろう
+setup-gh-empty-readable	setup	gh-empty-readable		列挙できる空の置き場は通り、全件がそろう

@@ -19,27 +19,7 @@ deny
 # 書き換わる行（none）が実際に書き換えることも確認し、止めた行の「変わらない」が書く手順を流さなかっただけの結果でないようにする。
 # 内容だけでなく、種類・権限・リンク先と、ディレクトリの有無と権限も比べる。
 snapshot_home() {
- python3 - "$TEMPLATE_AGENT_HOME" "${blocked_dir:-}" <<'PY'
-import hashlib, os, stat, sys
-root, blocked = sys.argv[1:]
-rows = []
-blocked_mode = stat.S_IMODE(os.lstat(blocked).st_mode) if blocked else None
-if blocked:
-    os.chmod(blocked, blocked_mode | stat.S_IRWXU)
-try:
-    for base, dirs, files in os.walk(root):
-        for name in dirs + files:
-            path = os.path.join(base, name)
-            info = os.lstat(path)
-            kind = "link" if stat.S_ISLNK(info.st_mode) else "dir" if stat.S_ISDIR(info.st_mode) else "file" if stat.S_ISREG(info.st_mode) else "special"
-            detail = os.readlink(path) if kind == "link" else hashlib.sha256(open(path, "rb").read()).hexdigest() if kind == "file" else ""
-            mode = blocked_mode if path == blocked else stat.S_IMODE(info.st_mode)
-            rows.append("%s %s %o %s" % (os.path.relpath(path, root), kind, mode, detail))
-finally:
-    if blocked:
-        os.chmod(blocked, blocked_mode)
-print(hashlib.sha256("\n".join(sorted(rows)).encode()).hexdigest())
-PY
+ python3 "$root/tests/host-order-snapshot.py" "$TEMPLATE_AGENT_HOME" "${blocked_dir:-}"
 }
 
 set_parent_mode() {
@@ -115,7 +95,7 @@ installed_snapshot=$(snapshot_home)
 rm -rf "$test_dir/installed-home"
 cp -R "$TEMPLATE_AGENT_HOME" "$test_dir/installed-home"
 while IFS=$'\t' read -r id state refusal message remain; do
- [[ -n $id && $id != '#'* ]] || continue
+ [[ -n $id && $id != '#'* && $state != setup ]] || continue
  row_no=$((row_no + 1))
  # この test が受け持つ行だけを流す（残りは、ほかの 2 つの test が流す）。
  (( row_no % shard_count + 1 == shard_index )) || continue
@@ -233,5 +213,5 @@ while IFS=$'\t' read -r id state refusal message remain; do
 done <"$root/tests/fixtures/host-update-order.tsv"
 echo ok >"$test_dir/codex-hooks"
 # 3 つの test で全行を流したことは、行数の合計で確認できるよう、この test の行数が表からの計算と合うことを見る。
-[[ $order_rows == $(grep -v '^#' "$root/tests/fixtures/host-update-order.tsv" | awk -v k="$shard_index" -v n="$shard_count" 'NF && (NR % n) + 1 == k' | wc -l | tr -d ' ') ]]
+[[ $order_rows == $(awk -F '\t' -v k="$shard_index" -v n="$shard_count" 'NF && !/^#/ && $2!="setup" && (++row % n) + 1 == k {count++} END {print count+0}' "$root/tests/fixtures/host-update-order.tsv") ]]
 echo "PASS host: 更新の表（${shard}）の ${order_rows} 行で、書き換える前に判定できる確認が合わなければ、ガード・Codex の設定と信頼・settings.json を含む全ファイルを書き換えずに止まる"

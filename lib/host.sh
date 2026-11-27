@@ -543,6 +543,11 @@ host_check_targets() {
 
 # 許可と起動ファイルも、読む前に同じ規則で調べる。
 host_check_project_targets() {
+	local id=$1
+	[[ $id =~ ^[A-Za-z0-9_-]+$ ]] || die 'プロジェクト ID が不正です。'
+	host_paths
+	allowed_repos_file="$agent_home/allowed-repos.d/$id"
+	project_shell_dir="$agent_home/template/shell/$id"
 	host_check_target allowed-repos "$allowed_repos_file"
 	host_check_target shell-startup "$project_shell_dir/.zshenv"
 	host_check_target shell-startup "$project_shell_dir/env.sh"
@@ -608,17 +613,13 @@ prepare_project_host() {
 	[[ $# -ge 2 ]] || die 'prepare_project_host にはプロジェクト ID と、一つ以上の OWNER/REPO を渡してください。'
 	local id=$1 repo file content='' previous='' removed='' escaped escaped_bin needle='{{ALLOWED_REPOS_FILE}}' bin_needle='{{AGENT_BIN_DIR}}'
 	shift
-	[[ $id =~ ^[A-Za-z0-9_-]+$ ]] || die 'プロジェクト ID が不正です。'
 	# 全件を確認してから置き場を作る。ファイルは選択順で一行に一つとする。
 	for repo in "$@"; do
 		repo=$(printf '%s' "$repo" | LC_ALL=C tr '[:upper:]' '[:lower:]')
 		[[ $repo =~ ^[a-z0-9][a-z0-9_.-]*/[a-z0-9_.-]+$ && ${repo#*/} != . && ${repo#*/} != .. ]] || die 'リポジトリは OWNER/REPO の形で渡してください。'
 		if [[ $'\n'$content$'\n' != *$'\n'"$repo"$'\n'* ]]; then content+=${content:+$'\n'}$repo; fi
 	done
-	host_paths
-	allowed_repos_file="$agent_home/allowed-repos.d/$id"
-	project_shell_dir="$agent_home/template/shell/$id"
-	host_check_project_targets
+	host_check_project_targets "$id"
 	if [[ -f $allowed_repos_file ]]; then
 		previous=$(cat "$allowed_repos_file") || die '前の許すリポジトリを読めませんでした。'
 		while IFS= read -r repo; do
@@ -669,7 +670,7 @@ host_check_isolation() {
 	[[ -d $human_gh ]] || die "人の gh の置き場が見つかりません: ${human_gh}。このホストで gh auth login を済ませてから、セットアップを流し直してください。何も変更していません。"
 	empty=$agent_home/guard/gh-empty
 	[[ -d $empty ]] || die "空の gh の置き場がありません: ${empty}。セットアップを流し直してください。"
-	entries=$(cd "$empty" && shopt -s dotglob nullglob && files=(*) && printf '%s\n' ${files[@]+"${files[@]}"}) || die "空の gh の置き場を読めませんでした: ${empty}"
+	[[ -r $empty && -x $empty ]] && entries=$(cd "$empty" && find . -mindepth 1 -maxdepth 1 -print) || die "空の gh の置き場を読めませんでした: ${empty}。この置き場の読み取りと探索の権限を確認してから流し直してください。何も変更していません。"
 	[[ -z $entries ]] || die "空の gh の置き場にファイルがあります: ${empty}（$(printf '%s' "$entries" | tr '\n' ' ')）。中のファイルを消してから、セットアップを流し直してください。何も変更していません。"
 	# 役と同じ空の置き場で、本物の gh が未認証を返すかを見る。
 	status=0

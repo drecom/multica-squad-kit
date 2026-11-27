@@ -31,6 +31,7 @@ tests/host-daemon-test.sh 35
 tests/host-order-1-test.sh 165
 tests/host-order-2-test.sh 165
 tests/host-order-3-test.sh 165
+tests/host-order-setup-test.sh 120
 tests/host-test.sh 170
 tests/install-command-test.sh 7
 tests/install-test.sh 30

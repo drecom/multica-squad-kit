@@ -337,6 +337,14 @@ pick_project() {
 	done
 }
 
+# 共有ファイルを更新する前に、選んだ名前が今も同じ一つの ID を指すことを確認する。
+recheck_selected_project() {
+	local projects
+	projects=$(read_list プロジェクト project list) || exit 1
+	jq -e --arg title "$project_name" --arg id "$project_id" '[.[] | select(.title==$title) | .id] == [$id]' >/dev/null <<<"$projects" ||
+		die "選んだプロジェクトが変わりました: ${project_name}。セットアップを流し直して選び直してください。何も書き換えていません。"
+}
+
 # オートパイロットの名前は、ここだけで作る。リポジトリごとのものには OWNER/REPO を渡す。
 # 登録する名前は common/autopilots.md の見出しで、tests/role-choices-test.sh が同じ名前になることを確認する。
 autopilot_title() {

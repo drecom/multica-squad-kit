@@ -214,6 +214,10 @@ PY
  fi
  : >"$scenario_dir/calls.jsonl"
  printf '\n1\n1\ndemo\n1\nowner\n1\n\n0\n\nyes\n' >"$scenario_dir/input"
+ if [[ $runtime_part == host-order ]]; then
+  check_setup_order
+  continue
+ fi
  if [[ $runtime_part != changes ]]; then
  if [[ $runtime_part != issues ]]; then
  /bin/bash "$test_dir/package/setup.sh" <"$scenario_dir/input" >"$scenario_dir/out" 2>"$scenario_dir/err"
