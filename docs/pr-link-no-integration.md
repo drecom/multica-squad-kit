@@ -280,12 +280,14 @@ PR を作る役は、1 行目が `連携なしにしました:` のとき、引�
 
 `unlinked-check` は、PR がマージされたことを `gh` で確認し、連携なしの PR ならタスクを `done` にする。連携なしの PR かは、metadata の `pr_link_no_integration` が `pr_url` と同じ PR を指すかで読む。記録ではなく metadata で読むのは、マージの依頼のあとに記録が消えても、依頼に `done` の行を入れなかった PR を `done` にするためである。依頼に見張りが `done` にする行を入れるのは `連携: なし` のときだけで、そのときマークは書けている（[マークの書き直し](#マークの書き直し)）。
 
+metadata は役と人間が書けるので、`done` にするのは、見張りの規則に固定した PR とも合うときだけにする（[見張る PR の固定](#見張る-pr-の固定)）。
+
 今の `unlinked-check` は、PR の状態が `MERGED` か `CLOSED` なら規則を消して止まる。この分岐を次のように分ける。ほかの順と判定は変えない。
 
 | PR の状態 | `pr_link_no_integration` | すること |
 | --- | --- | --- |
-| `MERGED` | `pr_url` と同じ PR | `multica issue status <タスク> done --no-start` を流し、規則を消して `止めた: PR がマージされたので、タスクを done にした` を記録する |
-| `MERGED` | ないか違う PR | 今と同じく `止めた: PR がマージ済みか閉じている` |
+| `MERGED` | `pr_url` と同じ PR で、固定した PR とも合う | `multica issue status <タスク> done --no-start` を流し、規則を消して `止めた: PR がマージされたので、タスクを done にした` を記録する |
+| `MERGED` | ないか違う PR か、固定した PR と合わない | 今と同じく `止めた: PR がマージ済みか閉じている` |
 | `CLOSED` | どちらでも | 今と同じく止まる。`done` にしない |
 
 `--no-start` は、`squad-usage-check` がタスクを `done` にするときと同じく付ける。CLI の説明のとおり、状態の変更でエージェントの実行を始めないためである。
@@ -296,6 +298,18 @@ PR を作る役は、1 行目が `連携なしにしました:` のとき、引�
 
 見張りの間隔（1 時間）と長さ（72 時間）、登録の時機は変えない。
 
+### 見張る PR の固定
+
+`unlinked` は、規則を作るときに確認した `pr_url` の正規形を、規則の指示に固定する。指示の最後に `見張る PR: <正規形>` の行を足す。ほかの行と `unlinked-check` の引数は変えない。
+
+`unlinked-check` は、`issue-wakeups` で自分の規則を読む。自分の規則は、1 行目がマークの規則のうち、`unlinked_deduplicate` が残すものと同じく作成が最も早い 1 つである。次の 3 つがそろうときだけ、固定した PR を信頼する。
+
+1. `created_by_agent` が真で、`created_by` がタスクの担当のスクワッドのリーダーか役である。リーダーと役は、見張りと同じ名簿（`squad_cli_read_roster`）で読む
+2. `revision` が 1 で、作ったあと置き換えられていない
+3. `見張る PR:` の行が 1 つだけあり、値が metadata の `pr_url` と `pr_link_no_integration` と正規形で同じ
+
+役も書き手に入れるのは、`decide` を流した役が `--leader` 付きで規則を作るためである。そろわないときは `done` にせず、知らせも書かない。標準エラーに理由を 1 行出し、ほかは今の動作にする。
+
 ## 見張りのあとのマージの知らせ
 
 見張りが終わったあとにマージされた PR は、誰も `done` にしない。人間が `done` にすることを、見張りが終わる前に知らせる。知らせ方は[決まっていないこと](#決まっていないこと)にあり、承認まではこの節の案のとおりに作る。
@@ -304,7 +318,7 @@ PR を作る役は、1 行目が `連携なしにしました:` のとき、引�
 
 1. PR がマージされていない、閉じていない
 2. タスクが `in_review` で、紐付いていない
-3. `pr_link_no_integration` が `pr_url` と同じ PR を指す
+3. `pr_link_no_integration` が `pr_url` と同じ PR を指し、[見張る PR の固定](#見張る-pr-の固定)の 3 つがそろう
 4. 自分の規則の作成時刻（`created_at`）から 71 時間を過ぎている。72 時間の見張りの、最後の確認に当たる
 
 知らせは、今の `unlinked_link_stop` と同じく、metadata の `ci_watch_thread` のコメントへの返信で書く。同じ 1 行目のコメントがあれば書かない。本文は次のとおりにする。
@@ -411,7 +425,8 @@ README と手順書は、連携を導入の前提と書くのをやめる。連�
 | `multica issue get` の `project_id`（サーバーが返す） | 記録のパス | 今の CLI の読み取りの検証を通り、パスの部分の検証を通る | 記録を読まず書かず、今の動作にする |
 | PR の URL（PR を作った役が `squad-pr-link` に渡す） | 記録のパスのオーナーとリポジトリ | 今の URL の形の検証を通り、metadata の `repository` と小文字で同じ | 記録を読まず書かず、今の動作にする |
 | 紐付けの API の応答の状態コード（サーバーが返す） | 記録を書くかの判定 | 期限を過ぎ、期限の直前の応答まで 404 だけが続いた（足す `PR_LINK_ALL_404`） | 記録を書かず、今の失敗の動作にする |
-| metadata の `pr_link_no_integration`（スクリプトが書く。役と人間も書ける） | `unlinked-check` の `done` と見張りの終わりの知らせの判定 | `pr_url` と正規形で同じ PR を指し、`gh` が `MERGED` を返す（知らせは、`MERGED` でも `CLOSED` でもない） | `done` にせず、知らせも書かず、今の動作にする |
+| metadata の `pr_url` と `pr_link_no_integration`（スクリプトと役が書く。人間も書ける） | `unlinked-check` の `done` と見張りの終わりの知らせの判定 | 2 つが、規則に固定した PR と正規形で同じ PR を指す。`gh` が `MERGED` を返す（知らせは、`MERGED` でも `CLOSED` でもない） | `done` にせず、知らせも書かず、今の動作にする |
+| 見張りの規則の `見張る PR:` の行（`unlinked` が書く。人間とほかのエージェントも規則を作れる） | 固定した PR | `created_by_agent` が真で、`created_by` がタスクの担当のスクワッドのリーダーか役である。`revision` が 1 で、行が 1 つだけある | 固定した PR がないとして、`done` にせず、知らせも書かない。標準エラーに理由を 1 行出す |
 | metadata の `pr_link_no_integration` と `pr_link_pending`（同じ） | `link-check` の `連携: なし` の判定と、マークの書き直し | 一覧に PR がなく、`pr_link_no_integration` か記録が連携なしを示し、書き直したあと 2 つが `pr_url` と正規形で同じ PR を指す | `連携: なし` を足さず、今の「紐付いていない」の動作にする |
 | metadata の `pr_link_tried_at`（スクリプトが書く。役と人間も書ける） | 試み直しの間隔 | `YYYY-MM-DDTHH:MM:SSZ` の形で、今より後でない | ないものとして読み、間隔をコメントの記録だけで測る |
 | `gh` の PR の状態（GitHub が返す） | `done` にするかの判定 | 今の `gh-pr-mergeable` の読み取りの検証を通る | 今と同じく状態を読めないとして扱い、`done` にしない |
@@ -423,7 +438,7 @@ README と手順書は、連携を導入の前提と書くのをやめる。連�
 
 PR のタイトルは、GitHub で PR を直せる人なら誰でも書ける。別のタスクの識別子を書くと、その PR が別のタスクに関連付くかもしれない。これは今の Multica の自動の関連付けと同じで、この設計はタイトルを判定に使わない。`squad-pr-link` が読むのは、自分のタスクの一覧に PR の URL があるかだけである。
 
-記録と `pr_link_no_integration` を偽ってできるのは、待ちと警告と依頼を止めることと、マージした PR を `done` にすることだけである。`done` は `gh` がマージを返した PR にだけ書き、閉じた PR とマージ待ちの PR は `done` にしない。記録を偽っても、紐付けを外したり、ほかのリポジトリへ書き込んだりはできない。
+記録と `pr_link_no_integration` を偽ってできるのは、待ちと警告と依頼を止めることだけである。`done` は、スクワッドのエージェントが作った規則に固定した PR を、`gh` がマージ済みと返したときにだけ書く。metadata を別の PR に書き換えても、固定した PR と合わないので `done` にしない。記録を偽っても、紐付けを外したり、ほかのリポジトリへ書き込んだりはできない。
 
 記録は GitHub への書き込みをしないので、書き込んでよいリポジトリの決まりとガードには触れない。トークンの扱いは、今の `squad-pr-link-lib` と同じく、標準入力から curl に渡し、出力と記録に出さない。
 
@@ -468,10 +483,10 @@ PR のタイトルは、GitHub で PR を直せる人なら誰でも書ける。
 
 | ファイル | 変えること |
 | --- | --- |
-| `common/monitor/squad-cli-lib` | 省略可能の欄として、タスクの読み取りに `project_id` と metadata の `pr_link_no_integration`・`pr_link_tried_at` を、PR の一覧の要素に `link_source` を宣言する。呼ぶ人間を決める関数を `squad-review-next` から移す |
+| `common/monitor/squad-cli-lib` | 省略可能の欄として、タスクの読み取りに `project_id` と metadata の `pr_link_no_integration`・`pr_link_tried_at` を、PR の一覧の要素に `link_source` を宣言し、`issue-wakeups` の要素に `created_by`・`created_by_agent`・`revision` を宣言する。呼ぶ人間を決める関数を `squad-review-next` から移す |
 | `common/monitor/squad-pr-link-lib` | 記録のパスを決める・読む・作る・消す関数と、`pr_link_pull_request` の結果の `PR_LINK_ALL_404` を足す（[404 だけが続いたことの判定](#404-だけが続いたことの判定)）。今の `PR_LINK_NOT_FOUND` と戻り値と待ち方、`pr_link_request_once` は変えない |
 | `common/monitor/squad-pr-link` | [記録がないとき](#記録がないとき)・[同時に作るとき](#同時に作るとき)・[記録があるとき](#記録があるとき)・[一覧の読み直し](#一覧の読み直し)の動作と、[知らせ](#知らせ)の文を足す |
-| `common/monitor/squad-pr-watch` | `link-check` に `連携: なし` の判定・[マークの書き直し](#マークの書き直し)・記録の削除・`連携: なし` のときの試み直しを足し、使い方のコメントを直す。`unlinked-check` に `done` と見張りの終わりの知らせを足す |
+| `common/monitor/squad-pr-watch` | `link-check` に `連携: なし` の判定・[マークの書き直し](#マークの書き直し)・記録の削除・`連携: なし` のときの試み直しを足し、使い方のコメントを直す。`unlinked` の指示に `見張る PR:` の行を、`unlinked-check` に `done` と見張りの終わりの知らせと、[見張る PR の固定](#見張る-pr-の固定)の照合を足す |
 | `common/monitor/squad-review-next` | `連携: なし` を読み、マージの依頼と使用率の待ちのコメントの行を出し分け、見張りの登録に失敗したら 3 で終わる（[リーダーの手順と decide](#リーダーの手順と-decide)）。呼ぶ人間の関数は `squad-cli-lib` のものを使う |
 | `common/skills/squad-handoff/SKILL.md` | 状態の表の `done` の変える人に、連携なしのリポジトリではマージ待ちの見張りが変えると足す |
 | `common/skills/squad-handoff/references/pr.md` | 「PR を作る・実装を積む」に、0 で終わる新しい 3 つの行（`連携なしにしました:`・`紐付けていません（連携なし）:`・`紐付いていました:`）の読み方と、`連携なし:` の段落の形を足す。[タイトルの形](#タイトルの形)の決まりを 1 項目足し、識別子を持ち出さない項目と push のたびにタイトルを直す段落に、下の[識別子の決まりの例外](#識別子の決まりの例外)の文を足す |
@@ -490,7 +505,7 @@ PR のタイトルは、GitHub で PR を直せる人なら誰でも書ける。
 | `tests/squad-pr-watch-no-integration-test.sh` | 新しく足す（[テスト](#テスト)） |
 | `tests/squad-review-next-decide-unlinked-test.sh` | `連携: なし` の場面と、見張りの登録に失敗する場面を足す |
 | `tests/squad-review-next-decide-fix-test.sh` | 使用率の待ちのコメントに、`連携: なし` の場面を足す |
-| `tests/squad-pr-watch-link-retry-test.sh`、`tests/squad-pr-watch-unlinked-test.sh` | `PR_LINK_STATE_ROOT` を空の一時ディレクトリに向ける 1 行を足す。場面と期待は変えないが、`unlinked` のテストの約束の欄の比較には、足した `link_source` の要素を加える |
+| `tests/squad-pr-watch-link-retry-test.sh`、`tests/squad-pr-watch-unlinked-test.sh` | `PR_LINK_STATE_ROOT` を空の一時ディレクトリに向ける 1 行を足す。場面と期待は変えないが、`unlinked` のテストの約束の欄の比較に足した `link_source` と規則の 3 つの欄を、規則の指示の期待に `見張る PR:` の行を加える |
 | `tests/setup-test.sh`、`tests/setup-repositories-test.sh` | 0 件の案内と、手順書の節の名前の期待を直す |
 | `tests/test-weights` | 新しいテストの行を、そのテストを足すのと同じコミットで足す。`tests/test-runner-test.sh` が重みの行とテストのファイルの一致を見るためで、場面を足したフェーズでは重みを手元の秒数に合わせて直す |
 | `tests/fixtures/base-size/rule-lines-changed.tsv` | `references/pr.md` で書き直した 2 行（識別子を持ち出さない項目と、push のたびにタイトルを直す段落）と `SKILL.md` の状態の表の `done` の行を、書き直した行として足す。理由の欄には、`pr.md` の 2 行は PR のタイトルの識別子を例外にしたため、`done` の行は連携のないリポジトリでは見張りが `done` にするためと書く |
@@ -624,6 +639,11 @@ GitHub 連携のないリポジトリで、PR の紐付けを待たずに進め�
 | `unlinked-check`、`MERGED`、マークがない | 今と同じく止まり、`done` にしない |
 | `unlinked-check`、`CLOSED`、マークが同じ PR | 止まり、`done` にしない |
 | `unlinked-check`、`MERGED`、`done` にできない | 規則が残り、1 で終わる |
+| `unlinked-check`、`MERGED`、マークは同じ PR だが、固定した PR は同じリポジトリの別の PR | `done` にせず、今と同じく止まる。標準エラーに理由の 1 行 |
+| `unlinked-check`、`MERGED`、マークが同じ PR で、規則に `見張る PR:` の行がないか 2 つある | 同じ |
+| `unlinked-check`、`MERGED`、マークが同じ PR で、規則の作り手が人間かスクワッドの外のエージェント | 同じ |
+| `unlinked-check`、`MERGED`、マークが同じ PR で、規則の `revision` が 2 | 同じ |
+| `unlinked-check`、マージ待ち、71 時間を過ぎ、固定した PR が合わない | 知らせを書かない |
 | `unlinked-check`、マージ待ち、規則の作成から 71 時間を過ぎた | 知らせを `ci_watch_thread` への返信で 1 回書き、人間をメンションする。同じ確認をもう一度流しても書かない |
 | `unlinked-check`、マージ待ち、71 時間の前 | 知らせを書かない |
 | `unlinked-check`、マージ待ち、71 時間を過ぎ、マークがない | 知らせを書かない |
@@ -658,6 +678,8 @@ GitHub 連携のないリポジトリで、PR の紐付けを待たずに進め�
 - 連携を外したリポジトリは、120 秒の待ちが 404 で終わるまで連携ありの扱いのままで、1 つ目の PR で今の待ちが 1 回起きる
 - 記録はホストごとにあるので、同じプロジェクトを複数のホストで動かすと、ホストごとに最初の PR で待つ
 - 記録はホストの同じユーザーの処理なら書ける。偽の記録で止まるのは待ちと警告と依頼で、マージしていない PR を `done` にはしない
+- スクワッドの役は規則を作れるので、役が規則と metadata を合わせて偽ると、同じリポジトリのマージした別の PR で `done` にしうる。役は今もマージの依頼と metadata を書くので、この設計で増える書き手ではない
+- `revision` が規則の起動で増えるかは確認していない。増えるなら見張りは `done` にせず、実機の確認のマージのあとの `done` で分かる
 - 72 時間の見張りのあとにマージした PR は、人間が `done` にするまで `in_review` のままになる。見張りの終わりの知らせを読み落とすと、そのまま残る
 - 見張りの規則の登録が失敗すると、セットアップを流し直すまでマージを頼めない。そのあいだ PR はマージ待ちにならない
 - マークを書けない状態が続くと、`連携: なし` が付かず、今の紐付けと `done` の依頼が出る
