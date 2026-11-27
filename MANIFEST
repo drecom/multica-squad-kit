@@ -14,7 +14,7 @@ e26217d9263a7ee07305e8624b87471bdf97acb3c4695c0046804fd6ffeb837a  ./.agents/rule
 37feb6277999e20168efa6910ff4b72dcf7439b15ec664f04d67a6637f20506b  ./.markdownlint.json
 dfc7b81f937d5fb799b18ca4d9b7ac4ce58cee16f14edceb75bee2dfae80f53f  ./AGENTS.md
 3069bb0c5d56a3eca4adf024ce8b3e2585701a481645890a77141a773e4a89ce  ./CHANGELOG.md
-a45f5f068e206dec9408cf4f5c8c2a9806cd06b4369205adc64d83f4f54ec8b8  ./CONTRIBUTING.md
+5d079004d8c0184455ecaea2f8ccd9f2f07a4f32072e398c5d4ea6a80f9e7adc  ./CONTRIBUTING.md
 35b6fce60988f9b9a34c897a147fc2304550a86189154497fd665bc8009dfc8e  ./EXTENSIONS.md
 c64757f13bdbd3ae82f9a4275703d4b2754498763847029a0b02a97faf2eb02c  ./README.md
 dcef205b9a10e938c998800e842b528c3d21a3ae695f49a88c3e6e8c71a00f4c  ./STYLE.md
@@ -68,9 +68,9 @@ e8cfa63c24c340ad0840c3a9acc9d12f62791431877a0654164621d020bca845  ./common/skill
 7c2e2bffeeff932c428830f0d47b7e46073e00d146bb67812a3f0f77a7eb0531  ./common/skills/squad-handoff/references/leader-design-diff.md
 e09d29a0dc17a3ffb46c1caf2d864153cacdf5acc1fd32e9e8c58809eb6d31ac  ./common/skills/squad-handoff/references/leader-dispatch.md
 eef33255fb11f5a350bd499acab86f982faf3205ca7f0f88eaa5fb602c26a082  ./common/skills/squad-handoff/references/leader-fix-request.md
-96283f69078d66e57ff954d318be74bbac2148b23725085c6e24f35de5f8ad15  ./common/skills/squad-handoff/references/leader-pr-ci.md
-ea364f471bef95ef61cede493b81dd0156e8d09f63e6d666ac302ef3eacff7bc  ./common/skills/squad-handoff/references/leader-pr-link.md
-bdbb9946abf287375cd479e58e4b649c383566c1f5bb2af291da10773fbcf794  ./common/skills/squad-handoff/references/leader-pr-merge.md
+a4965ca06963fd175d05b5014387c78fcae711c2ce36875944ff0344849f5f38  ./common/skills/squad-handoff/references/leader-pr-ci.md
+3276d44b27f66bea6143bd1dc214dc876e5c4071d8f897ff840f07e1193616da  ./common/skills/squad-handoff/references/leader-pr-link.md
+8d8a5b60a5c6a3a6de2ea3c7e4abd215c50425ecbf6fe22d994d0b6b74d424a6  ./common/skills/squad-handoff/references/leader-pr-merge.md
 76440f903aa8de096d069953a1f82e27a8bc086a07eef47a3658d707258e9d4b  ./common/skills/squad-handoff/references/leader-principal-design.md
 b1bfbd3eb3d2b3145afd12c96c5230bc90d136d379e5e4fb8b3c3d3a9083af40  ./common/skills/squad-handoff/references/leader-principal-diagnose.md
 446a2cea9fbcdcbcc9dc26c0c06214decd67e582bfc7e47be50ce7a0d7db7a63  ./common/skills/squad-handoff/references/leader-principal-final.md
@@ -233,7 +233,7 @@ a93ec953ed91e0bb6a4bef26cbdea74e62c0b75145b277678b648b7adcb00ac5  ./tests/extens
 b1cef9be9ef1716ab0f0aac354b07666619e016b4eb43ef30559f91e5a58c86f  ./tests/fixtures/action-advisories/v7.0.1.sha
 6068673b6433036118150662d09d0dc81f88cf887595ca9f0a8a306975c77d2b  ./tests/fixtures/action-advisories/vulnerable.json
 abaca9d5a7838dbb0da8b01b831308d2a08928e72b03496b9b30a77658ba1573  ./tests/fixtures/base-size/baseline.tsv
-9343464ff30f1106ce64ea2b43d5a4f022d5a5f27dbc1900d40a087702f97df4  ./tests/fixtures/base-size/rule-lines-changed.tsv
+dbe8d458c71f4a2d69e04ee6315e86c824dfe4676f292a26d6a846cd2753f1e7  ./tests/fixtures/base-size/rule-lines-changed.tsv
 0dcf1d10fec195e9084e496568872c37cc15d5f1a83ac0df182ac92c6c302daf  ./tests/fixtures/base-size/rule-lines.txt
 ec5cef23dc19fbcc621e52a3a5fd5d7604484515ff48b435163724ddad02fb43  ./tests/fixtures/ci-install/InRelease
 5da2715152d18bfb6bbbecb7f35a2537a23cb70982838668ee40d41661254cad  ./tests/fixtures/ci-install/InRelease.attacker
