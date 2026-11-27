@@ -353,7 +353,7 @@ PR を作る役は、1 行目が `連携なしにしました:` のとき、引�
 
 | 参照 | 置くもの |
 | --- | --- |
-| `leader-pr-merge.md` | 頭の 2 つの段落の次に、「`link-check` の行の末尾に `連携: なし` が付くときは、[leader-pr-link.md](leader-pr-link.md) の「連携なしの PR」も読み、従う。」の 1 文を置く。連携なしの文と表の行は、ほかに置かない |
+| `leader-pr-merge.md` | 頭の 2 つの段落の次に、「`link-check` の行の末尾に `連携: なし` が付くときは、`leader-pr-link.md` の「連携なしの PR」も読み、従う。」の 1 文を置く。ファイル名は `leader-pr-link.md` へのリンクにし、連携なしの文と表の行はほかに置かない |
 | `leader-pr-link.md` の「PR の紐付けの確認」 | 判定の表の `連携: なし` の行の末尾を、「下の「連携なしの PR」に従う」に直す |
 | `leader-pr-link.md` の「連携なしの PR」 | `decide` が添える行と止まり方、手で `unlinked` が 0 以外で終わったときの扱い、マージを頼む 1 行と添えないもの。`leader-pr-merge.md` に足していた文は、言い回しを変えずに移す |
 
@@ -473,7 +473,7 @@ PR のタイトルは、GitHub で PR を直せる人なら誰でも書ける。
 | `common/monitor/squad-review-next` | `連携: なし` を読み、マージの依頼と使用率の待ちのコメントの行を出し分け、見張りの登録に失敗したら 3 で終わる（[リーダーの手順と decide](#リーダーの手順と-decide)）。呼ぶ人間の関数は `squad-cli-lib` のものを使う |
 | `common/skills/squad-handoff/SKILL.md` | 状態の表の `done` の変える人に、連携なしのリポジトリではマージ待ちの見張りが変えると足す |
 | `common/skills/squad-handoff/references/pr.md` | 「PR を作る・実装を積む」に、0 で終わる新しい 3 つの行（`連携なしにしました:`・`紐付けていません（連携なし）:`・`紐付いていました:`）の読み方と、`連携なし:` の段落の形を足す。[タイトルの形](#タイトルの形)の決まりを 1 項目足し、識別子を持ち出さない項目と push のたびにタイトルを直す段落に、下の[識別子の決まりの例外](#識別子の決まりの例外)の文を足す |
-| `CONTRIBUTING.md` | 「手順を足す条件」の識別子の段落に、例外の文を足す |
+| `CONTRIBUTING.md` | 「手順を足す条件」の識別子の段落の次に、例外の文を「ただし、」から始まる段落として足す |
 | `STYLE.md` | 「用語とコメントの型」に、識別子の決まりと例外の項目を 1 つ足す |
 | `docs/procedure-review.md` | 「タスクの識別子の置き場所」に、例外の文を足す |
 | `common/skills/squad-handoff/references/leader-pr-link.md` | 判定の表に、`連携: なし` が付く行を足す。[リーダーの参照の置き場所](#リーダーの参照の置き場所)のとおり、節「連携なしの PR」を足し、`leader-pr-merge.md` から段落を移す |
@@ -491,7 +491,7 @@ PR のタイトルは、GitHub で PR を直せる人なら誰でも書ける。
 | `tests/squad-pr-watch-link-retry-test.sh`、`tests/squad-pr-watch-unlinked-test.sh` | `PR_LINK_STATE_ROOT` を空の一時ディレクトリに向ける 1 行を足す。場面と期待は変えないが、`unlinked` のテストの約束の欄の比較には、足した `link_source` の要素を加える |
 | `tests/setup-test.sh`、`tests/setup-repositories-test.sh` | 0 件の案内と、手順書の節の名前の期待を直す |
 | `tests/test-weights` | 新しいテストの行を、そのテストを足すのと同じコミットで足す。`tests/test-runner-test.sh` が重みの行とテストのファイルの一致を見るためで、場面を足したフェーズでは重みを手元の秒数に合わせて直す |
-| `tests/fixtures/base-size/rule-lines-changed.tsv` | `references/pr.md` で書き直した 2 行（識別子を持ち出さない項目と、push のたびにタイトルを直す段落）を、書き直した行として足す。理由の欄には、PR のタイトルの識別子を例外にしたためと書く |
+| `tests/fixtures/base-size/rule-lines-changed.tsv` | `references/pr.md` で書き直した 2 行（識別子を持ち出さない項目と、push のたびにタイトルを直す段落）と `SKILL.md` の状態の表の `done` の行を、書き直した行として足す。理由の欄には、`pr.md` の 2 行は PR のタイトルの識別子を例外にしたため、`done` の行は連携のないリポジトリでは見張りが `done` にするためと書く |
 | `docs/usage-reduction.md` | 「大きさの上限」に、`leader-pr-merge.md` の上限との差が小さいことを 1 文足す。この文書と同じコミットで足した |
 | `MANIFEST` | `bash scripts/manifest.sh` で作り直す |
 | `docs/README.md` | 索引の「役の指示と、タスクが進む流れ」の表に、この文書の行を足す。この文書と同じコミットで足した |
