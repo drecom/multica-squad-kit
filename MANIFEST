@@ -99,7 +99,7 @@ c380ac8fd57091fa1d1ad80ff9724cba6667a7199b440a40b4be9b0e25f83623  ./docs/agent-p
 cdf7277c8518409f57673b250845ef3ff69680946ac4232f5e11e1423f8432d8  ./docs/agent-settings.md
 e1053a8614b8876ec371c43684db9c0ab2a90ad31fe7699dcac0272127ca81e0  ./docs/autopilot-targets.md
 345e824a373fcf5a1f3f7b1254fb1ef340bce2cc436c77aa29122f72cbd29244  ./docs/bug-repro-test.md
-69d36bf3dd9a7bbb12181866bcd87d43d3a00cf9e3b4575e862deffba4ec4b9a  ./docs/ci-timeouts.md
+1350fba1a5ae3a17624a9e594e69fe20e41d278292fad5c80ae05b98983e7656  ./docs/ci-timeouts.md
 b77b3b0ea23e013eb3c31d778c4c062aa36c3facdc3a6ae77a35dc32ee400dce  ./docs/codex-models.md
 985fdb59c1e89be53c6ae4d7709af8b0e5f239d4ce0025f7b59cd056b8021e18  ./docs/decide-record-read.md
 5e2a86f6e2a46391d106f27386a5af76471ce03e017b0834085d62bf19360bb7  ./docs/default-branch.md
@@ -111,7 +111,7 @@ ce01904b58b09ea957686673d8f9883b1e59f5e84dbdb74bd7ab30759d1a1797  ./docs/host-st
 ea7ebff44ce2dfa5cf4c68c764dde731c5c34514ea14fe1009369476511df8b0  ./docs/instruction-reread.md
 369c5b96674d47f949a255bb28643e07bb2a623a6b1c24628805724591a94b50  ./docs/leader-eval-picks.md
 c87cc9bfe056434281fb54a7da958d76d8d08dc4c17a73b402283f2e37239067  ./docs/leader-principles.md
-cf6e01503e14d6d6cbc2f481fbb8707974f715ad6bfeb05f10670fb7f81b0230  ./docs/merge-request-reading.md
+af9094e84dfc2c3a63e3058727f540cdccea06de0ee123e9c808d6796a94f407  ./docs/merge-request-reading.md
 f3e7834c16bb59c09a819b29a92ccea1d2ba7bdbe50505af4e1912167369d653  ./docs/metrics.md
 fc4ec5836bb4c9b565596c63b7e0255ce645fb797e1a9bbb07b3b68e3e1f521b  ./docs/own-review-paths.md
 50cf4e276cc4493aa7342eec05ccdc15afb666d22e17106e4a3d19ecd599355b  ./docs/planner-requirements.md
