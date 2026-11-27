@@ -14,10 +14,10 @@ e26217d9263a7ee07305e8624b87471bdf97acb3c4695c0046804fd6ffeb837a  ./.agents/rule
 37feb6277999e20168efa6910ff4b72dcf7439b15ec664f04d67a6637f20506b  ./.markdownlint.json
 dfc7b81f937d5fb799b18ca4d9b7ac4ce58cee16f14edceb75bee2dfae80f53f  ./AGENTS.md
 3069bb0c5d56a3eca4adf024ce8b3e2585701a481645890a77141a773e4a89ce  ./CHANGELOG.md
-1eb99314d85723af288e50d11188f125f136b52e043917134038c50c02ef6a94  ./CONTRIBUTING.md
+a45f5f068e206dec9408cf4f5c8c2a9806cd06b4369205adc64d83f4f54ec8b8  ./CONTRIBUTING.md
 35b6fce60988f9b9a34c897a147fc2304550a86189154497fd665bc8009dfc8e  ./EXTENSIONS.md
 c64757f13bdbd3ae82f9a4275703d4b2754498763847029a0b02a97faf2eb02c  ./README.md
-98918366ce3f46b590bb6aa4569914648339e1cea6068ccdcecfcdfe6794c353  ./STYLE.md
+dcef205b9a10e938c998800e842b528c3d21a3ae695f49a88c3e6e8c71a00f4c  ./STYLE.md
 76d01424beffc6fd5f69a6176dba1718af62c629485922d8eee75a3a8087e5d5  ./VERSION
 a8589891c83dd2f462ec04992aec83bc8d93e4cb3038f9a7483d890f0274ff06  ./common/agents/FORMAT
 ec353bac903af1311af1b4c2dd50ab7b1743890ded91db88e0eb4d6a62958059  ./common/agents/ci-monitor.md
@@ -88,7 +88,7 @@ f99dc1f01f8588919ef6bc4a7fcdde1f998bde1fc769c744ad5a243d8721abf5  ./common/skill
 9480e2d2360e523e592751bba0fc0efa348d615e815c45486e73fe1c5b257184  ./common/skills/squad-handoff/references/leader-run-wake.md
 8f90823fbb7ff3320ce5efa4cde197b61d2c45e90f154aea6439acf8ced5da90  ./common/skills/squad-handoff/references/missing-fill.md
 23cc2f55db4084b99d2ec6fa64d2252ef19e514745ec1218e44b833b1fccfd75  ./common/skills/squad-handoff/references/new-task.md
-9d7c1013a055c27557d4ed0c47f7a0698567317a664321adc48b3c73bc0b8cc6  ./common/skills/squad-handoff/references/pr.md
+a7080b5c403975edb796890883b9e8d52d6dcc6e73e16dcd2d64c2a7b52ee9bf  ./common/skills/squad-handoff/references/pr.md
 b95232d26ae1ae5fcdb6af4dadc63d3877c2a4f4a21d0a87752b2acf606c5dc5  ./common/skills/squad-handoff/references/repo-target.md
 1ebd6725a52bcf9c5a3bbd060bfe24a1d13117560bd2d0f2ce5879100e296903  ./common/skills/squad-handoff/references/review-reply.md
 77ceb35ddbb3520a7053b58a204f6da4b1340a2cb7de2dba89db48d4160dfb26  ./common/skills/squad-handoff/references/run-cut.md
@@ -117,7 +117,7 @@ fc4ec5836bb4c9b565596c63b7e0255ce645fb797e1a9bbb07b3b68e3e1f521b  ./docs/own-rev
 48527a21019b6129d9b369791585f7b5528bb21fb1e99ce1ac7e1b1f51ca4439  ./docs/pr-link-no-integration.md
 0c13c851b213b910fe807e693dd92f2d9c40367584802549ecfddff78acc4c84  ./docs/pr-link-retry.md
 99c60e172765c6ebb6936a9b0aef232e5ddbd8b9fe279fdd6ab566373248cb1e  ./docs/principal-review.md
-a58a91809ea09df148c193b451ff8955d8b9c9a7b702cace304633e1673c4b43  ./docs/procedure-review.md
+97b512a6fbdc173712706ec1b56204316c778b0052da9b5a6589a8e2354f6fb5  ./docs/procedure-review.md
 2d4d5be982766743e55d5dfaa550e05784562ef48a753260714bb844060fda5a  ./docs/release.md
 87253fa66c18fc19620dac36e018e6e477368f8479e6700c4ffdfb5947293aae  ./docs/reread-followups.md
 f94cb3b02d9a5c18276f24fb3b5be7c8c59efd6deda1d8b92b3780ce54a5722e  ./docs/review-eval.md
