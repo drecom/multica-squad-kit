@@ -3,6 +3,7 @@
 # 150 秒は 1 本の目安で、機械では確認しない。上限は tests/run.sh の 450 秒。macOS の ==== PASS の実測値を写す。
 # 実測元: 7aa744b863551a5e15b2ced3068ca3d4721cd244（試行 1、macOS 全 6 シャード、並列 3 のシャードだけ。全 191 本のうち 127 本）。
 # 並列 5 に当たった 2/6 と 4/6 の 64 本は、56dc3a8d57a4776db1fa418589716d5b8695a578 の CI（macOS 全 5 シャード、並列 3）の実測。
+# 更新分の実測元: host-order-1・2 は b307d27、host-order-3・project-create・squad-usage-check は ee94fb0 の試行 1。
 tests/action-advisories-test.sh 9
 tests/agent-templates-test.sh 51
 tests/audit-targets-test.sh 2
@@ -30,9 +31,9 @@ tests/guard-git-test.sh 3
 tests/guard-hook-test.sh 45
 tests/host-config-test.sh 120
 tests/host-daemon-test.sh 55
-tests/host-order-1-test.sh 165
-tests/host-order-2-test.sh 165
-tests/host-order-3-test.sh 165
+tests/host-order-1-test.sh 366
+tests/host-order-2-test.sh 393
+tests/host-order-3-test.sh 407
 tests/host-order-setup-test.sh 120
 tests/host-test.sh 100
 tests/host-timeout-test.sh 93
@@ -53,7 +54,7 @@ tests/metrics-test.sh 8
 tests/own-review-paths-test.sh 1
 tests/pre-push-test.sh 2
 tests/project-changes-test.sh 22
-tests/project-create-test.sh 129
+tests/project-create-test.sh 203
 tests/project-environment-test.sh 60
 tests/project-failure-test.sh 65
 tests/project-followup-failure-test.sh 78
@@ -176,7 +177,7 @@ tests/squad-review-wait-status-test.sh 33
 tests/squad-run-cut-test.sh 40
 tests/squad-task-post-test.sh 2
 tests/squad-task-read-test.sh 52
-tests/squad-usage-check-test.sh 38
+tests/squad-usage-check-test.sh 217
 tests/squad-usage-read-test.sh 66
 tests/squad-usage-wait-answer-cancel-test.sh 100
 tests/squad-usage-wait-answer-test.sh 122

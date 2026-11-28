@@ -105,7 +105,7 @@ b95232d26ae1ae5fcdb6af4dadc63d3877c2a4f4a21d0a87752b2acf606c5dc5  ./common/skill
 2011a84f5df03e9384502d8b63593df9f60c40c2857db6150b16382786d7c6f0  ./docs/README.md
 662d3c01c99bdf9ae65372465bb905be98f081d7aba29e75c7750f1e1286834e  ./docs/agent-guards.md
 c380ac8fd57091fa1d1ad80ff9724cba6667a7199b440a40b4be9b0e25f83623  ./docs/agent-path.md
-6df5e6adc3831a0545f2d2ed451ad7d360b64dc9fa9ff731fad385634bfa55c9  ./docs/agent-run-stops.md
+3b1122f06b50bda078a23fb49b0b57797eeac5b965610352e91d375448aba4a3  ./docs/agent-run-stops.md
 ed0c9c538d24d6aa2dd4b33667c6346375fbb9502f2c6cbae3ed03120b13b55b  ./docs/agent-settings.md
 e1053a8614b8876ec371c43684db9c0ab2a90ad31fe7699dcac0272127ca81e0  ./docs/autopilot-targets.md
 345e824a373fcf5a1f3f7b1254fb1ef340bce2cc436c77aa29122f72cbd29244  ./docs/bug-repro-test.md
@@ -849,7 +849,7 @@ c98729878e6706f5780a10fbbdd9246ef49a12182fb27d46624296d335659336  ./tests/termin
 c0509d732b2b3fa99f882283848bc2ba1c82ed3a6d0a90ac8263045dfee07010  ./tests/terminal-test.sh
 bb7b764515248a871ceb26e80ed0d7a543675fe39a1813d3355767cb94475dc7  ./tests/terms-test.sh
 81cdf5bc9e1337df5df660a48956d98fbc210eae1e56bcfa2f4345ea8d2ee54d  ./tests/test-runner-test.sh
-17d49bf6f9f499b85fef4c252e8c64751cf1eca376532a70b7b9d84e8f16e45d  ./tests/test-weights
+f0d0efd958f703b866b226ff35638e0bb64da0e96fc9688e815745d250329c5f  ./tests/test-weights
 d94f944f10cbc4a4e1578f5c2c82bd96d60a44e38218caebf76174d8d570f7de  ./tests/tty-session-cases.py
 037b266696a320864da9cdca9b7638c912b8e8f68f57f38c0b1d4f71640d5b0b  ./tests/tty-session-test.sh
 4fca0a5d480aee948e2076f067072b905caa9de4d4bd0c4cd84ac061c10abf37  ./tests/tty-session.py
