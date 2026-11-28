@@ -135,10 +135,57 @@ usage_comment() {
 	return "$code"
 }
 
+# キーの種類ごとの、作るタスクの題の始め。ログインのキーは login: で始まる。
+title_prefix() {
+	case $1 in
+	login:*) printf '[ログイン]' ;;
+	*) printf '[使用上限]' ;;
+	esac
+}
+
+# 状態ごとの始めの文。タスクを作るときの本文と、ok でない状態どうしの変化のコメントが使う。
+state_sentence() {
+	local key=$1 level=$2
+	case "$key:$level" in
+	login:*:warn) echo '期限が近い。期限の前に、manual.md の手順でログインし直す' ;;
+	login:*:error) echo 'ログインしていない。このツールの役はすべて失敗する' ;;
+	login:*:unverified) echo 'ログインを確認できない。バージョンとログインを確認する' ;;
+	*:warn) echo '使用上限が近い。重い作業の割り振りを控えるか、エージェントを別の系統のモデルに寄せる' ;;
+	*:limited) echo '使用上限に達した。リセットまで、このモデルのエージェントは失敗する' ;;
+	*:error) echo '使用量を取れなくなり、見張れていない。ログインや表示の形が変わっていないか確認する' ;;
+	esac
+}
+
+# 状態のファイルのタスクが、この見張りが、このキーで作ったものかをサーバーで確認する。
+# 状態のファイルは同じ OS の利用者のプロセスが書けるので、更新する前に毎回確認する。
+# 合わなければ、状態からそのキーを外し、外したことを stderr に書き、実行の結果を失敗にする。
+# 返り値: 0 は合った、1 は合わず外した、2 はサーバーのタスクを読めなかった（状態は変えない）。
+task_failed=false
+verify_task() {
+	local key=$1 issue=$2 task prefix
+	if ! task=$(multica issue get "$issue" --output json) || ! jq -e 'type == "object"' <<<"$task" >/dev/null 2>&1; then
+		echo "タスク ${issue} をサーバーから読めなかった" >&2
+		return 2
+	fi
+	prefix=$(title_prefix "$key")
+	if jq -e --arg project "$USAGE_CHECK_PROJECT" --arg agent "${MULTICA_AGENT_ID-}" --arg prefix "$prefix" --arg key "$key" '
+		.project_id == $project and .creator_type == "agent" and ($agent | length) > 0 and .creator_id == $agent
+		and (.title | type) == "string"
+		and (.title | startswith($prefix + " ")) and (.title | endswith("（" + $key + "）"))' <<<"$task" >/dev/null; then
+		return 0
+	fi
+	echo "状態のファイルのタスク ${issue} は、このキー（${key}）の見張りが作ったものと合わない。更新せず、状態から外した" >&2
+	state=$(jq --arg k "$key" 'del(.[$k])' <<<"$state")
+	save_state
+	task_failed=true
+	return 1
+}
+
 # 1 つの枠の状態の変化を、タスクに反映する。
-#   ok → warn/limited/error: タスクを作る
-#   warn → limited: 使用上限に達したとコメントする
-#   limited → warn/ok、warn/error → ok: 戻ったとコメントし、ok なら done にする
+#   ok → warn/limited/error: タスクを作る。題の終わりに、全角の括弧でキーを付ける
+#   limited → warn/error/ok、warn/error → ok: 戻ったとコメントし、ok なら done にする
+#   ok でない状態どうしの変化: 新しい状態の始めの文をコメントする
+# 既存のタスクを更新する前に、verify_task でサーバーのタスクを確認する。
 apply() {
 	local key=$1 level=$2 title=$3 detail=$4
 	local prev issue
@@ -148,17 +195,12 @@ apply() {
 
 	if [[ -z "$issue" ]]; then
 		if [[ "$level" != ok ]]; then
-			local summary
-			case "$level" in
-			warn) summary="使用上限が近い。重い作業の割り振りを控えるか、エージェントを別の系統のモデルに寄せる" ;;
-			limited) summary="使用上限に達した。リセットまで、このモデルのエージェントは失敗する" ;;
-			error) summary="使用量を取れなくなり、見張れていない。ログインや表示の形が変わっていないか確認する" ;;
-			esac
 			local description
 			description=$(usage_tmpfile)
-			printf '%s\n\n%s\n\nこのタスクは使用上限の見張り（squad-usage-check）が作った。戻ったら、見張りがコメントして done にする。\n' "$summary" "$detail" >"$description"
+			printf '%s\n\n%s\n\nこのタスクは使用上限の見張り（squad-usage-check）が作った。戻ったら、見張りがコメントして done にする。\n' \
+				"$(state_sentence "$key" "$level")" "$detail" >"$description"
 			local response
-			if ! response=$(squad_cli_read issue-create "[使用上限] ${title}" "$description" \
+			if ! response=$(squad_cli_read issue-create "$(title_prefix "$key") ${title}（${key}）" "$description" \
 				--assignee "$USAGE_CHECK_ASSIGNEE" --project "$USAGE_CHECK_PROJECT"); then
 				rm -f -- "$description"
 				return 1
@@ -168,6 +210,9 @@ apply() {
 			add_label "$issue" || label_failed=true
 		fi
 	else
+		local verified=0
+		verify_task "$key" "$issue" || verified=$?
+		case $verified in 0) ;; 1) return 0 ;; *) return 1 ;; esac
 		case "$level:$prev" in
 		limited:*) printf '使用上限に達した。リセットまで、このモデルのエージェントは失敗する。\n\n%s\n' "$detail" |
 			usage_comment "$issue" ;;
@@ -175,6 +220,7 @@ apply() {
 		*:limited) printf '戻った。使用上限で失敗したタスクは multica issue rerun で再実行する。\n\n%s\n' "$detail" |
 			usage_comment "$issue" ;;
 		ok:warn) printf 'リセットされた。\n\n%s\n' "$detail" | usage_comment "$issue" ;;
+		*) printf '%s。\n\n%s\n' "$(state_sentence "$key" "$level")" "$detail" | usage_comment "$issue" ;;
 		esac
 		if [[ "$level" == ok ]]; then
 			multica issue status "$issue" done --no-start >/dev/null
@@ -218,7 +264,7 @@ for runtime in "${usage_check_runtimes[@]}"; do
 	case $runtime in claude) check claude Claude ;; codex) check codex Codex ;; esac
 done
 save_state
-# ラベルを付けられなかったことを、実行の結果で人に知らせる。
-if $label_failed; then
+# ラベルを付けられなかったことと、状態のファイルのタスクが合わず外したことを、実行の結果で人に知らせる。
+if $label_failed || $task_failed; then
 	exit 1
 fi

@@ -64,7 +64,7 @@ a42bc9f4e0cab7a342bdd980e845b816354c3787152f1cd6c2b80b592d1d56ea  ./common/monit
 d01f8b949abb8359dd72254134adeb4c24d8bc9772d0868865718aeb1345d3c5  ./common/monitor/squad-run-cut-values
 691349b88eef89a875045ed1f729ad7a1074fe3bf75f58181a26410fb6e25357  ./common/monitor/squad-task-post
 411889e07d816359c09e63acdda2fe809c0dbb9ca5a6b94b8de30ab01144938b  ./common/monitor/squad-task-read
-047ce7aa188ff399d5dc36b35a4b89da164be6a0b106a0120459afa10a21673e  ./common/monitor/squad-usage-check
+398a0e53f9a847d1a6d5b38fc907c31b21aae54367f483d9d716386534538e62  ./common/monitor/squad-usage-check
 67746f87ae656f2e23961f61772297fc617a13dc86f5122a61e25b26a53b133b  ./common/monitor/squad-usage-lib
 3d6fd26a2ba05859edcf8af5fd449cb9358eaf4a4edca2d2f5587ef81b50a316  ./common/monitor/squad-usage-read
 fac2e72f734a7821ea3121010292836c9cf5478e94f934f9ab211752517cc2c9  ./common/monitor/squad-usage-wait
@@ -826,7 +826,7 @@ ade03af4dc3f6b3561e30bba28af204c75af1be74165527997e347917be876c1  ./tests/squad-
 08f573581fa6edcb10ec80eefe9864a9bc20f7d312d12e57a26c8bc783930606  ./tests/squad-run-cut-test.sh
 ca32912f56551764f0241bfbe8b6c50057a37c92ad57b3686fa0865650233b62  ./tests/squad-task-post-test.sh
 8e8cd39a1797ec75547afafa5ee03862c0f04f878f723be2d395c9b00b66ae50  ./tests/squad-task-read-test.sh
-8b54e2deb621cfcefb4ce07b04b965610e40c8c06ce2f0198fad1ae0c7d3525c  ./tests/squad-usage-check-test.sh
+599f9ef4a9728cd40932691f0ec5ddc525c7b77f1e5d336cf674050a92f0d49a  ./tests/squad-usage-check-test.sh
 7ff6024e00e2ffd4a01548013ff835f862c6ef20a5182e34dc28f75e5ba75d39  ./tests/squad-usage-read-test.sh
 6c326d3fa8e70bff7606eb190fbd23eac619e7a91d850f7603320f1024e45a6f  ./tests/squad-usage-wait-answer-cancel-test.sh
 d954f2195551e917f4a2889c4def9108e05e1df299b0723c76060aa934b97789  ./tests/squad-usage-wait-answer-test.sh

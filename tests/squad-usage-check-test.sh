@@ -156,7 +156,11 @@ echo 'PASS Codex: エラー応答・応答なしの理由と終了コード'
 
 create_default=$(python3 "$root/tests/multica-fixture.py" "$test_dir" base issue-create | jq '.id = "test-issue"')
 label_default=$(python3 "$root/tests/multica-fixture.py" "$test_dir" base label-list | jq '[.id = "operations-label" | .name = "運用"]')
-export create_default label_default
+get_default=$(python3 "$root/tests/multica-fixture.py" "$test_dir" base issue-get)
+export create_default label_default get_default
+# 見張りがタスクを更新する前に読むサーバーのタスク。既定は、この見張りが同じプロジェクトに、指定の題で作ったもの。
+# get-title に題を、get-override.json に差し替える欄を置く。
+export MULTICA_AGENT_ID=test-agent
 multica() {
 	if [[ "$*" == version ]]; then echo 'multica fixture-version'; return; fi
 	python3 "$USAGE_FIXTURE_ROOT/tests/cli-stub.py" none "$test_dir" multica calls.jsonl record -- "$@"
@@ -182,6 +186,12 @@ multica() {
 			shift
 		done
 		jq -Rs '{body:.}' <"$file" >>"$test_dir/comments.jsonl"
+		;;
+	'issue get')
+		if [[ -f $test_dir/fail-get ]]; then echo 'mock get failure' >&2; return 1; fi
+		jq --arg id "$3" --arg project "$USAGE_CHECK_PROJECT" --arg agent "${MULTICA_AGENT_ID-}" --arg title "$(cat "$test_dir/get-title")" \
+			'.id = $id | .project_id = $project | .creator_type = "agent" | .creator_id = $agent | .title = $title' <<<"$get_default" |
+			jq --slurpfile o <(if [[ -f $test_dir/get-override.json ]]; then cat "$test_dir/get-override.json"; else echo '{}'; fi) '. + $o[0]'
 		;;
 	'issue status') test "$4" == done ;;
 	'label list')
@@ -260,6 +270,7 @@ echo 'PASS 記録の分離: プロジェクト・メンバーごとに通知し�
 	state_file=$(usage_check_state_path)
 	: >"$test_dir/comments.jsonl"
 	echo '{"is_error":false,"result":"Current session: 100% used · resets Oct 27 at 12:29pm (Asia/Tokyo)"}' >"$test_dir/claude.json"
+	echo '[使用上限] Claude の Current session（claude:Current session）' >"$test_dir/get-title"
 	touch "$test_dir/fail-comment"
 	if (cd "$test_dir" && bash "$script") >"$test_dir/out" 2>"$test_dir/err"; then exit 1; fi
 	grep -q 'mock comment failure' "$test_dir/err"
@@ -300,6 +311,11 @@ for selected in claude codex; do
 	echo '{"is_error":false,"result":"Current session: 80% used · resets Oct 27 at 12:29pm (Asia/Tokyo)"}' >"$test_dir/claude.json"
 	echo '{"id":2,"result":{"ordinaryUsageAllowed":true,"rateLimitsByLimitId":{"codex":{"primary":{"windowDurationMins":10080,"usedPercent":80,"resetsAt":604800},"secondary":null}}}}' >"$test_dir/codex.jsonl"
 	: >"$test_dir/calls.jsonl"; : >"$test_dir/runtime-calls"
+	if [[ $selected == claude ]]; then
+		echo '[使用上限] Claude の Current session（claude:Current session）' >"$test_dir/get-title"
+	else
+		echo '[使用上限] Codex の codex の週の枠（codex:codex:10080）' >"$test_dir/get-title"
+	fi
 	cd "$test_dir"
 	PATH="$selected_bin" /bin/bash "$script"
 	grep -qx "$selected" "$test_dir/runtime-calls"
@@ -382,3 +398,139 @@ for field in id name resource_type; do
 done
 rm "$test_dir/label-response.json"
 echo 'PASS ラベル応答: 必須欄の欠落は欄名で失敗し、ラベルを付けず起票済みの状態を保存する'
+
+# 作るタスクの題は、キーの種類の始めで始まり、全角の括弧で囲んだキーで終わる。
+task_failed=false
+created_title() {
+	jq -rs '[.[] | select(.[0:2] == ["issue", "create"])][0] | .[index("--title") + 1]' "$test_dir/calls.jsonl"
+}
+for case_ in 'test-key|テスト枠|[使用上限] テスト枠（test-key）' \
+	'claude:fetch|Claude の使用量を取れない|[使用上限] Claude の使用量を取れない（claude:fetch）' \
+	'codex:codex:300|Codex の codex の5 時間の枠|[使用上限] Codex の codex の5 時間の枠（codex:codex:300）' \
+	'login:claude|Claude Code のログイン|[ログイン] Claude Code のログイン（login:claude）'; do
+	IFS='|' read -r key title expected <<<"$case_"
+	state='{}'
+	: >"$test_dir/calls.jsonl"
+	apply "$key" error "$title" '詳細'
+	[[ $(created_title) == "$expected" ]]
+	jq -e --arg k "$key" '.[$k] == {level: "error", issue: "test-issue"}' "$STATE_FILE" >/dev/null
+done
+echo 'PASS 題のキー: 作るタスクの題が、キーの種類の始めで始まり、全角の括弧で囲んだキーで終わる'
+
+# 更新する前のタスクの確認。合うタスクは、コメントも done もできる。
+comment_count() { [[ -f $test_dir/comments.jsonl ]] && jq -s 'length' "$test_dir/comments.jsonl" || echo 0; }
+reset_server() { rm -f "$test_dir/get-override.json" "$test_dir/fail-get"; : >"$test_dir/calls.jsonl"; : >"$test_dir/comments.jsonl"; task_failed=false; }
+reset_server
+echo '[使用上限] テスト枠（test-key）' >"$test_dir/get-title"
+state='{"test-key":{"level":"warn","issue":"test-issue"}}'
+apply test-key ok 'テスト枠' '詳細' 2>"$test_dir/err"
+[[ $task_failed == false && $(comment_count) == 1 && ! -s $test_dir/err ]]
+jq -se '[.[] | select(.[0:2] == ["issue", "get"])] == [["issue","get","test-issue","--output","json"]]
+	and [.[] | select(.[0:2] == ["issue", "status"])] == [["issue","status","test-issue","done","--no-start"]]' "$test_dir/calls.jsonl" >/dev/null
+echo 'PASS 更新の前の確認: 合うタスクは、サーバーのタスクを読んだうえでコメントし done にする'
+
+# プロジェクト・作者・題の始め・題の終わりのキーのどれかが違えば、コメントも done もせず、状態から外して 1 で終える。
+mismatch_case() { # 名前 キー 題 差し替えの JSON 新しい状態
+	local name=$1 key=$2 title=$3 override=$4 level=$5
+	reset_server
+	echo "$title" >"$test_dir/get-title"
+	echo "$override" >"$test_dir/get-override.json"
+	state=$(jq -n --arg k "$key" '{($k): {level: "warn", issue: "test-issue"}, other: {level: "warn", issue: "other-issue"}}')
+	apply "$key" "$level" '枠' '詳細' 2>"$test_dir/err"
+	if [[ $task_failed != true || $(comment_count) != 0 ]]; then echo "FAIL $name: 更新したか、失敗にしていない" >&2; exit 1; fi
+	jq -se '[.[] | select(.[0:2] == ["issue", "status"] or .[0:2] == ["issue", "comment"])] | length == 0' "$test_dir/calls.jsonl" >/dev/null
+	jq -e --arg k "$key" 'has($k) | not' <<<"$state" >/dev/null
+	jq -e '.other == {level: "warn", issue: "other-issue"}' <<<"$state" >/dev/null
+	jq -e --arg k "$key" 'has($k) | not' "$STATE_FILE" >/dev/null
+	grep -qF "状態から外した" "$test_dir/err"
+	echo "PASS 更新の前の確認: $name は更新せず、状態から外して失敗にする"
+}
+for level in limited ok; do
+	t='[使用上限] 枠（test-key）'
+	mismatch_case "別のプロジェクト（${level}）" test-key "$t" '{"project_id":"other-project"}' "$level"
+	mismatch_case "人の作者（${level}）" test-key "$t" '{"creator_type":"member"}' "$level"
+	mismatch_case "別のエージェントの作者（${level}）" test-key "$t" '{"creator_id":"other-agent"}' "$level"
+	mismatch_case "題の始めが違う（${level}）" test-key '人が書き換えた題（test-key）' '{}' "$level"
+	mismatch_case "題の始めの空白がない（${level}）" test-key '[使用上限]枠（test-key）' '{}' "$level"
+	mismatch_case "題が空（${level}）" test-key '' '{"title":null}' "$level"
+	mismatch_case "キーが題の終わりにない（${level}）" test-key '[使用上限] 枠（test-key）メモ' '{}' "$level"
+	mismatch_case "キーの括弧が半角（${level}）" test-key '[使用上限] 枠(test-key)' '{}' "$level"
+	# 同じ見張りが同じプロジェクトに作った、別のキーのタスクを更新しない。
+	mismatch_case "キーが fetch と枠で違う（${level}）" claude:fetch '[使用上限] Claude の Current session（claude:Current session）' '{}' "$level"
+	mismatch_case "キーが枠と fetch で違う（${level}）" 'claude:Current session' '[使用上限] Claude の使用量を取れない（claude:fetch）' '{}' "$level"
+	mismatch_case "キーが枠どうしで違う（${level}）" 'codex:codex:300' '[使用上限] Codex の codex の週の枠（codex:codex:10080）' '{}' "$level"
+	mismatch_case "login:claude に login:codex のタスク（${level}）" login:claude '[ログイン] Codex のログイン（login:codex）' '{}' "$level"
+	mismatch_case "login:codex に login:claude のタスク（${level}）" login:codex '[ログイン] Claude Code のログイン（login:claude）' '{}' "$level"
+	mismatch_case "ログインのキーに使用上限の題（${level}）" login:claude '[使用上限] 枠（login:claude）' '{}' "$level"
+	mismatch_case "使用上限のキーにログインの題（${level}）" test-key '[ログイン] 枠（test-key）' '{}' "$level"
+done
+# 自分の ID が分からなければ、作者を確認できないので合わない。
+(
+	unset MULTICA_AGENT_ID
+	reset_server
+	echo '[使用上限] 枠（test-key）' >"$test_dir/get-title"
+	echo '{"creator_id":""}' >"$test_dir/get-override.json"
+	state='{"test-key":{"level":"warn","issue":"test-issue"}}'
+	apply test-key limited '枠' '詳細' 2>"$test_dir/err"
+	[[ $task_failed == true && $(comment_count) == 0 ]]
+)
+echo 'PASS 更新の前の確認: MULTICA_AGENT_ID がなければ作者が合わず、更新しない'
+
+# サーバーのタスクを読めなければ、状態を変えず、更新せずに失敗する（外した扱いにもしない）。
+reset_server
+touch "$test_dir/fail-get"
+state='{"test-key":{"level":"warn","issue":"test-issue"}}'
+state_before=$state
+if apply test-key limited '枠' '詳細' >"$test_dir/out" 2>"$test_dir/err"; then exit 1; fi
+rm "$test_dir/fail-get"
+grep -qF 'サーバーから読めなかった' "$test_dir/err"
+[[ $state == "$state_before" && $task_failed == false && $(comment_count) == 0 ]]
+echo 'PASS 更新の前の確認: タスクを読めないときは、状態を変えず更新もしない'
+
+# ok でない状態どうしの変化は、新しい状態の始めの文をコメントする。
+transition_case() { # キー 題 前の状態 新しい状態 コメントの始めの文
+	local key=$1 title=$2 prev=$3 level=$4 sentence=$5
+	reset_server
+	echo "$title" >"$test_dir/get-title"
+	state=$(jq -n --arg k "$key" --arg l "$prev" '{($k): {level: $l, issue: "test-issue"}}')
+	apply "$key" "$level" '枠' '詳細の文' 2>"$test_dir/err"
+	[[ $task_failed == false && ! -s $test_dir/err ]]
+	jq -se --arg s "$sentence" 'length == 1 and (.[0].body | startswith($s + "。\n\n") and contains("詳細の文"))' "$test_dir/comments.jsonl" >/dev/null
+	jq -se '[.[] | select(.[0:2] == ["issue", "status"])] | length == 0' "$test_dir/calls.jsonl" >/dev/null
+	jq -e --arg k "$key" --arg l "$level" '.[$k] == {level: $l, issue: "test-issue"}' <<<"$state" >/dev/null
+	echo "PASS 状態の変化: $key の $prev から $level で、新しい状態の文をコメントする"
+}
+t='[使用上限] 枠（test-key）'
+transition_case test-key "$t" warn error '使用量を取れなくなり、見張れていない。ログインや表示の形が変わっていないか確認する'
+transition_case test-key "$t" error warn '使用上限が近い。重い作業の割り振りを控えるか、エージェントを別の系統のモデルに寄せる'
+l='[ログイン] 枠（login:claude）'
+transition_case login:claude "$l" warn error 'ログインしていない。このツールの役はすべて失敗する'
+transition_case login:claude "$l" error unverified 'ログインを確認できない。バージョンとログインを確認する'
+transition_case login:claude "$l" unverified error 'ログインしていない。このツールの役はすべて失敗する'
+transition_case login:claude "$l" warn unverified 'ログインを確認できない。バージョンとログインを確認する'
+
+# 本体を通した確認。状態のファイルが別のプロジェクトのタスクを指していれば、更新せず、状態から外して 1 で終える。
+(
+	export -f multica
+	export test_dir USAGE_CHECK_ASSIGNEE USAGE_CHECK_PROJECT USAGE_CHECK_MEMBER MULTICA_AGENT_ID
+	export USAGE_CHECK_STATE_ROOT="$test_dir/verify-states" USAGE_CHECK_RUNTIMES=claude USAGE_WARN_PERCENT
+	state_file=$(usage_check_state_path)
+	mkdir -p "${state_file%/*}"
+	reset_server
+	echo '[使用上限] Claude の Current session（claude:Current session）' >"$test_dir/get-title"
+	echo '{"project_id":"other-project"}' >"$test_dir/get-override.json"
+	jq -n '{"claude:Current session": {level: "warn", issue: "test-issue"}}' >"$state_file"
+	echo '{"is_error":false,"result":"Current session: 100% used · resets Oct 27 at 12:29pm (Asia/Tokyo)"}' >"$test_dir/claude.json"
+	if (cd "$test_dir" && bash "$script") >"$test_dir/out" 2>"$test_dir/err"; then exit 1; fi
+	grep -qF '状態から外した' "$test_dir/err"
+	[[ $(comment_count) == 0 ]]
+	jq -e 'has("claude:Current session") | not' "$state_file" >/dev/null
+	jq -se '[.[] | select(.[0:2] == ["issue", "status"] or .[0:2] == ["issue", "comment"])] | length == 0' "$test_dir/calls.jsonl" >/dev/null
+	# 次の実行は、外れたキーを新しい題（キー付き）で作り直す。
+	: >"$test_dir/calls.jsonl"
+	rm "$test_dir/get-override.json"
+	(cd "$test_dir" && bash "$script")
+	[[ $(created_title) == '[使用上限] Claude の Current session（claude:Current session）' ]]
+	jq -e '."claude:Current session".level == "limited"' "$state_file" >/dev/null
+)
+echo 'PASS 本体: 合わないタスクを更新せず、状態から外して 1 で終え、次の実行で題にキーを付けて作り直す'
