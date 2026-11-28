@@ -97,11 +97,18 @@ EOF
 chmod +x "$test_dir/bin/multica"
 
 # report と proceed の待ちは、実際には待たずに秒数だけ記録する。
+# report の期限は bash の SECONDS で数えるので、偽の sleep は待った秒数を SECONDS に足す（実際の経過は数秒もかからない）。
+# スクリプトは `bash` の子として流れるので、関数を export -f で渡す。PATH の sleep は、関数を使わない呼び出しの備え。
 cat >"$test_dir/bin/sleep" <<'EOF'
 #!/usr/bin/env bash
 echo "$1" >>"$REVIEW_WAIT_TEST_DIR/sleeps.log"
 EOF
 chmod +x "$test_dir/bin/sleep"
+sleep() {
+	echo "$1" >>"$REVIEW_WAIT_TEST_DIR/sleeps.log"
+	SECONDS=$((SECONDS + $1))
+}
+export -f sleep
 export REVIEW_WAIT_RECHECK_SECONDS=20
 
 # status の時計を固定し、登録と依頼コメントの数秒差も再現する。
@@ -256,6 +263,11 @@ posted_decide_count() {
 decide_calls() { if [[ -f $test_dir/decide-calls ]]; then paste -sd';' "$test_dir/decide-calls"; fi; }
 list_count() { cat "$test_dir/list-count"; }
 slept() { paste -sd, "$test_dir/sleeps.log"; }
+# 偽の sleep の合計（秒）。report は、どの道でも開始から 60 秒以内に知らせを書き終えるので、待ちは取り置きの 10 秒を除いた 50 秒以下になる。
+slept_total() { awk '{ sum += $1 } END { print sum + 0 }' "$test_dir/sleeps.log"; }
+expect_slept_within() { # 上限の秒数
+	[[ $(slept_total) -le $1 ]] || { printf '偽の sleep の合計が %s 秒を超えた: %s\n' "$1" "$(slept)" >&2; exit 1; }
+}
 deleted_rules() {
 	jq -s '[.[] | select(.[0:3] == ["issue", "wakeup", "delete"])] | length' "$test_dir/calls.jsonl"
 }

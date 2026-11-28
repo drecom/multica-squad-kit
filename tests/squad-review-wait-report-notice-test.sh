@@ -41,6 +41,7 @@ expect_notice_posts() { # 結果に付く回の値 候補の ID 行 理由
 run_report() {
 	code=0
 	bash "$script" report test-issue diagnosis "$test_dir/result.md" >"$test_dir/output" 2>"$test_dir/error" || code=$?
+	expect_slept_within 50
 }
 expect_exit() { # 期待する終了コード
 	[[ $code == "$1" ]] || { printf '終了コード %s を期待したが %s: %s\n' "$1" "$code" "$(<"$test_dir/error")" >&2; exit 1; }

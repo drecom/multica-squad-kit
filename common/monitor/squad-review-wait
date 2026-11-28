@@ -28,12 +28,15 @@
 #     読み直しで最も早い記録が自分のものなら、`squad-review-next decide` を流す。
 #     決まらない・失敗したときは、`返事がそろいました` に理由の行（`次の依頼を決められません: <理由>`）を足して、スクワッドのリーダーを起こす。
 #     返していない役がいれば、少し待ってからもう 1 回だけ読み直す。
+#     待ちは、実行の開始から 60 秒（REVIEW_WAIT_DEADLINE_SECONDS）の 1 つの期限を分け合う。期限から投稿の取り置き 10 秒を引いた時刻までしか待たず、
+#     1 回の待ちは REVIEW_WAIT_RECHECK_SECONDS（20 秒）と、その時刻までの残りの短い方にする。
+#     決める記録を書いたあとの読み直しで読めない候補が見えたときも、`decide` を流さず、決める記録を残して知らせへ移る。
 #     判定に関わる候補が読めないときは、決める記録を書かず `decide` も流さない。結果を書き、まだ知らせていない候補ごとに知らせを 1 つ書いて、
 #     同じ実行でリーダーを起こす。最新の回が前の記録を持っていても書く。
 #       - 結果: `round` の候補があるか、認める回がなければ、`返事の回: 未定（読めない依頼 <候補の ID>）` を付けて回に付けずに保存する。
 #         `record` の候補だけで認める回があるときは、今のとおり最新の回に書く。
 #       - 名乗り: 知らせ済みでない候補ごとに `読めない制御記録の知らせ: <候補の ID> <スクワッドの ID>` の名乗りを書き、
-#         20 秒待って読み直す（最大 2 回）。最も早い名乗りの役だけが知らせを書く。名乗りが見えなければ知らせを書かず終了 1。
+#         期限の中で待って読み直す（最大 2 回）。最も早い名乗りの役だけが知らせを書く。名乗りが見えなければ知らせを書かず終了 1。
 #       - 知らせるスクワッド: タスクの担当がスクワッドならそのスクワッド。そうでなければ認める回の最新のものから決める。決まらなければ投稿せず終了 1。
 #       - 終了: 結果と知らせが済めば 0。結果か自分の知らせを書けなければ 1（スクワッドをメンションして返す）。
 #     回がない・読めない候補もないとき、知らせるスクワッドが 1 つに決まらないときは、投稿せずエラーにする。呼び出した役は、通常の引き継ぎで返す。
@@ -47,9 +50,14 @@ set -euo pipefail
 # 待つ上限（分）。レビューの役の実行は 90 パーセンタイルで 10 分以下、同時実行の上限による待ちは最大 15 分なので、その倍をとる。
 REVIEW_WAIT_LIMIT_MINUTES=${REVIEW_WAIT_LIMIT_MINUTES:-60}
 
-# report と proceed が、同じ回の返事を読み直す前に待つ秒数。ほぼ同時に返した役の結果は、書いた直後の読み直しには
-# 見えないことがある。report は 1 回（読めない候補の知らせは最大 2 回）、proceed は最大 2 回、20 秒待って読み直す。
+# report と proceed が、同じ回の返事を読み直す前に待つ 1 回の秒数の上限。ほぼ同時に返した役の結果は、書いた直後の読み直しには
+# 見えないことがある。report の返事の待ちは 2 回まで、proceed は最大 2 回、この秒数まで待って読み直す。
 REVIEW_WAIT_RECHECK_SECONDS=${REVIEW_WAIT_RECHECK_SECONDS:-20}
+
+# report が、実行の開始から知らせを書き終えるまでの上限（秒）。返事の待ちと知らせの待ちが、この 1 つの期限を分け合う。
+# 期限から投稿の取り置きを引いた時刻までしか待たず、名乗りと知らせの投稿に取り置きの時間を残す。
+REVIEW_WAIT_DEADLINE_SECONDS=${REVIEW_WAIT_DEADLINE_SECONDS:-60}
+REVIEW_WAIT_HOLDBACK_SECONDS=10
 
 # 決める記録から、スクリプトが次の依頼を決めている間として待つ分数。decide の最長（6 分ほど）より十分に長くする。
 REVIEW_WAIT_DECIDE_MINUTES=${REVIEW_WAIT_DECIDE_MINUTES:-15}
@@ -339,8 +347,19 @@ post_stop_notice() {
 	post_ready "$issue" "$parent" "$round" "${headline} ${READY_MARK}。" "$reason" >/dev/null || return 1
 }
 
+# report の期限の中で 1 回待つ。待つ秒数は、REVIEW_WAIT_RECHECK_SECONDS と、待ちをやめる時刻（期限から取り置きを引いた時刻）までの
+# 残りの短い方。時刻は、実行の開始からの経過秒（bash の SECONDS）で数える。残りが 0 以下なら待たず、1 を返す。
+wait_within_deadline() {
+	local remaining wait=$REVIEW_WAIT_RECHECK_SECONDS
+	remaining=$((REVIEW_WAIT_DEADLINE_SECONDS - REVIEW_WAIT_HOLDBACK_SECONDS - SECONDS))
+	((remaining > 0)) || return 1
+	((wait <= remaining)) || wait=$remaining
+	sleep "$wait"
+}
+
 # 結果を書いたあとの後始末をする。コメントを読み直し、全員が返していれば、決める記録を書いて読み直す。
 # 自分の記録が最も早いときだけ、次の依頼を決めるスクリプトを流す。
+# 読めない候補は、コメントを読むたびに確認する。決める記録を書いたあとの読み直しで見えたときも、decide を流さず、書いた記録は消さない。
 # 0: 済んだ、1: 取得・JSON 処理・投稿に失敗した、2: 返していない役がいる、3: 自分の記録が読み直しで見えない、4: 読めない候補がある。
 # DECIDE_OWN は、すでに書いた自分の決める記録の ID（なければ空）。呼び出しをまたいで保つ。
 settle() {
@@ -365,6 +384,10 @@ settle() {
 		comments=$(comments_of "$issue") || return 1
 		round=$(latest_round <<<"$comments") || return 1
 		[[ -n $round && $(jq -r '.id // empty' <<<"$round") == "$round_id" ]] || return 0
+		# 決める記録を書いたあとの読み直しで、読めない候補が見えたら、decide を流さずに知らせへ移る。
+		if [[ $(jq '(.unreadable // []) | length' <<<"$round") != 0 ]]; then
+			return 4
+		fi
 	fi
 	jq -e --arg own "$DECIDE_OWN" '.decide_ids | index($own) != null' <<<"$round" >/dev/null || return 3
 	# 次へ回し済みの回では流さない。最も早い決める記録でなければ、ほかの実行に任せる。
@@ -426,7 +449,7 @@ notice_squad() {
 }
 
 # 読めない候補ごとに、`読めない制御記録の知らせ:` の名乗りを書き、最も早い名乗りの役だけが知らせを書く。
-# 知らせ済みの候補は飛ばす。名乗りから知らせまでは、REVIEW_WAIT_RECHECK_SECONDS 待って読み直すのを最大 2 回までにする。
+# 知らせ済みの候補は飛ばす。名乗りから知らせまでは、report の期限の中で（wait_within_deadline）待って読み直すのを最大 2 回までにする。
 # saved は、結果を書いたコメントの ID。attached は、結果を回に書いたとき true、回を付けずに保存したとき false。squad は知らせるスクワッドの JSON。
 # 0: 知らせ済み・知らせを書いた・ほかの役に任せた、1: 取得・投稿に失敗した、または自分の名乗りが読み直しで見えない。
 notify_unreadable() {
@@ -457,7 +480,10 @@ notify_unreadable() {
 	done
 	visible=false
 	for attempt in 1 2; do
-		sleep "$REVIEW_WAIT_RECHECK_SECONDS"
+		# 1 回目は、待てなくても読み直す。2 回目は、期限の中で待てなければ読み直さない。
+		if ! wait_within_deadline; then
+			((attempt == 1)) || break
+		fi
 		comments=$(comments_of "$issue") || return 1
 		state=$(squad_cli_control notice "$comments" "$leaders" null "$squad_id" "${want[@]}") || return 1
 		if jq -e --argjson own "$own" 'to_entries | all(.[]; . as $e | $e.value.claims | index($own[$e.key]) != null)' <<<"$state" >/dev/null; then
@@ -581,7 +607,8 @@ report() {
 			;;
 		*) return "$status" ;;
 		esac
-		((attempt == 3)) || sleep "$REVIEW_WAIT_RECHECK_SECONDS"
+		# 待てなければ待たずに読み直す。返事の待ちの回数と順は変えない。
+		((attempt == 3)) || wait_within_deadline || true
 	done
 	[[ $status != 2 ]] || return 0
 	printf '決める記録が読み直しで見えません: コメント %s\n' "$DECIDE_OWN" >&2
