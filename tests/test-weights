@@ -51,6 +51,7 @@ tests/metrics-breakdown-test.sh 5
 tests/metrics-collect-test.sh 20
 tests/metrics-test.sh 8
 tests/own-review-paths-test.sh 1
+tests/pr-link-no-integration-test.sh 35
 tests/pre-push-test.sh 2
 tests/project-changes-test.sh 22
 tests/project-create-test.sh 129

@@ -7,6 +7,7 @@ source "$root/tests/pr-watch-test-lib.sh"
 pr=https://github.com/example/repo/pull/67
 other=https://github.com/example/repo/pull/68
 export MULTICA_TOKEN=fixture-token MULTICA_SERVER_URL=https://multica.invalid
+export PR_LINK_STATE_ROOT=$test_dir/pr-link-state
 
 # API のあとに一覧を更新し、読み直しの失敗も再現する。このテストだけの包みにする。
 mv "$test_dir/bin/multica" "$test_dir/bin/multica-base"
@@ -16,11 +17,14 @@ set -euo pipefail
 dir=$PR_WATCH_TEST_DIR
 if [[ "${1-} ${2-} ${3-}" == 'issue get test-issue' ]]; then
 	# この機能が保存する metadata の鍵を除き、実物の見本で検証する。
-	jq 'del(.metadata.pr_link_pending)' "$dir/task.json" >"$dir/task-base.json"
+	jq 'del(.metadata.pr_link_pending,.metadata.pr_link_no_integration,.metadata.pr_link_tried_at)' "$dir/task.json" >"$dir/task-base.json"
 	python3 "$PR_WATCH_TEST_ROOT/tests/cli-stub.py" pr-watch "$dir" multica calls.jsonl \
 		emit issue-get "$dir/task-base.json" -- "$@" >/dev/null
 	cat "$dir/task.json"
 	exit 0
+fi
+if [[ "${1-} ${2-} ${3-}" == 'issue metadata set' && $6 == pr_link_tried_at && -f $dir/fail-tried ]]; then
+	exit 1
 fi
 if [[ "${1-} ${2-} ${3-}" == 'issue comment add' ]]; then
 	python3 - "$@" <<'POSTPY'
@@ -43,17 +47,33 @@ if (work / "trigger-comment").exists() and parent != (work / "trigger-comment").
 body = Path(args[args.index("--content-file") + 1]).read_text()
 comments = json.loads((work / "comments.json").read_text())
 response = json.loads((Path(os.environ["PR_WATCH_TEST_ROOT"]) / "tests/fixtures/cli/issue-comment-add.json").read_text())[0]
-response.update(id="link-record-" + str(len(comments) + 1), content=body,
+posted = work / "posted.jsonl"
+response.update(id="link-record-" + str(len(posted.read_text().splitlines()) + 1), content=body,
                 parent_id=parent or None, created_at=datetime.datetime.now(datetime.timezone.utc).isoformat())
 comment = json.loads((work / "comment-prototype.json").read_text())
 comment.update({key: response[key] for key in ("id", "content", "parent_id", "created_at")})
-comments.append(comment)
+comment["author_id"] = os.environ.get("MULTICA_AGENT_ID", comment["author_id"])
+# hide-post: 投稿は成り立つが、次の読みにはまだ見えない。
+if not (work / "hide-post").exists():
+    comments.append(comment)
 (work / "comments.json").write_text(json.dumps(comments))
-with (work / "posted.jsonl").open("a") as out:
+with posted.open("a") as out:
     out.write(json.dumps(dict(args=args, body=body)) + "\n")
+# fail-post-created: コメントはできたが、応答は失敗として返る。
+if (work / "fail-post-created").exists():
+    sys.exit(1)
 print(json.dumps(response))
 POSTPY
 	exit $?
+fi
+if [[ "${1-} ${2-} ${3-}" == 'issue comment delete' ]]; then
+	# 消したコメントは、本文を空にして残す。fail-delete のあいだは消せない。
+	jq -cn --args '$ARGS.positional' -- "$@" >>"$dir/calls.jsonl"
+	[[ ! -f $dir/fail-delete ]] || exit 1
+	jq --arg id "$4" 'map(if .id == $id then .content = "" else . end)' "$dir/comments.json" >"$dir/comments-deleted.json"
+	mv "$dir/comments-deleted.json" "$dir/comments.json"
+	echo '{}'
+	exit 0
 fi
 if [[ "${1-} ${2-} ${3-}" == 'issue pull-requests test-issue' && -f $dir/api-called && -f $dir/fail-after ]]; then
 	exit 1
@@ -81,7 +101,8 @@ reset_retry() {
 	reset_fixture
 	update_task ".metadata.pr_link_pending = \"$pr\""
 	: >"$test_dir/curl-calls.jsonl"
-	rm -f "$test_dir/api-called" "$test_dir/fail-after" "$test_dir/curl-config" "$test_dir/fail-post"
+	rm -f "$test_dir/api-called" "$test_dir/fail-after" "$test_dir/curl-config" "$test_dir/fail-post" "$test_dir/epoch" "$test_dir/fail-tried" \
+		"$test_dir/fail-delete" "$test_dir/hide-post" "$test_dir/fail-post-created"
 	printf 'trigger-1' >"$test_dir/trigger-comment"
 	printf '200' >"$test_dir/api-status"
 	printf '{"pull_requests":[]}' >"$test_dir/pulls-after.json"
@@ -504,3 +525,374 @@ assert result.stdout == "/note\n止めた: PR がタスクに紐付いた\n", re
 assert [rule["id"] for rule in read("rules.json")] == ["other"], read("rules.json")
 print("PASS link-record: マージ待ちで紐付くと、見張りの規則を消し、止めた記録を出す")
 RECORDPY
+
+# 新しい場面だけ時計を固定し、API の試みと知らせの投稿を別々に数える。
+command -v date >"$test_dir/real-date"
+cat >"$test_dir/bin/date" <<'MOCK'
+#!/usr/bin/env bash
+dir=$PR_WATCH_TEST_DIR
+if [[ -f $dir/epoch ]]; then
+	if [[ $* == +%s ]]; then cat "$dir/epoch"; exit 0; fi
+	if [[ $* == '-u +%Y-%m-%dT%H:%M:%SZ' ]]; then
+		python3 -c 'import datetime, sys; print(datetime.datetime.fromtimestamp(int(sys.argv[1]), datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))' "$(<"$dir/epoch")"
+		exit 0
+	fi
+fi
+exec "$(<"$dir/real-date")" "$@"
+MOCK
+chmod +x "$test_dir/bin/date"
+
+record=$PR_LINK_STATE_ROOT/project-retry/example/repo
+reset_no_integration() {
+	reset_retry
+	rm -rf -- "$PR_LINK_STATE_ROOT"
+	update_task '.project_id = "project-retry"'
+	printf '404' >"$test_dir/api-status"
+	printf '1764288000' >"$test_dir/epoch"
+}
+write_record() {
+	mkdir -p "${record%/*}"
+	printf 'repository: example/repo\npr: %s\ntask: TASK-7\n記録した時刻: 2025-11-28T00:00:00Z\n' "$1" >"$record"
+}
+set_kind() {
+	update_task ".metadata.pr_link_no_integration = \"$1 ${2-$pr}\""
+}
+notice_count() {
+	jq -sr '[.[] | select(.body | startswith("/note\n連携なしの知らせ: "))] | length' "$test_dir/posted.jsonl"
+}
+same_notice() { printf '/note\n連携なしの知らせ: %s\n' "$1"; }
+no_integration_line="紐付け: 紐付いていない pr: $pr 連携: なし"
+lookup_plain="紐付け: 紐付いていない pr: $pr"
+
+leader=orchestrator
+export MULTICA_AGENT_ID=$leader
+linked_line="紐付け: 紐付いている pr: $pr"
+at_old=2025-11-28T00:00:00Z at_new=2025-11-28T00:00:09Z
+mark_is() { assert_jq --arg mark "$1" '.metadata.pr_link_no_integration == $mark' "$test_dir/task.json"; }
+mark_gone() { assert_jq '.metadata | has("pr_link_no_integration") | not' "$test_dir/task.json"; }
+# 作者・時刻・本文を決めたコメントを一覧に足す。第 1 引数は id、第 2 引数は作者の種類、第 3 引数は作者の ID、第 4 引数は本文、第 5 引数は時刻。
+add_comment() {
+	jq --slurpfile base "$test_dir/comment-prototype.json" --arg id "$1" --arg type "$2" --arg author "$3" --arg body "$4" --arg at "${5:-$at_old}" \
+		'. + [$base[0] + {id:$id,author_type:$type,author_id:$author,content:$body,created_at:$at,parent_id:null}]' \
+		"$test_dir/comments.json" >"$test_dir/comments-added.json"
+	mv "$test_dir/comments-added.json" "$test_dir/comments.json"
+}
+add_notice() { add_comment "$1" agent "${2:-$leader}" "$(same_notice "${4:-$pr}")" "${3:-$at_old}"; }
+# 作者が自分で、消されていない知らせの id を並べる。
+visible_notices() {
+	jq -r --arg author "$leader" --arg url "$pr" \
+		'[.[] | select(.author_type == "agent" and .author_id == $author and ((.content | split("\n")) as $l | $l[0] == "/note" and $l[1] == ("連携なしの知らせ: " + $url))) | .id] | join(",")' "$test_dir/comments.json"
+}
+deleted_ids() { jq -sr '[.[] | select(.[0:3] == ["issue","comment","delete"]) | .[3]] | sort | join(",")' "$test_dir/calls.jsonl"; }
+posted_notice() { jq -sr '[.[] | select(.body | startswith("/note\n連携なしの知らせ: "))] | .[-1].body' "$test_dir/posted.jsonl"; }
+notice_in_thread() {
+	assert_jq -s '[.[] | select(.body | startswith("/note\n連携なしの知らせ: "))] | all(.args | (index("--parent") as $i | .[$i+1] == "trigger-1"))' "$test_dir/posted.jsonl"
+}
+linked_pulls() { after_urls "$pr"; cp "$test_dir/pulls-after.json" "$test_dir/pulls.json"; }
+unset_agent() { (unset MULTICA_AGENT_ID; check_retry "$@"); }
+
+# 中断した同じ PR の印を戻した回は、リーダーなら知らせを 1 回出す。紐付いていないあいだは印を消さない。
+reset_no_integration
+write_record "$pr"
+check_retry "$no_integration_line"
+mark_is "記録した $pr"
+[[ $(notice_count) == 1 && $(visible_notices) == link-record-1 ]]
+notice_in_thread
+[[ $(posted_notice) == *'マージのあとタスクが done にならなければ、人間が done にしてください'* ]]
+[[ $(posted_notice) != *'連携ありの扱いに戻しました'* ]]
+check_retry "$no_integration_line"
+check_retry "$no_integration_line"
+[[ $(notice_count) == 1 && -z $(deleted_ids) ]]
+mark_is "記録した $pr"
+api_once
+echo 'PASS link-retry: 中断した同じ PR の印を戻し、リーダーが知らせを一度だけ書き、紐付かないあいだは印を残す'
+
+for state in linked other no-pending mismatch; do
+	reset_no_integration
+	case $state in
+	linked) write_record "$pr"; linked_pulls ;;
+	other) write_record "$other" ;;
+	no-pending) write_record "$pr"; update_task 'del(.metadata.pr_link_pending)' ;;
+	mismatch) set_kind '記録した' "$other" ;;
+	esac
+	if [[ $state == linked ]]; then
+		check_retry "$linked_line"
+		[[ ! -e $record ]]
+	else
+		check_retry "$lookup_plain"
+	fi
+	[[ $(notice_count) == 0 ]]
+	assert_jq -s 'all(.[]; .[0:3] != ["issue", "metadata", "set"] or .[5] != "pr_link_no_integration")' "$test_dir/calls.jsonl"
+done
+echo 'PASS link-retry: 紐付いた PR、別の PR の記録、マークなし、不一致の印では復旧せず、知らせも出さない'
+
+# 印を戻せない回は連携なしと扱うだけで投稿せず、次の回に戻して投稿する。戻す前に紐付けば、戻さず投稿もしない。
+reset_no_integration
+write_record "$pr"
+echo 'issue metadata set' >"$test_dir/fail"
+check_retry "$no_integration_line"
+mark_gone
+[[ $(notice_count) == 0 ]]
+rm "$test_dir/fail"
+check_retry "$no_integration_line"
+mark_is "記録した $pr"
+[[ $(notice_count) == 1 ]]
+reset_no_integration
+write_record "$pr"
+echo 'issue metadata set' >"$test_dir/fail"
+check_retry "$no_integration_line"
+rm "$test_dir/fail"
+linked_pulls
+check_retry "$linked_line"
+mark_gone
+[[ $(notice_count) == 0 && ! -e $record ]]
+echo 'PASS link-retry: 印を戻せない回は連携なしだけを付けて投稿せず、次の回に戻して投稿する'
+
+# 知らせを書くのは、MULTICA_AGENT_ID を leader_id に持つスクワッドが 1 つに決まるリーダーだけである。それ以外の回は、知らせにも印にも触れない。
+for judged in unlinked linked; do
+	for who in other empty unset ambiguous archived no-squad squad-list-failure; do
+		reset_no_integration
+		set_kind '記録した'
+		add_notice dup-b "$leader" "$at_old"
+		add_notice dup-a "$leader" "$at_old"
+		if [[ $judged == linked ]]; then
+			linked_pulls
+			update_task 'del(.metadata.pr_link_pending)'
+			expected=$linked_line
+		else
+			expected=$no_integration_line
+		fi
+		case $who in
+		ambiguous) jq '. + [.[0] + {id:"second-squad"}]' "$test_dir/squads.json" >"$test_dir/squads-new.json"; mv "$test_dir/squads-new.json" "$test_dir/squads.json" ;;
+		archived) jq '.[0].archived_at = "2025-11-01T00:00:00Z"' "$test_dir/squads.json" >"$test_dir/squads-new.json"; mv "$test_dir/squads-new.json" "$test_dir/squads.json" ;;
+		no-squad) jq '.[0].leader_id = "someone-else"' "$test_dir/squads.json" >"$test_dir/squads-new.json"; mv "$test_dir/squads-new.json" "$test_dir/squads.json" ;;
+		squad-list-failure) echo 'squad list --output' >"$test_dir/fail" ;;
+		esac
+		case $who in
+		other) MULTICA_AGENT_ID=monitor check_retry "$expected" ;;
+		empty) MULTICA_AGENT_ID= check_retry "$expected" ;;
+		unset) unset_agent "$expected" ;;
+		*) check_retry "$expected" ;;
+		esac
+		[[ $(notice_count) == 0 && -z $(deleted_ids) && $(visible_notices) == dup-b,dup-a ]] || { echo "$judged $who" >&2; exit 1; }
+		mark_is "記録した $pr"
+	done
+done
+echo 'PASS link-retry: リーダーでない役・ID がない・リーダーのスクワッドが 1 つに決まらない回は、知らせの投稿も消去もせず、印を消さない'
+
+# 知らせを投稿できなかった回も、コメントを読めなかった回も、次の回に同じ条件で試す。投稿の応答が失敗でもコメントができていれば、重ねない。
+for prior in read-failure post-failure post-failure-created; do
+	reset_no_integration
+	set_kind '記録した'
+	case $prior in
+	read-failure) printf 'issue comment list\n' >"$test_dir/fail" ;;
+	post-failure) touch "$test_dir/fail-post" ;;
+	post-failure-created) touch "$test_dir/fail-post-created" ;;
+	esac
+	check_retry "$no_integration_line"
+	case $prior in
+	read-failure) [[ $(notice_count) == 0 ]] ;;
+	post-failure) [[ $(notice_count) == 0 ]] ;;
+	post-failure-created) [[ $(notice_count) == 1 && $(visible_notices) == link-record-1 ]] ;;
+	esac
+	rm -f "$test_dir/fail" "$test_dir/fail-post" "$test_dir/fail-post-created"
+	check_retry "$no_integration_line"
+	check_retry "$no_integration_line"
+	[[ $(visible_notices) == link-record-1 && -z $(deleted_ids) ]]
+	mark_is "記録した $pr"
+done
+echo 'PASS link-retry: 読むか書くかに失敗した知らせは次の回に試し、応答だけが失敗でもできたコメントを重ねない'
+
+# 作者が自分でないか、2 行目が違うか、消えたコメントは数えず、消さない。自分の知らせがなければ 1 件投稿する。
+for prior in member other-agent other-url deleted partial; do
+	reset_no_integration
+	set_kind '記録した'
+	case $prior in
+	member) add_comment foreign member "$leader" "$(same_notice "$pr")" ;;
+	other-agent) add_comment foreign agent someone-else "$(same_notice "$pr")" ;;
+	other-url) add_notice foreign "$leader" "$at_old" "$other" ;;
+	deleted) add_comment foreign agent "$leader" '' ;;
+	partial) add_comment foreign agent "$leader" "/note"$'\n'"連携なしの知らせ: $pr 追加" ;;
+	esac
+	check_retry "$no_integration_line"
+	[[ $(notice_count) == 1 && -z $(deleted_ids) ]]
+	[[ $(visible_notices) == link-record-1 ]]
+	check_retry "$no_integration_line"
+	[[ $(notice_count) == 1 && -z $(deleted_ids) ]]
+done
+echo 'PASS link-retry: 人間・ほかのエージェント・別の PR・消えたコメントの知らせは数えず消さず、リーダーが自分の知らせを 1 件出す'
+
+# 紐付いていると判定したときは、紐付いているときの文面で投稿して印を残し、次の回に 1 件と読んでから印を消す。
+reset_no_integration
+set_kind '記録した'
+linked_pulls
+check_retry "$linked_line"
+pending_deleted
+mark_is "記録した $pr"
+[[ $(notice_count) == 1 && $(visible_notices) == link-record-2 ]]
+notice_in_thread
+[[ $(posted_notice) == *'連携ありの扱いに戻しました'* && $(posted_notice) != *'done にしてください'* ]]
+[[ $(posted_notice) == *'人間がタスクを done にする必要もありません'* ]]
+check_retry "$linked_line"
+mark_gone
+[[ $(notice_count) == 1 && -z $(deleted_ids) ]]
+check_retry "$linked_line"
+[[ $(notice_count) == 1 && $(visible_notices) == link-record-2 ]]
+echo 'PASS link-retry: 紐付いていると判定すると、復帰の文面で 1 回投稿して印を残し、次の回に 1 件と読んで印を消す'
+
+# 試み直しで紐付いた回も同じである。404 のあとにこの PR が紐付く経路も、2 回の link-check で知らせが 1 件になる。
+reset_no_integration
+set_kind '記録した'
+printf '200' >"$test_dir/api-status"
+after_urls "$pr"
+check_retry "$linked_line"
+api_once
+pending_deleted
+mark_is "記録した $pr"
+[[ $(notice_count) == 1 ]]
+check_retry "$linked_line"
+mark_gone
+[[ $(notice_count) == 1 && $(visible_notices) != '' ]]
+echo 'PASS link-retry: 試み直しで紐付いたときも、知らせを 1 件出してから印を消す'
+
+# 紐付いていて、投稿できないかコメントを読めないと、印が残る。知らせがすでに 1 件なら、投稿せずに印を消す。種類 `記録があった` はすぐ消す。
+for failure in post read; do
+	reset_no_integration
+	set_kind '記録した'
+	linked_pulls
+	update_task 'del(.metadata.pr_link_pending)'
+	if [[ $failure == post ]]; then touch "$test_dir/fail-post"; else echo 'issue comment list' >"$test_dir/fail"; fi
+	check_retry "$linked_line"
+	mark_is "記録した $pr"
+	[[ $(notice_count) == 0 ]]
+	check_retry "$linked_line"
+	mark_is "記録した $pr"
+	rm -f "$test_dir/fail" "$test_dir/fail-post"
+	check_retry "$linked_line"
+	mark_is "記録した $pr"
+	[[ $(notice_count) == 1 ]]
+	check_retry "$linked_line"
+	mark_gone
+	[[ $(notice_count) == 1 ]]
+done
+reset_no_integration
+set_kind '記録した'
+linked_pulls
+update_task 'del(.metadata.pr_link_pending)'
+add_notice only
+check_retry "$linked_line"
+mark_gone
+[[ $(notice_count) == 0 && -z $(deleted_ids) ]]
+reset_no_integration
+set_kind '記録があった'
+linked_pulls
+update_task 'del(.metadata.pr_link_pending)'
+check_retry "$linked_line"
+mark_gone
+[[ $(notice_count) == 0 ]]
+echo 'PASS link-retry: 紐付いていて投稿やコメントの読みに失敗すると印を残し、知らせが 1 件なら投稿せず印を消し、記録があったはすぐ消す'
+
+# 自分の知らせが 2 件以上あると、created_at の古い順（同じなら id の順）の 1 件を残して消す。
+reset_no_integration
+set_kind '記録した'
+add_notice c-3 "$leader" "$at_new"
+add_notice b-2 "$leader" "$at_old"
+add_notice a-1 "$leader" "$at_old"
+add_notice other-agent-1 someone-else "$at_old"
+check_retry "$no_integration_line"
+[[ $(deleted_ids) == b-2,c-3 && $(visible_notices) == a-1 && $(notice_count) == 0 ]]
+mark_is "記録した $pr"
+echo 'PASS link-retry: 重複は created_at の古い順、同じなら id の順で 1 件を残して消し、紐付かないあいだは印を残す'
+
+# 紐付いている判定では、消せないと印を残し、次の回に消し直して、1 件と読めたその回に印を消す。
+reset_no_integration
+set_kind '記録した'
+linked_pulls
+update_task 'del(.metadata.pr_link_pending)'
+add_notice c-3 "$leader" "$at_new"
+add_notice a-1 "$leader" "$at_old"
+touch "$test_dir/fail-delete"
+check_retry "$linked_line"
+mark_is "記録した $pr"
+[[ $(visible_notices) == c-3,a-1 || $(visible_notices) == a-1,c-3 ]]
+rm "$test_dir/fail-delete"
+check_retry "$linked_line"
+mark_gone
+[[ $(visible_notices) == a-1 && $(notice_count) == 0 ]]
+echo 'PASS link-retry: 重複を消せない回は印を消さず、次の回に消し直して 1 件と読めたら印を消す'
+
+# 1 件ずつ消せなかった重複があっても、ほかのエージェントの同じ 2 行は消さない。
+reset_no_integration
+set_kind '記録した'
+add_comment foreign agent someone-else "$(same_notice "$pr")" "$at_old"
+add_comment human member "$leader" "$(same_notice "$pr")" "$at_old"
+add_notice mine-2 "$leader" "$at_new"
+add_notice mine-1 "$leader" "$at_old"
+check_retry "$no_integration_line"
+[[ $(deleted_ids) == mine-2 && $(notice_count) == 0 ]]
+echo 'PASS link-retry: 重複を消すのは、作者が自分の知らせだけである'
+
+# 前のリーダーの知らせは数えず、新しいリーダーが 1 件出す。
+reset_no_integration
+set_kind '記録した'
+add_comment previous agent old-leader "$(same_notice "$pr")" "$at_old"
+check_retry "$no_integration_line"
+[[ $(notice_count) == 1 && -z $(deleted_ids) ]]
+jq -e --arg id link-record-1 'map(select(.id == $id)) | length == 1' "$test_dir/comments.json" >/dev/null
+echo 'PASS link-retry: 前のリーダーの知らせは数えず、今のリーダーが 1 件出す'
+
+# 種類 `記録があった` は、知らせを出さず、コメントも読まない。
+reset_no_integration
+set_kind '記録があった'
+touch "$test_dir/fail-tried"
+check_retry "$no_integration_line"
+no_api
+rm "$test_dir/fail-tried"
+MULTICA_TOKEN='' check_retry "$no_integration_line"
+no_api
+assert_jq '.metadata | has("pr_link_tried_at") | not' "$test_dir/task.json"
+check_retry "$no_integration_line"
+api_once
+assert_jq --arg expected "2025-11-28T00:00:00Z $pr" '.metadata.pr_link_tried_at == $expected' "$test_dir/task.json"
+printf '1764288299' >"$test_dir/epoch"
+check_retry "$no_integration_line"
+api_once
+printf '1764288301' >"$test_dir/epoch"
+check_retry "$no_integration_line"
+assert_jq -s 'length == 2' "$test_dir/curl-calls.jsonl"
+[[ ! -s $test_dir/posted.jsonl ]]
+echo 'PASS link-retry: 印がある場合は有効な試みだけ数え、時刻の保存前には呼ばず、記録があったでは知らせを出さない'
+
+for when in before after; do
+	reset_no_integration
+	write_record "$other"
+	set_kind '記録があった'
+	case $when in
+	before) linked_pulls ;;
+	after) after_urls "$pr" ;;
+	esac
+	check_retry "$linked_line"
+	pending_deleted
+	mark_gone
+	[[ ! -e $record && $(notice_count) == 0 ]]
+done
+echo 'PASS link-retry: 最初から紐付いている場合も試み直しで紐付く場合も記録と印を消す'
+
+reset_no_integration
+write_record "$pr"
+set_kind '記録があった' "$other"
+linked_pulls
+check_retry "$linked_line"
+mark_is "記録があった $other"
+[[ ! -e $record && $(notice_count) == 0 ]]
+echo 'PASS link-retry: 別の PR が紐付いても進行中の PR の印は消さない'
+
+# 知らせのあとに記録が消えても、知らせは記録を読まない。印がある PR は 1 件の知らせを持つ。
+reset_no_integration
+set_kind '記録した'
+write_record "$other"
+check_retry "$no_integration_line"
+rm -f "$record"
+check_retry "$no_integration_line"
+[[ $(notice_count) == 1 ]]
+echo 'PASS link-retry: 知らせは記録の有無を読まず、印だけで 1 件出す'

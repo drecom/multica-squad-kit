@@ -68,4 +68,4 @@ hooks が自動で動くと仮定せず、完了の条件を自分で確認し�
 
 変更はブランチにコミットして push し、draft PR と実際に流した検証結果を渡します。既存の設計 PR があるときは同じブランチに積みます。PR の本文は [.github/pull_request_template.md](.github/pull_request_template.md) の見出しに従います。
 
-コミットには変更した動作と理由を書きます。作業番号や進行の記録は Multica のタスクに置き、PR 本文と引き継ぎは `squad-handoff` に従います。タグを動かさず、公開済みのバージョンの修正は新しいバージョンで配ります。[タグと Release を出す](CONTRIBUTING.md#タグと-release-を出す)操作は人間に渡します。
+コミットには変更した動作と理由を書きます。作業番号や進行の記録は Multica のタスクに置きます。タスクの識別子は、Multica が自動で関連付けるため、PR のタイトルに限り末尾に入れる。PR 本文と引き継ぎは `squad-handoff` に従います。タグを動かさず、公開済みのバージョンの修正は新しいバージョンで配ります。[タグと Release を出す](CONTRIBUTING.md#タグと-release-を出す)操作は人間に渡します。
