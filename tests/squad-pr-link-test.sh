@@ -8,6 +8,9 @@ test_dir=$(mktemp -d "$PWD/tmp/pr-link-test.XXXXXX")
 trap 'rm -rf -- "$test_dir"' EXIT
 export PR_LINK_TEST_DIR=$test_dir
 export PR_LINK_TEST_ROOT="$root"
+export PR_LINK_STATE_ROOT=$test_dir/pr-link-state
+command -v ln >"$test_dir/real-ln"
+command -v rm >"$test_dir/real-rm"
 source "$root/common/monitor/squad-cli-lib"
 squad_cli_contracts >"$test_dir/contracts.json"
 cli_fixture() { python3 "$root/tests/multica-fixture.py" "$test_dir" base "$@"; }
@@ -31,9 +34,16 @@ if [[ $1 == issue && $2 == get ]]; then
 	[[ $4 == --output && $5 == json ]]
 	if [[ -f $dir/get-fail ]]; then echo "$MULTICA_TOKEN" >&2; exit 1; fi
 	stub multica.jsonl emit issue-get "$dir/issue.json"
+elif [[ $1 == issue && $2 == pull-requests && -f $dir/pr-list.json ]]; then
+	if [[ -f $dir/record-on-list ]]; then
+		mkdir -p "$PR_LINK_STATE_ROOT/project-link/example"
+		cat "$dir/record-on-list" >"$PR_LINK_STATE_ROOT/project-link/example/template"
+	fi
+	cat "$dir/pr-list.json"
 elif [[ $1 == issue && $2 == metadata && $3 == set ]]; then
 	[[ $4 == task-id && $5 == --key && $7 == --value ]]
 	[[ $9 == --type && ${10} == string ]]
+	printf '%s\n' "$6" >>"$dir/write-order"
 	case $6 in
 	pr_url)
 		if [[ -f $dir/set-fail ]]; then echo "$MULTICA_TOKEN" >&2; exit 1; fi
@@ -42,6 +52,10 @@ elif [[ $1 == issue && $2 == metadata && $3 == set ]]; then
 	pr_link_pending)
 		if [[ -f $dir/marker-fail ]]; then echo "$MULTICA_TOKEN" >&2; exit 1; fi
 		jq --arg url "$8" '.metadata.pr_link_pending = $url' "$dir/issue.json" >"$dir/next.json"
+		;;
+	pr_link_no_integration)
+		if [[ -f $dir/mark-fail ]]; then exit 1; fi
+		jq --arg url "$8" '.metadata.pr_link_no_integration = $url' "$dir/issue.json" >"$dir/next.json"
 		;;
 	*) exit 99 ;;
 	esac
@@ -85,8 +99,13 @@ MOCK
 cat >"$test_dir/bin/date" <<'MOCK'
 #!/bin/bash
 set -euo pipefail
+if [[ $* == '-u +%Y-%m-%dT%H:%M:%SZ' ]]; then echo '2026-11-28T00:00:00Z'; exit 0; fi
 [[ $* == +%s ]]
 cat "$PR_LINK_TEST_DIR/now"
+if [[ -f $PR_LINK_TEST_DIR/jump-before-call ]]; then
+	rm -f "$PR_LINK_TEST_DIR/jump-before-call"
+	printf '1120\n' >"$PR_LINK_TEST_DIR/now"
+fi
 MOCK
 cat >"$test_dir/bin/sleep" <<'MOCK'
 #!/bin/bash
@@ -96,6 +115,22 @@ dir=$PR_LINK_TEST_DIR
 echo "$1" >>"$dir/sleeps"
 echo "$(($(<"$dir/now") + $1))" >"$dir/now"
 MOCK
+cat >"$test_dir/bin/ln" <<'MOCK'
+#!/bin/bash
+[[ ! -f $PR_LINK_TEST_DIR/record-fail ]] || exit 1
+"$(<"$PR_LINK_TEST_DIR/real-ln")" "$@" || exit $?
+printf 'record\n' >>"$PR_LINK_TEST_DIR/write-order"
+MOCK
+rm "$test_dir/bin/rm"
+cat >"$test_dir/bin/rm" <<'MOCK'
+#!/bin/bash
+if [[ -f $PR_LINK_TEST_DIR/record-remove-fail && ${!#} == "$PR_LINK_STATE_ROOT/project-link/example/template" ]]; then
+	: >"$PR_LINK_TEST_DIR/record-remove-attempted"
+	exit 1
+fi
+exec "$(<"$PR_LINK_TEST_DIR/real-rm")" "$@"
+MOCK
+chmod +x "$test_dir/bin/ln" "$test_dir/bin/rm"
 chmod +x "$test_dir/bin/multica" "$test_dir/bin/curl" "$test_dir/bin/date" "$test_dir/bin/sleep"
 test_token=pr-link-test-secret-token
 export MULTICA_TOKEN=$test_token
@@ -111,6 +146,7 @@ fixture() {
 	echo 1000 >"$test_dir/now"
 	echo 0 >"$test_dir/curl-count"
 	: >"$test_dir/multica.jsonl"
+	: >"$test_dir/write-order"
 	: >"$test_dir/curl.jsonl"
 	: >"$test_dir/curl-starts"
 	: >"$test_dir/sleeps"
@@ -312,6 +348,12 @@ echo 'PASS missing: トークン・サーバーの URL・curl がなくても警
 for failure in get set transport; do
 	fixture
 	touch "$test_dir/$failure-fail"
+	if [[ $failure == set ]]; then
+		run_link 3 TASK-7 "$url"
+		[[ $(<"$test_dir/out") == "紐付けました（pr_url を書けない）: TASK-7 $url" && ! -s $test_dir/err && ! -s $test_dir/sleeps ]]
+		assert_no_marker
+		continue
+	fi
 	run_link 1 TASK-7 "$url"
 	assert_warning
 	assert_no_guidance
@@ -433,3 +475,164 @@ for field in id identifier status status_category metadata; do
  assert_no_write
 done
 echo 'PASS contract: 必須の欄の欠落を欄名で知らせ、紐付けを書かない'
+
+record=$PR_LINK_STATE_ROOT/project-link/example/template
+integration_fixture() {
+	fixture
+	rm -rf -- "$PR_LINK_STATE_ROOT"
+	rm -f -- "$test_dir/record-fail" "$test_dir/mark-fail" "$test_dir/record-on-list" \
+		"$test_dir/record-remove-fail" "$test_dir/record-remove-attempted" "$test_dir/jump-before-call"
+	jq '.project_id = "project-link"' "$test_dir/issue.json" >"$test_dir/next.json"
+	mv "$test_dir/next.json" "$test_dir/issue.json"
+	printf '{"pull_requests":[]}\n' >"$test_dir/pr-list.json"
+	printf '[404]\n' >"$test_dir/statuses.json"
+}
+record_for() {
+	mkdir -p "${record%/*}"
+	printf 'repository: example/template\npr: %s\ntask: TASK-7\n記録した時刻: 2026-11-28T00:00:00Z\n' "$1" >"$record"
+}
+expect_mark() {
+	jq -e --arg value "$1 $url" '.metadata.pr_link_no_integration == $value' "$test_dir/issue.json" >/dev/null
+}
+expect_no_integration_mark() {
+	jq -e '.metadata | has("pr_link_no_integration") | not' "$test_dir/issue.json" >/dev/null
+}
+
+for timing in before-next-call response-at-limit; do
+	integration_fixture
+	if [[ $timing == response-at-limit ]]; then
+		printf '[29,29,29,3]\n' >"$test_dir/durations.json"
+		touch "$test_dir/ignore-timeout"
+	fi
+	run_link 0 TASK-7 "$url"
+	[[ $(<"$test_dir/out") == "連携なしにしました: TASK-7 $url" && ! -s $test_dir/err ]]
+	grep -qxF "pr: $url" "$record"
+	[[ $(wc -l <"$record") -eq 4 ]]
+	[[ $(<"$test_dir/write-order") == $'pr_link_pending\npr_url\nrecord\npr_link_no_integration' ]]
+	expect_mark '記録した'
+done
+echo 'PASS pr-link: 404 だけの期限切れでマーク・URL・記録・印を残す'
+
+for failure in pending url record our-mark our-mark-remove-fails previous-mark; do
+	integration_fixture
+	case $failure in
+	pending) touch "$test_dir/marker-fail" ;;
+	url) touch "$test_dir/set-fail" ;;
+	record) touch "$test_dir/record-fail" ;;
+	our-mark) touch "$test_dir/mark-fail" ;;
+	our-mark-remove-fails) touch "$test_dir/mark-fail" "$test_dir/record-remove-fail" ;;
+	previous-mark)
+		touch "$test_dir/mark-fail"
+		record_for https://github.com/example/template/pull/44 ;;
+	esac
+	if [[ $failure == our-mark* ]]; then
+		run_link 0 TASK-7 "$url"
+		[[ $(<"$test_dir/out") == "連携なしにしました: TASK-7 $url" && ! -s $test_dir/err ]]
+		grep -qxF "pr: $url" "$record"
+		[[ ! -e $test_dir/record-remove-attempted ]]
+	else
+		run_link 1 TASK-7 "$url"
+		grep -qF '紐付けられませんでした' "$test_dir/err"
+		if [[ $failure != previous-mark ]]; then [[ ! -e $record ]]; fi
+	fi
+	expect_no_integration_mark
+done
+echo 'PASS pr-link: 切り替えの失敗時に記録と印を設計どおり扱う'
+
+for existing in api no-env during-wait; do
+	integration_fixture
+	if [[ $existing == during-wait ]]; then
+		printf 'pr: https://github.com/example/template/pull/44\n' >"$test_dir/record-on-list"
+	else
+		record_for https://github.com/example/template/pull/44
+	fi
+	if [[ $existing == no-env ]]; then MULTICA_TOKEN='' run_link 0 TASK-7 "$url"; else run_link 0 TASK-7 "$url"; fi
+	expect_mark '記録があった'
+	[[ $(<"$test_dir/out") == "紐付けていません（連携なし）: TASK-7 $url" && ! -s $test_dir/err ]]
+	case $existing in
+	api) [[ $(<"$test_dir/curl-count") == 1 && ! -s $test_dir/sleeps ]] ;;
+	no-env) [[ $(<"$test_dir/curl-count") == 0 && ! -s $test_dir/sleeps ]] ;;
+	during-wait) [[ -s $test_dir/sleeps ]] ;;
+	esac
+done
+echo 'PASS pr-link: 既存の記録と競合した記録を使い、トークンなしでは呼ばない'
+
+for source in api listed; do
+	for has_record in yes no; do
+		for writing in success failure; do
+			integration_fixture
+			if [[ $has_record == yes ]]; then record_for "$url"; fi
+			case $source in
+			api) printf '[200]\n' >"$test_dir/statuses.json"; label='紐付けました' ;;
+			listed)
+				printf '[500]\n' >"$test_dir/statuses.json"
+				printf '{"pull_requests":[{"html_url":"http://GITHUB.COM/example/template/pull/00033/files"}]}\n' >"$test_dir/pr-list.json"
+				label='紐付いていました' ;;
+			esac
+			if [[ $writing == failure ]]; then
+				touch "$test_dir/set-fail"
+				run_link 3 TASK-7 "$url"
+				label+='（pr_url を書けない）'
+			else
+				run_link 0 TASK-7 "$url"
+			fi
+			[[ $(<"$test_dir/out") == "$label: TASK-7 $url" && ! -s $test_dir/err && ! -e $record ]]
+			assert_no_marker
+			expect_no_integration_mark
+		done
+	done
+done
+echo 'PASS pr-link: API と一覧の両方で、URL を書けなくても紐付いたと判定し記録を消す'
+
+for mode in no-project bad-project other-project other-repo symlink unreadable late-200 transport status token no-response skip; do
+	integration_fixture
+	case $mode in
+	no-project | bad-project | other-project)
+		value=
+		case $mode in bad-project) value=.. ;; other-project) value=other-project ;; esac
+		jq --arg project "$value" 'if $project == "" then del(.project_id) else .project_id = $project end' "$test_dir/issue.json" >"$test_dir/next.json"
+		mv "$test_dir/next.json" "$test_dir/issue.json"
+		record_for "$url"
+		if [[ $mode == no-project ]]; then
+			jq -n --arg url "$url" '{pull_requests:[{html_url:$url}]}' >"$test_dir/pr-list.json"
+		fi ;;
+	other-repo)
+		record_for "$url"
+		mv "$record" "${record%/*}/other" ;;
+	symlink)
+		record_for "$url"
+		mv "$record" "$test_dir/elsewhere"
+		ln -s "$test_dir/elsewhere" "$record" ;;
+	unreadable) rm "$test_dir/pr-list.json" ;;
+	late-200)
+		printf '[404,404,404,200]\n' >"$test_dir/statuses.json"
+		printf '[29,29,29,29]\n' >"$test_dir/durations.json"
+		touch "$test_dir/ignore-timeout" ;;
+	transport) touch "$test_dir/transport-fail" ;;
+	status) printf '[500]\n' >"$test_dir/statuses.json" ;;
+	token) ;;
+	no-response) touch "$test_dir/jump-before-call" ;;
+	skip)
+		record_for "$url"
+		jq --arg url "$url" '.metadata.pr_url = $url' "$test_dir/issue.json" >"$test_dir/next.json"
+		mv "$test_dir/next.json" "$test_dir/issue.json" ;;
+	esac
+	case $mode in
+	other-project | other-repo | skip) run_link 0 TASK-7 "$url" ;;
+	token) MULTICA_TOKEN='' run_link 1 TASK-7 "$url" ;;
+	*) run_link 1 TASK-7 "$url" ;;
+	esac
+	if [[ $mode == skip ]]; then [[ -f $record && $(<"$test_dir/curl-count") == 0 ]]; fi
+	if [[ $mode == other-project ]]; then [[ -f $PR_LINK_STATE_ROOT/other-project/example/template && -s $test_dir/sleeps ]]; fi
+	if [[ $mode == other-repo ]]; then [[ -f ${record%/*}/other && -s $test_dir/sleeps ]]; fi
+	if [[ $mode == symlink ]]; then [[ -L $record && -f $test_dir/elsewhere ]]; fi
+	case $mode in
+	no-project)
+		[[ -f $record ]]
+		jq -es 'all(.[]; .[0:2] != ["issue","pull-requests"])' "$test_dir/multica.jsonl" >/dev/null ;;
+	unreadable | late-200 | transport | status | token | no-response)
+		[[ ! -e $record ]] ;;
+	esac
+	case $mode in other-project | other-repo) expect_mark '記録した' ;; *) expect_no_integration_mark ;; esac
+done
+echo 'PASS pr-link: 記録を作れる時機と作業先を分け、既存の pr_url は飛ばす'
