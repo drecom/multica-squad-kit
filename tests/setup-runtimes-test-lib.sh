@@ -74,6 +74,8 @@ PY
 case "$*" in
 '--version') echo '2.1.322 (Claude Code)' ;;
 'auth status') [[ $CLAUDE_CONFIG_DIR == "$scenario_dir/host/claude" ]]; echo '{"loggedIn":true}' ;;
+# 使用上限の見張りのログインの行が読む。期限のない ok。
+'auth status --json') [[ $CLAUDE_CONFIG_DIR == "$scenario_dir/host/claude" ]]; echo '{"loggedIn":true}' ;;
 '-p /usage --output-format json')
  printf '{"is_error":false,"result":"Current session: %s%% used · resets Oct 27 at 12:29pm (Asia/Tokyo)"}\n' "${TEST_USAGE_PERCENT:-0}" >"$scenario_dir/claude.json"
  python3 "$fixture_root/tests/usage-fixture.py" claude-usage "$scenario_dir/claude.json" ;;

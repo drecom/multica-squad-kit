@@ -27,6 +27,15 @@ usage_check_state_path() {
 STATE_FILE=$(usage_check_state_path)
 # 警告を出す使用率（%）。警告から使用上限までが短すぎて手当てが間に合わないなら下げ、タスクが多すぎるなら上げる。
 USAGE_WARN_PERCENT=${USAGE_WARN_PERCENT:-80}
+# ログインの期限が近いとして警告する、期限までの日数。Claude Code は期限の 3 日前から再ログインを促す。
+# その前に、週に 1 回だけ見る人も間に合うよう、7 日を足した。
+USAGE_LOGIN_WARN_DAYS=${USAGE_LOGIN_WARN_DAYS:-10}
+if [[ ! $USAGE_LOGIN_WARN_DAYS =~ ^[0-9]{1,4}$ ]]; then
+	echo 'USAGE_LOGIN_WARN_DAYS には、日数を 0 から 9999 の整数で渡す' >&2
+	exit 1
+fi
+# StopFailure、CLAUDE_CODE_MAX_TURNS、auth status --json の期限を確認した最も古い Claude Code。lib/check.sh と同じ値にする。
+claude_min_version=2.1.322
 # 作るタスクに付けるラベル。開発のタスクと分け、開発の進み具合に数えないため（セットアップで作るラベル）。
 LABEL_NAME=運用
 
@@ -102,6 +111,90 @@ fetch_codex() {
 	else
 		printf 'codex:allowed\tok\tCodex を使えるか\t使える\n'
 	fi
+}
+
+# Claude Code のログインを読み、「状態<TAB>本文に書く説明」の 1 行を出す。状態は ok・warn・error・unverified。
+# claude auth status --json の出力はメールアドレスと組織を含むので、loggedIn と loginExpiresAt だけを読み、出力は写さない。
+# 説明に書くのは、バージョンの数、終了コード、期限の日付と残りの日数だけにする。
+# macOS に timeout がなく、時間切れを分けて見るため、python3 で時間を区切って呼ぶ。
+read_claude_login() {
+	python3 - "$USAGE_LOGIN_WARN_DAYS" "$claude_min_version" <<'PY'
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+
+warn_days, minimum = int(sys.argv[1]), sys.argv[2]
+# 時間切れの秒数。既定の 30 秒を変えるのは、テストだけ。
+limit = int(os.environ.get("USAGE_LOGIN_READ_SECONDS", "30"))
+
+
+def finish(level, detail):
+    print(f"{level}\t{detail}")
+    sys.exit(0)
+
+
+def run(*args):
+    try:
+        return subprocess.run(["claude", *args], stdin=subprocess.DEVNULL, capture_output=True,
+                              text=True, errors="replace", timeout=limit)
+    except subprocess.TimeoutExpired:
+        finish("unverified", f"claude {' '.join(args)} が {limit} 秒で終わらなかった")
+    except OSError:
+        finish("unverified", f"claude {' '.join(args)} を実行できなかった")
+
+
+# 古いバージョンでは、期限の欄がなくても、期限がないと読めてしまう。先にバージョンを見る。
+first = (run("--version").stdout.split("\n") or [""])[0]
+found = re.match(r"^(\d{1,6})\.(\d{1,6})\.(\d{1,6})(?:[^0-9.]|$)", first)
+if not found:
+    finish("unverified", "claude --version からバージョンを読めない")
+version = tuple(int(part) for part in found.groups())
+if version < tuple(int(part) for part in minimum.split(".")):
+    finish("unverified", f"Claude Code {'.'.join(map(str, version))} は、最低のバージョン {minimum} より古い")
+
+result = run("auth", "status", "--json")
+code = result.returncode
+try:
+    status = json.loads(result.stdout)
+    if not isinstance(status, dict):
+        raise ValueError
+except ValueError:
+    status = None
+logged_in = status.get("loggedIn") if status else None
+if code == 1 and logged_in is False:
+    finish("error", "ログインしていない（終了コード 1）")
+if code != 0:
+    finish("unverified", f"claude auth status --json が終了コード {code} で終わった")
+if status is None:
+    finish("unverified", "claude auth status --json の出力を JSON として読めない（終了コード 0）")
+if logged_in is not True:
+    finish("unverified", "claude auth status --json の loggedIn が true でない（終了コード 0）")
+
+expires = status.get("loginExpiresAt")
+if expires is None:
+    finish("ok", "ログインしている（期限なし）")
+try:
+    if isinstance(expires, bool):
+        raise ValueError
+    if isinstance(expires, (int, float)):
+        # ミリ秒の値は、秒にそろえる。
+        epoch = expires / 1000 if expires > 1e11 else expires
+    else:
+        epoch = datetime.fromisoformat(str(expires).replace("Z", "+00:00")).timestamp()
+except (ValueError, OverflowError, OSError):
+    finish("unverified", "claude auth status --json の期限を日時として読めない（終了コード 0）")
+remaining = epoch - time.time()
+day = datetime.fromtimestamp(epoch, timezone.utc).astimezone().strftime("%Y-%m-%d")
+if remaining <= 0:
+    finish("error", f"ログインの期限を過ぎた（期限 {day}）")
+days = int(remaining // 86400)
+level = "warn" if remaining <= warn_days * 86400 else "ok"
+finish(level, f"ログインの期限は {day}、残り {days} 日")
+PY
 }
 
 # 状態は「キー → {level, issue}」の JSON。`issue` は、その枠について開いているタスクの ID。
@@ -213,13 +306,14 @@ apply() {
 		local verified=0
 		verify_task "$key" "$issue" || verified=$?
 		case $verified in 0) ;; 1) return 0 ;; *) return 1 ;; esac
-		case "$level:$prev" in
+		case "$level:$prev:${key%%:*}" in
+		ok:*:login) printf 'ログインし直された。\n\n%s\n' "$detail" | usage_comment "$issue" ;;
 		limited:*) printf '使用上限に達した。リセットまで、このモデルのエージェントは失敗する。\n\n%s\n' "$detail" |
 			usage_comment "$issue" ;;
-		ok:error) printf '使用量をまた取れるようになった。\n' | usage_comment "$issue" ;;
-		*:limited) printf '戻った。使用上限で失敗したタスクは multica issue rerun で再実行する。\n\n%s\n' "$detail" |
+		ok:error:*) printf '使用量をまた取れるようになった。\n' | usage_comment "$issue" ;;
+		*:limited:*) printf '戻った。使用上限で失敗したタスクは multica issue rerun で再実行する。\n\n%s\n' "$detail" |
 			usage_comment "$issue" ;;
-		ok:warn) printf 'リセットされた。\n\n%s\n' "$detail" | usage_comment "$issue" ;;
+		ok:warn:*) printf 'リセットされた。\n\n%s\n' "$detail" | usage_comment "$issue" ;;
 		*) printf '%s。\n\n%s\n' "$(state_sentence "$key" "$level")" "$detail" | usage_comment "$issue" ;;
 		esac
 		if [[ "$level" == ok ]]; then
@@ -233,8 +327,10 @@ apply() {
 
 # 1 つのツールの結果を、枠ごとに反映する。
 # 取得に失敗したツールは、枠の状態を前回のままにする（見えないあいだに戻ったことにしないため）。
+usage_read_ok=false
 check() {
 	local tool=$1 label=$2 rows err_file
+	usage_read_ok=false
 	err_file=$(usage_tmpfile)
 	if ! rows=$("fetch_${tool}" 2>"$err_file"); then
 		apply "${tool}:fetch" error "${label} の使用量を取れない" "$(cat "$err_file")"
@@ -242,6 +338,7 @@ check() {
 		return
 	fi
 	rm -f "$err_file"
+	usage_read_ok=true
 	apply "${tool}:fetch" ok "${label} の使用量を取れない" ""
 
 	# 前回あって今回ない枠は、リセットで表示から消えたものとして ok に戻す。
@@ -260,8 +357,35 @@ check() {
 	done <<<"$rows"
 }
 
+# Claude Code のログインの行を反映する。見張るランタイムに claude があるときだけ呼ぶ。
+# ログインの読み取りはローカルの状態だけを見るので、資格が無効でも ok になる。
+# warn・error・確認失敗から ok に戻すのは、同じ実行で使用量を読めたときだけにする。読めなければ前回のままにする。
+# ログインが error のときは、使用率を読まない（同じ原因で、使用量を取れないタスクが重ならないため）。
+check_login_claude() {
+	local login level detail prev
+	login=$(read_claude_login) || login=$'unverified\tclaude のログインの読み取りが失敗した'
+	level=${login%%$'\t'*}
+	detail=${login#*$'\t'}
+	if [[ $level == error ]]; then
+		usage_read_ok=false
+	else
+		check claude Claude
+	fi
+	prev=$(jq -r '.["login:claude"].level // "ok"' <<<"$state")
+	if [[ $level == ok && $prev != ok && $usage_read_ok != true ]]; then
+		echo "Claude Code のログインはローカルでは ok だが、使用量を読めないので、ログインの行は ${prev} のままにした" >&2
+		return
+	fi
+	local title='Claude Code のログイン'
+	case $level in
+	warn) title='Claude Code のログインの期限' ;;
+	unverified) title='Claude Code のログインを確認できない' ;;
+	esac
+	apply login:claude "$level" "$title" "$detail"
+}
+
 for runtime in "${usage_check_runtimes[@]}"; do
-	case $runtime in claude) check claude Claude ;; codex) check codex Codex ;; esac
+	case $runtime in claude) check_login_claude ;; codex) check codex Codex ;; esac
 done
 save_state
 # ラベルを付けられなかったことと、状態のファイルのタスクが合わず外したことを、実行の結果で人に知らせる。

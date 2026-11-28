@@ -36,6 +36,20 @@ export TZ=UTC
 cat >"$test_dir/bin/claude" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
+# ログインの読み取りは、バージョンと auth status --json の応答を、ファイルで差し替える。
+# 出力は、メールアドレスと組織を足した偽の見本にする（実機の出力は採取しない）。
+if [[ "$*" == --version ]]; then
+	printf 'claude-version\n' >>"$USAGE_TEST_DIR/login-calls"
+	cat "$USAGE_TEST_DIR/claude-version"
+	exit 0
+fi
+if [[ "$*" == 'auth status --json' ]]; then
+	printf 'claude-auth\n' >>"$USAGE_TEST_DIR/login-calls"
+	[[ ! -f $USAGE_TEST_DIR/claude-auth-hang ]] || exec sleep 600
+	cat "$USAGE_TEST_DIR/claude-auth.json"
+	echo 'ログインの警告 fake.person@example.invalid' >&2
+	exit "$(cat "$USAGE_TEST_DIR/claude-auth.status")"
+fi
 [[ "$*" == '-p /usage --output-format json' ]]
 python3 "$USAGE_FIXTURE_ROOT/tests/cli-stub.py" usage "$USAGE_TEST_DIR" claude - emit claude-usage "$USAGE_TEST_DIR/claude.json" -- "$@"
 printf 'claude\n' >>"$USAGE_TEST_DIR/runtime-calls"
@@ -69,6 +83,14 @@ MOCK
 chmod +x "$test_dir/bin/claude" "$test_dir/bin/codex"
 : >"$test_dir/claude.err"
 echo 0 >"$test_dir/claude.status"
+echo '2.1.322 (Claude Code)' >"$test_dir/claude-version"
+echo 0 >"$test_dir/claude-auth.status"
+# 既定は、期限のない ok。ログインのテストが、欄を差し替える。
+claude_auth() { # 終了コード JSON
+	echo "$1" >"$test_dir/claude-auth.status"
+	printf '%s\n' "$2" >"$test_dir/claude-auth.json"
+}
+claude_auth 0 '{"loggedIn":true,"authMethod":"claude.ai","email":"fake.person@example.invalid","orgName":"Fake Org Inc"}'
 
 assert_fetch() {
 	"fetch_$1" >"$test_dir/actual" 2>"$test_dir/err"
@@ -310,7 +332,7 @@ for selected in claude codex; do
 	jq -n --arg key "$disabled_key" '{($key):{level:"warn",issue:"disabled-issue"}}' >"$state_file"
 	echo '{"is_error":false,"result":"Current session: 80% used · resets Oct 27 at 12:29pm (Asia/Tokyo)"}' >"$test_dir/claude.json"
 	echo '{"id":2,"result":{"ordinaryUsageAllowed":true,"rateLimitsByLimitId":{"codex":{"primary":{"windowDurationMins":10080,"usedPercent":80,"resetsAt":604800},"secondary":null}}}}' >"$test_dir/codex.jsonl"
-	: >"$test_dir/calls.jsonl"; : >"$test_dir/runtime-calls"
+	: >"$test_dir/calls.jsonl"; : >"$test_dir/runtime-calls"; : >"$test_dir/login-calls"
 	if [[ $selected == claude ]]; then
 		echo '[使用上限] Claude の Current session（claude:Current session）' >"$test_dir/get-title"
 	else
@@ -331,6 +353,13 @@ for selected in claude codex; do
 	PATH="$selected_bin" /bin/bash "$script"
 	jq -e --arg key "$disabled_key" '.[$key]=={level:"warn",issue:"disabled-issue"} and all(to_entries[]|select(.key!=$key); .value.level=="ok" and .value.issue=="")' "$state_file" >/dev/null
 	jq -se '[.[]|select(.[0:2]==["issue","status"])]==[["issue","status","test-issue","done","--no-start"]]' "$test_dir/calls.jsonl" >/dev/null
+	# ログインの行は、見張るランタイムの claude にだけできる。claude を見張らなければ、ログインを読みもしない。
+	if [[ $selected == claude ]]; then
+		grep -qx claude-auth "$test_dir/login-calls"
+	else
+		[[ ! -s $test_dir/login-calls ]]
+		jq -e 'keys | all(startswith("login:") | not)' "$state_file" >/dev/null
+	fi
 
 	# 選んだ側がなければ、使用量や CLI を呼ぶ前に失敗する。
 	rm "$selected_bin/$selected"
@@ -534,3 +563,187 @@ transition_case login:claude "$l" warn unverified 'ログインを確認でき�
 	jq -e '."claude:Current session".level == "limited"' "$state_file" >/dev/null
 )
 echo 'PASS 本体: 合わないタスクを更新せず、状態から外して 1 で終え、次の実行で題にキーを付けて作り直す'
+
+# ===== Claude Code のログインの行 =====
+login_state_file() { printf '%s/login-states/%s/%s.state\n' "$test_dir" "$USAGE_CHECK_PROJECT" "$USAGE_CHECK_MEMBER"; }
+usage_zero='{"is_error":false,"result":"Current session: 0% used · resets Oct 27 at 12:29pm (Asia/Tokyo)"}'
+login_title='[ログイン] Claude Code のログイン（login:claude）'
+login_reset() {
+	reset_server
+	rm -f "$(login_state_file)" "$test_dir/description.md" "$test_dir/create-response.json" "$test_dir/claude-auth-hang"
+	: >"$test_dir/runtime-calls"; : >"$test_dir/login-calls"
+	echo "$usage_zero" >"$test_dir/claude.json"; echo 0 >"$test_dir/claude.status"
+	echo '2.1.322 (Claude Code)' >"$test_dir/claude-version"
+	claude_auth 0 '{"loggedIn":true,"authMethod":"claude.ai","email":"fake.person@example.invalid","orgName":"Fake Org Inc"}'
+	echo '{"id":2,"result":{"ordinaryUsageAllowed":true,"rateLimitsByLimitId":{}}}' >"$test_dir/codex.jsonl"
+}
+# 本体を、ログインの状態のファイルで動かす。stdout と stderr は out と err に置く。
+login_run() { # [見張るランタイム] [環境変数...]
+	local runtimes=${1:-claude}
+	shift || true
+	(
+		export -f multica
+		export test_dir USAGE_CHECK_ASSIGNEE USAGE_CHECK_PROJECT USAGE_CHECK_MEMBER MULTICA_AGENT_ID USAGE_WARN_PERCENT
+		export USAGE_CHECK_STATE_ROOT="$test_dir/login-states" USAGE_CHECK_RUNTIMES=$runtimes
+		cd "$test_dir" && env "$@" bash "$script"
+	) >"$test_dir/out" 2>"$test_dir/err"
+}
+# 偽のメールアドレスと組織が、stdout・stderr・状態のファイル・タスクの本文・コメント・CLI の呼び出しのどこにもないこと。
+assert_no_leak() {
+	local file
+	for file in out err description.md comments.jsonl calls.jsonl; do
+		[[ -f $test_dir/$file ]] || continue
+		if grep -qE 'fake\.person|example\.invalid|Fake Org' "$test_dir/$file"; then echo "FAIL: ${file} に偽のメールアドレスか組織がある" >&2; exit 1; fi
+	done
+	if [[ -f $(login_state_file) ]] && grep -qE 'fake\.person|example\.invalid|Fake Org' "$(login_state_file)"; then
+		echo 'FAIL: 状態のファイルに偽のメールアドレスか組織がある' >&2; exit 1
+	fi
+}
+expiry_json() { # 期限までの日数 [ms]
+	python3 - "$@" <<'PY'
+import json
+import sys
+import time
+from datetime import datetime, timezone
+
+at = time.time() + float(sys.argv[1]) * 86400
+value = int(at * 1000) if len(sys.argv) > 2 else datetime.fromtimestamp(at, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+print(json.dumps({"loggedIn": True, "authMethod": "claude.ai", "email": "fake.person@example.invalid",
+	"orgName": "Fake Org Inc", "loginExpiresAt": value}))
+PY
+}
+no_login_row() {
+	jq -se '[.[] | select(.[0:2] == ["issue", "create"])] | length == 0' "$test_dir/calls.jsonl" >/dev/null
+	[[ ! -f $(login_state_file) ]] || jq -e 'has("login:claude") | not' "$(login_state_file)" >/dev/null
+}
+sentence_warn='期限が近い。期限の前に、manual.md の手順でログインし直す'
+sentence_error='ログインしていない。このツールの役はすべて失敗する'
+sentence_unverified='ログインを確認できない。バージョンとログインを確認する'
+
+# 4 つの状態。名前|バージョン|終了コード|JSON|状態|題|始めの文|説明に含む文字
+login_state_case() {
+	local name=$1 version=$2 code=$3 json=$4 level=$5 title=${6-} sentence=${7-} detail=${8-}
+	login_reset
+	echo "$version" >"$test_dir/claude-version"
+	claude_auth "$code" "$json"
+	login_run
+	if [[ $level == ok ]]; then
+		no_login_row
+	else
+		[[ $(created_title) == "[ログイン] ${title}（login:claude）" ]]
+		jq -e --arg l "$level" '."login:claude" == {level: $l, issue: "test-issue"}' "$(login_state_file)" >/dev/null
+		[[ $(head -n 1 "$test_dir/description.md") == "$sentence" ]]
+		[[ -z $detail ]] || grep -qE -- "$detail" "$test_dir/description.md"
+	fi
+	assert_no_leak
+	echo "PASS ログインの状態: ${name}は ${level}"
+}
+logged_in='{"loggedIn":true,"authMethod":"claude.ai","email":"fake.person@example.invalid","orgName":"Fake Org Inc"}'
+login_state_case '期限がない' '2.1.322 (Claude Code)' 0 "$logged_in" ok ''
+login_state_case '期限まで 30 日' '2.1.322 (Claude Code)' 0 "$(expiry_json 30)" ok ''
+login_state_case '期限まで 11 日' '2.1.322 (Claude Code)' 0 "$(expiry_json 11)" ok ''
+login_state_case '期限まで 9 日' '2.1.322 (Claude Code)' 0 "$(expiry_json 9)" warn 'Claude Code のログインの期限' "$sentence_warn" '期限は [0-9]{4}-[0-9]{2}-[0-9]{2}、残り 8 日'
+login_state_case '期限まで 1 日（ミリ秒の数）' '2.1.322 (Claude Code)' 0 "$(expiry_json 1.5 ms)" warn 'Claude Code のログインの期限' "$sentence_warn" '残り 1 日'
+login_state_case '期限を過ぎた' '2.1.322 (Claude Code)' 0 "$(expiry_json -1)" error 'Claude Code のログイン' "$sentence_error" '期限を過ぎた'
+login_state_case '終了コード 1 で loggedIn が false' '2.1.322 (Claude Code)' 1 '{"loggedIn":false,"email":"fake.person@example.invalid"}' error 'Claude Code のログイン' "$sentence_error" '終了コード 1'
+login_state_case '最低より古いバージョン' '2.1.321 (Claude Code)' 0 "$logged_in" unverified 'Claude Code のログインを確認できない' "$sentence_unverified" '2\.1\.321 は、最低のバージョン 2\.1\.322 より古い'
+login_state_case '新しいバージョン' '2.2.0 (Claude Code)' 0 "$logged_in" ok ''
+login_state_case 'バージョンを読めない' 'Claude Code' 0 "$logged_in" unverified 'Claude Code のログインを確認できない' "$sentence_unverified" 'バージョンを読めない'
+login_state_case '終了コード 2' '2.1.322' 2 "$logged_in" unverified 'Claude Code のログインを確認できない' "$sentence_unverified" '終了コード 2'
+login_state_case '終了コード 1 で loggedIn がない' '2.1.322' 1 '{"email":"fake.person@example.invalid"}' unverified 'Claude Code のログインを確認できない' "$sentence_unverified" '終了コード 1'
+login_state_case '終了コード 1 で JSON でない' '2.1.322' 1 'fake.person@example.invalid' unverified 'Claude Code のログインを確認できない' "$sentence_unverified" '終了コード 1'
+login_state_case '終了コード 0 で JSON でない' '2.1.322' 0 'fake.person@example.invalid' unverified 'Claude Code のログインを確認できない' "$sentence_unverified" 'JSON として読めない'
+login_state_case '終了コード 0 で JSON が配列' '2.1.322' 0 '[1]' unverified 'Claude Code のログインを確認できない' "$sentence_unverified" 'JSON として読めない'
+login_state_case '終了コード 0 で loggedIn が false' '2.1.322' 0 '{"loggedIn":false}' unverified 'Claude Code のログインを確認できない' "$sentence_unverified" 'loggedIn が true でない'
+login_state_case '終了コード 0 で期限を読めない' '2.1.322' 0 '{"loggedIn":true,"loginExpiresAt":"来週"}' unverified 'Claude Code のログインを確認できない' "$sentence_unverified" '期限を日時として読めない'
+
+# 時間切れは確認失敗にする。
+login_reset
+touch "$test_dir/claude-auth-hang"
+login_run claude USAGE_LOGIN_READ_SECONDS=1
+[[ $(created_title) == '[ログイン] Claude Code のログインを確認できない（login:claude）' ]]
+grep -q '1 秒で終わらなかった' "$test_dir/description.md"
+assert_no_leak
+echo 'PASS ログインの状態: 時間切れは確認失敗'
+
+# 警告の日数は USAGE_LOGIN_WARN_DAYS で変える。数でない値は、何も呼ぶ前に止まる。
+login_reset
+claude_auth 0 "$(expiry_json 15)"
+login_run claude USAGE_LOGIN_WARN_DAYS=20
+jq -e '."login:claude".level == "warn"' "$(login_state_file)" >/dev/null
+login_reset
+claude_auth 0 "$(expiry_json 15)"
+login_run claude
+no_login_row
+login_reset
+if login_run claude USAGE_LOGIN_WARN_DAYS=abc; then exit 1; fi
+grep -q 'USAGE_LOGIN_WARN_DAYS には' "$test_dir/err"
+[[ ! -s $test_dir/login-calls && ! -s $test_dir/calls.jsonl ]]
+echo 'PASS ログインの警告の日数: USAGE_LOGIN_WARN_DAYS で変わり、数でない値は止まる'
+
+# 見張らないランタイムには、ログインの行もタスクもできない。claude と codex の両方を見るときは、claude の行ができる。
+login_reset
+claude_auth 1 '{"loggedIn":false}'
+login_run codex
+[[ ! -s $test_dir/login-calls ]]
+no_login_row
+login_run 'claude codex'
+[[ $(created_title) == "$login_title" ]]
+jq -e '."login:claude".level == "error"' "$(login_state_file)" >/dev/null
+assert_no_leak
+echo 'PASS ログインの行: 見張らないランタイムには行もタスクもできない'
+
+# 戻るとき。前回が warn・error・確認失敗で、ローカルでは ok のとき。
+login_prev_state() { # 前の状態
+	jq -n --arg l "$1" '{"login:claude": {level: $l, issue: "login-issue"}}' >"$(login_state_file)"
+	echo "$login_title" >"$test_dir/get-title"
+}
+for prev in warn error unverified; do
+	# 同じ実行で使用量を読めれば、「ログインし直された」とコメントして done にする。
+	login_reset
+	mkdir -p "$(dirname "$(login_state_file)")"
+	login_prev_state "$prev"
+	login_run
+	jq -se 'length == 1 and (.[0].body | startswith("ログインし直された。\n\n"))' "$test_dir/comments.jsonl" >/dev/null
+	jq -se '[.[] | select(.[0:2] == ["issue", "status"])] == [["issue","status","login-issue","done","--no-start"]]' "$test_dir/calls.jsonl" >/dev/null
+	jq -e '."login:claude" == {level: "ok", issue: ""}' "$(login_state_file)" >/dev/null
+	grep -qx claude "$test_dir/runtime-calls"
+	assert_no_leak
+
+	# 使用量を読めなければ、前回の状態のまま、コメントも done もしない。
+	login_reset
+	mkdir -p "$(dirname "$(login_state_file)")"
+	login_prev_state "$prev"
+	echo 1 >"$test_dir/claude.status"; echo 'ログイン済みでも使えない' >"$test_dir/claude.json"
+	login_run
+	jq -e --arg l "$prev" '."login:claude" == {level: $l, issue: "login-issue"}' "$(login_state_file)" >/dev/null
+	[[ $(comment_count) == 0 ]]
+	jq -se '[.[] | select(.[0:2] == ["issue", "status"] or .[0:2] == ["issue", "comment"])] | length == 0' "$test_dir/calls.jsonl" >/dev/null
+	grep -qx claude "$test_dir/runtime-calls"
+	assert_no_leak
+	echo "PASS ログインの戻り: ${prev} から、使用量を読めたときだけ ok に戻し、読めなければ前回のまま"
+done
+
+# error のツールは使用率を読まず、使用上限の行を前回のままにする。確認失敗のツールは使用率を読む。
+login_reset
+mkdir -p "$(dirname "$(login_state_file)")"
+jq -n '{"login:claude": {level: "error", issue: "login-issue"}, "claude:Current session": {level: "warn", issue: "usage-issue"}}' >"$(login_state_file)"
+echo "$login_title" >"$test_dir/get-title"
+claude_auth 1 '{"loggedIn":false,"email":"fake.person@example.invalid"}'
+login_run
+[[ ! -s $test_dir/runtime-calls ]]
+jq -e '. == {"login:claude": {level: "error", issue: "login-issue"}, "claude:Current session": {level: "warn", issue: "usage-issue"}}' "$(login_state_file)" >/dev/null
+[[ $(comment_count) == 0 ]]
+jq -se '[.[] | select(.[0:2] == ["issue", "status"] or .[0:2] == ["issue", "comment"] or .[0:2] == ["issue", "create"])] | length == 0' "$test_dir/calls.jsonl" >/dev/null
+assert_no_leak
+login_reset
+mkdir -p "$(dirname "$(login_state_file)")"
+jq -n '{"claude:Current session": {level: "warn", issue: "usage-issue"}}' >"$(login_state_file)"
+echo '[使用上限] Claude の Current session（claude:Current session）' >"$test_dir/get-title"
+claude_auth 2 "$logged_in"
+login_run
+grep -qx claude "$test_dir/runtime-calls"
+jq -e '."claude:Current session" == {level: "ok", issue: ""} and ."login:claude".level == "unverified"' "$(login_state_file)" >/dev/null
+jq -se 'length == 1 and (.[0].body | startswith("リセットされた"))' "$test_dir/comments.jsonl" >/dev/null
+assert_no_leak
+echo 'PASS ログインの行: error のツールは使用率を読まず、使用上限の行を前回のままにする。確認失敗のツールは読む'
