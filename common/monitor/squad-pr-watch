@@ -852,10 +852,15 @@ unlinked_round_pr() {
 		echo "$value"
 		return 2
 	fi
-	# 回の PR は、回の判定と同じ読み方（読める本文の囲みの外の行）で読む。コードブロックや引用の例の行は読まない。
-	lines=$(jq -r --arg round "$round" '.rounds[$round].pr_lines[]?' <<<"$judge") || { echo '回のコメントを読めない'; return 3; }
+	# 回の PR は、回の判定と同じ読み方（読める本文の囲みの外の行）で読む。回に行がなければ、行を持つ最も近い前の認める回から引き継ぐ。
+	# 引き継ぐのは PR の行だけで、回が今の回であることは上で求めたままにする。
+	lines=$(jq -r --arg round "$round" '.rounds[$round].round_pr_lines[]?' <<<"$judge") || { echo '回のコメントを読めない'; return 3; }
 	if [[ $(grep -c . <<<"$lines") != 1 ]]; then
-		echo '回のコメントの `対象の PR:` の行が 1 つでない'
+		if [[ -z $lines ]]; then
+			echo '回とそれより前の回に `対象の PR:` の行がない'
+		else
+			echo "\`対象の PR:\` の行が 2 つ以上ある（$(jq -r --arg round "$round" '.rounds[$round].round_pr_from // "不明"' <<<"$judge")）"
+		fi
 		return 1
 	fi
 	value=$(sed -e 's/^対象の PR:[[:space:]]*//' -e 's/[[:space:]]*$//' <<<"$lines")

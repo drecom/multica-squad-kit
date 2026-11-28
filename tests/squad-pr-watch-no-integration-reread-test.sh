@@ -106,6 +106,29 @@ for case in leader control full; do
 done
 echo 'PASS no-integration: リーダーの依頼と、待つ役の制御記録の依頼で done にする。回のコミットは 40 桁でもよい'
 
+# 行のない設計と PR の見直しの回が今の回のとき、回の PR は前の回から引き継ぐ。名簿のリーダーがその回を指す 3 行の手の依頼は読んで done にする。
+# 3 行のない手の依頼と、決める役が書いた依頼は、done にせず知らせる。
+design_round() { drop_request; add_comment design-2 agent orchestrator $'見直しの種類: 設計と PR の見直し\n確認するコミット: abcdef0\n返事を待つ役: [@demo-monitor-test](mention://agent/monitor)'; }
+design_request() { design_round; add_comment merge-x agent orchestrator "$(merge_request_body "$merge_head" design-2)"; }
+design_two_line_request() { design_round; add_comment merge-x agent orchestrator "マージの依頼: $merge_head"$'\n前の回: design-2'; }
+design_decide_request() {
+	design_round
+	add_comment decide-1 agent monitor $'/note\n返事の待ち: 次の依頼を決めます'
+	add_comment merge-x agent monitor "$(merge_request_body "$merge_head" design-2)"
+}
+unlinked_scene record "" "$(rule_lines "$pr" design-2)"
+design_request
+update_pr '.state = "MERGED"'
+unlinked_run
+((unlinked_status == 0)) || { echo "FAIL 設計の回: 終了コード $unlinked_status" >&2; cat "$test_dir/err" >&2; exit 1; }
+assert_jq '.status == "done"' "$test_dir/task.json" || { echo 'FAIL 設計の回: done でない' >&2; cat "$test_dir/err" >&2; exit 1; }
+rule_gone
+no_posts
+prepare_extra=design_two_line_request merged_refuses '3 行のない手の依頼' "$(rule_lines "$pr" design-2)"
+prepare_extra=design_decide_request merged_refuses '決める役が設計と PR の見直しの回を指す依頼' "$(rule_lines "$pr" design-2)"
+unset prepare_extra
+echo 'PASS no-integration: 行のない設計と PR の見直しの回は前の回の PR を引き継ぎ、3 行の手の依頼で done にする。3 行のない依頼と決める役の依頼は done にしない'
+
 # 依頼の候補を読めないとき（引用）は、done にも知らせにもせず、規則を残して 1 で終わる。読めるようになれば、次の確認で決める。
 unlinked_scene record
 drop_request

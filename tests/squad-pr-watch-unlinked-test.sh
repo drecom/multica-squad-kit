@@ -309,6 +309,105 @@ for name in fence-only tilde-only quote-only item-only indent-only fence-two-out
 done
 echo 'PASS round-pr: 囲み・引用・項目・字下げの対象の PR は読まず、囲みの外の 1 行だけを読む。行が 2 つなら読まない'
 
+# 行のない回は、行を持つ最も近い前の認める回の `対象の PR:` を引き継ぐ。リーダーが手で書く設計と PR の見直しの回と最終レビューの回には行がないことがある。
+design_body() { # 追加する行...
+	local body=$'見直しの種類: 設計と PR の見直し\n確認するコミット: abcdef0\n返事を待つ役: [@demo-monitor-test](mention://agent/monitor)' line
+	for line; do body+=$'\n'"$line"; done
+	printf '%s' "$body"
+}
+final_body() {
+	printf '%s' $'見直しの種類: 最終レビュー\n確認するコミット: abcdef0\n返事を待つ役: [@demo-principal-test](mention://agent/principal)\n前の回: round-1'
+}
+# 最終レビューの回は、名簿の最上位の役を待つので、名簿を差し込んで認める。
+with_principal() {
+	UNLINKED_ROSTER='{"leader":"orchestrator","roles":{"claude-principal":{"id":"principal"}}}' UNLINKED_ROSTER_STATUS=0 "$@"
+}
+register_reset
+add_comment round-1 agent orchestrator "$(round_body "$repo_pr")"
+add_comment final-2 agent orchestrator "$(final_body)"
+with_principal run_round_pr final-2
+[[ $status == 0 && ! -s $test_dir/error && $(<"$test_dir/output") == "$repo_pr" ]] || { echo "行のない最終レビューの回が前の回の PR を引き継がない: $status: $(<"$test_dir/output")" >&2; exit 1; }
+echo 'PASS round-pr: 行のない最終レビューの回は、前のレビューと E2E の回の正規形を出して 0 で終わる'
+
+register_reset
+add_comment round-1 agent orchestrator "$(round_body "$repo_pr")"
+add_comment design-2 agent orchestrator "$(design_body)"
+run_round_pr design-2
+[[ $status == 0 && ! -s $test_dir/error && $(<"$test_dir/output") == "$repo_pr" ]] || { echo "行のない設計の回が引き継がない: $status: $(<"$test_dir/output")" >&2; exit 1; }
+# 行を持つ最も近い前の回から引き継ぎ、その前は見ない。
+add_comment round-3 agent orchestrator "$(round_body "$repo_other")"
+add_comment design-4 agent orchestrator "$(design_body)"
+run_round_pr design-4
+[[ $status == 0 && $(<"$test_dir/output") == "$repo_other" ]] || { echo "最も近い前の回から引き継がない: $status: $(<"$test_dir/output")" >&2; exit 1; }
+echo 'PASS round-pr: 行のない回は、行を持つ最も近い前の回の正規形を出して 0 で終わる'
+
+# どの回にも行がなければ 1 で終わる。人間のコメントの行は引き継がない。
+register_reset
+add_comment round-1 agent orchestrator "$(round_body)"
+add_comment human-2 member human-1 "$(round_body "$repo_pr")"
+add_comment design-3 agent orchestrator "$(design_body)"
+run_round_pr design-3
+[[ $status == 1 && ! -s $test_dir/error && $(grep -c . "$test_dir/output") == 1 && $(<"$test_dir/output") == '回とそれより前の回に `対象の PR:` の行がない' ]] || { echo "行がない理由が違う: $status: $(<"$test_dir/output")" >&2; exit 1; }
+run_round_pr human-2
+[[ $status == 1 && $(<"$test_dir/output") == '回を認められない'* ]] || { echo "人間のコメントを回にした: $status: $(<"$test_dir/output")" >&2; exit 1; }
+echo 'PASS round-pr: どの回にも行がなければ、理由を 1 行出して 1 で終わる。人間のコメントの行は引き継がない'
+
+# 前の回に行が 2 つあるときは、引き継がず、行を持つ回の ID を出して 1 で終わる。
+register_reset
+add_comment round-1 agent orchestrator "$(round_body "$repo_pr" "$repo_other")"
+add_comment design-2 agent orchestrator "$(design_body)"
+run_round_pr design-2
+[[ $status == 1 && $(grep -c . "$test_dir/output") == 1 && $(<"$test_dir/output") == *'行が 2 つ以上ある'* && $(<"$test_dir/output") == *round-1* ]] || { echo "2 行の理由が違う: $status: $(<"$test_dir/output")" >&2; exit 1; }
+echo 'PASS round-pr: 前の回に行が 2 つあれば、引き継がず、行が 2 つ以上あることと行を持つ回の ID を出して 1 で終わる'
+
+# 行が囲み・項目の中にだけある回は、前の回から引き継ぐ。引用か字下げの行を持つコメントは、本文全体が読めず回と認めない。
+for name in fence tilde item quote indent; do
+	register_reset
+	add_comment round-1 agent orchestrator "$(round_body "$repo_pr")"
+	case $name in
+	fence) body=$(design_body "$fence" "対象の PR: $repo_other" "$fence") ;;
+	tilde) body=$(design_body '~~~' "対象の PR: $repo_other" '~~~') ;;
+	item) body=$(design_body "- 対象の PR: $repo_other") ;;
+	quote) body=$(design_body "> 対象の PR: $repo_other") ;;
+	indent) body=$(design_body "  対象の PR: $repo_other") ;;
+	esac
+	add_comment design-2 agent orchestrator "$body"
+	run_round_pr design-2
+	case $name in
+	quote | indent)
+		[[ $status == 1 && $(grep -c . "$test_dir/output") == 1 && $(<"$test_dir/output") == '回を認められない'* ]] || { echo "引用か字下げのコメントを回と認めた: $name: $status: $(<"$test_dir/output")" >&2; exit 1; }
+		# 今の回は前の認める回のままで、その回の PR を使う。
+		run_round_pr round-1
+		[[ $status == 0 && $(<"$test_dir/output") == "$repo_pr" ]] || { echo "今の回が前の認める回のままでない: $name: $status: $(<"$test_dir/output")" >&2; exit 1; }
+		# unlinked も、引用か字下げのコメントを回として登録しない。
+		no_integration "$repo_pr"
+		run_unlinked design-2 monitor
+		[[ $status == 1 && ! -s $test_dir/output && $(grep -c . "$test_dir/error") == 1 ]] || { echo "unlinked が引用か字下げの回を登録した: $name: $status" >&2; exit 1; }
+		assert_jq -s '(.[0].body // "") | contains("見張る PR:") | not' "$test_dir/wakeups.jsonl" ;;
+	*)
+		[[ $status == 0 && $(<"$test_dir/output") == "$repo_pr" ]] || { echo "囲みか項目の行を読んだ: $name: $status: $(<"$test_dir/output")" >&2; exit 1; } ;;
+	esac
+done
+echo 'PASS round-pr: 行が囲み・項目の中にだけある回は前の回から引き継ぎ、引用か字下げの行を持つコメントは回と認めず 1 で終わる'
+
+# unlinked は、行のない設計と PR の見直しの回で、前の回の PR が pr_url と同じなら登録し、違えば食い違いで規則を作らない。
+register_reset
+add_comment round-1 agent orchestrator "$(round_body "$repo_pr")"
+add_comment design-2 agent orchestrator "$(design_body)"
+no_integration "$repo_pr"
+run_unlinked design-2 monitor
+[[ $status == 0 && ! -s $test_dir/error ]]
+assert_jq -s 'length == 1 and (.[0].body | split("\n") | map(select(. != "")) | .[-2:] == ["見張る PR: https://github.com/example/repo/pull/67", "確認した回: design-2"])' "$test_dir/wakeups.jsonl"
+register_reset
+add_comment round-1 agent orchestrator "$(round_body "$repo_other")"
+add_comment design-2 agent orchestrator "$(design_body)"
+jq --arg pr "$repo_pr" '.metadata.pr_url = $pr' "$test_dir/task.json" >"$test_dir/changed.json"
+mv "$test_dir/changed.json" "$test_dir/task.json"
+no_integration "$repo_pr"
+run_unlinked design-2 monitor
+[[ $status == 0 && ! -s $test_dir/error && ! -s $test_dir/wakeups.jsonl && $(<"$test_dir/output") == "紐付け: 食い違い pr: $repo_pr 回の PR: $repo_other" ]] || { echo "食い違いにならない: $status: $(<"$test_dir/output")" >&2; exit 1; }
+echo 'PASS unlinked: 行のない回は前の回の PR で登録を照合し、同じなら確認した回を渡した回にして登録し、違えば食い違いで規則を作らない'
+
 # 引数が足りないか多いときは、使い方を出して 2 で終える。
 for args in 'round-pr test-issue' 'round-pr test-issue round-1 extra'; do
 	status=0
