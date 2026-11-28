@@ -301,7 +301,7 @@ verify_task() {
 }
 
 # 1 つの枠の状態の変化を、タスクに反映する。
-#   ok → warn/limited/error: タスクを作る。題の終わりに、全角の括弧でキーを付ける
+#   ok → warn/limited/error/unverified: タスクを作る。題の終わりに、全角の括弧でキーを付ける
 #   limited → warn/error/ok、warn/error → ok: 戻ったとコメントし、ok なら done にする
 #   ok でない状態どうしの変化: 新しい状態の始めの文をコメントする
 # 既存のタスクを更新する前に、verify_task でサーバーのタスクを確認する。

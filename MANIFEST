@@ -64,7 +64,7 @@ a42bc9f4e0cab7a342bdd980e845b816354c3787152f1cd6c2b80b592d1d56ea  ./common/monit
 d01f8b949abb8359dd72254134adeb4c24d8bc9772d0868865718aeb1345d3c5  ./common/monitor/squad-run-cut-values
 691349b88eef89a875045ed1f729ad7a1074fe3bf75f58181a26410fb6e25357  ./common/monitor/squad-task-post
 411889e07d816359c09e63acdda2fe809c0dbb9ca5a6b94b8de30ab01144938b  ./common/monitor/squad-task-read
-f81f7c65108007d67bc252b8d27cfc3b461d647f8519b0af738a4480c4b17dd4  ./common/monitor/squad-usage-check
+ca6f4e8b9af32af3d98fe82539751d2478ead576915a12342a3e42639e7990a1  ./common/monitor/squad-usage-check
 67746f87ae656f2e23961f61772297fc617a13dc86f5122a61e25b26a53b133b  ./common/monitor/squad-usage-lib
 3d6fd26a2ba05859edcf8af5fd449cb9358eaf4a4edca2d2f5587ef81b50a316  ./common/monitor/squad-usage-read
 fac2e72f734a7821ea3121010292836c9cf5478e94f934f9ab211752517cc2c9  ./common/monitor/squad-usage-wait
