@@ -99,7 +99,7 @@ b95232d26ae1ae5fcdb6af4dadc63d3877c2a4f4a21d0a87752b2acf606c5dc5  ./common/skill
 77ceb35ddbb3520a7053b58a204f6da4b1340a2cb7de2dba89db48d4160dfb26  ./common/skills/squad-handoff/references/run-cut.md
 3f91e3e8613df7240d8eb1cac9116181ef22e772bb6f3273a93302dc65eae439  ./common/skills/squad-handoff/references/writing-forms.md
 19bf4eb0781004c0e270fd227004025b6e7a266a452098c2d4aae01d85b1018b  ./common/squad.md
-110fcbafebe54002621d8d204386d83a8315daa847056df5ac85940423aa685d  ./docs/README.md
+9aff993a60589f2a0560de98a24a8a70aacfea7d24e13390d1ee485c5e0efa66  ./docs/README.md
 d97497bce384b2fd86bf89a19c710af539066f6c9dcbfc430a971989150fef75  ./docs/agent-guards.md
 c380ac8fd57091fa1d1ad80ff9724cba6667a7199b440a40b4be9b0e25f83623  ./docs/agent-path.md
 ed0c9c538d24d6aa2dd4b33667c6346375fbb9502f2c6cbae3ed03120b13b55b  ./docs/agent-settings.md
@@ -121,6 +121,7 @@ af9094e84dfc2c3a63e3058727f540cdccea06de0ee123e9c808d6796a94f407  ./docs/merge-r
 f3e7834c16bb59c09a819b29a92ccea1d2ba7bdbe50505af4e1912167369d653  ./docs/metrics.md
 fc4ec5836bb4c9b565596c63b7e0255ce645fb797e1a9bbb07b3b68e3e1f521b  ./docs/own-review-paths.md
 50cf4e276cc4493aa7342eec05ccdc15afb666d22e17106e4a3d19ecd599355b  ./docs/planner-requirements.md
+6df67c39ec754d7a0aa76292854300b4dd8ae8aa1e2d5d915c397e71fe8ddccd  ./docs/pr-link-no-integration.md
 2338b295435d6b60cf53c69a40a879145bba72f4825a73754718a4942f8fa397  ./docs/pr-link-retry.md
 99c60e172765c6ebb6936a9b0aef232e5ddbd8b9fe279fdd6ab566373248cb1e  ./docs/principal-review.md
 a58a91809ea09df148c193b451ff8955d8b9c9a7b702cace304633e1673c4b43  ./docs/procedure-review.md
