@@ -48,12 +48,12 @@ b0d340d145f7fb575c71b6e2b9be94171da0b5a0bb1366d3f52d4c9041f57ed6  ./common/guard
 003d274f0e18b662fe11322a620d5498a66f56ca3a3f1b118d32f8078f173ea8  ./common/guard/stop
 cbfb45a119121c0449fe4bf6569ed7e9dacb7a618550575db7c2feaa873802e1  ./common/host/start-daemon
 8d7089db252c5cc09c3ae6aea590e3d1a1370450f4fb7f3f9e99fa4290542fff  ./common/labels
-7965b5efa3a013fb7772bfee467051d5a24399bda94bfc2f9212f6f2d1767f12  ./common/monitor/squad-cli-lib
+d8f8c9da1139521e5803f0caa9d2787ce0bf20023275aae38d2476e1af85ff90  ./common/monitor/squad-cli-lib
 c9f338dd47ba2cb8aa8e4d2ee2208700faf9f1aa05c5e7407b3bdc9e31d8f14c  ./common/monitor/squad-dependabot-merge
 8f187cb0ff2e26d5e2f4d4acab7c8314f6107908c3c9af15366ab601c4ea52a8  ./common/monitor/squad-dispatch-pick
 11e92028db42a6d5d9c732e2be3719afa7be9466baa4d283126940178c406914  ./common/monitor/squad-pr-link
 1858d0c29d55ec65cdb49abd3fa50aa55362ace74705f2377ce15ba606ed3e78  ./common/monitor/squad-pr-link-lib
-47af0ca40761e24f35a57170b69306c4ff83d87c454a3c11f1907220573b8942  ./common/monitor/squad-pr-watch
+efdb2a70ede7931b4edfaa989b82877c626da1e9a1c2c4c0aac853af2a0bb619  ./common/monitor/squad-pr-watch
 a42bc9f4e0cab7a342bdd980e845b816354c3787152f1cd6c2b80b592d1d56ea  ./common/monitor/squad-preflight
 8e96c050df89382d2a639d0e93790258df99d73ce96704fdbeccf30c01371b97  ./common/monitor/squad-review-next
 652c87bbe6b0c221424d58dda0e9806d48c8972cac162fee910b51078b7eec5e  ./common/monitor/squad-review-wait
@@ -74,7 +74,7 @@ e8cfa63c24c340ad0840c3a9acc9d12f62791431877a0654164621d020bca845  ./common/skill
 e09d29a0dc17a3ffb46c1caf2d864153cacdf5acc1fd32e9e8c58809eb6d31ac  ./common/skills/squad-handoff/references/leader-dispatch.md
 eef33255fb11f5a350bd499acab86f982faf3205ca7f0f88eaa5fb602c26a082  ./common/skills/squad-handoff/references/leader-fix-request.md
 a4965ca06963fd175d05b5014387c78fcae711c2ce36875944ff0344849f5f38  ./common/skills/squad-handoff/references/leader-pr-ci.md
-2354eaaebab7ec62ce68b73edfd054f74e6942da03f7b886159dc1ed18bce0d6  ./common/skills/squad-handoff/references/leader-pr-link.md
+cd2dc2067c0d4e6d6cb4abd9e8b352b2f14c47c647575d08973c1615af6fb9f3  ./common/skills/squad-handoff/references/leader-pr-link.md
 d7ac74ded7ec6beb1ec28636af2f51e67dbb09e2406e2bf9407499e7355e9ee9  ./common/skills/squad-handoff/references/leader-pr-merge.md
 76440f903aa8de096d069953a1f82e27a8bc086a07eef47a3658d707258e9d4b  ./common/skills/squad-handoff/references/leader-principal-design.md
 b1bfbd3eb3d2b3145afd12c96c5230bc90d136d379e5e4fb8b3c3d3a9083af40  ./common/skills/squad-handoff/references/leader-principal-diagnose.md
@@ -166,7 +166,7 @@ b8145ced477ed48eb7c0f599f44fc85c3e15990085d6de4521f276286cee6ff8  ./lib/terminal
 f57a7a829cf4cac51462f7a2dc04912b57a99927b8541727faf70f7e4fa701a4  ./lib/version.sh
 405d6c439cb72b4f19d46452714e5ef46f3b9517a1ce8bea0cd57d24afcd2836  ./lib/webhooks.sh
 50c2bfd06e66458d38fe423d6f4c2bf3223efe098dde74b561e21105c807af40  ./lib/workspace.sh
-59e046ce0fb0d934a92723d8620e27117b3b303e4174fd3192ae72b8a885e515  ./manual.md
+d1c42b08469cfbee8285e141d490264fe67e8c89fad48ab307745963545802ce  ./manual.md
 633f1030aafe88149effa1a7c3d64247fd6100f682ffbaae2c212d44b443a538  ./scripts/build-assets.sh
 58a7f0238d3b698745dba710637832fad1c4dc3c051353b4a04505f77c798202  ./scripts/check-links.py
 44f95ffd36dfaf4829e3ea7a6c81dd60c6569595754aff1e8285e6d654c45eb1  ./scripts/check-style.py

@@ -2699,7 +2699,7 @@ elif mode == "merge_requested":
         # 回が同じ一覧で今の回でなければ、その回への依頼は読まない。
         print("no")
         sys.exit(0)
-    # 見張りでは、読めない候補の値を照合せず、読める依頼があっても止まる。ci-wait は従来どおり head で拾う。
+    # 読めない候補は、読める依頼と同じ head にあっても優先する。見張りでは候補の値を照合せず、ci-wait では head で拾う。どちらも依頼済みと読まず、理由を返す。
     held = blocked_text(unreadable([merge if after is not None else want], after))
     if held:
         print("blocked " + held)
