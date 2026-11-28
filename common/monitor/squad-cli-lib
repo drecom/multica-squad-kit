@@ -2168,6 +2168,7 @@ squad_cli_squad_for_round() {
 #   state: 最新の認める回の状態と、読めない候補の一覧。どちらもなければ何も出さない。
 #   squad_author <回の ID>: 前の回をたどって最初に見つかるリーダーの ID。見つからなければ最後の作者の ID。途中の回の候補が読めなければ 3。
 #   check: 投稿前の本文が回の行を満たすか。標準入力は {body}。
+#   notice <スクワッドの ID> <候補の ID>...: 読めない候補ごとの知らせ済みと、信頼できる名乗りの ID の列。
 read -r -d '' SQUAD_CLI_CONTROL_PY <<'SQUADCLICONTROLPY' || true
 import calendar
 import json
@@ -2727,6 +2728,33 @@ elif mode == "state":
         })
     elif held:
         emit({"blocked": held, "unreadable": problems})
+elif mode == "notice":
+    # 読めない候補ごとの、知らせ済みか（notified）と、信頼できる名乗りの ID の列（claims。時刻と ID の順）。
+    # args = [知らせるスクワッドの ID, 候補の ID...]。条件は docs/review-next-step.md の「入力と信頼の表」の 5 つずつ。
+    squad_id, wanted = args[0], args[1:]
+    mention = re.compile(r"\[@[^\]\n]*\]\(mention://squad/" + re.escape(squad_id) + r"\) 返事がそろいました。")
+    notice_line = re.compile(r"読めない制御記録: (\S+)(?: .*)?")
+    claim_line = re.compile(r"読めない制御記録の知らせ: (\S+) (\S+)")
+
+    def trusted(j, cand):
+        """作者がリーダーでないエージェントで、読める本文に返事の回: の行がなく、候補より後のコメントか。"""
+        info = parsed[j]
+        return info["agent"] and info["author"] not in leaders and info["reason"] is None and not is_result(j) and pos[j] > pos[cand]
+
+    found = {}
+    for cand in wanted:
+        notified, claims = False, []
+        for j in sequence if cand in parsed else []:
+            if not trusted(j, cand):
+                continue
+            ids = [m.group(1) for m in map(notice_line.fullmatch, parsed[j]["placed"]) if m]
+            if cand in ids and mention.match(parsed[j]["first_line"]):
+                notified = True
+            pairs = [(m.group(1), m.group(2)) for m in map(claim_line.fullmatch, parsed[j]["placed"]) if m]
+            if (cand, squad_id) in pairs and parsed[j]["first_line"] == "/note":
+                claims.append(j)
+        found[cand] = {"notified": notified, "claims": sorted(claims, key=time_and_id)}
+    emit(found)
 else:
     print("mode が不正", file=sys.stderr)
     sys.exit(1)

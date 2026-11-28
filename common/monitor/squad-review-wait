@@ -28,8 +28,16 @@
 #     読み直しで最も早い記録が自分のものなら、`squad-review-next decide` を流す。
 #     決まらない・失敗したときは、`返事がそろいました` に理由の行（`次の依頼を決められません: <理由>`）を足して、スクワッドのリーダーを起こす。
 #     返していない役がいれば、少し待ってからもう 1 回だけ読み直す。
-#     回がない、知らせるスクワッドが 1 つに決まらないときは、投稿せずエラーにする。呼び出した役は、通常の引き継ぎで返す。
-#     知らせるスクワッドは、回の作者をリーダーとするスクワッド。決める実行が書いた回は、`前の回:` を 10 回までたどり、
+#     判定に関わる候補が読めないときは、決める記録を書かず `decide` も流さない。結果を書き、まだ知らせていない候補ごとに知らせを 1 つ書いて、
+#     同じ実行でリーダーを起こす。最新の回が前の記録を持っていても書く。
+#       - 結果: `round` の候補があるか、認める回がなければ、`返事の回: 未定（読めない依頼 <候補の ID>）` を付けて回に付けずに保存する。
+#         `record` の候補だけで認める回があるときは、今のとおり最新の回に書く。
+#       - 名乗り: 知らせ済みでない候補ごとに `読めない制御記録の知らせ: <候補の ID> <スクワッドの ID>` の名乗りを書き、
+#         20 秒待って読み直す（最大 2 回）。最も早い名乗りの役だけが知らせを書く。名乗りが見えなければ知らせを書かず終了 1。
+#       - 知らせるスクワッド: タスクの担当がスクワッドならそのスクワッド。そうでなければ認める回の最新のものから決める。決まらなければ投稿せず終了 1。
+#       - 終了: 結果と知らせが済めば 0。結果か自分の知らせを書けなければ 1（スクワッドをメンションして返す）。
+#     回がない・読めない候補もないとき、知らせるスクワッドが 1 つに決まらないときは、投稿せずエラーにする。呼び出した役は、通常の引き継ぎで返す。
+#     回に書く結果の知らせるスクワッドは、回の作者をリーダーとするスクワッド。決める実行が書いた回は、`前の回:` を 10 回までたどり、
 #     リーダーが書いた回のスクワッドを使う。
 #
 # 親のコメントは、その実行のきっかけのコメント（ふつうは回のコメント）。Multica は、コメントで起きた実行に、
@@ -40,7 +48,7 @@ set -euo pipefail
 REVIEW_WAIT_LIMIT_MINUTES=${REVIEW_WAIT_LIMIT_MINUTES:-60}
 
 # report と proceed が、同じ回の返事を読み直す前に待つ秒数。ほぼ同時に返した役の結果は、書いた直後の読み直しには
-# 見えないことがある。report は 1 回、proceed は最大 2 回、20 秒待って読み直す。
+# 見えないことがある。report は 1 回（読めない候補の知らせは最大 2 回）、proceed は最大 2 回、20 秒待って読み直す。
 REVIEW_WAIT_RECHECK_SECONDS=${REVIEW_WAIT_RECHECK_SECONDS:-20}
 
 # 決める記録から、スクリプトが次の依頼を決めている間として待つ分数。decide の最長（6 分ほど）より十分に長くする。
@@ -53,6 +61,7 @@ DECIDE_MARK='返事の待ち: 次の依頼を決めます'
 PREV_MARK='前の回:'
 RESULT_MARK='返事の回:'
 WATCH_MARK='レビューと E2E の返事の待ちの見張りで起きました。'
+HANDOFF_GUIDE='スキル squad-handoff の「引き継ぐとき」に従い、スクワッドをメンションして返してください。'
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 source "$script_dir/squad-cli-lib"
@@ -332,22 +341,18 @@ post_stop_notice() {
 
 # 結果を書いたあとの後始末をする。コメントを読み直し、全員が返していれば、決める記録を書いて読み直す。
 # 自分の記録が最も早いときだけ、次の依頼を決めるスクリプトを流す。
-# 0: 済んだ、1: 取得・JSON 処理・投稿に失敗した、2: 返していない役がいる、3: 自分の記録が読み直しで見えない。
+# 0: 済んだ、1: 取得・JSON 処理・投稿に失敗した、2: 返していない役がいる、3: 自分の記録が読み直しで見えない、4: 読めない候補がある。
 # DECIDE_OWN は、すでに書いた自分の決める記録の ID（なければ空）。呼び出しをまたいで保つ。
 settle() {
-	local issue=$1 parent=$2 round_id=$3 comments round missing blocked
+	local issue=$1 parent=$2 round_id=$3 comments round missing
 	# 条件として呼ばれる関数内では set -e が効かないため、失敗を明示的に返す。
 	comments=$(comments_of "$issue") || return 1
 	round=$(latest_round <<<"$comments") || return 1
 	[[ -n $round && $(jq -r '.id // empty' <<<"$round") == "$round_id" ]] || return 0
 	# 候補が読めないときは、返していない役がいても待たない。読めない候補は、役の返事では解けないため。
-	# 決める記録を書かず、decide も流さない。知らせに理由を置いて、リーダーを起こす。
-	blocked=$(blocked_of "$round") || return 1
-	if [[ -n $blocked ]]; then
-		if [[ $(jq '(.next_ids | length) + (.claim_ids | length) + (.decide_ids | length) + (.ready_ids | length)' <<<"$round") == 0 ]]; then
-			post_stop_notice "$issue" "$parent" "$round" "$comments" "$blocked" || return 1
-		fi
-		return 0
+	# 決める記録を書かず、decide も流さない。呼ぶ側が、候補ごとの知らせを書く。
+	if [[ $(jq '(.unreadable // []) | length' <<<"$round") != 0 ]]; then
+		return 4
 	fi
 	missing=$(missing_of "$round") || return 1
 	[[ -z $missing ]] || return 2
@@ -370,27 +375,12 @@ settle() {
 	run_decide "$issue" "$parent" "$round" "$comments"
 }
 
-report() {
-	local issue=$1 parent=$2 file=$3 body round attempt status comments peers_waited=false blocked
-	[[ -r $file ]] || {
-		echo "結果のファイルが読めない: ${file}" >&2
-		exit 1
-	}
-	# 回のない依頼を /note で返すと、orchestrator に届かず止まる。投稿する前に確認する。
-	comments=$(comments_of "$issue") || return 1
-	round=$(latest_round <<<"$comments") || return 1
-	if [[ -z $(jq -r '.id // empty' <<<"$round") ]]; then
-		blocked=$(blocked_of "$round") || return 1
-		[[ -z $blocked ]] || printf '%s\n' "$blocked" >&2
-		echo '返事を待つ役の登録がありません。結果は投稿していません。スキル squad-handoff の「引き継ぐとき」に従い、orchestrator をメンションして返してください。' >&2
-		return 1
-	fi
-	# 知らせる先が決まらないまま結果だけを /note で残さない。
-	squad_for_round "$comments" "$(jq -r .id <<<"$round")" >/dev/null || return 1
-	# 先頭が /note でなければ足す。ファイルで渡して改行を保つ。役が書いた `返事の回:` の行は除き、スクリプトが回の ID を足す。
-	mkdir -p tmp
-	body=$(mktemp tmp/squad-review-report.XXXXXX)
-	trap "$(printf 'rm -f -- %q' "$body")" EXIT
+# 役の結果を `/note` で書き、そのコメントの ID を出す。value は、足す `返事の回:` の行の値。
+# 先頭が /note でなければ足す。ファイルで渡して改行を保つ。役が書いた `返事の回:` の行は除き、スクリプトが値を足す。
+save_result() {
+	local issue=$1 parent=$2 file=$3 value=$4 body status=0
+	mkdir -p tmp || return 1
+	body=$(mktemp tmp/squad-review-report.XXXXXX) || return 1
 	if [[ $(head -n 1 "$file") == /note* ]]; then
 		grep -a -v "^${RESULT_MARK}" "$file" >"$body" || true
 	else
@@ -398,17 +388,174 @@ report() {
 		{ grep -a -v "^${RESULT_MARK}" "$file" || true; } >>"$body"
 	fi
 	[[ -z $(tail -c 1 "$body") ]] || printf '\n' >>"$body"
-	printf '%s %s\n' "$RESULT_MARK" "$(jq -r .id <<<"$round")" >>"$body"
-	squad_cli_read issue-comment-add "$issue" "$parent" "$body" >/dev/null
-	rm -f -- "$body"
-	trap - EXIT
+	printf '%s %s\n' "$RESULT_MARK" "$value" >>"$body" || { rm -f -- "$body"; return 1; }
+	squad_cli_read issue-comment-add "$issue" "$parent" "$body" | jq -r .id || status=$?
+	rm -f -- "$body" || return 1
+	return "$status"
+}
+
+# 有効なスクワッドのリーダーの ID を、JSON の配列で出す。
+leaders_json() {
+	squad_cli_read squad-list | jq -c '[.[] | select(.archived_at == null) | .leader_id] | unique'
+}
+
+# 読めない候補を知らせるスクワッドを、JSON で出す。タスクの担当がアーカイブされていないスクワッドならそのスクワッド。
+# そうでなければ、認める回（round_id。なければ空）から squad_for_round で決める。決められなければ理由を標準エラーに出して 1 を返す。
+# 読めない候補のコメントからは決めない。
+notice_squad() {
+	local issue=$1 comments=$2 round_id=$3 task squads squad_id squad
+	task=$(squad_cli_read issue-get "$issue") || return 1
+	squad_id=$(jq -r 'if .assignee_type == "squad" then .assignee_id // "" else "" end' <<<"$task") || return 1
+	if [[ -n $squad_id ]]; then
+		squads=$(squad_cli_read squad-list) || return 1
+		squad=$(jq -c --arg id "$squad_id" '[.[] | select(.id == $id and .archived_at == null)] | first // empty' <<<"$squads") || return 1
+		if [[ -n $squad ]]; then
+			printf '%s\n' "$squad"
+			return 0
+		fi
+	fi
+	if [[ -z $round_id ]]; then
+		echo '知らせるスクワッドを決められません: タスクの担当がスクワッドでなく、認める回もありません' >&2
+		return 1
+	fi
+	if ! squad=$(squad_for_round "$comments" "$round_id"); then
+		[[ -z $squad ]] || printf '%s\n' "$squad" >&2
+		return 1
+	fi
+	printf '%s\n' "$squad"
+}
+
+# 読めない候補ごとに、`読めない制御記録の知らせ:` の名乗りを書き、最も早い名乗りの役だけが知らせを書く。
+# 知らせ済みの候補は飛ばす。名乗りから知らせまでは、REVIEW_WAIT_RECHECK_SECONDS 待って読み直すのを最大 2 回までにする。
+# saved は、結果を書いたコメントの ID。attached は、結果を回に書いたとき true、回を付けずに保存したとき false。squad は知らせるスクワッドの JSON。
+# 0: 知らせ済み・知らせを書いた・ほかの役に任せた、1: 取得・投稿に失敗した、または自分の名乗りが読み直しで見えない。
+notify_unreadable() {
+	local issue=$1 parent=$2 saved=$3 attached=$4 squad=$5 comments round leaders squad_id unread state pending ids id own='{}' claim
+	local attempt visible name roster='' headline line reason body status rolename
+	local -a want=()
+	squad_id=$(jq -r .id <<<"$squad") || return 1
+	comments=$(comments_of "$issue") || return 1
+	round=$(latest_round <<<"$comments") || return 1
+	unread=$(jq -c '.unreadable // []' <<<"${round:-null}") || return 1
+	leaders=$(leaders_json) || return 1
+	ids=$(jq -r '.[].id' <<<"$unread") || return 1
+	while IFS= read -r id; do
+		[[ -z $id ]] || want+=("$id")
+	done <<<"$ids"
+	((${#want[@]} > 0)) || return 0
+	state=$(squad_cli_control notice "$comments" "$leaders" null "$squad_id" "${want[@]}") || return 1
+	pending=$(jq -c --argjson state "$state" '[.[] | select($state[.id].notified | not)]' <<<"$unread") || return 1
+	want=()
+	ids=$(jq -r '.[].id' <<<"$pending") || return 1
+	while IFS= read -r id; do
+		[[ -z $id ]] || want+=("$id")
+	done <<<"$ids"
+	((${#want[@]} > 0)) || return 0
+	for id in "${want[@]}"; do
+		claim=$(post_note "$issue" "$parent" "読めない制御記録の知らせ: ${id} ${squad_id}") || return 1
+		own=$(jq -c --arg id "$id" --arg claim "$claim" '. + {($id): $claim}' <<<"$own") || return 1
+	done
+	visible=false
+	for attempt in 1 2; do
+		sleep "$REVIEW_WAIT_RECHECK_SECONDS"
+		comments=$(comments_of "$issue") || return 1
+		state=$(squad_cli_control notice "$comments" "$leaders" null "$squad_id" "${want[@]}") || return 1
+		if jq -e --argjson own "$own" 'to_entries | all(.[]; . as $e | $e.value.claims | index($own[$e.key]) != null)' <<<"$state" >/dev/null; then
+			visible=true
+			break
+		fi
+	done
+	if [[ $visible != true ]]; then
+		printf '名乗りが読み直しで見えません。知らせは書いていません: コメント %s\n' "$(jq -r 'to_entries | map(.value) | join(" ")' <<<"$own")" >&2
+		return 1
+	fi
+	# 返した役の名前。回を付けずに保存したときは、report を流した役。回に書いたときは、回の待つ役。
+	if [[ $attached == true ]]; then
+		while read -r id; do
+			name=$(agent_name "$id") || return 1
+			roster+="- ${name}"$'\n'
+		done < <(jq -r '.waiting[]' <<<"$round")
+	else
+		rolename=${MULTICA_AGENT_ID:-}
+		[[ -z $rolename ]] || rolename=$(agent_name "$rolename" 2>/dev/null) || rolename=${MULTICA_AGENT_ID}
+		[[ -n $rolename ]] || rolename='不明'
+	fi
+	headline=$(jq -r '"[@" + .name + "](mention://squad/" + .id + ") 返事がそろいました。"' <<<"$squad") || return 1
+	mkdir -p tmp || return 1
+	for id in "${want[@]}"; do
+		jq -e --arg id "$id" --argjson own "$own" '.[$id].notified | not' <<<"$state" >/dev/null || continue
+		[[ $(jq -r --arg id "$id" '.[$id].claims[0]' <<<"$state") == "$(jq -r --arg id "$id" '.[$id]' <<<"$own")" ]] || continue
+		line=$(jq -r --arg id "$id" '.[] | select(.id == $id) | .line' <<<"$pending") || return 1
+		reason=$(jq -r --arg id "$id" '.[] | select(.id == $id) | .reason' <<<"$pending") || return 1
+		body=$(mktemp tmp/squad-review-unreadable.XXXXXX) || return 1
+		{
+			printf '%s\n' "$headline"
+			printf '次の依頼を決められません: 制御記録を読めない（%s: %s 行目: %s）\n' "$id" "$line" "$reason"
+			printf '読めない制御記録: %s %s 行目: %s\n' "$id" "$line" "$reason"
+			printf '保存した結果: %s\n\n' "$saved"
+			if [[ $attached == true ]]; then
+				printf '%s\n\n返した役:\n%s' "待っていた役の結果が、すべてそろいました。" "$roster"
+			else
+				printf '読めない依頼への返事なので、結果は回に付けずに保存しました。\n返した役: %s\n' "$rolename"
+			fi
+		} >"$body" || { rm -f -- "$body"; return 1; }
+		status=0
+		squad_cli_read issue-comment-add "$issue" "$parent" "$body" >/dev/null || status=$?
+		rm -f -- "$body" || return 1
+		((status == 0)) || return "$status"
+	done
+	return 0
+}
+
+report() {
+	local issue=$1 parent=$2 file=$3 round round_id attempt status comments peers_waited=false unread squad saved value attached
+	[[ -r $file ]] || {
+		echo "結果のファイルが読めない: ${file}" >&2
+		exit 1
+	}
+	comments=$(comments_of "$issue") || return 1
+	round=$(latest_round <<<"$comments") || return 1
+	round_id=$(jq -r '.id // empty' <<<"$round") || return 1
+	unread=$(jq -c '.unreadable // []' <<<"${round:-null}") || return 1
+	# 読めない候補があるときは、決める記録を書かず decide も流さない。結果を書き、候補ごとに知らせてリーダーを起こす。
+	# `round` の候補か、認める回がなければ、結果は回に付けずに保存する。知らせるスクワッドは、結果を書く前に決める。
+	if [[ $unread != '[]' ]]; then
+		if ! squad=$(notice_squad "$issue" "$comments" "$round_id"); then
+			echo "結果は投稿していません。${HANDOFF_GUIDE}" >&2
+			return 1
+		fi
+		if [[ -z $round_id ]] || jq -e 'any(.[]; .kind == "round")' <<<"$unread" >/dev/null; then
+			value=$(jq -r '[.[] | select(.kind == "round")] as $rounds | (if ($rounds | length) > 0 then $rounds else . end) | last | "未定（読めない依頼 " + .id + "）"' <<<"$unread") || return 1
+			attached=false
+		else
+			value=$round_id
+			attached=true
+		fi
+		saved=$(save_result "$issue" "$parent" "$file" "$value") || {
+			echo "結果を投稿できませんでした。${HANDOFF_GUIDE}" >&2
+			return 1
+		}
+		notify_unreadable "$issue" "$parent" "$saved" "$attached" "$squad" || {
+			echo "読めない依頼の知らせを書けませんでした（結果は保存済み: ${saved}）。${HANDOFF_GUIDE}" >&2
+			return 1
+		}
+		return 0
+	fi
+	# 回のない依頼を /note で返すと、orchestrator に届かず止まる。投稿する前に確認する。
+	if [[ -z $round_id ]]; then
+		echo '返事を待つ役の登録がありません。結果は投稿していません。スキル squad-handoff の「引き継ぐとき」に従い、orchestrator をメンションして返してください。' >&2
+		return 1
+	fi
+	# 知らせる先が決まらないまま結果だけを /note で残さない。
+	squad_for_round "$comments" "$round_id" >/dev/null || return 1
+	saved=$(save_result "$issue" "$parent" "$file" "$round_id") || return 1
 
 	# 結果を書いてからコメントを読み直す。2 役がほぼ同時に終えても、あとに読んだ方には両方の結果が見えるため。
 	# まだ返していない役がいれば、相手の結果が読めるようになるのを少し待って、もう 1 回だけ読み直す。
 	# 決める記録を書いたあと、それが読み直しで見えなければ、待って読み直す（合わせて 3 回まで読む）。
 	DECIDE_OWN=''
 	for attempt in 1 2 3; do
-		if settle "$issue" "$parent" "$(jq -r .id <<<"$round")"; then
+		if settle "$issue" "$parent" "$round_id"; then
 			return 0
 		else
 			status=$?
@@ -419,6 +566,19 @@ report() {
 			peers_waited=true
 			;;
 		3) ;;
+		4)
+			# 結果を書いたあとに、読めない候補が増えた。結果は回に付けて保存済みなので、候補ごとに知らせる。
+			comments=$(comments_of "$issue") || return 1
+			if ! squad=$(notice_squad "$issue" "$comments" "$round_id"); then
+				echo "結果は保存済みです（${saved}）。${HANDOFF_GUIDE}" >&2
+				return 1
+			fi
+			notify_unreadable "$issue" "$parent" "$saved" true "$squad" || {
+				echo "読めない依頼の知らせを書けませんでした（結果は保存済み: ${saved}）。${HANDOFF_GUIDE}" >&2
+				return 1
+			}
+			return 0
+			;;
 		*) return "$status" ;;
 		esac
 		((attempt == 3)) || sleep "$REVIEW_WAIT_RECHECK_SECONDS"

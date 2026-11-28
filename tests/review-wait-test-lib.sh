@@ -74,6 +74,7 @@ case "${1-} ${2-} ${3-}" in
 	jq -Rs --argjson args "$args" '{args: $args, body: .}' <"$file" >>"$dir/posted.jsonl"
 	emit posted issue-comment-add "posted-$n"
 	;;
+'issue get test-issue') emit emit issue-get "$dir/issue.json" ;;
 'issue runs test-issue') emit emit issue-runs "$dir/runs.json" ;;
 'issue wakeup list') emit emit issue-wakeups "$dir/rules.json" ;;
 'issue wakeup delete') echo '{}' ;;
@@ -128,9 +129,15 @@ fixture issue-wakeups | jq --arg mark "$mark" '. as $base | [
 
 fixture squad-list | jq '[. + {id:"squad-test", name:"demo-squad", leader_id:"orchestrator", archived_at:null}]' >"$test_dir/squads.base.json"
 cp "$test_dir/squads.base.json" "$test_dir/squads.json"
+# タスクの担当。既定は squad-test。set_assignee で、別のスクワッドや、スクワッドでない担当（agent）に変えられる。
+fixture issue-get | jq '. + {assignee_type: "squad", assignee_id: "squad-test"}' >"$test_dir/issue.base.json"
+set_assignee() { # 担当の種類 担当の ID
+	jq --arg type "$1" --arg id "$2" '. + {assignee_type: $type, assignee_id: $id}' "$test_dir/issue.base.json" >"$test_dir/issue.json"
+}
 
 reset_calls() {
 	cp "$test_dir/squads.base.json" "$test_dir/squads.json"
+	cp "$test_dir/issue.base.json" "$test_dir/issue.json"
 	: >"$test_dir/calls.jsonl"
 	: >"$test_dir/instructions.jsonl"
 	: >"$test_dir/posted.jsonl"
@@ -221,6 +228,17 @@ with_json() {
 	jq --slurpfile comment "$test_dir/comment-prototype.json" --arg id "$1" --arg who "$2" --arg type "$3" --argjson content "$5" \
 		--arg time "$(jq -nr --argjson ts "$((round_ts + $4))" '$ts | todateiso8601')" \
 		'. + [$comment[0] + {id: $id, author_type: $type, author_id: $who, created_at: $time, content: $content}]'
+}
+
+# 読めない候補の名乗りのコメントを足した一覧を出す。引数は「ID 作者の ID 回からの秒 候補の ID スクワッドの ID」。標準入力が一覧。
+with_claim() {
+	with_raw "$1" "$2" agent "$3" "$(printf '/note\n読めない制御記録の知らせ: %s %s\n' "$4" "$5")"
+}
+
+# 読めない候補が 1 つのとき、名乗りを書いたあとの読み直し（3 回目の一覧の取得）で自分の名乗りが見えるよう、comments.3.json を作る。
+# 結果が posted-1、名乗りが posted-2。comments.json は、結果を書く前の一覧にしておく。引数は候補の ID。
+claim_visible_at_3() {
+	with_claim posted-2 "$b" 12 "$1" squad-test <"$test_dir/comments.json" >"$test_dir/comments.3.json"
 }
 
 posted_claim_count() {
