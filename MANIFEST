@@ -46,6 +46,7 @@ b8a475b0195505a111faa460b9966acac8b9d47661b9780bb76899792dcf36a0  ./common/guard
 b0d340d145f7fb575c71b6e2b9be94171da0b5a0bb1366d3f52d4c9041f57ed6  ./common/guard/pre-tool-use
 8dbf530ddd795806efa14cffae1d6d1080e161affebd39af8137972271c62b46  ./common/guard/shell_split.py
 003d274f0e18b662fe11322a620d5498a66f56ca3a3f1b118d32f8078f173ea8  ./common/guard/stop
+c44336d541757cd06e7c1843a3f40b4b7acd2f1f150009e2350ec723ff2bdb04  ./common/guard/stop-failure
 cbfb45a119121c0449fe4bf6569ed7e9dacb7a618550575db7c2feaa873802e1  ./common/host/start-daemon
 8d7089db252c5cc09c3ae6aea590e3d1a1370450f4fb7f3f9e99fa4290542fff  ./common/labels
 18245167780cb48fe8f96ea992d5768ba27ac3d75334397bf7202a304c3751a2  ./common/monitor/squad-cli-lib
@@ -718,6 +719,7 @@ fe38cb4a88854048fa458fec1168ed9bf07d7112607d4d863f0a53f285b1dae4  ./tests/review
 493b5e9fc451bfbc88d55aeff970440a288f0bf630e7e852ac2692e316b72867  ./tests/role-choices-test.sh
 9293024a575dc3b06c477d6398fed1d9eea8b7c6ea19179e5ec372b18adb55cd  ./tests/run-hook.sh
 7ae1567444287ecb2ce4f17caf80aecd44df0e48f83eb05b12f5c99a60c20ab1  ./tests/run-one.sh
+e5f7b49466d7baef6686451e73c26cf59aa4b364f293af1161bd26348ac0c677  ./tests/run-stops-test.sh
 9171a06d0354cd063ba7ac381f5790d09039bb6b33a2bd38949dc2dc529a5b0f  ./tests/run.sh
 aa48052b223dabd13d51dbe43d6ce1172d420d23c55c76030b194f037b8a2ecd  ./tests/runtime-selection-test.sh
 507155d5f4c4741579206d59d13b4756794db91a775c7426b958f71d8ef6c8c3  ./tests/setup-extension-test.sh
@@ -845,7 +847,7 @@ c98729878e6706f5780a10fbbdd9246ef49a12182fb27d46624296d335659336  ./tests/termin
 c0509d732b2b3fa99f882283848bc2ba1c82ed3a6d0a90ac8263045dfee07010  ./tests/terminal-test.sh
 bb7b764515248a871ceb26e80ed0d7a543675fe39a1813d3355767cb94475dc7  ./tests/terms-test.sh
 81cdf5bc9e1337df5df660a48956d98fbc210eae1e56bcfa2f4345ea8d2ee54d  ./tests/test-runner-test.sh
-c59572ce63a01b109c5208552d8cef9d75767f98fe0b0c94cf866c776956d70c  ./tests/test-weights
+f7c74fec032b0f907925684dd5ae33a9b6e2551a028c7f1ae563bdf3b5e0bc40  ./tests/test-weights
 d94f944f10cbc4a4e1578f5c2c82bd96d60a44e38218caebf76174d8d570f7de  ./tests/tty-session-cases.py
 037b266696a320864da9cdca9b7638c912b8e8f68f57f38c0b1d4f71640d5b0b  ./tests/tty-session-test.sh
 4fca0a5d480aee948e2076f067072b905caa9de4d4bd0c4cd84ac061c10abf37  ./tests/tty-session.py

@@ -78,6 +78,7 @@ tests/release-test.sh 67
 tests/release-workflow-test.sh 4
 tests/review-note-table-test.sh 0
 tests/role-choices-test.sh 2
+tests/run-stops-test.sh 2
 tests/runtime-selection-test.sh 30
 tests/setup-extension-test.sh 25
 tests/setup-issues-test.sh 33
