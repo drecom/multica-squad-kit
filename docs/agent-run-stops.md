@@ -229,7 +229,9 @@ Claude Code は、`claude --version` で最低のバージョン以上かを先�
 
 `claude auth status --json` の出力は、メールアドレスと組織を含む。`loggedIn` と `loginExpiresAt` の 2 つの欄だけを読み、出力を stdout・stderr・タスク・状態のファイルのどれにも写さない。状態の決め方は `authMethod` を使わないので、読まない。使わない欄を読まないほうが、写す恐れも減るためである。
 
-タスクの本文には、期限の日付と残りの日数、終了コードだけを書く。`codex login status` の出力も写さない。Codex の行が `Not logged in` を見るのは、状態を決めるためだけである。
+タスクの本文には、期限の日付と残りの日数、終了コード、Claude Code のバージョンと最低のバージョンだけを書く。バージョンは `claude --version` から読み、個人の情報を含まない。確認失敗の文はバージョンの確認を頼むので、人が上げる先を知るのに要るためである。
+
+`codex login status` の出力も写さない。Codex の行が `Not logged in` を見るのは、状態を決めるためだけである。
 
 ## 使用率の読み方
 
