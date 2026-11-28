@@ -36,7 +36,11 @@
 #       - 結果: `round` の候補があるか、認める回がなければ、`返事の回: 未定（読めない依頼 <候補の ID>）` を付けて回に付けずに保存する。
 #         `record` の候補だけで認める回があるときは、今のとおり最新の回に書く。
 #       - 名乗り: 知らせ済みでない候補ごとに `読めない制御記録の知らせ: <候補の ID> <スクワッドの ID>` の名乗りを書き、
-#         期限の中で待って読み直す（最大 2 回）。最も早い名乗りの役だけが知らせを書く。名乗りが見えなければ知らせを書かず終了 1。
+#         期限の中で待って読み直す（最大 2 回）。名乗りが見えなければ知らせを書かず終了 1。
+#         名乗りと知らせは、リーダーでないエージェントが、候補より後に、自分の結果（返事の回: の行があるコメント）を書いたあとに書いたものだけを数える。
+#         知らせは、`読めない制御記録:` と `保存した結果:` の行が 1 つずつで、保存した結果が同じ作者の結果（候補より後、知らせより前）であること。
+#         自分の名乗りより 60 秒（REVIEW_WAIT_CLAIM_SECONDS）より前の名乗りは飛ばす。残った名乗りのうち最も早いものの役だけが知らせを書く。
+#         別の役が選ばれたときは、期限の中でもう 1 回待って読み直し、知らせが読めなければ、止まったものと見て自分が引き継いで書く（重なってもよい）。
 #       - 知らせるスクワッド: タスクの担当がスクワッドならそのスクワッド。そうでなければ認める回の最新のものから決める。決まらなければ投稿せず終了 1。
 #       - 終了: 結果と知らせが済めば 0。結果か自分の知らせを書けなければ 1（スクワッドをメンションして返す）。
 #     回がない・読めない候補もないとき、知らせるスクワッドが 1 つに決まらないときは、投稿せずエラーにする。呼び出した役は、通常の引き継ぎで返す。
@@ -58,6 +62,10 @@ REVIEW_WAIT_RECHECK_SECONDS=${REVIEW_WAIT_RECHECK_SECONDS:-20}
 # 期限から投稿の取り置きを引いた時刻までしか待たず、名乗りと知らせの投稿に取り置きの時間を残す。
 REVIEW_WAIT_DEADLINE_SECONDS=${REVIEW_WAIT_DEADLINE_SECONDS:-60}
 REVIEW_WAIT_HOLDBACK_SECONDS=10
+
+# 知らせを書く役を選ぶとき、自分の名乗りより前のこの秒数以内に書かれた名乗りだけを生きているものと数える（コメントの作成時刻で比べる）。
+# これより前の名乗りは、名乗った実行の期限が過ぎているので、知らせがなければ止まったものと見て飛ばす。
+REVIEW_WAIT_CLAIM_SECONDS=60
 
 # 決める記録から、スクリプトが次の依頼を決めている間として待つ分数。decide の最長（6 分ほど）より十分に長くする。
 REVIEW_WAIT_DECIDE_MINUTES=${REVIEW_WAIT_DECIDE_MINUTES:-15}
@@ -448,14 +456,39 @@ notice_squad() {
 	printf '%s\n' "$squad"
 }
 
-# 読めない候補ごとに、`読めない制御記録の知らせ:` の名乗りを書き、最も早い名乗りの役だけが知らせを書く。
+# 読めない候補 1 つの知らせを書く。squad は知らせるスクワッドの JSON、saved は結果のコメントの ID、attached は結果を回に書いたとき true。
+# roster は回の待つ役の一覧（回を付けずに保存したときは空）、rolename は report を流した役の名前。
+post_unreadable_notice() {
+	local issue=$1 parent=$2 squad=$3 saved=$4 attached=$5 id=$6 line=$7 reason=$8 roster=$9 rolename=${10} headline body status=0
+	headline=$(jq -r '"[@" + .name + "](mention://squad/" + .id + ") 返事がそろいました。"' <<<"$squad") || return 1
+	mkdir -p tmp || return 1
+	body=$(mktemp tmp/squad-review-unreadable.XXXXXX) || return 1
+	{
+		printf '%s\n' "$headline"
+		printf '次の依頼を決められません: 制御記録を読めない（%s: %s 行目: %s）\n' "$id" "$line" "$reason"
+		printf '読めない制御記録: %s %s 行目: %s\n' "$id" "$line" "$reason"
+		printf '保存した結果: %s\n\n' "$saved"
+		if [[ $attached == true ]]; then
+			printf '%s\n\n返した役:\n%s' "待っていた役の結果が、すべてそろいました。" "$roster"
+		else
+			printf '読めない依頼への返事なので、結果は回に付けずに保存しました。\n返した役: %s\n' "$rolename"
+		fi
+	} >"$body" || { rm -f -- "$body"; return 1; }
+	squad_cli_read issue-comment-add "$issue" "$parent" "$body" >/dev/null || status=$?
+	rm -f -- "$body" || return 1
+	return "$status"
+}
+
+# 読めない候補ごとに、`読めない制御記録の知らせ:` の名乗りを書き、生きている名乗りのうち最も早い役だけが知らせを書く。
+# 生きている名乗りは、信頼の条件を満たし、自分の名乗りより前の REVIEW_WAIT_CLAIM_SECONDS 秒以内に書かれたもの。時刻はコメントの作成時刻で比べる。
 # 知らせ済みの候補は飛ばす。名乗りから知らせまでは、report の期限の中で（wait_within_deadline）待って読み直すのを最大 2 回までにする。
+# 別の役の名乗りが選ばれた候補は、期限の中でもう 1 回待って読み直す。知らせがまだ読めなければ、自分がその候補の知らせを書いて引き継ぐ。
 # saved は、結果を書いたコメントの ID。attached は、結果を回に書いたとき true、回を付けずに保存したとき false。squad は知らせるスクワッドの JSON。
-# 0: 知らせ済み・知らせを書いた・ほかの役に任せた、1: 取得・投稿に失敗した、または自分の名乗りが読み直しで見えない。
+# 0: 知らせ済み・知らせを書いた、1: 取得・投稿に失敗した、または自分の名乗りが読み直しで見えない。
 notify_unreadable() {
 	local issue=$1 parent=$2 saved=$3 attached=$4 squad=$5 comments round leaders squad_id unread state pending ids id own='{}' claim
-	local attempt visible name roster='' headline line reason body status rolename
-	local -a want=()
+	local attempt visible name roster='' line reason rolename chosen
+	local -a want=() mine=() others=()
 	squad_id=$(jq -r .id <<<"$squad") || return 1
 	comments=$(comments_of "$issue") || return 1
 	round=$(latest_round <<<"$comments") || return 1
@@ -506,29 +539,34 @@ notify_unreadable() {
 		[[ -z $rolename ]] || rolename=$(agent_name "$rolename" 2>/dev/null) || rolename=${MULTICA_AGENT_ID}
 		[[ -n $rolename ]] || rolename='不明'
 	fi
-	headline=$(jq -r '"[@" + .name + "](mention://squad/" + .id + ") 返事がそろいました。"' <<<"$squad") || return 1
-	mkdir -p tmp || return 1
+	# 知らせを書く役を候補ごとに決める。知らせ済みの候補は飛ばす。生きている名乗りのうち最も早いものが自分のものなら書く。
 	for id in "${want[@]}"; do
-		jq -e --arg id "$id" --argjson own "$own" '.[$id].notified | not' <<<"$state" >/dev/null || continue
-		[[ $(jq -r --arg id "$id" '.[$id].claims[0]' <<<"$state") == "$(jq -r --arg id "$id" '.[$id]' <<<"$own")" ]] || continue
+		jq -e --arg id "$id" '.[$id].notified | not' <<<"$state" >/dev/null || continue
+		chosen=$(jq -r --arg id "$id" --arg own "$(jq -r --arg id "$id" '.[$id]' <<<"$own")" --argjson window "$((REVIEW_WAIT_CLAIM_SECONDS * 1000000000))" '
+			.[$id] as $c | ($c.claim_ns[$own]) as $at
+			| [$c.claims[] | select($c.claim_ns[.] >= $at - $window)] | first' <<<"$state") || return 1
+		if [[ $chosen == "$(jq -r --arg id "$id" '.[$id]' <<<"$own")" ]]; then
+			mine+=("$id")
+		else
+			others+=("$id")
+		fi
+	done
+	for id in ${mine[@]+"${mine[@]}"}; do
 		line=$(jq -r --arg id "$id" '.[] | select(.id == $id) | .line' <<<"$pending") || return 1
 		reason=$(jq -r --arg id "$id" '.[] | select(.id == $id) | .reason' <<<"$pending") || return 1
-		body=$(mktemp tmp/squad-review-unreadable.XXXXXX) || return 1
-		{
-			printf '%s\n' "$headline"
-			printf '次の依頼を決められません: 制御記録を読めない（%s: %s 行目: %s）\n' "$id" "$line" "$reason"
-			printf '読めない制御記録: %s %s 行目: %s\n' "$id" "$line" "$reason"
-			printf '保存した結果: %s\n\n' "$saved"
-			if [[ $attached == true ]]; then
-				printf '%s\n\n返した役:\n%s' "待っていた役の結果が、すべてそろいました。" "$roster"
-			else
-				printf '読めない依頼への返事なので、結果は回に付けずに保存しました。\n返した役: %s\n' "$rolename"
-			fi
-		} >"$body" || { rm -f -- "$body"; return 1; }
-		status=0
-		squad_cli_read issue-comment-add "$issue" "$parent" "$body" >/dev/null || status=$?
-		rm -f -- "$body" || return 1
-		((status == 0)) || return "$status"
+		post_unreadable_notice "$issue" "$parent" "$squad" "$saved" "$attached" "$id" "$line" "$reason" "$roster" "${rolename-}" || return 1
+	done
+	((${#others[@]} > 0)) || return 0
+	# 別の役の名乗りが選ばれた候補は、期限の中でもう 1 回待って、知らせが読めるかを確認する。待てなくても読み直す。
+	# 読めなければ、選ばれた役が止まったものと見て、自分がその候補の知らせを書いて引き継ぐ。
+	wait_within_deadline || true
+	comments=$(comments_of "$issue") || return 1
+	state=$(squad_cli_control notice "$comments" "$leaders" null "$squad_id" "${others[@]}") || return 1
+	for id in "${others[@]}"; do
+		jq -e --arg id "$id" '.[$id].notified | not' <<<"$state" >/dev/null || continue
+		line=$(jq -r --arg id "$id" '.[] | select(.id == $id) | .line' <<<"$pending") || return 1
+		reason=$(jq -r --arg id "$id" '.[] | select(.id == $id) | .reason' <<<"$pending") || return 1
+		post_unreadable_notice "$issue" "$parent" "$squad" "$saved" "$attached" "$id" "$line" "$reason" "$roster" "${rolename-}" || return 1
 	done
 	return 0
 }

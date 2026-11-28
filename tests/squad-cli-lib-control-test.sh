@@ -355,3 +355,51 @@ for order in before after; do
 	done
 done
 echo 'PASS merge_requested: 読める依頼と同じ head の読めない候補が同時にあるときは、順序によらず、読めない候補を優先して止める'
+
+# ---- 読めない候補の名乗りと知らせ（notice）。引用・字下げ・囲みの中の行は、名乗りにも知らせにも読まない。
+# 候補 c（回より後のコメント）、役 qa の結果 s1（候補より後）、名乗りと知らせは、結果のあとに同じ作者が書く。
+notice_state() { # 候補の ID
+	squad_cli_control notice "$(<"$file")" '["L"]' null sq "$1"
+}
+notice_base() {
+	reset
+	agent r1 L $'返事を待つ役: '"$(mention qa)"
+	agent c L $'返事を待つ役: '"$(mention qa)"$'\n  字下げ'
+	agent s1 qa $'/note\nresult\n返事の回: 未定（読めない依頼 c）'
+}
+claim_text=$'/note\n読めない制御記録の知らせ: c sq'
+notice_text=$'[@s](mention://squad/sq) 返事がそろいました。\n読めない制御記録: c 2 行目: 行頭の空白\n保存した結果: s1'
+notice_base
+agent k qa "$claim_text"
+agent n qa "$notice_text"
+[[ $(notice_state c | jq -c '.c | [.notified, .claims]') == '[true,["k"]]' ]] || { echo "名乗りと知らせを読まない: $(notice_state c)" >&2; exit 1; }
+for case in quote nested fence indent first-line leader; do
+	notice_base
+	case $case in
+	quote) claim=$'/note\n> 読めない制御記録の知らせ: c sq'; notice=$'[@s](mention://squad/sq) 返事がそろいました。\n> 読めない制御記録: c 2 行目: x\n> 保存した結果: s1' ;;
+	nested) claim=$'/note\n- 読めない制御記録の知らせ: c sq'; notice=$'[@s](mention://squad/sq) 返事がそろいました。\n- 読めない制御記録: c 2 行目: x\n- 保存した結果: s1' ;;
+	fence) claim=$'/note\n```\n読めない制御記録の知らせ: c sq\n```'; notice=$'[@s](mention://squad/sq) 返事がそろいました。\n```\n読めない制御記録: c 2 行目: x\n保存した結果: s1\n```' ;;
+	indent) claim=$'/note\n  読めない制御記録の知らせ: c sq'; notice=$'[@s](mention://squad/sq) 返事がそろいました。\n  読めない制御記録: c 2 行目: x\n  保存した結果: s1' ;;
+	first-line) claim=$'前置き\n読めない制御記録の知らせ: c sq'; notice=$'前置き\n読めない制御記録: c 2 行目: x\n保存した結果: s1' ;;
+	leader) claim=$'/note\n読めない制御記録の知らせ: c sq'; notice="$notice_text" ;;
+	esac
+	if [[ $case == leader ]]; then
+		agent k L "$claim"
+		agent n L "$notice"
+	else
+		agent k qa "$claim"
+		agent n qa "$notice"
+	fi
+	[[ $(notice_state c | jq -c '.c | [.notified, .claims]') == '[false,[]]' ]] || { echo "名乗りか知らせとして読んだ: $case: $(notice_state c)" >&2; exit 1; }
+done
+# 結果を書いていない作者・結果が名乗りより後・知らせの保存した結果が別の作者のものなら、数えない。
+notice_base
+agent k cr "$claim_text"
+agent n cr "$notice_text"
+[[ $(notice_state c | jq -c '.c | [.notified, .claims]') == '[false,[]]' ]] || { echo "結果のない作者の名乗りと知らせを数えた: $(notice_state c)" >&2; exit 1; }
+notice_base
+agent k qa "$claim_text"
+agent s2 qa $'/note\nresult\n返事の回: r1'
+agent n cr $'[@s](mention://squad/sq) 返事がそろいました。\n読めない制御記録: c 2 行目: x\n保存した結果: s2'
+[[ $(notice_state c | jq -c '.c | [.notified, .claims]') == '[false,["k"]]' ]] || { echo "別の作者の結果を指す知らせを数えた: $(notice_state c)" >&2; exit 1; }
+echo 'PASS notice: 引用・入れ子・囲み・字下げ・1 行目違いの行と、リーダーや結果のない作者の名乗りと知らせは数えず、結果を書いた作者のものだけを数える'

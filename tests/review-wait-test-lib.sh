@@ -240,15 +240,25 @@ with_json() {
 		'. + [$comment[0] + {id: $id, author_type: $type, author_id: $who, created_at: $time, content: $content}]'
 }
 
-# 読めない候補の名乗りのコメントを足した一覧を出す。引数は「ID 作者の ID 回からの秒 候補の ID スクワッドの ID」。標準入力が一覧。
+# 結果（返事の回: の行がある /note）のコメントを足した一覧を出す。引数は「ID 作者の ID 回からの秒」。標準入力が一覧。
+with_result() {
+	with_raw "$1" "$2" agent "$3" "$(printf '/note\nresult\n返事の回: round\n')"
+}
+
+# 読めない候補の名乗りのコメントを足した一覧を出す。引数は「ID 作者の ID 回からの秒 候補の ID スクワッドの ID [結果の ID]」。標準入力が一覧。
+# 名乗りは、同じ作者の結果が候補と名乗りの間にあるときだけ数える。結果は名乗りの 1 秒前に足す。結果の ID の既定は zres-<名乗りの ID>で、候補と同じ秒でも並びが候補の後になるよう、辞書順の後ろにする。
+# 結果を足さない名乗り（結果を書いていない作者の名乗り）は with_claim_only で足す。
 with_claim() {
+	with_result "${6:-zres-$1}" "$2" "$(($3 - 1))" | with_claim_only "$1" "$2" "$3" "$4" "$5"
+}
+with_claim_only() {
 	with_raw "$1" "$2" agent "$3" "$(printf '/note\n読めない制御記録の知らせ: %s %s\n' "$4" "$5")"
 }
 
 # 読めない候補が 1 つのとき、名乗りを書いたあとの読み直し（3 回目の一覧の取得）で自分の名乗りが見えるよう、comments.3.json を作る。
 # 結果が posted-1、名乗りが posted-2。comments.json は、結果を書く前の一覧にしておく。引数は候補の ID。
 claim_visible_at_3() {
-	with_claim posted-2 "$b" 12 "$1" squad-test <"$test_dir/comments.json" >"$test_dir/comments.3.json"
+	with_claim posted-2 "$b" 12 "$1" squad-test posted-1 <"$test_dir/comments.json" >"$test_dir/comments.3.json"
 }
 
 posted_claim_count() {

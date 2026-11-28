@@ -19,9 +19,10 @@ div_body="返事を待つ役: [@qa](mention://agent/$b)
 <div>"
 
 # 1 件の知らせの本文。作者・時刻・スクワッドを変えて、入力の信頼の表の条件を 1 つずつ外すのに使う。
-notice_body() { # 候補の ID 行 理由 [スクワッドの ID] [名前]
-	printf '[@%s](mention://squad/%s) 返事がそろいました。\n次の依頼を決められません: 制御記録を読めない（%s: %s 行目: %s）\n読めない制御記録: %s %s 行目: %s\n保存した結果: earlier\n' \
-		"${5:-demo-squad}" "${4:-squad-test}" "$1" "$2" "$3" "$1" "$2" "$3"
+# 知らせは、保存した結果（既定は earlier-result。agent-a が候補のあと、知らせより前に書く結果）を指す。
+notice_body() { # 候補の ID 行 理由 [スクワッドの ID] [名前] [保存した結果の ID]
+	printf '[@%s](mention://squad/%s) 返事がそろいました。\n次の依頼を決められません: 制御記録を読めない（%s: %s 行目: %s）\n読めない制御記録: %s %s 行目: %s\n保存した結果: %s\n' \
+		"${5:-demo-squad}" "${4:-squad-test}" "$1" "$2" "$3" "$1" "$2" "$3" "${6:-earlier-result}"
 }
 
 # 結果の保存・名乗り・知らせの 3 件が、期待どおりに並んだことを確認する。
@@ -189,9 +190,10 @@ assert_jq -s --arg mention "$squad_mention" 'length == 5
 expect_no_decide
 # あとから足された候補には、その候補の知らせだけを書く。知らせ済みの候補には書かない。
 reset_calls
-build_comments | with_raw diagnosis orchestrator agent 10 "$diagnosis_body" | with_raw earlier-notice agent-a agent 11 "$(notice_body diagnosis 6 行頭の空白)" |
-	with_raw second orchestrator agent 12 "$div_body" >"$test_dir/comments.json"
-with_claim posted-2 "$b" 13 second squad-test <"$test_dir/comments.json" >"$test_dir/comments.3.json"
+build_comments | with_raw diagnosis orchestrator agent 10 "$diagnosis_body" | with_result earlier-result agent-a 11 |
+	with_raw earlier-notice agent-a agent 12 "$(notice_body diagnosis 6 行頭の空白)" |
+	with_raw second orchestrator agent 13 "$div_body" >"$test_dir/comments.json"
+with_claim posted-2 "$b" 14 second squad-test <"$test_dir/comments.json" >"$test_dir/comments.3.json"
 run_report
 expect_exit 0
 assert_jq -s 'length == 3 and .[1].body == "/note\n読めない制御記録の知らせ: second squad-test\n"
@@ -203,7 +205,7 @@ reset_calls
 build_comments | with_raw diagnosis orchestrator agent 10 "$diagnosis_body" |
 	with_raw first-result agent-a agent 11 $'/note\nreview result\n返事の回: 未定（読めない依頼 diagnosis）\n' |
 	with_raw first-claim agent-a agent 12 "$(printf '/note\n読めない制御記録の知らせ: diagnosis squad-test\n')" |
-	with_raw first-notice agent-a agent 13 "$(notice_body diagnosis 6 行頭の空白)" >"$test_dir/comments.json"
+	with_raw first-notice agent-a agent 13 "$(notice_body diagnosis 6 行頭の空白 squad-test demo-squad first-result)" >"$test_dir/comments.json"
 run_report
 expect_exit 0
 assert_jq -s 'length == 1 and .[0].body == "/note\nqa result\n返事の回: 未定（読めない依頼 diagnosis）\n"' "$test_dir/posted.jsonl"
@@ -230,12 +232,22 @@ assert_jq -s --slurpfile comments "$test_dir/comments.json" '
 echo 'PASS report: 保存した結果は候補にも返事の組にもならず、あとの返事で候補と知らせは増えない'
 
 # 8-2: 2 つの役がほぼ同時に名乗ったとき、最も早い名乗りの役だけが知らせを書く。
+# 先に名乗った agent-a の知らせが待ったあとの読み直しで見えれば、自分は書かない。見えなければ、引き継いで自分が書く。
+reset_calls
+build_comments | with_raw diagnosis orchestrator agent 10 "$diagnosis_body" >"$test_dir/comments.json"
+with_claim posted-2 "$b" 12 diagnosis squad-test <"$test_dir/comments.json" | with_claim other-claim agent-a 11 diagnosis squad-test >"$test_dir/comments.3.json"
+with_result earlier-result agent-a 10 <"$test_dir/comments.3.json" |
+	with_raw other-notice agent-a agent 13 "$(notice_body diagnosis 6 行頭の空白)" >"$test_dir/comments.4.json"
+run_report
+expect_exit 0
+assert_jq -s 'length == 2 and .[1].body == "/note\n読めない制御記録の知らせ: diagnosis squad-test\n"' "$test_dir/posted.jsonl"
+[[ $(slept) == 20,20 ]] || { printf '名乗りの読み直しの待ちと、先に名乗った役の知らせの待ちで 20 秒を 2 回: %s\n' "$(slept)" >&2; exit 1; }
 reset_calls
 build_comments | with_raw diagnosis orchestrator agent 10 "$diagnosis_body" >"$test_dir/comments.json"
 with_claim posted-2 "$b" 12 diagnosis squad-test <"$test_dir/comments.json" | with_claim other-claim agent-a 11 diagnosis squad-test >"$test_dir/comments.3.json"
 run_report
 expect_exit 0
-assert_jq -s 'length == 2 and .[1].body == "/note\n読めない制御記録の知らせ: diagnosis squad-test\n"' "$test_dir/posted.jsonl"
+expect_notice_posts '未定（読めない依頼 diagnosis）' diagnosis 6 '行頭の空白'
 reset_calls
 build_comments | with_raw diagnosis orchestrator agent 10 "$diagnosis_body" >"$test_dir/comments.json"
 with_claim posted-2 "$b" 12 diagnosis squad-test <"$test_dir/comments.json" | with_claim other-claim agent-a 13 diagnosis squad-test >"$test_dir/comments.3.json"
@@ -247,33 +259,50 @@ echo 'PASS report: ほぼ同時の名乗りでは、最も早い名乗りの役�
 # 入力の信頼の表: 条件を 1 つ外した知らせは、知らせ済みに数えない。条件を外した名乗りは、先に見えても知らせを止めない。
 untrusted_notice() { # 名前 本文の作り方（標準入力は一覧）。1 つの知らせの代わりに置く。
 	reset_calls
-	build_comments | with_raw diagnosis orchestrator agent 10 "$diagnosis_body" | "$@" >"$test_dir/comments.json"
+	build_comments | with_raw diagnosis orchestrator agent 10 "$diagnosis_body" | with_result earlier-result agent-a 11 | "$@" >"$test_dir/comments.json"
 	claim_visible_at_3 diagnosis
 	run_report
 	expect_exit 0
 	expect_notice_posts '未定（読めない依頼 diagnosis）' diagnosis 6 '行頭の空白'
 }
 valid=$(notice_body diagnosis 6 行頭の空白)
-untrusted_notice with_raw n-member member-x member 11 "$valid"
-untrusted_notice with_raw n-leader orchestrator agent 11 "$valid"
-untrusted_notice with_raw n-result agent-a agent 11 "$valid"$'\n返事の回: round'
-untrusted_notice with_raw n-fence agent-a agent 11 "$(printf '[@demo-squad](mention://squad/squad-test) 返事がそろいました。\n```\n読めない制御記録: diagnosis 6 行目: 行頭の空白\n```\n')"
-untrusted_notice with_raw n-indent agent-a agent 11 "$(printf '[@demo-squad](mention://squad/squad-test) 返事がそろいました。\n  読めない制御記録: diagnosis 6 行目: 行頭の空白\n')"
-untrusted_notice with_raw n-first agent-a agent 11 "$(printf '前置き\n%s' "$valid")"
+untrusted_notice with_raw n-member member-x member 12 "$valid"
+untrusted_notice with_raw n-leader orchestrator agent 12 "$valid"
+untrusted_notice with_raw n-result agent-a agent 12 "$valid"$'\n返事の回: round'
+untrusted_notice with_raw n-fence agent-a agent 12 "$(printf '[@demo-squad](mention://squad/squad-test) 返事がそろいました。\n```\n読めない制御記録: diagnosis 6 行目: 行頭の空白\n```\n')"
+untrusted_notice with_raw n-indent agent-a agent 12 "$(printf '[@demo-squad](mention://squad/squad-test) 返事がそろいました。\n  読めない制御記録: diagnosis 6 行目: 行頭の空白\n')"
+untrusted_notice with_raw n-first agent-a agent 12 "$(printf '前置き\n%s' "$valid")"
 untrusted_notice with_raw n-before agent-a agent 9 "$valid"
-untrusted_notice with_raw n-squad agent-a agent 11 "$(notice_body diagnosis 6 行頭の空白 squad-other other-squad)"
-untrusted_notice with_raw n-other-id agent-a agent 11 "$(notice_body second 6 行頭の空白)"
+untrusted_notice with_raw n-squad agent-a agent 12 "$(notice_body diagnosis 6 行頭の空白 squad-other other-squad)"
+untrusted_notice with_raw n-other-id agent-a agent 12 "$(notice_body second 6 行頭の空白)"
+# 保存した結果の行の条件。行がない・2 つある・指す先が結果でない・別の作者・候補より前・知らせより後のときも、知らせ済みに数えない。
+untrusted_notice with_raw n-no-saved agent-a agent 12 "${valid%保存した結果:*}"
+untrusted_notice with_raw n-two-saved agent-a agent 12 "${valid}保存した結果: earlier-result"$'\n'
+untrusted_notice with_raw n-two-notice agent-a agent 12 "${valid}読めない制御記録: diagnosis 6 行目: 行頭の空白"$'\n'
+untrusted_notice with_raw n-missing agent-a agent 12 "$(notice_body diagnosis 6 行頭の空白 squad-test demo-squad no-such)"
+untrusted_notice with_raw n-plain agent-a agent 12 "$(notice_body diagnosis 6 行頭の空白 squad-test demo-squad plain-comment)"
+saved_variant() { # 足すコメントの ID 作者の ID 回からの秒 本文。そのコメントを `保存した結果:` の行で指す知らせを足す。
+	with_raw "$1" "$2" agent "$3" "$4" | with_raw n-saved agent-a agent 12 "$(notice_body diagnosis 6 行頭の空白 squad-test demo-squad "$1")"
+}
+result_body=$'/note\nresult\n返事の回: round\n'
+untrusted_notice saved_variant plain-comment agent-a 11 'text'
+untrusted_notice saved_variant foreign-result "$b" 11 "$result_body"
+untrusted_notice saved_variant early-result agent-a 9 "$result_body"
+untrusted_notice saved_variant late-result agent-a 13 "$result_body"
 # 条件を満たす知らせは、知らせ済みに数える。
 reset_calls
-build_comments | with_raw diagnosis orchestrator agent 10 "$diagnosis_body" | with_raw n-valid agent-a agent 11 "$valid" >"$test_dir/comments.json"
+build_comments | with_raw diagnosis orchestrator agent 10 "$diagnosis_body" | with_result earlier-result agent-a 11 | with_raw n-valid agent-a agent 12 "$valid" >"$test_dir/comments.json"
 run_report
 expect_exit 0
 assert_jq -s 'length == 1' "$test_dir/posted.jsonl"
 # 条件を外した名乗りが先に見えても、自分の知らせを書く。
+# 同じ作者の結果が候補と名乗りの間にある（条件を 1 つずつ外すため、結果は名乗りの 1 秒前に足す）。結果がない作者は no_result を設定して試す。
 untrusted_claim() { # 作者の ID 作者の種類 時刻 本文
 	reset_calls
 	build_comments | with_raw diagnosis orchestrator agent 10 "$diagnosis_body" >"$test_dir/comments.json"
-	with_claim posted-2 "$b" 12 diagnosis squad-test <"$test_dir/comments.json" | with_raw early-claim "$1" "$2" "$3" "$4" >"$test_dir/comments.3.json"
+	with_claim posted-2 "$b" 12 diagnosis squad-test posted-1 <"$test_dir/comments.json" |
+		if [[ -n ${no_result-} ]]; then cat; else with_result early-result "$1" "$(($3 - 1))"; fi |
+		with_raw early-claim "$1" "$2" "$3" "$4" >"$test_dir/comments.3.json"
 	run_report
 	expect_exit 0
 	expect_notice_posts '未定（読めない依頼 diagnosis）' diagnosis 6 '行頭の空白'
@@ -287,4 +316,7 @@ untrusted_claim agent-a agent 11 $'/note\n```\n読めない制御記録の知ら
 untrusted_claim agent-a agent 11 $'前置き\n読めない制御記録の知らせ: diagnosis squad-test\n'
 untrusted_claim agent-a agent 9 "$claim"
 untrusted_claim agent-a agent 11 $'/note\n読めない制御記録の知らせ: diagnosis squad-other\n'
+# 結果を書いていない作者の名乗りは、数えない。結果が名乗りより後でも、数えない。
+no_result=1 untrusted_claim agent-a agent 11 "$claim"
+no_result= untrusted_claim agent-a agent 11 "$claim"
 echo 'PASS report: 条件を外した知らせと名乗りは、知らせ済み・先の名乗りに数えない'

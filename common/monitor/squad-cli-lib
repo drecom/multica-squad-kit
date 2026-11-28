@@ -2168,7 +2168,7 @@ squad_cli_squad_for_round() {
 #   state: 最新の認める回の状態と、読めない候補の一覧。どちらもなければ何も出さない。
 #   squad_author <回の ID>: 前の回をたどって最初に見つかるリーダーの ID。見つからなければ最後の作者の ID。途中の回の候補が読めなければ 3。
 #   check: 投稿前の本文が回の行を満たすか。標準入力は {body}。
-#   notice <スクワッドの ID> <候補の ID>...: 読めない候補ごとの知らせ済みと、信頼できる名乗りの ID の列。
+#   notice <スクワッドの ID> <候補の ID>...: 読めない候補ごとの知らせ済みと、信頼できる名乗りの ID の列とその作成時刻（ナノ秒）。
 read -r -d '' SQUAD_CLI_CONTROL_PY <<'SQUADCLICONTROLPY' || true
 import calendar
 import json
@@ -2729,11 +2729,12 @@ elif mode == "state":
     elif held:
         emit({"blocked": held, "unreadable": problems})
 elif mode == "notice":
-    # 読めない候補ごとの、知らせ済みか（notified）と、信頼できる名乗りの ID の列（claims。時刻と ID の順）。
-    # args = [知らせるスクワッドの ID, 候補の ID...]。条件は docs/review-next-step.md の「入力と信頼の表」の 5 つずつ。
+    # 読めない候補ごとの、知らせ済みか（notified）と、信頼できる名乗りの ID の列（claims。時刻と ID の順）と、その作成時刻（claim_ns）。
+    # args = [知らせるスクワッドの ID, 候補の ID...]。条件は docs/review-next-step.md の「入力と信頼の表」の知らせと名乗りの条件。
     squad_id, wanted = args[0], args[1:]
     mention = re.compile(r"\[@[^\]\n]*\]\(mention://squad/" + re.escape(squad_id) + r"\) 返事がそろいました。")
     notice_line = re.compile(r"読めない制御記録: (\S+)(?: .*)?")
+    saved_line = re.compile(r"保存した結果: (\S+)")
     claim_line = re.compile(r"読めない制御記録の知らせ: (\S+) (\S+)")
 
     def trusted(j, cand):
@@ -2741,19 +2742,32 @@ elif mode == "notice":
         info = parsed[j]
         return info["agent"] and info["author"] not in leaders and info["reason"] is None and not is_result(j) and pos[j] > pos[cand]
 
+    def has_own_result(j, cand, saved=None):
+        """j と同じ作者の結果（返事の回: の行のあるコメント）が、候補より後で j より前にあるか。saved があればその 1 件だけを見る。"""
+        return any(
+            (saved is None or k == saved) and parsed[k]["author"] == parsed[j]["author"] and is_result(k) and pos[cand] < pos[k] < pos[j]
+            for k in sequence
+        )
+
     found = {}
     for cand in wanted:
         notified, claims = False, []
         for j in sequence if cand in parsed else []:
             if not trusted(j, cand):
                 continue
-            ids = [m.group(1) for m in map(notice_line.fullmatch, parsed[j]["placed"]) if m]
-            if cand in ids and mention.match(parsed[j]["first_line"]):
+            # 知らせ: 読める本文の列 0 に、`読めない制御記録:` と `保存した結果:` の行が 1 つずつある。
+            # `保存した結果:` の ID は、同じ作者が候補より後で知らせより前に書いた結果でなければならない。
+            notice_ids = [m.group(1) for m in map(notice_line.fullmatch, parsed[j]["placed"]) if m]
+            saved_ids = [m.group(1) for m in map(saved_line.fullmatch, parsed[j]["placed"]) if m]
+            if (notice_ids == [cand] and len(saved_ids) == 1 and mention.match(parsed[j]["first_line"])
+                    and saved_ids[0] in parsed and has_own_result(j, cand, saved_ids[0])):
                 notified = True
+            # 名乗り: 同じ作者の結果が、候補より後で名乗りより前にある。結果を書いていない作者の名乗りは数えない。
             pairs = [(m.group(1), m.group(2)) for m in map(claim_line.fullmatch, parsed[j]["placed"]) if m]
-            if (cand, squad_id) in pairs and parsed[j]["first_line"] == "/note":
+            if (cand, squad_id) in pairs and parsed[j]["first_line"] == "/note" and has_own_result(j, cand):
                 claims.append(j)
-        found[cand] = {"notified": notified, "claims": sorted(claims, key=time_and_id)}
+        claims = sorted(claims, key=time_and_id)
+        found[cand] = {"notified": notified, "claims": claims, "claim_ns": {j: parsed[j]["ns"] for j in claims}}
     emit(found)
 else:
     print("mode が不正", file=sys.stderr)

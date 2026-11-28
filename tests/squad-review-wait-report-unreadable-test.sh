@@ -115,7 +115,7 @@ unreadable_after_waits() { # 名乗りが見える取得の番号（なければ
 	done
 	cp "$test_dir/comments.7.json" "$test_dir/comments.json"
 	if [[ -n $1 ]]; then
-		with_claim posted-3 "$b" 12 x squad-test <"$test_dir/comments.7.json" >"$test_dir/comments.$1.json"
+		with_claim posted-3 "$b" 12 x squad-test posted-1 <"$test_dir/comments.7.json" >"$test_dir/comments.$1.json"
 		cp "$test_dir/comments.$1.json" "$test_dir/comments.json"
 	fi
 	code=0
@@ -147,7 +147,7 @@ cp "$test_dir/comments.1.json" "$test_dir/comments.2.json"
 for n in 3 4 5; do
 	build_comments $both "$own_record" | with_json x orchestrator agent 95 "$(jq -nc '"修正の依頼: 直してください\n前の回: round\n  字下げ"')" >"$test_dir/comments.$n.json"
 done
-with_claim posted-3 "$b" 96 x squad-test <"$test_dir/comments.5.json" >"$test_dir/comments.json"
+with_claim posted-3 "$b" 96 x squad-test posted-1 <"$test_dir/comments.5.json" >"$test_dir/comments.json"
 code=0
 bash "$script" report test-issue trigger "$test_dir/result.md" >"$test_dir/output" 2>"$test_dir/error" || code=$?
 [[ $code == 0 ]] || { printf '終了コード 0 を期待したが %s: %s\n' "$code" "$(<"$test_dir/error")" >&2; exit 1; }
@@ -161,3 +161,68 @@ assert_jq -s 'length == 4
 	and (.[3].body | startswith("[@demo-squad](mention://squad/squad-test) 返事がそろいました。\n次の依頼を決められません: 制御記録を読めない（x: 3 行目: 行頭の空白）\n"))
 	and (.[3].body | contains("\n保存した結果: posted-1\n"))' "$test_dir/posted.jsonl"
 echo 'PASS report: 決める記録を書いたあとに読めない候補が現れたら、decide を流さず、決める記録を残して知らせを書く'
+
+# 8-1, 8-2: 名乗りと知らせの信頼。ほぼ同時・順に返しても知らせは 1 つ。選ばれた役が書かなければ引き継ぐ。
+# 結果を書いていない作者の名乗りと知らせは数えない。60 秒より前の名乗りは飛ばす。
+# 名乗りの読み直しの待ちが 20 秒を 1 回（取得 3 回目）。別の役が選ばれたときは、知らせを待つ 20 秒がもう 1 回あり、取得 4 回目で読む。
+cand_json=$(jq -nc '"返事を待つ役: [@qa](mention://agent/a)\n  字下げ"')
+notice_text() { # 保存した結果の ID
+	printf '[@demo-squad](mention://squad/squad-test) 返事がそろいました。\n次の依頼を決められません: 制御記録を読めない（x: 2 行目: 行頭の空白）\n読めない制御記録: x 2 行目: 行頭の空白\n保存した結果: %s\n' "$1"
+}
+phase2_base() {
+	reset_calls
+	build_comments $both | with_json x orchestrator agent 8 "$cand_json" >"$test_dir/comments.json"
+}
+# 自分（b）の名乗りは 12 秒。ほかの名乗りの一覧は、標準入力から足したものを comments.3.json にする。
+phase2_claims() { # 足す関数
+	"$@" < <(with_claim posted-2 "$b" 12 x squad-test posted-1 <"$test_dir/comments.json") >"$test_dir/comments.3.json"
+}
+a_claim() { with_claim a-claim "$a" "$1" x squad-test a-res; }
+posted_notice_count() {
+	jq -s '[.[] | select(.body | startswith("[@demo-squad]"))] | length' "$test_dir/posted.jsonl"
+}
+expect_one_notice() { # 投稿数 sleep の並び
+	assert_jq -s --argjson n "$1" 'length == $n and .[0].body == "/note\nqa result\n返事の回: 未定（読めない依頼 x）\n"
+		and .[1].body == "/note\n読めない制御記録の知らせ: x squad-test\n"' "$test_dir/posted.jsonl"
+	[[ $(slept) == "$2" ]] || { printf '待ちは %s を期待したが %s\n' "$2" "$(slept)" >&2; exit 1; }
+}
+
+# 先に名乗った a が知らせを書いて、待ったあとの読み直しで見えれば、b は書かない。
+phase2_base
+phase2_claims a_claim 11
+with_raw a-notice "$a" agent 13 "$(notice_text a-res)" <"$test_dir/comments.3.json" >"$test_dir/comments.4.json"
+run_report
+expect_one_notice 2 20,20
+[[ $(posted_notice_count) == 0 ]] || { echo '先に名乗った役が書いたら、書いてはいけない' >&2; exit 1; }
+# a の知らせが読めないままなら、b が引き継いで書く。
+phase2_base
+phase2_claims a_claim 11
+run_report
+expect_one_notice 3 20,20
+[[ $(posted_notice_count) == 1 ]] || { echo '引き継いで知らせを 1 つ書く' >&2; exit 1; }
+assert_jq -s '.[2].body | contains("\n保存した結果: posted-1\n") and contains("読めない制御記録: x 2 行目: 行頭の空白\n")' "$test_dir/posted.jsonl"
+# a の名乗りが b より遅ければ、b が選ばれて、待たずに書く。
+phase2_base
+phase2_claims a_claim 13
+run_report
+expect_one_notice 3 20
+[[ $(posted_notice_count) == 1 ]] || { echo 'b が知らせを 1 つ書く' >&2; exit 1; }
+# 自分の名乗りより 60 秒より前の名乗りは飛ばして、自分が選ばれる。60 秒以内なら、a が選ばれて待つ。
+for case in 'a_claim 15 3 20' 'a_claim 25 3 20,20'; do
+	read -r fn at count waits <<<"$case"
+	phase2_base
+	with_claim posted-2 "$b" 80 x squad-test posted-1 <"$test_dir/comments.json" | "$fn" "$at" >"$test_dir/comments.3.json"
+	run_report
+	expect_one_notice "$count" "$waits"
+done
+# 結果を書いていない作者の名乗りは数えない。b が選ばれて、待たずに書く。
+phase2_base
+phase2_claims with_claim_only a-claim "$a" 11 x squad-test
+run_report
+expect_one_notice 3 20
+# 結果を書いていない作者の知らせ（保存した結果が候補より前）は、知らせ済みに数えない。
+phase2_base
+phase2_claims with_raw a-notice "$a" agent 12 "$(notice_text r1)"
+run_report
+expect_one_notice 3 20
+echo 'PASS report: 名乗りと知らせは結果を書いた作者のものだけを数え、60 秒より前の名乗りは飛ばし、選ばれた役が書かなければ引き継ぐ'
