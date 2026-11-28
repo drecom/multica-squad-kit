@@ -12,7 +12,7 @@ round_ts=$((now - 120))
 both='result:a:r1:5 result:b:r2:6'
 
 # 何も書かず、標準出力を空にし、標準エラーに理由を出して終了 1 になる。
-expect_blocked() { # 説明 終了コード 標準出力 標準エラー 理由 本文
+expect_blocked() { # 説明 終了コード 標準出力 標準エラー 行番号と理由 本文
 	[[ $2 == 1 ]] || { printf '（%s）終了コード 1 を期待したが %s（出力: %s）\n本文: %s\n' "$1" "$2" "$3" "$6" >&2; exit 1; }
 	[[ -z $3 ]] || { printf '（%s）何も出してはいけない: %s\n' "$1" "$3" >&2; exit 1; }
 	[[ $4 == *"制御記録を読めない（x: $5）"* ]] || { printf '（%s）標準エラーに「制御記録を読めない（x: %s）」がない: %s\n' "$1" "$5" "$4" >&2; exit 1; }
@@ -23,27 +23,27 @@ expect_not_blocked() { # 説明 終了コード 標準エラー 本文
 	[[ $3 != *'制御記録を読めない'* ]] || { printf '（%s）止まってはいけない: %s\n' "$1" "$3" >&2; exit 1; }
 }
 
-check_status_row() { # 期待 説明 本文の JSON 文字列
-	local expect=$1 label=$2 json=$3 out code=0
+check_status_row() { # 期待 説明 本文の JSON 文字列 行番号
+	local expect=$1 label=$2 json=$3 number=$4 out code=0
 	reset_calls
 	build_comments $both decide:a:d1:90 | with_json x orchestrator agent 95 "$json" >"$test_dir/comments.json"
 	out=$(REVIEW_WAIT_TEST_NOW=$((now + 870)) bash "$script" status test-issue 2>"$test_dir/err") || code=$?
 	case $expect in
-	unreadable:*) expect_blocked "status: $label" "$code" "$out" "$(<"$test_dir/err")" "${expect#unreadable:}" "$json" ;;
+	unreadable:*) expect_blocked "status: $label" "$code" "$out" "$(<"$test_dir/err")" "$number 行目: ${expect#unreadable:}" "$json" ;;
 	*) expect_not_blocked "status: $label" "$code" "$(<"$test_dir/err")" "$json" ;;
 	esac
 }
 
 # proceed は、知らせを書く前の読み取り（comments.1.json）と、書いたあとの読み取り（comments.json）の 2 回で同じ候補を読む。
-check_proceed_row() { # 期待 説明 本文の JSON 文字列
-	local expect=$1 label=$2 json=$3 out code=0
+check_proceed_row() { # 期待 説明 本文の JSON 文字列 行番号
+	local expect=$1 label=$2 json=$3 number=$4 out code=0
 	reset_calls
 	build_comments $both ready:orch:k1:7 | with_json x orchestrator agent 8 "$json" >"$test_dir/comments.1.json"
 	build_comments $both ready:orch:k1:7 claim:orch:posted-1:9 | with_json x orchestrator agent 8 "$json" >"$test_dir/comments.json"
 	out=$(bash "$script" proceed test-issue k1 2>"$test_dir/err") || code=$?
 	case $expect in
 	unreadable:*)
-		expect_blocked "proceed: $label" "$code" "$out" "$(<"$test_dir/err")" "${expect#unreadable:}" "$json"
+		expect_blocked "proceed: $label" "$code" "$out" "$(<"$test_dir/err")" "$number 行目: ${expect#unreadable:}" "$json"
 		[[ $out != *'回ごと済み'* && $out != *'次に進む'* ]] || { printf '（proceed: %s）進んではいけない: %s\n' "$label" "$out" >&2; exit 1; } ;;
 	*) expect_not_blocked "proceed: $label" "$code" "$(<"$test_dir/err")" "$json" ;;
 	esac

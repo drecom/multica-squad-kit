@@ -181,9 +181,10 @@ agent resulted qa $'/note\n返事の回: r1\n返事を待つ役: '"$(mention qa)
 agent human-round H $'返事を待つ役: '"$(mention qa)"
 agent nobody L $'返事を待つ役: なし'
 agent indent L $' 返事を待つ役: '"$(mention qa)"
-check '認めない回' '[.rounds.forged, .rounds.quoted, .rounds.fenced, .rounds.resulted, .rounds["human-round"], .rounds.nobody, .rounds.indent] | all(.ok | not)'
+agent nested L $'- 項目\n  - 返事を待つ役: '"$(mention qa)"
+check '認めない回' '[.rounds.forged, .rounds.quoted, .rounds.fenced, .rounds.resulted, .rounds["human-round"], .rounds.nobody, .rounds.indent, .rounds.nested] | all(.ok | not)'
 check '認めない理由を出す' '.rounds.forged.reason != "" and .rounds.resulted.reason != ""'
-echo 'PASS rounds: 作者がリーダーでも決める実行の役でもない回、引用・囲み・結果・人間・メンションなし・行頭の空白の回は認めない'
+echo 'PASS rounds: 作者がリーダーでも決める実行の役でもない回、引用・囲み・結果・人間・メンションなし・行頭の空白・入れ子の回は認めない'
 
 # 決める実行の役が書いても、頼み直しでも最終レビューでもない回、前の回が認めない回の連鎖は認めない。
 base
@@ -232,6 +233,63 @@ base
 agent d9 stranger "$decide"
 [[ $(squad_cli_control state "$(<"$file")" '["L"]' null | jq -c .decide_ids) == '["d1"]' ]] || { echo "失敗: 208 行目の確認" >&2; exit 1; }
 echo 'PASS state: 返事を待つ役でない役の決める記録は、決める記録に数えない'
+
+state() { squad_cli_control state "$(<"$file")" '["L"]' null; }
+base
+agent record L $'/note\r\n修正の依頼: 直す\r> 前の回: r1'
+agent z-round qa $'返事を待つ役: '"$(mention qa)"$'\n  字下げ'
+agent a-round L $'返事を待つ役: '"$(mention qa)"$'\n前の回: r1\n<div>'
+agent other-record L '> 前の回: 別の回'
+add human H member '> 返事を待つ役: qa'
+agent result qa $'返事の回: r1\n> 返事を待つ役: qa'
+# 時刻が同じ 2 件を ID の逆順で渡し、回と記録の両方の条件に当たる候補も 1 件にする。
+jq '.[4].created_at = .[3].created_at' "$file" >"$file.new"
+mv "$file.new" "$file"
+state | jq -e '
+	.id == "r1"
+	and .blocked == "制御記録を読めない（record: 3 行目: 引用）"
+	and .unreadable == [
+		{id: "record", line: 3, reason: "引用", kind: "record"},
+		{id: "a-round", line: 3, reason: "HTML", kind: "round"},
+		{id: "z-round", line: 2, reason: "行頭の空白", kind: "round"}
+	]' >/dev/null
+echo 'PASS state: 候補を重ねず時刻と ID の順で返し、先頭の候補を blocked に使う'
+
+reset
+agent record qa $'/note\n> 返事の待ち: 次の依頼を決めます'
+state | jq -e '
+	.id == null and .blocked == "制御記録を読めない（record: 2 行目: 引用）"
+	and .unreadable == [{id: "record", line: 2, reason: "引用", kind: "record"}]' >/dev/null
+agent round L $'/note\n> 返事を待つ役: '"$(mention qa)"
+state | jq -e '.id == null and [.unreadable[].kind] == ["record", "round"]' >/dev/null
+echo 'PASS state: 認める回がなくても読めない候補を返す'
+
+# 2 つのスクワッドを用意し、囲みの中の行が正しい宛先より先に出ても、そちらへたどらないことを見る。
+(
+	squad_cli_read() {
+		[[ $1 == squad-list ]] || return 1
+		printf '%s\n' '[{"id":"right","leader_id":"L","archived_at":null},{"id":"wrong","leader_id":"M","archived_at":null}]'
+	}
+	base
+	agent other M "返事を待つ役: $(mention qa)"
+	agent hop qa '前の回: r1'
+	agent valid qa $'~~~\n前の回: other\n~~~\n前の回: hop'
+	[[ $(squad_cli_squad_for_round "$(<"$file")" valid | jq -r .id) == right ]]
+	agent fenced qa $'~~~\n前の回: other\n~~~'
+	agent quoted qa $'> 引用\n前の回: other'
+	agent indented qa '  前の回: other'
+	for id in fenced quoted indented; do
+		status=0
+		out=$(squad_cli_squad_for_round "$(<"$file")" "$id" 2>"$test_dir/squad-error") || status=$?
+		[[ $status == 2 && -z $out && $(<"$test_dir/squad-error") == '知らせるスクワッドを決められません:'* ]]
+	done
+	agent unreadable qa $'返事を待つ役: '"$(mention qa)"$'\n> 引用\n前の回: other'
+	agent through-unreadable qa '前の回: unreadable'
+	status=0
+	out=$(squad_cli_squad_for_round "$(<"$file")" through-unreadable 2>"$test_dir/squad-error") || status=$?
+	[[ $status == 3 && $out == '制御記録を読めない（unreadable: 2 行目: 引用）' && ! -s $test_dir/squad-error ]]
+)
+echo 'PASS squad: 読める本文の囲みの外の列 0 にある前の回だけをたどる'
 
 # ---- 最終レビューの回と結果を認める条件。
 final_body() { # 作者の追加行ではなく、本文の既定。引数で行を差し替える

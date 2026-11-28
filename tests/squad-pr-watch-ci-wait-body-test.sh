@@ -10,8 +10,8 @@ cd "$root"
 source "$root/tests/pr-watch-ci-wait-lib.sh"
 source "$root/tests/review-body-table.sh"
 
-check_ci_wait_row() { # 期待 説明 本文の JSON 文字列
-	local expect=$1 label=$2 json=$3
+check_ci_wait_row() { # 期待 説明 本文の JSON 文字列 行番号
+	local expect=$1 label=$2 json=$3 number=$4
 	wait_fixture
 	old_wait
 	requested_chain_json principal agent 2026-01-01T00:02:00Z "$json"
@@ -24,7 +24,7 @@ check_ci_wait_row() { # 期待 説明 本文の JSON 文字列
 		assert_jq '.metadata.ci_wait_head == "'"$head"'" and (.metadata | has("ci_wait_since") and has("ci_wait_rule"))' "$test_dir/task.json"
 		[[ ! -s $test_dir/posted.jsonl ]] || { printf '（%s）コメントを書いてはいけない\n' "$label" >&2; exit 1; } ;;
 	unreadable:*)
-		wait_blocked "制御記録を読めない（merge-1: ${expect#unreadable:}）" || { printf '（%s）の確認で失敗: %s\n' "$label" "$json" >&2; exit 1; } ;;
+		wait_blocked "制御記録を読めない（merge-1: $number 行目: ${expect#unreadable:}）" || { printf '（%s）の確認で失敗: %s\n' "$label" "$json" >&2; exit 1; } ;;
 	esac
 }
 

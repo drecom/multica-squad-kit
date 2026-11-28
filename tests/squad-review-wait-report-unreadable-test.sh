@@ -29,17 +29,17 @@ reason_body() { # 本文の JSON 文字列 理由 [返事の組]
 		and (.[1].args | index("--parent") as $i | .[$i+1] == "trigger")' "$test_dir/posted.jsonl"
 }
 
-reason_body "$(jq -nc '"> 返事を待つ役: [@qa](mention://agent/a)\n確認するコミット: abc"')" '制御記録を読めない（x: 引用）'
-reason_body "$(jq -nc '"返事を待つ役: [@qa](mention://agent/a)\n  字下げ"')" '制御記録を読めない（x: 行頭の空白）'
-reason_body "$(jq -nc '"返事を待つ役: [@qa](mention://agent/a)\n<div>"')" '制御記録を読めない（x: HTML）'
-reason_body "$(jq -nc '"返事を待つ役: [@qa](mention://agent/a)\n```\n囲みが閉じない"')" '制御記録を読めない（x: 閉じない囲み）'
+reason_body "$(jq -nc '"> 返事を待つ役: [@qa](mention://agent/a)\n確認するコミット: abc"')" '制御記録を読めない（x: 1 行目: 引用）'
+reason_body "$(jq -nc '"返事を待つ役: [@qa](mention://agent/a)\n  字下げ"')" '制御記録を読めない（x: 2 行目: 行頭の空白）'
+reason_body "$(jq -nc '"返事を待つ役: [@qa](mention://agent/a)\n<div>"')" '制御記録を読めない（x: 2 行目: HTML）'
+reason_body "$(jq -nc '"返事を待つ役: [@qa](mention://agent/a)\n```\n囲みが閉じない"')" '制御記録を読めない（x: 2 行目: 閉じない囲み）'
 echo 'PASS report: 最新の回の候補が読めなければ、結果は書き、決める記録も decide も書かず、理由つきの決まらない知らせでスクワッドのリーダーを起こす'
 # 同じ回の返事がそろっていなくても（返していない役がいても）、読めない候補があれば、結果と知らせの 2 件を書く。
 # 返していない役の返事を待たない。読めない候補は、役の返事では解けない。
 for replies in 'result:a:r1:5' 'result:b:r2:6'; do
-	reason_body "$(jq -nc '"> 返事を待つ役: [@qa](mention://agent/a)\n確認するコミット: abc"')" '制御記録を読めない（x: 引用）' "$replies"
-	reason_body "$(jq -nc '"返事を待つ役: [@qa](mention://agent/a)\n  字下げ"')" '制御記録を読めない（x: 行頭の空白）' "$replies"
-	reason_body "$(jq -nc '"返事を待つ役: [@qa](mention://agent/a)\n<div>"')" '制御記録を読めない（x: HTML）' "$replies"
-	reason_body "$(jq -nc '"返事を待つ役: [@qa](mention://agent/a)\n```\n囲みが閉じない"')" '制御記録を読めない（x: 閉じない囲み）' "$replies"
+	reason_body "$(jq -nc '"> 返事を待つ役: [@qa](mention://agent/a)\n確認するコミット: abc"')" '制御記録を読めない（x: 1 行目: 引用）' "$replies"
+	reason_body "$(jq -nc '"返事を待つ役: [@qa](mention://agent/a)\n  字下げ"')" '制御記録を読めない（x: 2 行目: 行頭の空白）' "$replies"
+	reason_body "$(jq -nc '"返事を待つ役: [@qa](mention://agent/a)\n<div>"')" '制御記録を読めない（x: 2 行目: HTML）' "$replies"
+	reason_body "$(jq -nc '"返事を待つ役: [@qa](mention://agent/a)\n```\n囲みが閉じない"')" '制御記録を読めない（x: 2 行目: 閉じない囲み）' "$replies"
 done
 echo 'PASS report: 返していない役がいる回でも、読めない候補を優先し、結果と理由つきの知らせを 1 回ずつ書く'

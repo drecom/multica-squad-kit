@@ -24,7 +24,7 @@ report_diagnosis() {
 
 report_diagnosis
 assert_jq -s 'length == 2 and (.[1].body | startswith(
-	"[@demo-squad](mention://squad/squad-test) 返事がそろいました。\n次の依頼を決められません: 制御記録を読めない（diagnosis: 行頭の空白）\n"))' "$test_dir/posted.jsonl"
+	"[@demo-squad](mention://squad/squad-test) 返事がそろいました。\n次の依頼を決められません: 制御記録を読めない（diagnosis: 6 行目: 行頭の空白）\n"))' "$test_dir/posted.jsonl"
 echo 'PASS report: 前の回に記録がなければ、結果は前の回に付き、字下げの理由を知らせる'
 
 report_diagnosis result:a:review-result:3 result:b:qa-result:4 \

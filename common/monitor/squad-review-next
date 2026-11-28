@@ -1544,7 +1544,7 @@ pick_role() {
 
 decide() {
 	local issue=$1 round=$2 work roster task marked res action leader principals commit kind id body mention
-	local keys mentions role_key role_id lineage runs range prev pr repo compare cmp_status form
+	local keys mentions role_key role_id lineage runs range prev pr repo compare cmp_status form squad_status=0
 	local -a ids=()
 	mkdir -p tmp
 	work=$(mktemp -d tmp/review-next-decide.XXXXXX) || dfail '作業のディレクトリを作れない'
@@ -1554,7 +1554,9 @@ decide() {
 	printf '%s' "$task" >"$work/task.json"
 	# スクワッドは、回を書いた役から `前の回:` をたどって決める。タスクの担当は使わない（担当がスクワッドとは限らないため）。
 	jq -e --arg round "$round" 'any(.[]; .id == $round)' "$work/comments.json" >/dev/null || dfail '返事の組を読めない（回のコメントがない）'
-	SQUAD=$(squad_cli_squad_for_round "$(<"$work/comments.json")" "$round") || dfail 'スクワッドを決められない（回を書いた役から `前の回:` をたどっても、リーダーの回に着かない）'
+	SQUAD=$(squad_cli_squad_for_round "$(<"$work/comments.json")" "$round") || squad_status=$?
+	[[ $squad_status != 3 ]] || stop_leader "$SQUAD"
+	[[ $squad_status == 0 ]] || dfail 'スクワッドを決められない（回を書いた役から `前の回:` をたどっても、リーダーの回に着かない）'
 	roster=$(squad_cli_read_roster "$issue" "$(jq -r .id <<<"$SQUAD")") || dfail 'スクワッドの名簿を読めない'
 	printf '%s' "$roster" >"$work/roster.json"
 	leader=$(jq -r '.leader // empty' <<<"$roster")

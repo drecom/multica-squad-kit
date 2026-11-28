@@ -263,7 +263,7 @@ echo 'PASS status: 結果・人間・種類のない前の回:・囲みだけで
 reset_calls
 build_comments $both decide:a:d1:90 \
 	| with_raw nq orchestrator agent 95 "$(printf '> 修正の依頼: 直してください\n> 前の回: round')" >"$test_dir/comments.json"
-REVIEW_WAIT_TEST_NOW=$((now + 870)) check_status_blocked '制御記録を読めない（nq: 引用）'
+REVIEW_WAIT_TEST_NOW=$((now + 870)) check_status_blocked '制御記録を読めない（nq: 1 行目: 引用）'
 echo 'PASS status: この回を指す引用の候補は、何も書かず理由を標準エラーに出して終了 1 になる'
 
 # 作者がリーダーでも決める実行の役でもない回の形のコメントや、人間のコメントは、最新の回にしない。
@@ -278,7 +278,7 @@ echo 'PASS status: 作者の違う回の形のコメントを、最新の回と�
 reset_calls
 build_comments $both decide:a:d1:90 \
 	| with_raw q1 orchestrator agent 100 "$(printf '> 返事を待つ役: [@review](mention://agent/%s)' "$a")" >"$test_dir/comments.json"
-REVIEW_WAIT_TEST_NOW=$((now + 870)) check_status_blocked '制御記録を読めない（q1: 引用）'
+REVIEW_WAIT_TEST_NOW=$((now + 870)) check_status_blocked '制御記録を読めない（q1: 1 行目: 引用）'
 echo 'PASS status: 最新の回より後の、返事を待つ役の行を引用した候補は、古い回に戻らず終了 1 になる'
 
 # 返事を待つ役でない役の決める記録は、15 分の判定に使わない。記録がないのと同じに、すぐ拾い直しに回す。
