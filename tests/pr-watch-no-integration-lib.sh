@@ -244,7 +244,7 @@ unlinked_prepare() {
 	fixture squad-member-list | jq '. as $base | [$base + {member_id: "orchestrator", member_type: "agent"}, $base + {member_id: "monitor", member_type: "agent"}]' >"$test_dir/members.json"
 	add_comment round-1 agent orchestrator "$(round_body "$pr")"
 	# 回の後のマージの依頼（done の照合の 5）。head は PR から読む 40 桁で、回の確認するコミット（abcdef0）で始まる。
-	add_comment merge-1 agent orchestrator "マージの依頼: $merge_head"
+	add_comment merge-1 agent orchestrator $'マージの依頼: '"$merge_head"$'\n前の回: round-1'
 }
 merge_head=abcdef0123456789abcdef0123456789abcdef01
 unlinked_scene() {

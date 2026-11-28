@@ -298,43 +298,72 @@ for order in before after; do
 done
 echo 'PASS merge_requested: 読める依頼と同じ head の読めない候補が同時にあるときは、順序によらず、読めない候補を優先して止める'
 
-# ---- マージの依頼に回を渡す。回のコメントより後の依頼だけを読み、前の回の依頼と読めない候補は見ない。回を渡さないときは今と同じ。
+# ---- マージの依頼に回を渡す。作者・時刻・回・head のすべてが合う制御記録だけを読む。回を渡さないときは今と同じ。
 mergedr() { squad_cli_control merge_requested "$(<"$file")" '["L"]' null "$1" "$2"; }
 round_text=$'確認するコミット: '"$sha"$'\n返事を待つ役: '"$(mention qa)"$'\n観点: qa（テスト）'
-# 前の回（r1）にだけある依頼は、後の回（r2）では読まない。回を渡さないときは読む。依頼の次の回（r2）より前の回（r1）では読む。
+req() { printf 'マージの依頼: %s\n前の回: %s' "$1" "$2"; }
+# 合う依頼は読む。大文字の head も同じ SHA として読む。別の head は読まない。回を渡さないときも読む。
 reset
 agent r1 L "$round_text"
-agent m1 L "マージの依頼: $sha"
-agent r2 L "$round_text"
-[[ $(mergedr "$sha" r1) == yes ]] || { echo "回より後の依頼を読まない" >&2; exit 1; }
-[[ $(mergedr "$sha" r2) == no ]] || { echo "前の回の依頼を、今の回の依頼と読んだ: $(mergedr "$sha" r2)" >&2; exit 1; }
+agent m1 L "$(req "$sha" r1)"
+[[ $(mergedr "$sha" r1) == yes ]] || { echo "作者・時刻・回・head が合う依頼を読まない: $(mergedr "$sha" r1)" >&2; exit 1; }
+[[ $(mergedr "$(tr a-f A-F <<<"$sha")" r1) == yes ]] || { echo "大文字小文字だけ違う head を読まない" >&2; exit 1; }
+[[ $(mergedr other r1) == no ]] || { echo "別の head の依頼を読んだ" >&2; exit 1; }
 [[ $(merged "$sha") == yes ]] || { echo "回を渡さないときは今と同じに読む: $(merged "$sha")" >&2; exit 1; }
-# 回のあとに依頼が足されると、その回で読める。別の head の依頼は、回を渡しても読まない。
-agent m2 L "マージの依頼: $sha"
-[[ $(mergedr "$sha" r2) == yes && $(mergedr other r2) == no ]] || { echo "回より後の依頼を読まない、または別の head を読んだ" >&2; exit 1; }
-# 回のコメント自身にある依頼の行は、回より後ではないので読まない。
+# 回を渡さないときは、リーダーの前の回: のない依頼も読む（ci-wait）。回を渡すと読まない（手の依頼）。
+reset
+agent r1 L "$round_text"
+agent m L "マージの依頼: $sha"
+[[ $(mergedr "$sha" r1) == no && $(merged "$sha") == yes ]] || { echo "手の依頼を、回を渡して読んだか、回を渡さずに読まない: $(mergedr "$sha" r1)" >&2; exit 1; }
+# 前の回: が 2 つの依頼と、回のコメント自身にある依頼の行は読まない。
+reset
+agent r1 L "$round_text"
+agent m L "$(req "$sha" r1)"$'\n前の回: r1'
+[[ $(mergedr "$sha" r1) == no ]] || { echo "前の回: が 2 つの依頼を読んだ" >&2; exit 1; }
 reset
 agent r1 L "$round_text"$'\nマージの依頼: '"$sha"
-[[ $(mergedr "$sha" r1) == no && $(merged "$sha") == yes ]] || { echo "回のコメント自身の依頼を、回より後と読んだ" >&2; exit 1; }
-# 回より後でも、読まないものは回を渡すときも読まない（ほかの役・結果・囲み・存在しない回）。決める実行の役の制御記録は読む。
+[[ $(mergedr "$sha" r1) == no && $(merged "$sha") == yes ]] || { echo "回のコメント自身の依頼を読んだ" >&2; exit 1; }
+# 回が合わない依頼。前の回（r0）を指す依頼は、今の回（r1）では読まない。
+reset
+agent r0 L "$round_text"
+agent r1 L "$round_text"
+agent m1 L "$(req "$sha" r0)"
+[[ $(mergedr "$sha" r1) == no ]] || { echo "別の回を指す依頼を、今の回の依頼と読んだ" >&2; exit 1; }
+# 今の回でない回は、その回を指す依頼があっても読まない。次の回（r2）ができると r1 の依頼は読まず、r2 の依頼だけを読む。
+reset
+agent r1 L "$round_text"
+agent m1 L "$(req "$sha" r1)"
+[[ $(mergedr "$sha" r1) == yes ]] || { echo "今の回の依頼を読まない" >&2; exit 1; }
+agent r2 L "$round_text"
+[[ $(mergedr "$sha" r1) == no && $(mergedr "$sha" r2) == no ]] || { echo "今の回でない回の依頼、または前の回の依頼を読んだ" >&2; exit 1; }
+agent m2 L "$(req "$sha" r2)"
+[[ $(mergedr "$sha" r2) == yes && $(mergedr "$sha" r1) == no ]] || { echo "次の回の依頼を読まない、または前の回を今の回と読んだ" >&2; exit 1; }
+# 時刻が合わない依頼。回より前に書かれた依頼は、回を指しても読まない。
+reset
+agent m1 L "$(req "$sha" r1)"
+agent r1 L "$round_text"
+[[ $(mergedr "$sha" r1) == no ]] || { echo "回より前の依頼を読んだ" >&2; exit 1; }
+# 作者が合わない依頼。回より後でも、読まないものは回を渡すときも読まない（ほかの役・結果・囲み・存在しない回・人間）。
 for case in fence result nonleader unknown-round human; do
 	reset
 	agent r1 L "$round_text"
 	case $case in
-	fence) agent m L $'```\nマージの依頼: '"$sha"$'\n```' ;;
+	fence) agent m L $'```\nマージの依頼: '"$sha"$'\n前の回: r1\n```' ;;
 	result) agent m qa $'/note\n返事の回: r1\nマージの依頼: '"$sha"$'\n前の回: r1' ;;
-	nonleader) agent m cr "マージの依頼: $sha"$'\n前の回: r1' ;;
-	unknown-round) agent m qa "マージの依頼: $sha"$'\n前の回: nothing' ;;
-	human) add m L member "マージの依頼: $sha" ;;
+	nonleader) agent m cr "$(req "$sha" r1)" ;;
+	unknown-round) agent m qa "$(req "$sha" nothing)" ;;
+	human) add m L member "$(req "$sha" r1)" ;;
 	esac
 	[[ $(mergedr "$sha" r1) == no ]] || { echo "回を渡して、読まないはずの依頼を読んだ: $case" >&2; exit 1; }
 done
+# 決める実行の役は、決める記録より後の依頼を読む。決める記録より前の依頼と、次の回では前の回の依頼は読まない。
 reset
 agent r1 L "$round_text"
+agent m0 qa "$(req "$sha" r1)"
 agent d1 qa "$decide"
-agent m qa "マージの依頼: $sha"$'\n前の回: r1'
+[[ $(mergedr "$sha" r1) == no ]] || { echo "決める記録より前の依頼を読んだ" >&2; exit 1; }
+agent m qa "$(req "$sha" r1)"
 [[ $(mergedr "$sha" r1) == yes ]] || { echo "回を渡して、決める実行の役のマージの依頼を読まない" >&2; exit 1; }
-# 前の回の決める役の依頼は、次の回では読まない。
 agent r2 L "$round_text"
 [[ $(mergedr "$sha" r2) == no ]] || { echo "前の回の決める役の依頼を読んだ" >&2; exit 1; }
 # 読めない候補は、回より前にあれば見ず、回より後にあれば止める。回を渡さないときは、どちらも止める。
@@ -348,15 +377,15 @@ for unread in $'> マージの依頼: SHA' $'マージの依頼: SHA\n```\n閉�
 	agent bad2 L "$body"
 	[[ $(mergedr "$sha" r1) == "blocked 制御記録を読めない（bad2: "* ]] || { echo "回より後の読めない候補で止めない: $(mergedr "$sha" r1)" >&2; exit 1; }
 	# 読める依頼が回より後にあっても、同じ head の読めない候補が回より後にあれば止める。
-	agent m1 L "マージの依頼: $sha"
+	agent m1 L "$(req "$sha" r1)"
 	[[ $(mergedr "$sha" r1) == "blocked "* ]] || { echo "回より後の読める依頼と読めない候補で止めない" >&2; exit 1; }
 done
 # 回が見つからないときと空のときは、渡したものとして依頼なしと読む（回を省いたと読んで、前の回の依頼を拾わない）。
 reset
 agent r1 L "$round_text"
-agent m1 L "マージの依頼: $sha"
+agent m1 L "$(req "$sha" r1)"
 [[ $(mergedr "$sha" nothing) == no && $(mergedr "$sha" '') == no ]] || { echo "ない回・空の回で依頼を読んだ" >&2; exit 1; }
-echo 'PASS merge_requested: 回を渡すと、回より後の依頼だけを読み、前の回の依頼と回より前の読めない候補は見ない。回がないか空でも依頼なしと読み、回を渡さないときは今と同じ'
+echo 'PASS merge_requested: 回を渡すと、作者・時刻・回・head のすべてが合う依頼だけを読み、どれか 1 つが合わない依頼、今の回でない回、前の回: のない手の依頼は読まない。回がないか空でも依頼なしと読み、回を渡さないときは今と同じ'
 
 # ---- analyze の latest。認める回のうち、コメントの並びで最も新しいもの。人間と名簿の外のコメントでは変わらない。
 latest_is() { analyze | jq -e --arg want "$1" '.latest == (if $want == "null" then null else $want end)' >/dev/null || { printf '失敗: latest が %s でない\n' "$1" >&2; analyze | jq '{latest, rounds}' >&2; exit 1; }; }

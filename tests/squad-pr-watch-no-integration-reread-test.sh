@@ -114,7 +114,7 @@ no_posts
 drop_request
 jq 'map(select(.id != "merge-x"))' "$test_dir/comments.json" >"$test_dir/changed.json"
 mv "$test_dir/changed.json" "$test_dir/comments.json"
-add_comment merge-1 agent orchestrator "マージの依頼: $merge_head"
+add_comment merge-1 agent orchestrator $'マージの依頼: '"$merge_head"$'\n前の回: round-1'
 unlinked_run
 ((unlinked_status == 0))
 assert_jq '.status == "done"' "$test_dir/task.json"
@@ -184,7 +184,7 @@ changed_window 'done: metadata が変わった'
 unlinked_scene record
 no_request
 update_pr '.state = "MERGED"'
-reread_add merge-x agent orchestrator "マージの依頼: $merge_head"
+reread_add merge-x agent orchestrator $'マージの依頼: '"$merge_head"$'\n前の回: round-1'
 unlinked_run
 changed_window 'not-done: 依頼が書かれた'
 rm -f "$test_dir/rules-read"
