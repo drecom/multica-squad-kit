@@ -20,8 +20,9 @@
 
 設計の役を置く構成では、`直したあとの返し先: スクワッド` の依頼を受けた設計の役は、直したあと人間ではなくスクワッドへ返す。受け取ったら、security-reviewer だけに直した設計を見せ直す。
 
-- 依頼の前に `squad-review-wait watch <タスク> <きっかけのコメント> <security-reviewer の ID>` を流す
 - 依頼のコメントに、元の依頼と同じ `見直しの種類:` の行、`見せ直し: 1 回目` の行、security-reviewer だけの `返事を待つ役:` の行、直したコミットの `確認するコミット:` の行を置く
+- 投稿前に `squad-review-next check <本文のファイル>` を流す。結果は [leader-review-request.md](leader-review-request.md#手で書く依頼の確認) の「手で書く依頼の確認」 のとおりに扱う
+- 依頼の前に `squad-review-wait watch <タスク> <きっかけのコメント> <security-reviewer の ID>` を流す
 
 結果に ❌ がなければ、人間に承認を頼んで `in_review` にする。❌ なら、それ以上直しを頼まず、両方の結果を添えて人間を呼び、`in_review` にする。見せ直すのは security の ❌ を直したときだけである。⚠️ だけのときは、人間の承認で直しの妥当さを確認する。security-reviewer を置かないスクワッドでは、見せ直す役がないので、人間の承認だけで確認する。
 
@@ -36,8 +37,9 @@
 
 確認するコミットは、返事を受けたときの PR の head の完全な SHA にする。人間の返事にはコミットがないためである。PR は、タスクに紐付いた PR、なければ metadata の `pr_url` の PR で、プロジェクトのリポジトリの一覧にあるものとし、返事を受けたときに 1 回だけ読む。読めないか一覧になければ、見せ直さずに人間を呼び、`in_review` にする。
 
-- 依頼の前に `squad-review-wait watch <タスク> <きっかけのコメント> <security-reviewer の ID>` を流す
 - 依頼のコメントに、元の依頼と同じ `見直しの種類:` と `設計を用意した人: 人間` の行、`見せ直し: 1 回目` の行、security-reviewer だけの `返事を待つ役:` の行、`確認するコミット: <PR の head の完全な SHA>` の行を置く
+- 投稿前に `squad-review-next check <本文のファイル>` を流す。結果は [leader-review-request.md](leader-review-request.md#手で書く依頼の確認) の「手で書く依頼の確認」 のとおりに扱う
+- 依頼の前に `squad-review-wait watch <タスク> <きっかけのコメント> <security-reviewer の ID>` を流す
 
 見せ直しの結果は、設計の役を置く構成と同じに扱う。❌ がなければ、人間に設計とフェーズの承認を頼み、`in_review` にする。設計と PR の見直しなら、承認を受けてから止めた振り分けを再開する。❌ なら、それ以上直しを頼まず、両方の結果を添えて人間を呼び、`in_review` にする。
 

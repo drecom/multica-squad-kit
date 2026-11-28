@@ -52,10 +52,10 @@ skills: squad-handoff
 | 重要の判断 | 2 つの時機だけでマークを判断し、手戻りの合図を見る | `leader-principal.md` |
 | 最上位の役に要件・設計の見直しを頼む | 役がないときの要件の見直しに返事の待ちを付ける | `leader-principal-design.md`、`leader-principal-pick.md` |
 | 最上位の役に最終レビューを頼む | 最終レビューに返事の待ちを付ける | `leader-principal-final.md`、`leader-principal-pick.md` |
-| 最上位の役に診断を頼む | `見直しの種類: 診断` と `診断の依頼:` の行を置いて頼む | `leader-principal-diagnose.md`、`leader-principal-pick.md` |
+| 最上位の役に診断を頼む | `squad-review-next diagnose` で頼む | `leader-principal-diagnose.md`、`leader-principal-pick.md` |
 | 設計を承認し直した・見せ直す | 直した設計を見せ直す | `leader-principal-reshow.md`、`leader-principal-pick.md` |
 | レビュー・E2E の依頼 | `squad-review-next request` で、`返事を待つ役:` と `確認するコミット:` を置く | `leader-review-request.md` |
-| レビュー・E2E の返事で起きた | `返事の待ち: 次に進む` の実行だけ進む | `leader-review-reply.md` |
+| レビュー・E2E の返事で起きた | 知らせの `読めない制御記録:` の行を先に見る | `leader-review-reply.md` |
 | `decide` が決められない | 理由の表に従って扱う | `leader-review-stuck.md` |
 | PR を受け取る・食い違い | `link-check` で食い違い・作業先と違う・不正・未確認なら止まる | `leader-pr-link.md` |
 | CI の知らせ・その場の確認 | 紐付いていない PR の知らせと CI の結果を確認する | `leader-pr-ci.md` |

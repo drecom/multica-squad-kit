@@ -1068,6 +1068,48 @@ for phrase in 'squad-review-wait proceed' '返事の待ち: 次に進む'; do
 done
 echo 'PASS templates: 返事の手順の参照が、squad-review-wait の呼び方と依頼の行を持つ'
 
+# 読む側: squad-review-next が diagnose と check の引数を読み、squad-review-wait が知らせと保存結果の固定の行を書く。
+python3 - "$refs" <<'PY_REVIEW_CHECK'
+import sys
+from pathlib import Path
+
+refs = Path(sys.argv[1])
+check = "squad-review-next check <本文のファイル>"
+
+def section(name, start, end=None):
+    text = (refs / (name + ".md")).read_text()
+    tail = text.split(start, 1)[1]
+    return tail.split(end, 1)[0] if end else tail
+
+# 7 種類のうち、構成や頼み直しで別の節を読むものは、その節も確認する。
+for name, start, end, count in (
+    ("leader-principal-design", "**要件の見直し**", "**設計の見直し**", 1),
+    ("leader-principal-design", "**設計の見直し**", "**手戻りの見直しと重なるとき**", 2),
+    ("leader-principal-final", "## security-reviewer への依頼", "## 2 つの役の結果の扱い", 1),
+    ("leader-principal-final", "## 見る範囲", None, 1),
+    ("leader-dispatch", "`principal` では、依頼に `前の回:", "頼む前に、人間を呼ぶコメント", 1),
+    ("leader-principal-reshow", "## 見せ直し", None, 2),
+    ("leader-review-request", "ZIP では本文を手で書く", "## 確認したコミットの照合", 1),
+    ("leader-review-request", "## 確認したコミットの照合", "## 手で書く依頼の確認", 1),
+    ("leader-principal-pick", "## 返事の待ち方", "## 最上位の役の選び方", 2),
+):
+    assert section(name, start, end).count(check) == count, (name, start)
+
+assert "squad-review-next diagnose" in section("leader-principal-diagnose", "## 診断を頼む")
+combined = section("leader-principal-design", "**手戻りの見直しと重なるとき**", "**設計の役がない構成の設計の直し**")
+for arg in ("squad-review-next diagnose", "--with-design-review rework", "--with-design-review mark"):
+    assert arg in combined, arg
+notice = section("leader-review-reply", "## 返事で起きたとき")
+for marker in ("読めない制御記録:", "保存した結果:", "leader-review-stuck.md"):
+    assert 0 <= notice.find(marker) < notice.index("squad-review-wait proceed"), marker
+assert "`proceed` を流さず" in notice.split("\n\n", 2)[1], "読めない知らせで proceed を流さない指示"
+assert "| `制御記録を読めない` |" in section("leader-review-stuck", "## `decide` が決められないときの理由")
+reply = section("review-reply", "## レビューと E2E の返事を返す")
+saved = next(paragraph for paragraph in reply.split("\n\n") if "返事の回: 未定（読めない依頼 <ID>）" in paragraph)
+assert "手で `/note` を書き直さない" in saved, "保存した結果を書き直さない指示"
+PY_REVIEW_CHECK
+echo 'PASS templates: 診断・手で書く依頼の確認・読めない制御記録の知らせの固定の行を持つ'
+
 # 読む側: リーダーが leader-run-status.md の手順で、multica CLI の runs・run-messages を流す。
 # 実行の状態を読むコマンドの形。
 for phrase in 'runs <タスク> --active' '--siblings' 'run-messages' '--help'; do
