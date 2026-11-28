@@ -440,6 +440,8 @@ Codex に同じものがある項目は、このホストの Codex で確認し�
 | `CHANGELOG.md` | 先頭の `## 次のバージョン` の節に、流し直しで変わることを書く |
 | `tests/` | [テストと実機の確認](#テストと実機の確認)のとおりに足す |
 | `tests/setup-fixture.sh`・`tests/host-test-lib.sh`・`tests/setup-runtimes-test-lib.sh` | Claude のスタブに `--version` の応答を足し、ランタイムの呼び出しの比較から `claude --version` を除く。`tests/setup-runtimes-test-lib.sh` は、見張りの状態にログインの行があることも確認する |
+| `tests/setup-runtime-cli.py` | 見張りが作るタスクに、UUID の形の ID を返す。状態の行の `issue` を UUID の形に限るためである |
+| `tests/setup-runtimes-test-lib.sh` | 見張りの状態のログインの行を、「行の状態の形」の ok の行として確認する |
 | `tests/host-config-test.sh` | 最低より古いか読めない Claude Code で、ホストの準備が何も書かず、デーモンにも触れずに止まることを見る |
 | `tests/host-test.sh` | 人のフックを残す今の確認の PASS の文に、記録のフックと同じイベントの人のフックも残ることを足す |
 | `tests/project-runtimes-first-test.sh` | 初回の登録の環境を完全一致で比べる期待値に、2 つの変数を足す |
@@ -525,6 +527,7 @@ custom_env と設定は、役の次の実行から効く。デーモンを起動
 | `tests/squad-usage-check-test.sh` | ログインの行が、表の 4 つの状態になり、変化でタスクを作り・コメントし・done にすること |
 | `tests/squad-usage-check-test.sh` | warn から error、error から確認失敗への変化で、新しい状態の文をコメントすること |
 | `tests/squad-usage-check-test.sh` | ok でない状態どうしの変化で、題と本文を新しい状態のものに書き換えること。書き換えに失敗しても、コメントして 1 で終えること |
+| `tests/squad-usage-check-test.sh` | 起票の応答に id か identifier がないとき、観測を残し、起票の試行は 1 回だけで 1 で終えること |
 | `tests/squad-usage-check-test.sh` | 起票・ラベル・題と本文・コメント・done を 1 つずつ失敗させ、次の観測が同じ・元に戻る・別の状態の 3 つで、見張り全体を 2 回動かすこと |
 | `tests/squad-usage-check-test.sh` | 上の各場合で、同じ ID の題と本文が最新の観測に追いつき、ラベルが付き、起票とコメントが重ならないこと |
 | `tests/squad-usage-check-test.sh` | 失敗した回も後続の行を処理し、未処理が解消した次の観測の変わらない回は、タスクを読まず書き込みが 0 件で終わること |
