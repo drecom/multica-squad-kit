@@ -277,7 +277,7 @@ state = json.loads((scenario / 'usage-state/projects-1/owner.state').read_text()
 runtimes = set(db['runtimes'])
 assert {key.split(':', 1)[0] for key in state if not key.startswith('login:')} == runtimes
 login_rows = {key: value for key, value in state.items() if key.startswith('login:')}
-assert login_rows == {f'login:{runtime}': {'level': 'ok', 'issue': ''} for runtime in runtimes}
+assert login_rows == {f'login:{runtime}': {'level': 'ok'} for runtime in runtimes}
 PY
  fi
  fi

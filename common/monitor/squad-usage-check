@@ -226,20 +226,31 @@ else:
 PY
 }
 
-# 状態は「キー → {level, issue}」の JSON。`issue` は、その枠について開いているタスクの ID。
+# 状態はキーごとの最新の観測と、起票済みタスクへの操作の記録。
 state='{}'
-[[ -f "$STATE_FILE" ]] && state=$(cat "$STATE_FILE")
+if [[ -f "$STATE_FILE" ]]; then
+	state=$(jq -ces 'select(length == 1) | .[0] | select(type == "object")' "$STATE_FILE") || exit 1
+fi
 
 # タスクを作るたびに保存する。途中で失敗しても、作ったタスクを忘れて同じものを作り直さないため。
 save_state() {
-	local next_state=${1-$state}
+	local next_state=$1 temp
 	mkdir -p "$(dirname "$STATE_FILE")" || return 1
-	printf '%s\n' "$next_state" >"$STATE_FILE" || return 1
+	temp=$(mktemp "${STATE_FILE}.XXXXXX") || return 1
+	if ! printf '%s\n' "$next_state" >"$temp" || ! mv -f -- "$temp" "$STATE_FILE"; then
+		rm -f -- "$temp"
+		return 1
+	fi
 	state=$next_state
 }
 
+save_row() {
+	local key=$1 row=$2 next_state
+	next_state=$(jq -c --arg key "$key" --argjson row "$row" '.[$key] = $row' <<<"$state") || return 1
+	save_state "$next_state"
+}
+
 # タスクにラベルを付ける。付けられなくてもタスクの状態の保存は続けるよう、失敗は返り値で返す。
-label_failed=false
 add_label() {
 	local id
 	id=$(squad_cli_read label-list | jq -r --arg n "$LABEL_NAME" '[.[] | select(.name == $n)][0].id // empty') || true
@@ -255,7 +266,7 @@ usage_comment() {
 	body=$(usage_tmpfile) || return 1
 	cat >"$body" || { rm -f -- "$body"; return 1; }
 	multica issue comment add "$1" --content-file "$body" --output table >/dev/null || code=$?
-	rm -f -- "$body" || return 1
+	rm -f -- "$body" || :
 	return "$code"
 }
 
@@ -307,48 +318,108 @@ sys.exit(result.returncode)
 PY
 }
 
-# 状態のファイルのタスクが、この見張りが、このキーで作ったものかをサーバーで確認する。
-# 状態のファイルは同じ OS の利用者のプロセスが書けるので、更新する前に確認する。
-# 合えば、行に印 keyed を付ける。合わなければ、状態からそのキーを外し、外したことを stderr に書き、実行の結果を失敗にする。
-# タスクを読めなければ、状態は変えず、実行の結果を失敗にする。どの場合も、ほかの行の処理は続ける。
-# 返り値: 0 は合った、1 は合わず外した、2 はサーバーのタスクを読めなかった。
+# 読み取りの結果は、この実行で確認したキーと ID の組にだけ使う。
 task_failed=false
-verify_task() {
-	local key=$1 issue=$2 task prefix next_state
-	if ! task=$(read_task "$issue") || ! jq -e 'type == "object"' <<<"$task" >/dev/null 2>&1; then
-		echo "タスク ${issue} をサーバーから読めなかった" >&2
-		task_failed=true
-		return 2
-	fi
-	prefix=$(title_prefix "$key")
-	if jq -e --arg project "$USAGE_CHECK_PROJECT" --arg agent "${MULTICA_AGENT_ID-}" --arg prefix "$prefix" --arg key "$key" '
-		.project_id == $project and .creator_type == "agent" and ($agent | length) > 0 and .creator_id == $agent
-		and (.title | type) == "string"
-		and (.title | startswith($prefix + " ")) and (.title | endswith("（" + $key + "）"))' <<<"$task" >/dev/null; then
-		next_state=$(jq --arg k "$key" '.[$k].keyed = true' <<<"$state") || { task_failed=true; return 2; }
-		save_state "$next_state" || { task_failed=true; return 2; }
-		return 0
-	fi
-	task_failed=true
-	next_state=$(jq --arg k "$key" 'del(.[$k])' <<<"$state") || return 2
-	save_state "$next_state" || return 2
-	echo "状態のファイルのタスク ${issue} は、このキー（${key}）の見張りが作ったものと合わない。更新せず、状態から外した" >&2
-	return 1
+verified_pairs='{}'
+
+issue_id_pattern() {
+	printf '%s\n' '^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$'
 }
 
-# 見張らない行も含め、状態を調べる前に印のないタスクを確認する。
-# その結果を残し、同じ実行の apply で読み直さない。
-legacy_checks='{}'
+remember_verification() {
+	verified_pairs=$(jq --arg key "$1" --arg issue "$2" --argjson result "$3" '
+		.[$key][$issue] = $result' <<<"$verified_pairs")
+}
+
+discard_row() {
+	local key_json=$1 next_state
+	next_state=$(jq --argjson key "$key_json" 'del(.[$key])' <<<"$state") || return 1
+	# 保存に失敗しても、この実行では外した行の ID を使わない。
+	state=$next_state
+	save_state "$next_state"
+}
+
+# 0 は照合済み、1 は不一致、2 は読み取り失敗。失敗した組も同じ実行では読み直さない。
+verify_task() {
+	local key=$1 issue=$2 cached task prefix result
+	cached=$(jq -r --arg key "$key" --arg issue "$issue" '.[$key][$issue] // empty' <<<"$verified_pairs") || return 2
+	if [[ -n "$cached" ]]; then
+		return "$cached"
+	fi
+	if ! task=$(read_task "$issue") || ! jq -es 'length == 1 and (.[0] | type == "object")' <<<"$task" >/dev/null 2>&1; then
+		echo "タスク ${issue} をサーバーから読めなかった" >&2
+		result=2
+	else
+		prefix=$(title_prefix "$key")
+		if jq -e --arg project "$USAGE_CHECK_PROJECT" --arg agent "${MULTICA_AGENT_ID-}" --arg prefix "$prefix" \
+			--arg key "$key" --arg issue "$issue" '
+			.id == $issue and .project_id == $project and .creator_type == "agent"
+			and ($agent | length) > 0 and .creator_id == $agent
+			and (.title | type) == "string"
+			and (.title | startswith($prefix + " ")) and (.title | endswith("（" + $key + "）"))' <<<"$task" >/dev/null; then
+			result=0
+		else
+			result=1
+			echo "状態のファイルのタスク ${issue} は、このキー（${key}）の見張りが作ったものと合わない。更新せず、状態から外した" >&2
+			discard_row "$(jq -nc --arg key "$key" '$key')" || result=2
+		fi
+	fi
+	if [[ $result != 0 ]]; then task_failed=true; fi
+	remember_verification "$key" "$issue" "$result" || { task_failed=true; return 2; }
+	return "$result"
+}
+
+# 区切りでキーと ID を連結せず、検証が終わるまで行を JSON のまま扱う。
+checked_state_rows() {
+	jq -c --arg uuid "$(issue_id_pattern)" '
+		def level: IN("ok", "warn", "limited", "error", "unverified");
+		def issue: type == "string" and length == 36 and test($uuid);
+		def boolean: type == "boolean";
+		def optional($key; f): if has($key) then .[$key] | f else true end;
+		to_entries[] | .valid = (
+			(.key | test("^(claude:|codex:|login:).+") and (explode | all(. >= 32 and (. < 127 or . > 159))))
+			and (.value | type == "object" and (.level | level) and
+				(if has("posted") then
+					(.issue | issue) and (.posted | level) and (.labeled | boolean) and optional("shown"; level and . != "ok")
+					and (keys - ["level", "issue", "posted", "shown", "labeled"] | length == 0)
+				else
+					optional("issue"; . == "" or issue) and optional("keyed"; boolean) and optional("retitle"; boolean)
+					and (keys - ["level", "issue", "keyed", "retitle"] | length == 0)
+				end)))' <<<"$state"
+}
+
+migrate_task() {
+	local key=$1 issue=$2 level=$3
+	verify_task "$key" "$issue" || return 1
+	save_row "$key" "$(jq -nc --arg level "$level" --arg issue "$issue" \
+		'{level: $level, issue: $issue, posted: $level, labeled: false}')"
+}
+
+# 見張らないランタイムも含め、不正な行を外し、前の形の開いたタスクを照合する。
 reconcile_legacy_tasks() {
-	local key issue result
-	while IFS= read -r -d '' key && IFS= read -r -d '' issue; do
-		result=0
-		verify_task "$key" "$issue" || result=$?
-		legacy_checks=$(jq --arg k "$key" --argjson r "$result" '.[$k] = $r' <<<"$legacy_checks")
-	done < <(jq -j '
-		to_entries[] | select(.value | type == "object")
-		| select(.value.keyed != true and (.value.issue | type == "string" and length > 0))
-		| .key, "\u0000", .value.issue, "\u0000"' <<<"$state")
+	local entries entry key key_json issue level
+	entries=$(checked_state_rows) || return 1
+	while IFS= read -r entry; do
+		[[ -n "$entry" ]] || continue
+		if ! jq -e '.valid' <<<"$entry" >/dev/null; then
+			key_json=$(jq -c '.key' <<<"$entry") || return 1
+			echo "状態のファイルの行 ${key_json} の形が合わない。状態から外した" >&2
+			task_failed=true
+			discard_row "$key_json" || task_failed=true
+			continue
+		fi
+		if jq -e '.value | has("posted") or (keys == ["level"])' <<<"$entry" >/dev/null; then
+			continue
+		fi
+		key=$(jq -r '.key' <<<"$entry") || return 1
+		issue=$(jq -r '.value.issue // empty' <<<"$entry") || return 1
+		level=$(jq -r '.value.level' <<<"$entry") || return 1
+		if [[ -n "$issue" ]]; then
+			migrate_task "$key" "$issue" "$level" || task_failed=true
+		else
+			save_row "$key" "$(jq -nc --arg level "$level" '{level: $level}')" || task_failed=true
+		fi
+	done <<<"$entries"
 }
 
 # ok でない状態どうしの変化で、同じタスクの題と本文を新しい状態のものに書き換える。
@@ -359,10 +430,10 @@ update_task_text() {
 		rm -f -- "$description"
 		return 1
 	}
-	rm -f -- "$description"
+	rm -f -- "$description" || :
 }
 
-# 状態の変化を、既存のタスクにコメントし、ok なら done にする。
+# 状態の変化を、既存のタスクにコメントする。
 comment_change() {
 	local key=$1 level=$2 prev=$3 issue=$4 detail=$5
 	case "$level:$prev:${key%%:*}" in
@@ -374,68 +445,91 @@ comment_change() {
 		usage_comment "$issue" ;;
 	ok:warn:*) printf 'リセットされた。\n\n%s\n' "$detail" | usage_comment "$issue" ;;
 	*) printf '%s。\n\n%s\n' "$(state_sentence "$key" "$level")" "$detail" | usage_comment "$issue" ;;
-	esac || return 1
-	if [[ "$level" == ok ]]; then
-		multica issue status "$issue" done --no-start >/dev/null || return 1
-	fi
+	esac
 }
 
-# 1 つの枠の状態の変化を、タスクに反映する。既存のタスクの確認・更新の失敗は、実行の結果を失敗にして、あとの行の処理を続ける。
-#   ok → warn/limited/error/unverified: タスクを作る。題の終わりに、全角の括弧でキーを付ける
-#   limited → warn/ok、warn/error/unverified → ok: 戻ったとコメントし、ok なら done にする
-#   ok でない状態どうしの変化: 題と本文を新しい状態のものに書き換え、新しい状態の始めの文をコメントする
-# 既存のタスクを更新する前に、verify_task でサーバーのタスクを確認する。
+# 既に通知した状態と最新の観測から、今回必要な操作を決める。
+# 各操作が済んだ時点でその欄を保存し、失敗した操作は次の実行でやり直す。
 apply() {
 	local key=$1 level=$2 title=$3 detail=$4
-	local prev issue retitle verified next_state
-	# ログインの行は初回の ok でも、見張りの結果に残す。
-	prev=$(jq -r --arg k "$key" '.[$k].level // (if ($k | startswith("login:")) then "" else "ok" end)' <<<"$state") || return 1
-	issue=$(jq -r --arg k "$key" '.[$k].issue // empty' <<<"$state") || return 1
-	retitle=$(jq -r --arg k "$key" '.[$k].retitle == true' <<<"$state") || return 1
-	if [[ "$level" == "$prev" && "$retitle" != true ]]; then
-		return 0
+	local row issue prev posted shown labeled response description uuid
+	row=$(jq -c --arg key "$key" '.[$key] // {}' <<<"$state") || return 1
+	prev=$(jq -r '.level // empty' <<<"$row") || return 1
+	issue=$(jq -r '.issue // empty' <<<"$row") || return 1
+	posted=$(jq -r '.posted // empty' <<<"$row") || return 1
+
+	if [[ -n "$issue" && -z "$posted" ]]; then
+		# 読めなかった旧形式の行は、観測も前回のまま次の実行へ渡す。
+		migrate_task "$key" "$issue" "$prev" || { task_failed=true; return 0; }
+		row=$(jq -c --arg key "$key" '.[$key]' <<<"$state") || return 1
+		posted=$prev
 	fi
-	retitle=false
+	if [[ "$level" != "$prev" ]]; then
+		# 観測されていない正常な使用枠のためだけには行を増やさない。
+		if [[ "$level" == ok && -z "$prev" && "$key" != login:* ]]; then return 0; fi
+		row=$(jq -c --arg level "$level" '.level = $level' <<<"$row") || return 1
+		save_row "$key" "$row" || return 1
+	fi
 
 	if [[ -z "$issue" ]]; then
-		if [[ "$level" != ok ]]; then
-			local description response
-			description=$(write_description "$key" "$level" "$detail") || return 1
-			if ! response=$(squad_cli_read issue-create "$(title_prefix "$key") ${title}（${key}）" "$description" \
-				--assignee "$USAGE_CHECK_ASSIGNEE" --project "$USAGE_CHECK_PROJECT"); then
-				rm -f -- "$description"
-				return 1
-			fi
-			issue=$(jq -r '.id' <<<"$response") || return 1
+		[[ "$level" != ok ]] || return 0
+		description=$(write_description "$key" "$level" "$detail") || return 1
+		if ! response=$(squad_cli_read issue-create "$(title_prefix "$key") ${title}（${key}）" "$description" \
+			--assignee "$USAGE_CHECK_ASSIGNEE" --project "$USAGE_CHECK_PROJECT"); then
 			rm -f -- "$description"
-			add_label "$issue" || label_failed=true
+			return 1
 		fi
-	else
-		verified=$(jq -r --arg k "$key" '.[$k] // empty' <<<"$legacy_checks") || return 1
-		if [[ -z "$verified" ]]; then
-			verify_task "$key" "$issue" || return 0
-		elif [[ "$verified" != 0 ]]; then
-			return 0
+		rm -f -- "$description"
+		uuid=$(issue_id_pattern)
+		if ! issue=$(jq -er --arg uuid "$uuid" '.id | select(type == "string" and length == 36 and test($uuid))' <<<"$response"); then
+			echo '起票したタスクの ID を確認できなかった' >&2
+			return 1
 		fi
-		if [[ "$level" != ok && "$prev" != ok ]] && ! update_task_text "$key" "$issue" "$level" "$title" "$detail"; then
-			echo "タスク ${issue} の題と本文を書き換えられなかった" >&2
+		row=$(jq -nc --arg level "$level" --arg issue "$issue" \
+			'{level: $level, issue: $issue, shown: $level, posted: $level, labeled: false}') || return 1
+		save_row "$key" "$row" || return 1
+		remember_verification "$key" "$issue" 0 || return 1
+		posted=$level
+	fi
+
+	shown=$(jq -r '.shown // empty' <<<"$row") || return 1
+	labeled=$(jq -r '.labeled' <<<"$row") || return 1
+	if [[ "$level" != ok && "$shown" == "$level" && "$posted" == "$level" && "$labeled" == true ]]; then
+		return 0
+	fi
+	verify_task "$key" "$issue" || { task_failed=true; return 0; }
+
+	if [[ "$level" != ok && "$labeled" != true ]]; then
+		if add_label "$issue"; then
+			row=$(jq -c '.labeled = true' <<<"$row") || return 1
+			save_row "$key" "$row" || return 1
+		else
 			task_failed=true
-			retitle=true
-		fi
-		if [[ "$level" != "$prev" ]] && ! comment_change "$key" "$level" "$prev" "$issue" "$detail"; then
-			echo "タスク ${issue} を更新できなかった。状態は前回のままにする" >&2
-			task_failed=true
-			return 0
-		fi
-		if [[ "$level" == ok ]]; then
-			issue=""
 		fi
 	fi
-	next_state=$(jq --arg k "$key" --arg l "$level" --arg i "$issue" --argjson retitle "$retitle" '
-		.[$k] = ({level: $l, issue: $i}
-			+ (if $i != "" then {keyed: true} else {} end)
-			+ (if $retitle then {retitle: true} else {} end))' <<<"$state") || return 1
-	save_state "$next_state"
+	if [[ "$level" != ok && "$shown" != "$level" ]]; then
+		if update_task_text "$key" "$issue" "$level" "$title" "$detail"; then
+			row=$(jq -c --arg level "$level" '.shown = $level' <<<"$row") || return 1
+			save_row "$key" "$row" || return 1
+		else
+			echo "タスク ${issue} の題と本文を書き換えられなかった" >&2
+			task_failed=true
+		fi
+	fi
+	if [[ "$posted" != "$level" ]]; then
+		if comment_change "$key" "$level" "$posted" "$issue" "$detail"; then
+			row=$(jq -c --arg level "$level" '.posted = $level | .level = $level' <<<"$row") || return 1
+			save_row "$key" "$row" || return 1
+			posted=$level
+		else
+			echo "タスク ${issue} の変化をコメントできなかった" >&2
+			task_failed=true
+		fi
+	fi
+	if [[ "$level" == ok && "$posted" == ok ]]; then
+		multica issue status "$issue" done --no-start >/dev/null || return 1
+		save_row "$key" '{"level":"ok"}' || return 1
+	fi
 }
 
 # 1 つのツールの結果を、枠ごとに反映する。
@@ -491,10 +585,7 @@ check_login() {
 			echo "${login_label} のログインはローカルでは ok だが、使用量を読めないので、ログインの行は ${prev} のままにした" >&2
 			return
 		fi
-		# 外した旧タスクのログイン行は、使用量を読めるまで復旧扱いにしない。
-		if jq -e --arg k "$key" '.[$k] == 1' <<<"$legacy_checks" >/dev/null; then
-			return
-		fi
+		return
 	fi
 	local title="${login_label} のログイン"
 	case $level in
@@ -504,15 +595,14 @@ check_login() {
 	apply "$key" "$level" "$title" "$detail" || task_failed=true
 }
 
-reconcile_legacy_tasks
+reconcile_legacy_tasks || exit 1
 for runtime in "${usage_check_runtimes[@]}"; do
 	case $runtime in
 	claude) check_login claude Claude 'Claude Code' ;;
 	codex) check_login codex Codex Codex ;;
 	esac
 done
-save_state
 # ラベルを付けられなかったことと、タスクの作成・確認・更新に失敗したことを、実行の結果で人に知らせる。
-if $label_failed || $task_failed; then
+if $task_failed; then
 	exit 1
 fi

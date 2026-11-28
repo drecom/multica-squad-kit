@@ -7,6 +7,7 @@ import zipfile
 from copy import deepcopy
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from uuid import UUID
 
 scenario = Path(sys.argv[1])
 args = sys.argv[2:]
@@ -226,10 +227,13 @@ elif event == ('issue', 'create'):
     if failure.exists() and failure.read_text().strip() == option('--title'):
         print('issue creation denied', file=sys.stderr)
         sys.exit(71)
-    result = create('issues', title=option('--title'), description=content('--description-file'),
+    title = option('--title')
+    result = create('issues', title=title, description=content('--description-file'),
                     project_id=option('--project'), assignee=option('--assignee'),
                     assignee_id=option('--assignee-id'), status=option('--status', 'todo'),
                     identifier=f'TEST-{len(db["issues"]) + 1}', metadata={}, labels=[])
+    if title.startswith(('[使用上限] ', '[ログイン] ')):
+        result['id'] = str(UUID(int=len(db['issues'])))
 elif event == ('issue', 'get'):
     result = record('issues', args[2])
 elif event == ('issue', 'update'):
