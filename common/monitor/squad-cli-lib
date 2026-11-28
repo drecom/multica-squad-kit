@@ -64,6 +64,11 @@ squad_cli_contracts() {
           "nullable": true
         },
         {
+          "path": "project_id",
+          "class": "optional",
+          "nullable": true
+        },
+        {
           "path": "labels",
           "class": "optional",
           "nullable": true
@@ -99,6 +104,16 @@ squad_cli_contracts() {
           "nullable": true
         },
         {
+          "path": "metadata.pr_link_no_integration",
+          "class": "optional",
+          "nullable": true
+        },
+        {
+          "path": "metadata.pr_link_tried_at",
+          "class": "optional",
+          "nullable": true
+        },
+        {
           "path": "metadata.pr_url",
           "class": "optional",
           "nullable": true
@@ -110,6 +125,21 @@ squad_cli_contracts() {
         }
       ],
       "samples": [
+        {
+          "name": "project_id-absent",
+          "where": ". | has(\"project_id\") | not",
+          "unavailable": "採取したタスクには project_id がある。欄がない場合は紐付けのテストで確認する。"
+        },
+        {
+          "name": "metadata.pr_link_no_integration-present",
+          "where": ".metadata | has(\"pr_link_no_integration\")",
+          "unavailable": "連携なしへの切り替え後に書く metadata。導入前の採取にはないため、紐付けのテストで設定する。"
+        },
+        {
+          "name": "metadata.pr_link_tried_at-present",
+          "where": ".metadata | has(\"pr_link_tried_at\")",
+          "unavailable": "連携なしの紐付けの試み直しで書く metadata。導入前の採取にはないため、試み直しのテストで設定する。"
+        },
         {
           "name": "metadata.pr_link_pending-present",
           "where": ".metadata | has(\"pr_link_pending\")",
