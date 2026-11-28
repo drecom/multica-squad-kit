@@ -750,6 +750,7 @@ PR のタイトルは、GitHub で PR を直せる人なら誰でも書ける。
 | `tests/squad-pr-watch-no-integration-test.sh` | 新しく足す。照合のデータを読めない場面、マージの依頼がない場面、書く前に回が変わる場面、知らせ済みの判定の場面を含める（[テスト](#テスト)） |
 | `tests/pr-watch-no-integration-lib.sh`、`tests/squad-pr-watch-no-integration-unlinked-test.sh`、`tests/squad-pr-watch-no-integration-reread-test.sh` | 新しく足し、1 本の時間を上限から離すため、上の行の場面を共通の準備と 3 本に分けて置く（場面は変えない）。`link-check` は元の 1 本に、`unlinked-check` は `-unlinked` に、書く直前の読み直しとマージの依頼は `-reread` に置く |
 | `tests/squad-review-next-decide-unlinked-test.sh` | `連携: なし` の場面と、見張りの登録に失敗する場面と、回のあとに `pr_url` が変わる場面と、古い回の行で止まる場面を足す。`link-check` だけ PR が違う場面と、`マージする PR:` の行を見る場面を足す |
+| `tests/review-next-decide-common.sh`、`tests/squad-review-next-decide-merge-test.sh` | 偽の `squad-pr-watch` に `round-pr` を足し、紐付いていない PR の依頼の期待に `round-pr` の呼び出しと `マージする PR:` の行を足す（[マージの依頼の PR](#マージの依頼の-pr)）。紐付いている PR の期待は変えない |
 | `tests/squad-cli-lib-control-test.sh` | `analyze` の `latest` の場面と、`merge_requested` に回と PR を渡す場面と、大文字の SHA の読めない候補の場面を足す（[テスト](#テスト)） |
 | `tests/squad-review-next-decide-fix-wait-test.sh` | 使用率の待ちのコメントに、`連携: なし` の場面を足す |
 | `tests/squad-pr-watch-link-retry-test.sh`、`tests/squad-pr-watch-unlinked-test.sh` | `PR_LINK_STATE_ROOT` を空の一時ディレクトリに向ける 1 行を足す。`unlinked` のテストは、約束の欄の比較に `link_source` を加えて[登録の照合](#登録の照合)の場面を足し、今の場面の期待は規則の 2 行と標準エラーの理由の行のほかは変えない |
