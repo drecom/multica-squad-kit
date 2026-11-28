@@ -72,7 +72,10 @@ PY
    if [[ $runtime == claude ]]; then
     cat <<'STUB'
 case "$*" in
+'--version') echo '2.1.322 (Claude Code)' ;;
 'auth status') [[ $CLAUDE_CONFIG_DIR == "$scenario_dir/host/claude" ]]; echo '{"loggedIn":true}' ;;
+# 使用上限の見張りのログインの行が読む。期限のない ok。
+'auth status --json') [[ $CLAUDE_CONFIG_DIR == "$scenario_dir/host/claude" ]]; echo '{"loggedIn":true}' ;;
 '-p /usage --output-format json')
  printf '{"is_error":false,"result":"Current session: %s%% used · resets Oct 27 at 12:29pm (Asia/Tokyo)"}\n' "${TEST_USAGE_PERCENT:-0}" >"$scenario_dir/claude.json"
  python3 "$fixture_root/tests/usage-fixture.py" claude-usage "$scenario_dir/claude.json" ;;
@@ -213,6 +216,10 @@ calls = (scenario / 'runtime-calls').read_text().splitlines()
 hook_reads = [call for call in calls if call.startswith('codex app-server --listen stdio:// -c ')]
 assert len(hook_reads) == (1 if 'codex' in runtimes else 0), calls
 calls = [call for call in calls if call not in hook_reads]
+# Claude Code の最低のバージョンの確認は、Claude を使うときだけ `--version` を読む。
+version_reads = [call for call in calls if call == 'claude --version']
+assert bool(version_reads) == ('claude' in runtimes), calls
+calls = [call for call in calls if call != 'claude --version']
 # ログインの確認は書き換える前に流れ、Codex の設定の検証は、設定ファイルの配置のあとに 1 回流れる。
 expected = [r + (' auth status' if r == 'claude' else ' login status') for r in runtimes] + (['codex app-server --strict-config --listen stdio://'] if 'codex' in runtimes else [])
 assert calls == expected, calls
@@ -267,7 +274,10 @@ usage_issues = [i for i in db['issues'] if not i['metadata'].get('squad_kit_task
 assert len(usage_issues) == len(db['runtimes'])
 assert all(i['project_id'] == 'projects-1' and i['assignee'] == 'Owner' and i['label_id'] for i in usage_issues)
 state = json.loads((scenario / 'usage-state/projects-1/owner.state').read_text())
-assert {key.split(':')[0] for key in state} == set(db['runtimes'])
+runtimes = set(db['runtimes'])
+assert {key.split(':', 1)[0] for key in state if not key.startswith('login:')} == runtimes
+login_rows = {key: value for key, value in state.items() if key.startswith('login:')}
+assert login_rows == {f'login:{runtime}': {'level': 'ok'} for runtime in runtimes}
 PY
  fi
  fi

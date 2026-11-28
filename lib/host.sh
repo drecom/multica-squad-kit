@@ -355,6 +355,9 @@ hook_groups = {
     },
     "Stop": {"hooks": [{"type": "command", "command": shlex.quote(guard + "/stop")}]},
 }
+# 止まった理由を記録する 3 つのフック。SessionEnd の時間切れの既定は 1.5 秒と短く、遅いディスクで記録が切れうるので、10 秒を書く。
+for event, script in (("StopFailure", "stop-failure"), ("SessionStart", "session-start"), ("SessionEnd", "session-end")):
+    hook_groups[event] = {"hooks": [{"type": "command", "command": shlex.quote(guard + "/" + script), "timeout": 10}]}
 # キーをやめるときはここへ移す。項目を足すキーは、キットの項目だけを消す。
 retired_keys = ()
 retired_items = {}
@@ -504,7 +507,7 @@ PY
 host_list_targets() {
 	local file name
 	host_target_kind=() host_target_dst=()
-	for name in git-credential git-ssh pre-tool-use stop shell_split.py; do
+	for name in git-credential git-ssh pre-tool-use stop stop-failure session-start session-end shell_split.py; do
 		host_target_kind+=(guard)
 		host_target_dst+=("$agent_home/guard/$name")
 	done
@@ -609,6 +612,9 @@ prepare_host() {
 	host_guard_file "$root/common/guard/git-ssh" "$agent_home/guard/git-ssh"
 	host_guard_file "$root/common/guard/pre-tool-use" "$agent_home/guard/pre-tool-use"
 	host_guard_file "$root/common/guard/stop" "$agent_home/guard/stop"
+	host_guard_file "$root/common/guard/stop-failure" "$agent_home/guard/stop-failure"
+	host_guard_file "$root/common/guard/session-start" "$agent_home/guard/session-start"
+	host_guard_file "$root/common/guard/session-end" "$agent_home/guard/session-end"
 	host_guard_file "$root/common/guard/shell_split.py" "$agent_home/guard/shell_split.py"
 	host_shared_file "$root/common/guard/gh" "$agent_home/bin/gh" yes
 	host_shared_file "$root/common/guard/pre-push" "$agent_home/git-hooks/pre-push" yes

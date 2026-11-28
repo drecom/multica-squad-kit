@@ -18,7 +18,7 @@ for file in "$root/common/monitor/"squad-*; do
 done
 cmp "$root/common/guard/gh" "$TEMPLATE_AGENT_HOME/bin/gh"
 cmp "$root/common/guard/pre-push" "$TEMPLATE_AGENT_HOME/git-hooks/pre-push"
-for file in git-credential git-ssh pre-tool-use stop shell_split.py; do
+for file in git-credential git-ssh pre-tool-use stop stop-failure session-start session-end shell_split.py; do
  cmp "$root/common/guard/$file" "$TEMPLATE_AGENT_HOME/guard/$file"
  [[ -x $TEMPLATE_AGENT_HOME/guard/$file ]]
 done
@@ -82,6 +82,11 @@ guard = os.path.normpath(os.path.dirname(os.path.dirname(settings))) + "/guard"
 pre_tool_use = shlex.quote(guard + "/pre-tool-use")
 stop = shlex.quote(guard + "/stop")
 assert pre_tool_use.startswith("'") and stop.startswith("'")
+# 止まった理由を記録する 3 つのフックは、SessionEnd の既定の時間切れ（1.5 秒）で切れないよう、10 秒の timeout を持つ。
+recorders = {
+    event: [{"hooks": [{"type": "command", "command": shlex.quote(guard + "/" + script), "timeout": 10}]}]
+    for event, script in (("StopFailure", "stop-failure"), ("SessionStart", "session-start"), ("SessionEnd", "session-end"))
+}
 home = os.path.normpath(os.environ["HOME"])
 kit_reads = [
     "Read(/" + os.path.normpath(os.environ["GH_CONFIG_DIR"]) + "/**)",
@@ -109,12 +114,14 @@ assert actual == {
     "hooks": {
         "PreToolUse": [{"matcher": "Bash|Write|Edit|NotebookEdit", "hooks": [{"type": "command", "command": pre_tool_use}]}],
         "Stop": [{"hooks": [{"type": "command", "command": stop}]}],
+        **recorders,
     },
 }, actual
 assert settings.stat().st_mode & 0o777 == 0o600
 Path(sys.argv[2]).write_bytes(settings.read_bytes())
 PY
 echo 'PASS host: Claude の共有の設定をキットのキーだけで作り、フック・deny・書き込み制限を含め、権限を 600 にする'
+echo 'PASS host: 止まった理由を記録する 3 つのフックを、timeout 10 秒付きで共有の設定に書く'
 
 python3 - "$settings" <<'PY'
 import json
@@ -142,6 +149,9 @@ config["hooks"] = {
     ],
     "Stop": [{"hooks": [{"type": "command", "command": "/human/stop"}]}],
     "SessionStart": [{"hooks": [{"type": "command", "command": "/human/start"}]}],
+    # 記録のフックは、timeout のない古い項目は書き直し、人のフックと同じ組にある項目は人のフックだけ残して付け直す。
+    "StopFailure": [{"hooks": [{"type": "command", "command": shlex.quote(guard + "/stop-failure")}]}],
+    "SessionEnd": [{"hooks": [{"type": "command", "command": "/human/end"}, {"type": "command", "command": shlex.quote(guard + "/session-end")}]}],
 }
 settings.write_text(json.dumps(config, ensure_ascii=False))
 settings.chmod(0o644)
@@ -150,7 +160,11 @@ settings_run
 for key in syncClaudeAiSkills cleanupPeriodDays pluginConfigs.cc-plugin-agents-md@builtin skillOverrides.batch permissions.blockWritesOutsideWorkingDirectories hooks.PreToolUse; do
  grep -qF "$key" "$test_dir/err"
 done
-! grep -qF 'hooks.Stop' "$test_dir/err"
+! grep -qE 'hooks\.Stop([^A-Za-z]|$)' "$test_dir/err"
+for key in hooks.StopFailure hooks.SessionEnd; do
+ grep -qF "$key" "$test_dir/err"
+done
+! grep -qF 'hooks.SessionStart' "$test_dir/err"
 grep -q '警告:' "$test_dir/err"
 python3 - "$settings" "$test_dir/kit-settings.json" <<'PY'
 import json
@@ -174,6 +188,10 @@ expected["permissions"] = {
 guard = os.path.dirname(os.path.dirname(settings)) + "/guard"
 kit_pre = shlex.quote(guard + "/pre-tool-use")
 kit_stop = shlex.quote(guard + "/stop")
+recorders = {
+    event: [{"hooks": [{"type": "command", "command": shlex.quote(guard + "/" + script), "timeout": 10}]}]
+    for event, script in (("StopFailure", "stop-failure"), ("SessionStart", "session-start"), ("SessionEnd", "session-end"))
+}
 expected["hooks"] = {
     "PreToolUse": [
         {"matcher": "Bash", "hooks": [{"type": "command", "command": "/human/audit"}]},
@@ -185,7 +203,9 @@ expected["hooks"] = {
         {"hooks": [{"type": "command", "command": "/human/stop"}]},
         {"hooks": [{"type": "command", "command": kit_stop}]},
     ],
-    "SessionStart": [{"hooks": [{"type": "command", "command": "/human/start"}]}],
+    "SessionStart": [{"hooks": [{"type": "command", "command": "/human/start"}]}, *recorders["SessionStart"]],
+    "StopFailure": recorders["StopFailure"],
+    "SessionEnd": [{"hooks": [{"type": "command", "command": "/human/end"}]}, *recorders["SessionEnd"]],
 }
 assert actual == expected, actual
 assert settings.stat().st_mode & 0o777 == 0o600
@@ -207,7 +227,7 @@ stat = settings.stat()
 assert [stat.st_ino, stat.st_mtime_ns, stat.st_mode, settings.read_text()] == json.loads(Path(str(settings) + ".before").read_text())
 assert not list(settings.parent.glob(".settings.*"))
 PY
-echo 'PASS host: 人のキー・プラグイン・スキル・権限・フックを残し、キットの値を警告して戻し、同じ中身は書かない'
+echo 'PASS host: 人のキー・プラグイン・スキル・権限・フック（記録のフックと同じイベントの人のフックを含む）を残し、キットの値を警告して戻し、同じ中身は書かない'
 
 # やめるキーがまだないため、将来その一覧に移した場合を作業用のコピーで確認する。
 python3 - "$root/lib/host.sh" "$test_dir/retired-host.sh" "$settings" <<'PY'
@@ -240,7 +260,7 @@ assert actual == expected, actual
 PY
 echo 'PASS host: やめたキーとキットの項目だけを消し、人の項目を残す'
 
-for invalid in '{' '[]' 'null' 'true' '"text"' '30' '{"permissions":[]}' '{"permissions":null}' '{"permissions":{"deny":{}}}' '{"permissions":{"deny":null}}' '{"pluginConfigs":[]}' '{"pluginConfigs":null}' '{"skillOverrides":[]}' '{"hooks":[]}' '{"hooks":null}' '{"hooks":{"PreToolUse":{}}}' '{"hooks":{"Stop":null}}'; do
+for invalid in '{' '[]' 'null' 'true' '"text"' '30' '{"permissions":[]}' '{"permissions":null}' '{"permissions":{"deny":{}}}' '{"permissions":{"deny":null}}' '{"pluginConfigs":[]}' '{"pluginConfigs":null}' '{"skillOverrides":[]}' '{"hooks":[]}' '{"hooks":null}' '{"hooks":{"PreToolUse":{}}}' '{"hooks":{"Stop":null}}' '{"hooks":{"StopFailure":{}}}' '{"hooks":{"SessionStart":null}}' '{"hooks":{"SessionEnd":"x"}}'; do
  printf '%s\n' "$invalid" >"$settings"
  cp "$settings" "$test_dir/invalid-settings"
  if settings_run; then exit 1; fi
@@ -300,7 +320,7 @@ cmp "$root/common/host/start-daemon" "$TEMPLATE_AGENT_HOME/start-daemon"
 echo 'PASS host: 流し直すと管理マークのある古い入口を原本に更新し、実行権限を付ける'
 
 # 新しいガードと分割の部品は、配置先が原本と一致しなければ、役の登録の前に止めて対処を案内する。
-for file in git-credential git-ssh pre-tool-use stop shell_split.py; do
+for file in git-credential git-ssh pre-tool-use stop stop-failure session-start session-end shell_split.py; do
  target=$TEMPLATE_AGENT_HOME/guard/$file
  cp "$target" "$test_dir/guard-original"
  # マークのない既存のファイル（人のファイル）は、上書きせず止める。
@@ -325,6 +345,25 @@ for file in git-credential git-ssh pre-tool-use stop shell_split.py; do
  [[ -x $target ]]
 done
 echo 'PASS host: 新しいガードと分割の部品は、マークのない既存のファイルを上書きせず役の登録の前に止め、マークのある古い内容は原本に戻す'
+
+# 記録の 3 つのスクリプトのどれかが人のファイルなら、ほかのガードを書き換える前に、置く前の確認で止まる。
+for file in stop-failure session-start session-end; do
+ target=$TEMPLATE_AGENT_HOME/guard/$file
+ sentinel=$TEMPLATE_AGENT_HOME/guard/git-credential
+ printf '#!/bin/sh\n# multica-squad-kit-managed\nold sentinel\n' >"$sentinel"
+ cp "$sentinel" "$test_dir/sentinel-old"
+ printf '#!/bin/sh\nexit 0\n' >"$target"
+ set_mode running
+ agent_env
+ deny
+ grep -qF "ガードのファイルが原本と一致しません: $target" "$test_dir/err"
+ cmp "$sentinel" "$test_dir/sentinel-old"
+ printf '#!/bin/sh\n# multica-squad-kit-managed\nexit 0\n' >"$target"
+ run
+ cmp "$root/common/guard/$file" "$target"
+ cmp "$root/common/guard/git-credential" "$sentinel"
+done
+echo 'PASS host: 記録の 3 つのスクリプトのどれかがマークのない既存のファイルなら、ほかのガードを書き換える前に止まる'
 
 printf '#!/bin/bash\nprintf "manual entry\\n"\n' >"$TEMPLATE_AGENT_HOME/start-daemon"
 chmod 644 "$TEMPLATE_AGENT_HOME/start-daemon"

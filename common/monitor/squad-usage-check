@@ -27,6 +27,15 @@ usage_check_state_path() {
 STATE_FILE=$(usage_check_state_path)
 # 警告を出す使用率（%）。警告から使用上限までが短すぎて手当てが間に合わないなら下げ、タスクが多すぎるなら上げる。
 USAGE_WARN_PERCENT=${USAGE_WARN_PERCENT:-80}
+# ログインの期限が近いとして警告する、期限までの日数。Claude Code は期限の 3 日前から再ログインを促す。
+# その前に、週に 1 回だけ見る人も間に合うよう、7 日を足した。
+USAGE_LOGIN_WARN_DAYS=${USAGE_LOGIN_WARN_DAYS:-10}
+if [[ ! $USAGE_LOGIN_WARN_DAYS =~ ^[0-9]{1,4}$ ]]; then
+	echo 'USAGE_LOGIN_WARN_DAYS には、日数を 0 から 9999 の整数で渡す' >&2
+	exit 1
+fi
+# StopFailure、CLAUDE_CODE_MAX_TURNS、auth status --json の期限を確認した最も古い Claude Code。lib/check.sh と同じ値にする。
+claude_min_version=2.1.322
 # 作るタスクに付けるラベル。開発のタスクと分け、開発の進み具合に数えないため（セットアップで作るラベル）。
 LABEL_NAME=運用
 
@@ -104,18 +113,146 @@ fetch_codex() {
 	fi
 }
 
-# 状態は「キー → {level, issue}」の JSON。`issue` は、その枠について開いているタスクの ID。
-state='{}'
-[[ -f "$STATE_FILE" ]] && state=$(cat "$STATE_FILE")
+# Claude Code のログインを読み、「状態<TAB>本文に書く説明」の 1 行を出す。状態は ok・warn・error・unverified。
+# claude auth status --json の出力はメールアドレスと組織を含むので、loggedIn と loginExpiresAt だけを読み、出力は写さない。
+# 説明に書くのは、バージョンの数、終了コード、期限の日付と残りの日数だけにする。
+# macOS に timeout がなく、時間切れを分けて見るため、python3 で時間を区切って呼ぶ。
+read_claude_login() {
+	python3 - "$USAGE_LOGIN_WARN_DAYS" "$claude_min_version" <<'PY'
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
 
-# タスクを作るたびに保存する。途中で失敗しても、作ったタスクを忘れて同じものを作り直さないため。
+warn_days, minimum = int(sys.argv[1]), sys.argv[2]
+# 時間切れの秒数。既定の 30 秒を変えるのは、テストだけ。
+limit = int(os.environ.get("USAGE_LOGIN_READ_SECONDS", "30"))
+
+
+def finish(level, detail):
+    print(f"{level}\t{detail}")
+    sys.exit(0)
+
+
+def run(*args):
+    try:
+        return subprocess.run(["claude", *args], stdin=subprocess.DEVNULL, capture_output=True,
+                              text=True, errors="replace", timeout=limit)
+    except subprocess.TimeoutExpired:
+        finish("unverified", f"claude {' '.join(args)} が時間切れになった")
+    except OSError:
+        finish("unverified", f"claude {' '.join(args)} を実行できなかった")
+
+
+# 古いバージョンでは、期限の欄がなくても、期限がないと読めてしまう。先にバージョンを見る。
+versioned = run("--version")
+if versioned.returncode != 0:
+    finish("unverified", f"claude --version が終了コード {versioned.returncode} で終わった")
+first = (versioned.stdout.split("\n") or [""])[0]
+found = re.match(r"^(\d{1,6})\.(\d{1,6})\.(\d{1,6})(?:[^0-9.]|$)", first)
+if not found:
+    finish("unverified", "claude --version からバージョンを読めない")
+version = tuple(int(part) for part in found.groups())
+if version < tuple(int(part) for part in minimum.split(".")):
+    finish("unverified", f"Claude Code {'.'.join(map(str, version))} は、最低のバージョン {minimum} より古い")
+
+result = run("auth", "status", "--json")
+code = result.returncode
+try:
+    status = json.loads(result.stdout)
+    if not isinstance(status, dict):
+        raise ValueError
+except ValueError:
+    status = None
+logged_in = status.get("loggedIn") if status else None
+if code == 1 and logged_in is False:
+    finish("error", "ログインしていない（終了コード 1）")
+if code != 0:
+    finish("unverified", f"claude auth status --json が終了コード {code} で終わった")
+if status is None:
+    finish("unverified", "claude auth status --json の出力を JSON として読めない（終了コード 0）")
+if logged_in is not True:
+    finish("unverified", "claude auth status --json の loggedIn が true でない（終了コード 0）")
+
+expires = status.get("loginExpiresAt")
+if expires is None:
+    finish("ok", "ログインしている（期限なし）")
+try:
+    if isinstance(expires, bool):
+        raise ValueError
+    if isinstance(expires, (int, float)):
+        # ミリ秒の値は、秒にそろえる。
+        epoch = expires / 1000 if expires > 1e11 else expires
+    else:
+        epoch = datetime.fromisoformat(str(expires).replace("Z", "+00:00")).timestamp()
+    remaining = epoch - time.time()
+    day = datetime.fromtimestamp(epoch, timezone.utc).astimezone().strftime("%Y-%m-%d")
+except (ValueError, OverflowError, OSError):
+    finish("unverified", "claude auth status --json の期限を日時として読めない（終了コード 0）")
+if remaining <= 0:
+    finish("error", f"ログインの期限を過ぎた（期限 {day}）")
+days = int(remaining // 86400)
+level = "warn" if remaining <= warn_days * 86400 else "ok"
+finish(level, f"ログインの期限は {day}、残り {days} 日")
+PY
+}
+
+# Codex は期限を返さない。出力は状態の判定だけに使い、説明には写さない。
+read_codex_login() {
+	python3 - <<'PY'
+import os
+import subprocess
+
+limit = int(os.environ.get("USAGE_LOGIN_READ_SECONDS", "30"))
+try:
+    result = subprocess.run(["codex", "login", "status"], stdin=subprocess.DEVNULL,
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            text=True, errors="replace", timeout=limit)
+except subprocess.TimeoutExpired:
+    print("unverified\tcodex login status が時間切れになった")
+except OSError:
+    print("unverified\tcodex login status を実行できなかった")
+else:
+    code = result.returncode
+    if code == 0:
+        print("ok\tログインしている（終了コード 0）")
+    elif code == 1 and result.stdout.strip() == "Not logged in":
+        print("error\tログインしていない（終了コード 1）")
+    else:
+        print(f"unverified\tcodex login status が終了コード {code} で終わった")
+PY
+}
+
+# 状態はキーごとの行 {level, issue, labeled}。
+#   level: タスクで知らせ終えた状態。issue: 開いているタスクの ID。labeled: ラベルを付け終えたか。
+# 前のバージョンの行は level とタスクの ID だけを持つ。labeled がなければ、付け終えたと読む。
+state='{}'
+if [[ -f "$STATE_FILE" ]]; then
+	state=$(jq -ces 'select(length == 1) | .[0] | select(type == "object")' "$STATE_FILE") || exit 1
+fi
+
+# 起票した ID はほかの操作の前に保存する。途中で失敗しても、作ったタスクを忘れて同じものを作り直さないため。
 save_state() {
-	mkdir -p "$(dirname "$STATE_FILE")"
-	printf '%s\n' "$state" >"$STATE_FILE"
+	local next_state=$1 temp
+	mkdir -p "$(dirname "$STATE_FILE")" || return 1
+	temp=$(mktemp "${STATE_FILE}.XXXXXX") || return 1
+	if ! printf '%s\n' "$next_state" >"$temp" || ! mv -f -- "$temp" "$STATE_FILE"; then
+		rm -f -- "$temp"
+		return 1
+	fi
+	state=$next_state
+}
+
+save_row() {
+	local key=$1 row=$2 next_state
+	next_state=$(jq -c --arg key "$key" --argjson row "$row" '.[$key] = $row' <<<"$state") || return 1
+	save_state "$next_state"
 }
 
 # タスクにラベルを付ける。付けられなくてもタスクの状態の保存は続けるよう、失敗は返り値で返す。
-label_failed=false
 add_label() {
 	local id
 	id=$(squad_cli_read label-list | jq -r --arg n "$LABEL_NAME" '[.[] | select(.name == $n)][0].id // empty') || true
@@ -131,72 +268,295 @@ usage_comment() {
 	body=$(usage_tmpfile) || return 1
 	cat >"$body" || { rm -f -- "$body"; return 1; }
 	multica issue comment add "$1" --content-file "$body" --output table >/dev/null || code=$?
-	rm -f -- "$body" || return 1
+	rm -f -- "$body" || :
 	return "$code"
 }
 
-# 1 つの枠の状態の変化を、タスクに反映する。
-#   ok → warn/limited/error: タスクを作る
-#   warn → limited: 使用上限に達したとコメントする
-#   limited → warn/ok、warn/error → ok: 戻ったとコメントし、ok なら done にする
+# キーの種類ごとの、作るタスクの題の始め。ログインのキーは login: で始まる。
+title_prefix() {
+	case $1 in
+	login:*) printf '[ログイン]' ;;
+	*) printf '[使用上限]' ;;
+	esac
+}
+
+# 状態ごとの始めの文。タスクを作るときの本文と、ok でない状態どうしの変化のコメントが使う。
+state_sentence() {
+	local key=$1 level=$2
+	case "$key:$level" in
+	login:*:warn) echo '期限が近い。期限の前に、manual.md の手順でログインし直す' ;;
+	login:*:error) echo 'ログインしていない。このツールの役はすべて失敗する' ;;
+	login:*:unverified) echo 'ログインを確認できない。バージョンとログインを確認する' ;;
+	*:warn) echo '使用上限が近い。重い作業の割り振りを控えるか、エージェントを別の系統のモデルに寄せる' ;;
+	*:limited) echo '使用上限に達した。リセットまで、このモデルのエージェントは失敗する' ;;
+	*:error) echo '使用量を取れなくなり、見張れていない。ログインや表示の形が変わっていないか確認する' ;;
+	esac
+}
+
+# タスクの本文のファイルを作り、パスを出す。作るときと、題と本文を書き換えるときが使う。
+write_description() {
+	local key=$1 level=$2 detail=$3 description
+	description=$(usage_tmpfile) || return 1
+	printf '%s\n\n%s\n\nこのタスクは使用上限の見張り（squad-usage-check）が作った。戻ったら、見張りがコメントして done にする。\n' \
+		"$(state_sentence "$key" "$level")" "$detail" >"$description" || { rm -f -- "$description"; return 1; }
+	printf '%s\n' "$description"
+}
+
+# サーバーの読み取りを、時間切れ付きで実行する。標準出力に JSON を出し、失敗か時間切れなら 1 で終わる。
+# CLI が止まると、ログインの警告を含む見張り全体が止まるので、時間を区切る。
+read_server() {
+	python3 - "$@" <<'PY'
+import os
+import subprocess
+import sys
+
+try:
+    limit = int(os.environ.get("USAGE_TASK_READ_SECONDS", "30"))
+    result = subprocess.run(
+        ["multica", *sys.argv[1:]],
+        stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=limit,
+    )
+except (OSError, ValueError, subprocess.TimeoutExpired):
+    sys.exit(1)
+sys.exit(result.returncode)
+PY
+}
+
+read_task() {
+	read_server issue get "$1" --output json
+}
+
+task_failed=false
+
+issue_id_pattern() {
+	printf '%s\n' '^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$'
+}
+
+discard_row() {
+	local next_state
+	next_state=$(jq -c --arg key "$1" 'del(.[$key])' <<<"$state") || return 1
+	# 保存に失敗しても、この実行では外した行の ID を使わない。
+	state=$next_state
+	save_state "$next_state"
+}
+
+# 状態のファイルのタスクが、この見張りが、このキーで作ったものかをサーバーで確認する。
+# 状態のファイルは同じ OS の利用者のプロセスが書けるので、行のタスクに初めて書き込む前に確認する。
+# 確認は、書き込む行のキーと ID で行い、結果はその行の書き込みにだけ使う。
+# 合わなければ、状態からその行を外し、外したことを stderr に書く。タスクを読めなければ、行は変えない。
+# どちらも実行の結果を失敗にし、ほかの行の処理は続ける。
+# 閉じてよいタスクとして ID を書くのは、プロジェクトと作者と題の始めが合い、題が全角の括弧で終わらないときだけにする。
+# 流し直す前の見張りが作った、題にキーのないタスクである。ほかのときは、別の通知を閉じさせないよう、書かない。
+# 返り値: 0 は合った、1 は合わず外した、2 はサーバーのタスクを読めなかった。
+verify_task() {
+	local key=$1 issue=$2 task prefix
+	if ! task=$(read_task "$issue") || ! jq -es 'length == 1 and (.[0] | type == "object")' <<<"$task" >/dev/null 2>&1; then
+		echo "タスク ${issue} をサーバーから読めなかった" >&2
+		task_failed=true
+		return 2
+	fi
+	prefix=$(title_prefix "$key")
+	if jq -e --arg project "$USAGE_CHECK_PROJECT" --arg agent "${MULTICA_AGENT_ID-}" --arg prefix "$prefix" \
+		--arg key "$key" --arg issue "$issue" '
+		.id == $issue and .project_id == $project and .creator_type == "agent"
+		and ($agent | length) > 0 and .creator_id == $agent
+		and (.title | type) == "string"
+		and (.title | startswith($prefix + " ")) and (.title | endswith("（" + $key + "）"))' <<<"$task" >/dev/null; then
+		return 0
+	fi
+	task_failed=true
+	echo "状態のファイルのタスク ${issue} は、このキー（${key}）の見張りが作ったものと合わない。更新せず、状態から外した" >&2
+	if jq -e --arg project "$USAGE_CHECK_PROJECT" --arg agent "${MULTICA_AGENT_ID-}" --arg prefix "$prefix" \
+		--arg issue "$issue" '
+		.id == $issue and .project_id == $project and .creator_type == "agent"
+		and ($agent | length) > 0 and .creator_id == $agent
+		and (.title | type) == "string"
+		and (.title | startswith($prefix + " ")) and (.title | endswith("）") | not)' <<<"$task" >/dev/null; then
+		echo "閉じてよいタスク: ${issue}" >&2
+	fi
+	discard_row "$key" || :
+	return 1
+}
+
+# 状態のファイルの行の形を、1 回の jq で確認する。形の合わない行は、タスクに書き込まずに状態から外す。
+# キーが既知の始めで制御文字を含まず、タスクの ID が空か UUID の形で、ほかの欄が決まった値のときだけ、形が合うとする。
+# 以降の処理は、形の合った行だけを読むので、シェルに渡す値に区切りの文字は入らない。
+drop_malformed_rows() {
+	local keys key next_state
+	keys=$(jq -c --arg uuid "$(issue_id_pattern)" '
+		def level: IN("ok", "warn", "limited", "error", "unverified");
+		to_entries[]
+		| select((
+			(.key | test("^(claude:|codex:|login:).+") and (explode | all(. >= 32 and (. < 127 or . > 159))))
+			and (.value | type == "object" and (.level | level)
+				and (if has("issue") then (.issue | . == "" or (type == "string" and length == 36 and test($uuid))) else true end)
+				and (if has("labeled") then (.labeled | type == "boolean") else true end)
+				and (keys - ["level", "issue", "labeled"] | length == 0))) | not)
+		| .key' <<<"$state") || return 1
+	[[ -n $keys ]] || return 0
+	while IFS= read -r key; do
+		echo "状態のファイルの行 ${key} の形が合わない。状態から外した" >&2
+	done <<<"$keys"
+	next_state=$(jq -c --argjson keys "$(jq -cs . <<<"$keys")" 'delpaths([$keys[] | [.]])' <<<"$state") || return 1
+	state=$next_state
+	task_failed=true
+	save_state "$next_state" || return 1
+}
+
+# ok でない状態どうしの変化で、同じタスクの題と本文を新しい状態のものに書き換える。
+update_task_text() {
+	local key=$1 issue=$2 level=$3 title=$4 detail=$5 description
+	description=$(write_description "$key" "$level" "$detail") || return 1
+	multica issue update "$issue" --title "$(title_prefix "$key") ${title}（${key}）" --description-file "$description" >/dev/null || {
+		rm -f -- "$description"
+		return 1
+	}
+	rm -f -- "$description" || :
+}
+
+# 変化のコメントの本文。使用率などの値を含む。
+change_body() {
+	local key=$1 level=$2 prev=$3 detail=$4
+	case "$level:$prev:${key%%:*}" in
+	ok:*:login) printf 'ログインし直された。\n\n%s\n' "$detail" ;;
+	limited:*) printf '使用上限に達した。リセットまで、このモデルのエージェントは失敗する。\n\n%s\n' "$detail" ;;
+	ok:error:*) printf '使用量をまた取れるようになった。\n' ;;
+	*:limited:*) printf '戻った。使用上限で失敗したタスクは multica issue rerun で再実行する。\n\n%s\n' "$detail" ;;
+	ok:warn:*) printf 'リセットされた。\n\n%s\n' "$detail" ;;
+	*) printf '%s。\n\n%s\n' "$(state_sentence "$key" "$level")" "$detail" ;;
+	esac
+}
+
+# 状態の変化を、既存のタスクにコメントする。
+comment_change() {
+	local key=$1 level=$2 prev=$3 issue=$4 detail=$5
+	change_body "$key" "$level" "$prev" "$detail" | usage_comment "$issue"
+}
+
+# ラベルを付け、成功したら labeled を保存する。付けられなければ、行は変えず、実行の結果を失敗にする。
+label_row() {
+	local key=$1 issue=$2 row=$3
+	if add_label "$issue"; then
+		row=$(jq -c '.labeled = true' <<<"$row") || return 1
+		save_row "$key" "$row" || return 1
+	else
+		task_failed=true
+	fi
+}
+
+# 1 つの行の最新の観測を、タスクに反映する。行ごとに、上から最初に合う場合の操作をする。
+#   1. タスクがなく、観測が ok でない: タスクを作り、ID と level を保存して、ラベルを付ける
+#   2. タスクがなく、観測が ok: level が ok でなければ ok にする（観測されていない正常な使用枠は、行を増やさない）
+#   3. タスクがあり、観測が level と同じ: ok なら done をやり直す。ok でなければ、ラベルが残るときだけ付け直す
+#   4. タスクがあり、観測が ok でなく level と違う: 題と本文を書き換え、変化をコメントしてから、level を保存する
+#   5. タスクがあり、観測が ok で level と違う: 戻ったとコメントし、level を ok にしてから、done にする
+# 失敗した操作は、行を変えず、同じ実行ではやり直さない。次の実行が、同じ表で選び直してやり直す。
+# 観測が確定しない実行は、観測を level と同じにして呼ぶ（title と detail は使わない）。
 apply() {
 	local key=$1 level=$2 title=$3 detail=$4
-	local prev issue
-	prev=$(jq -r --arg k "$key" '.[$k].level // "ok"' <<<"$state")
-	issue=$(jq -r --arg k "$key" '.[$k].issue // empty' <<<"$state")
-	[[ "$level" == "$prev" ]] && return
+	local row prev issue labeled response description
+	row=$(jq -c --arg key "$key" '.[$key] // {}' <<<"$state") || return 1
+	prev=$(jq -r '.level // empty' <<<"$row") || return 1
+	issue=$(jq -r '.issue // empty' <<<"$row") || return 1
+	labeled=$(jq -r 'if has("labeled") then .labeled else true end' <<<"$row") || return 1
 
 	if [[ -z "$issue" ]]; then
-		if [[ "$level" != ok ]]; then
-			local summary
-			case "$level" in
-			warn) summary="使用上限が近い。重い作業の割り振りを控えるか、エージェントを別の系統のモデルに寄せる" ;;
-			limited) summary="使用上限に達した。リセットまで、このモデルのエージェントは失敗する" ;;
-			error) summary="使用量を取れなくなり、見張れていない。ログインや表示の形が変わっていないか確認する" ;;
-			esac
-			local description
-			description=$(usage_tmpfile)
-			printf '%s\n\n%s\n\nこのタスクは使用上限の見張り（squad-usage-check）が作った。戻ったら、見張りがコメントして done にする。\n' "$summary" "$detail" >"$description"
-			local response
-			if ! response=$(squad_cli_read issue-create "[使用上限] ${title}" "$description" \
-				--assignee "$USAGE_CHECK_ASSIGNEE" --project "$USAGE_CHECK_PROJECT"); then
-				rm -f -- "$description"
-				return 1
-			fi
-			issue=$(jq -r '.id' <<<"$response")
-			rm -f -- "$description"
-			add_label "$issue" || label_failed=true
-		fi
-	else
-		case "$level:$prev" in
-		limited:*) printf '使用上限に達した。リセットまで、このモデルのエージェントは失敗する。\n\n%s\n' "$detail" |
-			usage_comment "$issue" ;;
-		ok:error) printf '使用量をまた取れるようになった。\n' | usage_comment "$issue" ;;
-		*:limited) printf '戻った。使用上限で失敗したタスクは multica issue rerun で再実行する。\n\n%s\n' "$detail" |
-			usage_comment "$issue" ;;
-		ok:warn) printf 'リセットされた。\n\n%s\n' "$detail" | usage_comment "$issue" ;;
-		esac
 		if [[ "$level" == ok ]]; then
-			multica issue status "$issue" done --no-start >/dev/null
-			issue=""
+			# ログインの行は初回の ok でも、見張りの結果に残す。
+			[[ "$prev" != ok && ( -n "$prev" || "$key" == login:* ) ]] || return 0
+			save_row "$key" '{"level":"ok"}'
+			return
+		fi
+		description=$(write_description "$key" "$level" "$detail") || return 1
+		if ! response=$(squad_cli_read issue-create "$(title_prefix "$key") ${title}（${key}）" "$description" \
+			--assignee "$USAGE_CHECK_ASSIGNEE" --project "$USAGE_CHECK_PROJECT"); then
+			rm -f -- "$description"
+			return 1
+		fi
+		rm -f -- "$description"
+		if ! issue=$(jq -er --arg uuid "$(issue_id_pattern)" '.id | select(type == "string" and length == 36 and test($uuid))' <<<"$response"); then
+			echo '起票したタスクの ID を確認できなかった' >&2
+			return 1
+		fi
+		row=$(jq -nc --arg level "$level" --arg issue "$issue" '{level: $level, issue: $issue, labeled: false}') || return 1
+		if ! save_row "$key" "$row"; then
+			echo "起票したタスク ${issue} を状態に保存できなかった。閉じてよいタスク: ${issue}" >&2
+			return 1
+		fi
+		label_row "$key" "$issue" "$row"
+		return
+	fi
+
+	if [[ "$level" == "$prev" ]]; then
+		if [[ "$level" == ok ]]; then
+			verify_task "$key" "$issue" || return 0
+			multica issue status "$issue" done --no-start >/dev/null || return 1
+			save_row "$key" '{"level":"ok"}'
+		elif [[ "$labeled" != true ]]; then
+			verify_task "$key" "$issue" || return 0
+			label_row "$key" "$issue" "$row"
+		fi
+		return
+	fi
+
+	verify_task "$key" "$issue" || return 0
+	if [[ "$level" != ok ]]; then
+		if ! update_task_text "$key" "$issue" "$level" "$title" "$detail"; then
+			echo "タスク ${issue} の題と本文を書き換えられなかった" >&2
+			task_failed=true
+			return 0
 		fi
 	fi
-	state=$(jq --arg k "$key" --arg l "$level" --arg i "$issue" '.[$k] = {level: $l, issue: $i}' <<<"$state")
-	save_state
+	if ! comment_change "$key" "$level" "$prev" "$issue" "$detail"; then
+		echo "タスク ${issue} の変化をコメントできなかった" >&2
+		task_failed=true
+		return 0
+	fi
+	row=$(jq -c --arg level "$level" '.level = $level' <<<"$row") || return 1
+	save_row "$key" "$row" || return 1
+	if [[ "$level" == ok ]]; then
+		multica issue status "$issue" done --no-start >/dev/null || return 1
+		save_row "$key" '{"level":"ok"}'
+	fi
+}
+
+# 観測が確定しない実行で、行の level のまま、残った操作（done とラベル）だけを続ける。
+# ok への戻りは、観測が確定した実行でだけ起きる。
+continue_row() {
+	local key=$1 level
+	level=$(jq -r --arg key "$key" '.[$key] | select(type == "object" and (.issue // "") != "") | .level' <<<"$state") || return 1
+	[[ -n $level ]] || return 0
+	apply "$key" "$level" "" ""
+}
+
+# ツールの使用上限の行のうち、残った操作のある行だけについて、continue_row を行う。
+# 1 回の jq で選ぶので、処理済みの行が増えても、起こすプロセスの数は変わらない。
+continue_tool_rows() {
+	local tool=$1 key
+	while IFS= read -r key; do
+		[[ -z $key ]] || continue_row "$key" || task_failed=true
+	done < <(jq -r --arg p "${tool}:" 'to_entries[]
+		| select((.key | startswith($p)) and .key != ($p + "fetch"))
+		| select(.value | (.issue // "") != "" and (.level == "ok" or (has("labeled") and .labeled == false)))
+		| .key' <<<"$state")
 }
 
 # 1 つのツールの結果を、枠ごとに反映する。
 # 取得に失敗したツールは、枠の状態を前回のままにする（見えないあいだに戻ったことにしないため）。
+usage_read_ok=false
 check() {
 	local tool=$1 label=$2 rows err_file
-	err_file=$(usage_tmpfile)
+	usage_read_ok=false
+	err_file=$(usage_tmpfile) || { task_failed=true; return; }
 	if ! rows=$("fetch_${tool}" 2>"$err_file"); then
-		apply "${tool}:fetch" error "${label} の使用量を取れない" "$(cat "$err_file")"
+		apply "${tool}:fetch" error "${label} の使用量を取れない" "$(cat "$err_file")" || task_failed=true
 		rm -f "$err_file"
+		continue_tool_rows "$tool"
 		return
 	fi
 	rm -f "$err_file"
-	apply "${tool}:fetch" ok "${label} の使用量を取れない" ""
+	usage_read_ok=true
+	apply "${tool}:fetch" ok "${label} の使用量を取れない" "" || task_failed=true
 
 	# 前回あって今回ない枠は、リセットで表示から消えたものとして ok に戻す。
 	local key
@@ -210,15 +570,50 @@ check() {
 	local level title detail
 	while IFS=$'\t' read -r key level title detail; do
 		[[ -z "$key" ]] && continue
-		apply "$key" "$level" "$title" "${title}: ${detail}"
+		apply "$key" "$level" "$title" "${title}: ${detail}" || task_failed=true
 	done <<<"$rows"
 }
 
+# 見張るランタイムのログインの行を反映する。
+# ログインの読み取りはローカルの状態だけを見るので、資格が無効でも ok になる。
+# warn・error・確認失敗から ok に戻すのは、同じ実行で使用量を読めたときだけにする。読めなければ前回のままにし、ラベルと done のやり直しだけを続ける。
+# ログインが error のときは、使用率を読まない（同じ原因で、使用量を取れないタスクが重ならないため）。
+check_login() {
+	local tool=$1 usage_label=$2 login_label=$3
+	local key="login:${tool}" login level detail prev
+	login=$("read_${tool}_login") || login=$'unverified\t'"${tool} のログインの読み取りが失敗した"
+	level=${login%%$'\t'*}
+	detail=${login#*$'\t'}
+	if [[ $level == error ]]; then
+		usage_read_ok=false
+		continue_tool_rows "$tool"
+	else
+		check "$tool" "$usage_label"
+	fi
+	prev=$(jq -r --arg key "$key" '.[$key].level // "ok"' <<<"$state") || { task_failed=true; return; }
+	if [[ $level == ok && $usage_read_ok != true ]]; then
+		if [[ $prev != ok ]]; then
+			echo "${login_label} のログインはローカルでは ok だが、使用量を読めないので、ログインの行は ${prev} のままにした" >&2
+		fi
+		continue_row "$key" || task_failed=true
+		return
+	fi
+	local title="${login_label} のログイン"
+	case $level in
+	warn) title+='の期限' ;;
+	unverified) title+='を確認できない' ;;
+	esac
+	apply "$key" "$level" "$title" "$detail" || task_failed=true
+}
+
+drop_malformed_rows || exit 1
 for runtime in "${usage_check_runtimes[@]}"; do
-	case $runtime in claude) check claude Claude ;; codex) check codex Codex ;; esac
+	case $runtime in
+	claude) check_login claude Claude 'Claude Code' ;;
+	codex) check_login codex Codex Codex ;;
+	esac
 done
-save_state
-# ラベルを付けられなかったことを、実行の結果で人に知らせる。
-if $label_failed; then
+# ラベルを付けられなかったことと、タスクの作成・確認・更新に失敗したことを、実行の結果で人に知らせる。
+if $task_failed; then
 	exit 1
 fi

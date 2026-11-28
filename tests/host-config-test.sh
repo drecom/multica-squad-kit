@@ -67,6 +67,21 @@ for selected in claude codex; do
  )
  echo "PASS host: $selected だけで起動・再利用し、選んだ側の認証を求め、使わない側は求めない"
 done
+# Claude を使うとき、最低より古いか読めない Claude Code では、何も書かず、デーモンにも触れずに止まる。
+set_mode running
+agent_env
+snapshot() { (cd "$TEMPLATE_AGENT_HOME" && find . | LC_ALL=C sort && find . -type f -exec cksum {} +); }
+snapshot >"$test_dir/before-version"
+for version in '2.1.321 (Claude Code)' '2.0.999' '1.99.1' 'unknown' ''; do
+ : >"$test_dir/calls"
+ TEST_CLAUDE_VERSION=$version deny
+ grep -q '最低\|読めません' "$test_dir/err"
+ [[ ! -s $test_dir/calls ]]
+ snapshot >"$test_dir/after-version"
+ cmp "$test_dir/before-version" "$test_dir/after-version"
+done
+TEST_RUNTIMES='["codex"]' TEST_CLAUDE_VERSION=1.0.0 run
+echo 'PASS host: 最低より古いか読めない Claude Code では、何も書かずに止まり、Codex だけなら止まらない'
 # 同居する既存システムの Mac の代わり。マークのないファイルと資格情報を残す。
 sed '/^# multica-squad-kit-managed$/d' "$root/common/guard/gh" >"$TEMPLATE_AGENT_HOME/bin/gh"
 sed '/^# multica-squad-kit-managed$/d' "$root/common/guard/pre-push" >"$TEMPLATE_AGENT_HOME/git-hooks/pre-push"

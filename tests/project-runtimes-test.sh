@@ -16,7 +16,8 @@ cp -R "$test_dir/completed/db" "$TEST_DB"
 cp -R "$test_dir/completed/host" "$TEMPLATE_AGENT_HOME"
 jq '.custom_args=["--keep","value"]' "$TEST_DB/agents/agent-demo-orchestrator-owner.json" >"$TEST_DB/new"
 mv "$TEST_DB/new" "$TEST_DB/agents/agent-demo-orchestrator-owner.json"
-jq '.+{EXTRA:"keep"}' "$TEST_DB/env/agent-demo-orchestrator-owner.json" >"$TEST_DB/new"
+# リーダーには、人が上げた手数の上限とコマンドの時間切れの既定を置く。Claude では残り、Codex へ移すと外れる。
+jq '.+{EXTRA:"keep",CLAUDE_CODE_MAX_TURNS:"9999",BASH_DEFAULT_TIMEOUT_MS:"900000"}' "$TEST_DB/env/agent-demo-orchestrator-owner.json" >"$TEST_DB/new"
 mv "$TEST_DB/new" "$TEST_DB/env/agent-demo-orchestrator-owner.json"
 for selected in claude codex; do
  export TEST_RUNTIMES="[\"$selected\"]"
@@ -48,12 +49,21 @@ for selected in claude codex; do
   for role in orchestrator usage-monitor ci-monitor; do
    jq -e '.CLAUDE_CONFIG_DIR==null and .CLAUDE_CODE_SHELL==null and .ENABLE_CLAUDEAI_MCP_SERVERS==null and .CLAUDE_CODE_AUTO_COMPACT_WINDOW==null and .CLAUDE_CODE_DISABLE_BACKGROUND_TASKS==null and .CLAUDE_CODE_DISABLE_CRON==null and .DISABLE_AUTOUPDATER==null' "$TEST_DB/env/agent-demo-$role-owner.json" >/dev/null
   done
+  # Codex へ替えた役からは、2 つの変数を外す。人が上げた値も外す。
+  for role in orchestrator planner designer qa code-reviewer security-reviewer ux-reviewer performance-reviewer ci-monitor usage-monitor dependabot-merger; do
+   jq -e '.CLAUDE_CODE_MAX_TURNS==null and .BASH_DEFAULT_TIMEOUT_MS==null' "$TEST_DB/env/agent-demo-$role-owner.json" >/dev/null
+  done
+  jq -e '.EXTRA=="keep"' "$TEST_DB/env/agent-demo-orchestrator-owner.json" >/dev/null
   ! grep -q 'CLAUDE_CONFIG_DIR=' "$test_dir/out"
   grep -q 'CODEX_HOME=' "$test_dir/out"
  else
   jq -e '.CLAUDE_CONFIG_DIR!=null and .CLAUDE_CODE_SHELL=="/bin/zsh"' "$TEST_DB/env/agent-demo-usage-monitor-owner.json" >/dev/null
   for role in orchestrator planner designer qa code-reviewer security-reviewer ux-reviewer performance-reviewer ci-monitor usage-monitor dependabot-merger; do
    jq -e '.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=="1" and .CLAUDE_CODE_DISABLE_CRON=="1" and .DISABLE_AUTOUPDATER=="1"' "$TEST_DB/env/agent-demo-$role-owner.json" >/dev/null
+   # 手数の上限は、決まった手順の 3 役が 300、ほかが 2500。リーダーは人が上げた値が残る。
+   want_turns=2500 want_timeout=600000
+   case $role in ci-monitor | usage-monitor | dependabot-merger) want_turns=300 ;; orchestrator) want_turns=9999 want_timeout=900000 ;; esac
+   jq -e --arg turns "$want_turns" --arg timeout "$want_timeout" '.CLAUDE_CODE_MAX_TURNS==$turns and .BASH_DEFAULT_TIMEOUT_MS==$timeout' "$TEST_DB/env/agent-demo-$role-owner.json" >/dev/null
   done
   ! grep -q 'CODEX_HOME=' "$test_dir/out"
   grep -q 'CLAUDE_CONFIG_DIR=' "$test_dir/out"
