@@ -355,12 +355,13 @@ Codex に同じものがある項目は、このホストの Codex で確認し�
 | `lib/host.sh` | 合わせるフックに StopFailure・SessionStart・SessionEnd を `timeout` 付きで足し、3 つのスクリプトをガードの置き場に写す。置く前に確認する置き先の一覧にも 3 つの名前を足す |
 | `lib/check.sh` | Claude を使うとき、Claude Code の最低のバージョンを確認する |
 | `lib/project.sh` | Claude のモデルの役の custom_env に、手数の上限とコマンドの時間切れの既定を足す。人が上げた値は残し、付け外しする変数の一覧にも足す |
-| `common/monitor/squad-usage-check` | ログインの行と更新する前のタスクの確認を足し、題の終わりにキーを付け、ok でない状態どうしの変化をコメントする。`USAGE_LOGIN_WARN_DAYS` が 0 から 9999 の整数でなければ 1 で終え、ログインを読む時間切れの秒数はテストだけが `USAGE_LOGIN_READ_SECONDS` で変える |
+| `common/monitor/squad-usage-check` | ログインの行と更新する前のタスクの確認を足し、題の終わりにキーを付け、ok でない状態どうしの変化をコメントし、実行の結果の説明にタスクを外したときを足す。`USAGE_LOGIN_WARN_DAYS` が 0 から 9999 の整数でなければ 1 で終え、ログインを読む時間切れの秒数はテストだけが `USAGE_LOGIN_READ_SECONDS` で変える |
 | `manual.md` | 「受け取る人の準備」に最低のバージョンを書く。「ホストとエージェント用のログイン」と「止まったときに見ること」に、ログインのタスクの直し方と、記録と Codex の実行の記録の読み方を書く |
 | `CHANGELOG.md` | 先頭の `## 次のバージョン` の節に、流し直しで変わることを書く |
 | `tests/` | [テストと実機の確認](#テストと実機の確認)のとおりに足す |
 | `tests/setup-fixture.sh`・`tests/host-test-lib.sh`・`tests/setup-runtimes-test-lib.sh` | Claude のスタブに `--version` の応答を足し、ランタイムの呼び出しの比較から `claude --version` を除く。`tests/setup-runtimes-test-lib.sh` は、見張りの状態にログインの行があることも確認する |
 | `tests/host-config-test.sh` | 最低より古いか読めない Claude Code で、ホストの準備が何も書かず、デーモンにも触れずに止まることを見る |
+| `tests/host-test.sh` | 人のフックを残す今の確認の PASS の文に、記録のフックと同じイベントの人のフックも残ることを足す |
 | `tests/project-runtimes-first-test.sh` | 初回の登録の環境を完全一致で比べる期待値に、2 つの変数を足す |
 | `tests/test-weights` | テストの振り分けが読む重みに、`tests/run-stops-test.sh` の行を足す |
 | `MANIFEST` | ファイルを変えるたびに `bash scripts/manifest.sh` で作り直す |
