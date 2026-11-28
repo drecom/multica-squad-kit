@@ -55,12 +55,14 @@ case "$1 $2" in
 	list) [[ $(value --output) == json ]]; emit issue-metadata "$dir/metadata.json" ;;
 	set)
 		[[ $(value --type) == string ]]
+		[[ ! -f $dir/fail-metadata-set ]] || exit 1
 		jq --arg key "$(value --key)" --arg value "$(value --value)" '.[$key] = $value' "$dir/metadata.json" >"$dir/metadata.next"
 		mv "$dir/metadata.next" "$dir/metadata.json"
 		;;
 	*) exit 1 ;;
 	esac
 	;;
+'issue pull-requests') [[ -f $dir/pulls.json ]] && cat "$dir/pulls.json" ;;
 'issue label')
 	case $3 in
 	list) emit issue-labels "$dir/issue-labels.json" ;;
@@ -111,6 +113,7 @@ escalate_fixture() {
 	printf '200' >"$test_dir/curl-status"
 	: >"$test_dir/curl-calls.jsonl"
 	rm -f "$test_dir/curl-config"
+	rm -f "$test_dir/fail-metadata-set" "$test_dir/pulls.json"
 }
 
 run_escalate() {
