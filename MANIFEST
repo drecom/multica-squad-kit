@@ -159,7 +159,7 @@ b9a45cd63da0d056163d453d727352a611c2515299627c097ce072f28fc7f8b7  ./lib/autopilo
 7ed13cafec6ee21945314b6d5fc2b9e812428dbdd61a4d994c865f3a4c2f011f  ./lib/host.sh
 23d61cb270e4f571520a230918feccc00e8b5b09cbcf430108e0a424244b5a96  ./lib/installation.sh
 98823f1dc43473fe56a1a8f1e37e3d5a3fc3e8dd2389a7dff8c71f0b4c40f6a1  ./lib/project-changes.sh
-a64aa00177818b153a6029502a10439ad5d579ebcbbbda600572946bd837cc7c  ./lib/project.sh
+49680f514349c5850bdce6ac5c54c112913c95169ea857a5ac9e7fe96d9d3492  ./lib/project.sh
 a6d2fa6c6d23acc33987e011e358aec75c2bc650048bca65ccf64a019b209099  ./lib/questions.sh
 ae4eac4a5f72d78dc0e311ec42a6ef3a9d1973f91a1aefe14ab32d8982f7b2a1  ./lib/render.sh
 586f3aa9bc5bfa9df551ff1e1be82b5adf9e671933b86341dde46bf9b804ca67  ./lib/setup-issues.sh
@@ -675,7 +675,7 @@ dc25895fd5677a8e06601ee32d44ccb93025e9097869f3b44f9d27f9ac95aa14  ./tests/pr-wat
 1bcb66aaa8b25e52d9a3164658c0ca2465a9940f3e6af4f7994594823c4f5b52  ./tests/pr-watch-test-lib.sh
 5a1e26a157c41cc1e8cfb3c0458c80fbf3174f183d0ad0d723f5605d8191f984  ./tests/pre-push-test.sh
 32bdfe52ae6a0e5949e26846ad289256ea94603c7d697af78dfb978e61d3b971  ./tests/project-changes-test.sh
-c4108a25e5eae844a9b2b51f318f52f5393018d23738338b52caa354a44d5990  ./tests/project-create-test.sh
+40434c022b6f3cd78c5a0989457387ffdf0e316b3d11bed9d765a116a30c7135  ./tests/project-create-test.sh
 03695b7195d4e55a905c477dbeff96fb6164d5b44795d557fba54ef1844b1fc3  ./tests/project-environment-test.sh
 2bc955be3acc4de17ba7fc030f4499ead32e87f7748bbcff52cd929e4a3fa21a  ./tests/project-failure-render-cache-check.sh
 e90a5edb6b1b0b97bcb8cb5e220f789d1148904978bf0b20f8d37e0541f5ef96  ./tests/project-failure-render-cache.sh
@@ -689,9 +689,9 @@ e2c2da5c20cc0a7ef5d2f04015270a5d7beaf188c6b9bfba94ead57341272480  ./tests/projec
 29f1e6218e5d1b8809f4f27f3645238ebeea0708ed97aa64482084ae82fa3022  ./tests/project-issues-test.sh
 e2141527ff9e7280bce9dd9dd161bec702edca9d55658c078e487cae802c9ab2  ./tests/project-linking-test.sh
 59c17b27dd840bfb577695d5bca491c7ccd0bfecd452cbd9b413838e2e4bef9c  ./tests/project-progress-test.sh
-e02c8e17d26a2d461f4dd0897c5590d6d06eb6b54a5324de5e65271c8cf4f3b4  ./tests/project-runtimes-first-test.sh
+7f8809bff4b3ab615868f0fd901882601ef33f26b51a9dc7035ec798a35118c2  ./tests/project-runtimes-first-test.sh
 f64b7d9e33e3dc4250542d3cd7d25ff3d90ec7a9e2bfb9078924a75900ca82c5  ./tests/project-runtimes-rerun-test.sh
-3531fb17517213dd36dbd2e398b02a6f967639d1a384b123ca378009e3964175  ./tests/project-runtimes-test.sh
+4f254062099d9978d9b51b0f32e570851418e9e01b44e4599a768225e13feedb  ./tests/project-runtimes-test.sh
 9ef6a9680ef8ebfe33085119aeb39a268728eb02b23cde8561014fea844c2d6a  ./tests/project-select-test.sh
 f1741b64873d2671d11103087cb5b7bd09ee852ad8fe58565d553c449edf5964  ./tests/project-test-lib.sh
 5a6e6016e455b9837aaa4a2f9eb2beb31b865302d416a52421a8270dff432d14  ./tests/questions-fold-test.sh

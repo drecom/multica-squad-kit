@@ -203,7 +203,8 @@ prepare_project() (
 		current=$(mc agent get "$id" --output json) || die 'エージェントを読めませんでした。'
 		result=$(mc agent env get "$id" --output json) || die '環境変数を読めませんでした。'
 		jq -e '(.custom_env // {}) | type=="object" and all(.[]; type=="string")' >/dev/null <<<"$result" || die '環境変数の応答が不正です。'
-		jq --slurpfile desired "$project_work/$role.env" '(.custom_env // {} | del(.SQUAD_KIT_GH_DEPENDABOT_MERGE,.CLAUDE_CONFIG_DIR,.ENABLE_CLAUDEAI_MCP_SERVERS,.CLAUDE_CODE_SHELL,.CLAUDE_CODE_AUTO_COMPACT_WINDOW,.CLAUDE_ENV_FILE,.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS,.CLAUDE_CODE_DISABLE_CRON,.DISABLE_AUTOUPDATER)) + $desired[0]' <<<"$result" >"$project_work/env.json"
+		# 手数の上限とコマンドの時間切れの既定は、人が上げた値（キットの値より大きい正の整数）を残す。Claude のモデルでなくなった役は $desired[0] に無いので、人が上げた値も外れる。
+		jq --slurpfile desired "$project_work/$role.env" '(.custom_env // {}) as $cur | $desired[0] as $d | ($cur | del(.SQUAD_KIT_GH_DEPENDABOT_MERGE,.CLAUDE_CONFIG_DIR,.ENABLE_CLAUDEAI_MCP_SERVERS,.CLAUDE_CODE_SHELL,.CLAUDE_CODE_AUTO_COMPACT_WINDOW,.CLAUDE_ENV_FILE,.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS,.CLAUDE_CODE_DISABLE_CRON,.DISABLE_AUTOUPDATER,.CLAUDE_CODE_MAX_TURNS,.BASH_DEFAULT_TIMEOUT_MS)) + $d + (reduce ("CLAUDE_CODE_MAX_TURNS","BASH_DEFAULT_TIMEOUT_MS") as $k ({}; if $d[$k] != null and ($cur[$k] | type=="string" and test("^[0-9]+$") and (tonumber > ($d[$k] | tonumber))) then .+{($k): $cur[$k]} else . end))' <<<"$result" >"$project_work/env.json"
 		if [[ $(jq -Sc '.custom_env // {}' <<<"$result") != "$(jq -Sc . "$project_work/env.json")" ]]; then
 			mc agent env set "$id" --custom-env-file "$project_work/env.json" --output json >/dev/null || die '環境変数を反映できませんでした。'
 		fi
@@ -433,7 +434,7 @@ project_desired_env() {
 	jq -n --arg a "$allowed_repos_file" --arg z "$project_shell_dir" --arg h "$agent_home/git-hooks" --arg g "$agent_home/guard" --arg human_gh "$human_gh" --arg c "$agent_home/claude" --arg role "$1" --arg model "$2" --argjson use_claude "$use_claude" '
 		def sq: "\u0027" + gsub("\u0027"; "\u0027\\\u0027\u0027") + "\u0027";
 		{SQUAD_KIT_ALLOWED_REPOS:$a,ZDOTDIR:$z,BASH_ENV:($z+"/env.sh"),GH_CONFIG_DIR:($g+"/gh-empty"),SQUAD_KIT_GH_CONFIG_DIR:$human_gh,GIT_CONFIG_COUNT:"6",GIT_CONFIG_KEY_0:"core.hooksPath",GIT_CONFIG_VALUE_0:$h,GIT_CONFIG_KEY_1:"credential.helper",GIT_CONFIG_VALUE_1:"",GIT_CONFIG_KEY_2:"credential.https://github.com.helper",GIT_CONFIG_VALUE_2:"",GIT_CONFIG_KEY_3:"credential.https://github.com.helper",GIT_CONFIG_VALUE_3:("!"+(($g+"/git-credential")|sq)),GIT_CONFIG_KEY_4:"credential.https://github.com.useHttpPath",GIT_CONFIG_VALUE_4:"true",GIT_CONFIG_KEY_5:"core.sshCommand",GIT_CONFIG_VALUE_5:(($g+"/git-ssh")|sq)} |
-		if ($model|startswith("claude-")) then .+{CLAUDE_CONFIG_DIR:$c,ENABLE_CLAUDEAI_MCP_SERVERS:"false",CLAUDE_CODE_SHELL:"/bin/zsh",CLAUDE_CODE_AUTO_COMPACT_WINDOW:"150000",CLAUDE_ENV_FILE:($z+"/env.sh"),CLAUDE_CODE_DISABLE_BACKGROUND_TASKS:"1",CLAUDE_CODE_DISABLE_CRON:"1",DISABLE_AUTOUPDATER:"1"} else . end |
+		if ($model|startswith("claude-")) then .+{CLAUDE_CONFIG_DIR:$c,ENABLE_CLAUDEAI_MCP_SERVERS:"false",CLAUDE_CODE_SHELL:"/bin/zsh",CLAUDE_CODE_AUTO_COMPACT_WINDOW:"150000",CLAUDE_ENV_FILE:($z+"/env.sh"),CLAUDE_CODE_DISABLE_BACKGROUND_TASKS:"1",CLAUDE_CODE_DISABLE_CRON:"1",DISABLE_AUTOUPDATER:"1",CLAUDE_CODE_MAX_TURNS:(if ($role|IN("ci-monitor","usage-monitor","dependabot-merger")) then "300" else "2500" end),BASH_DEFAULT_TIMEOUT_MS:"600000"} else . end |
 		if $role=="usage-monitor" and $use_claude then .+{CLAUDE_CONFIG_DIR:$c,DISABLE_AUTOUPDATER:"1"} else . end |
 		if $role=="dependabot-merger" then .+{SQUAD_KIT_GH_DEPENDABOT_MERGE:"1"} else . end'
 }

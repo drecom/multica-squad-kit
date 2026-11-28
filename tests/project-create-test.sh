@@ -27,6 +27,12 @@ jq -e '.CLAUDE_CONFIG_DIR!=null and .CLAUDE_CODE_SHELL==null and .CLAUDE_ENV_FIL
 jq -e --arg env "$TEMPLATE_AGENT_HOME/template/shell/project-a/env.sh" '.CLAUDE_CODE_SHELL=="/bin/zsh" and .ENABLE_CLAUDEAI_MCP_SERVERS=="false" and .CLAUDE_ENV_FILE==$env and .CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=="1" and .CLAUDE_CODE_DISABLE_CRON=="1" and .DISABLE_AUTOUPDATER=="1"' "$TEST_DB/env/agent-demo-orchestrator-owner.json" >/dev/null
 jq -e '.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS==null and .CLAUDE_CODE_DISABLE_CRON==null and .DISABLE_AUTOUPDATER==null' "$TEST_DB/env/agent-demo-codex-implementer-owner.json" >/dev/null
 jq -e '.SQUAD_KIT_GH_DEPENDABOT_MERGE=="1"' "$TEST_DB/env/agent-demo-dependabot-merger-owner.json" >/dev/null
+# 手数の上限とコマンドの時間切れの既定は、Claude のモデルの役にだけ付く。両方の構成では、決まった手順の 3 役は Codex なので付かない（300 の値は project-runtimes-test.sh で見る）。
+jq -e '.CLAUDE_CODE_MAX_TURNS=="2500" and .BASH_DEFAULT_TIMEOUT_MS=="600000"' "$TEST_DB/env/agent-demo-orchestrator-owner.json" >/dev/null
+for role in ci-monitor usage-monitor dependabot-merger codex-implementer; do
+ jq -e '.CLAUDE_CODE_MAX_TURNS==null and .BASH_DEFAULT_TIMEOUT_MS==null' "$TEST_DB/env/agent-demo-$role-owner.json" >/dev/null
+done
+echo 'PASS env limits: 手数の上限とコマンドの時間切れの既定は Claude のモデルの役にだけ付き、Codex の役には付かない'
 jq -e '.SQUAD_KIT_GH_DEPENDABOT_MERGE==null' "$TEST_DB/env/agent-demo-codex-implementer-owner.json" >/dev/null
 jq -e '[.skills[].id]|sort==["handoff-a","verify-a"]' "$TEST_DB/agents/agent-demo-codex-implementer-owner.json" >/dev/null
 for role in security-reviewer performance-reviewer; do
@@ -115,6 +121,19 @@ jq -e '.EXTRA=="keep" and (.ZDOTDIR|endswith("/project-a")) and .CLAUDE_ENV_FILE
 jq -e --arg env "$TEMPLATE_AGENT_HOME/template/shell/project-a/env.sh" '.EXTRA=="keep" and .CLAUDE_ENV_FILE==$env' "$TEST_DB/env/agent-demo-orchestrator-owner.json" >/dev/null
 echo 'PASS project: 既存のエージェントの本指示・モデル・環境を ID を変えずに合わせる'
 echo 'PASS Claude env: 古い CLAUDE_ENV_FILE を Claude では修復し、Codex では除き、追加の環境を保つ'
+
+# 流し直す前の値が、キットの値より大きい正の整数なら残す。小さい値、0、数でない値、空はキットの値にする。
+for case in 3000:700000 2500:600000 100:10 0:abc 1.5:-5 0010:'' ' 3000':'3000 '; do
+ turns=${case%%:*} timeout=${case#*:}
+ jq --arg turns "$turns" --arg timeout "$timeout" '.CLAUDE_CODE_MAX_TURNS=$turns | .BASH_DEFAULT_TIMEOUT_MS=$timeout | .EXTRA="keep"' "$TEST_DB/env/agent-demo-orchestrator-owner.json" >"$TEST_DB/new"
+ mv "$TEST_DB/new" "$TEST_DB/env/agent-demo-orchestrator-owner.json"
+ run
+ want_turns=2500 want_timeout=600000
+ if [[ $turns =~ ^[0-9]+$ ]] && ((10#$turns > 2500)); then want_turns=$turns; fi
+ if [[ $timeout =~ ^[0-9]+$ ]] && ((10#$timeout > 600000)); then want_timeout=$timeout; fi
+ jq -e --arg turns "$want_turns" --arg timeout "$want_timeout" '.EXTRA=="keep" and .CLAUDE_CODE_MAX_TURNS==$turns and .BASH_DEFAULT_TIMEOUT_MS==$timeout' "$TEST_DB/env/agent-demo-orchestrator-owner.json" >/dev/null
+done
+echo 'PASS env limits: 流し直す前の値がキットの値より大きい正の整数なら残し、小さい値・数でない値はキットの値にする'
 
 TEST_REPOSITORIES='[{"url":"https://github.com/example/project","repository":"example/project"}]' run
 [[ $(cat "$TEMPLATE_AGENT_HOME/allowed-repos.d/project-a") == example/project ]]

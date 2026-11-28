@@ -68,12 +68,14 @@ for role, agent in agents.items():
                               'CLAUDE_CODE_AUTO_COMPACT_WINDOW': '150000',
                               'CLAUDE_ENV_FILE': str(home / 'template/shell/project-a/env.sh'),
                               'CLAUDE_CODE_DISABLE_BACKGROUND_TASKS': '1',
-                              'CLAUDE_CODE_DISABLE_CRON': '1'}, role
+                              'CLAUDE_CODE_DISABLE_CRON': '1',
+                              'CLAUDE_CODE_MAX_TURNS': '300' if role in ('ci-monitor', 'usage-monitor', 'dependabot-merger') else '2500'}, role
         assert env['DISABLE_AUTOUPDATER'] == '1', role
+        assert env['BASH_DEFAULT_TIMEOUT_MS'] == '600000', role
         assert env['ENABLE_CLAUDEAI_MCP_SERVERS'] == 'false'
         assert env['CLAUDE_ENV_FILE'] == env['BASH_ENV']
     else:
-        assert claude_env == {} and 'ENABLE_CLAUDEAI_MCP_SERVERS' not in env and 'DISABLE_AUTOUPDATER' not in env, role
+        assert claude_env == {} and 'ENABLE_CLAUDEAI_MCP_SERVERS' not in env and 'DISABLE_AUTOUPDATER' not in env and 'BASH_DEFAULT_TIMEOUT_MS' not in env, role
     assert ('SQUAD_KIT_GH_DEPENDABOT_MERGE' in env) == (role == 'dependabot-merger')
     assert bool(agent['skills']) == (role not in monitors), role
 print(f'PASS project runtimes first: {selected} だけの役の組・モデル・runtime_id・環境を初回登録する')
