@@ -274,7 +274,10 @@ usage_issues = [i for i in db['issues'] if not i['metadata'].get('squad_kit_task
 assert len(usage_issues) == len(db['runtimes'])
 assert all(i['project_id'] == 'projects-1' and i['assignee'] == 'Owner' and i['label_id'] for i in usage_issues)
 state = json.loads((scenario / 'usage-state/projects-1/owner.state').read_text())
-assert {key.split(':')[0] for key in state} == set(db['runtimes'])
+runtimes = set(db['runtimes'])
+assert {key.split(':', 1)[0] for key in state if not key.startswith('login:')} == runtimes
+codex_login = {'level': 'ok', 'issue': ''} if 'codex' in runtimes else None
+assert state.get('login:codex') == codex_login
 PY
  fi
  fi

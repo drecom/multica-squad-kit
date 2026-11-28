@@ -64,7 +64,7 @@ a42bc9f4e0cab7a342bdd980e845b816354c3787152f1cd6c2b80b592d1d56ea  ./common/monit
 d01f8b949abb8359dd72254134adeb4c24d8bc9772d0868865718aeb1345d3c5  ./common/monitor/squad-run-cut-values
 691349b88eef89a875045ed1f729ad7a1074fe3bf75f58181a26410fb6e25357  ./common/monitor/squad-task-post
 411889e07d816359c09e63acdda2fe809c0dbb9ca5a6b94b8de30ab01144938b  ./common/monitor/squad-task-read
-22573bb28f357aeca204f810d55bcdb5e8749bf82a8a3336dcadeb91aa2d3955  ./common/monitor/squad-usage-check
+80cc8b9f63d7ae361211c556c8571e12088131dc48a5350650dc6aa3d057206b  ./common/monitor/squad-usage-check
 67746f87ae656f2e23961f61772297fc617a13dc86f5122a61e25b26a53b133b  ./common/monitor/squad-usage-lib
 3d6fd26a2ba05859edcf8af5fd449cb9358eaf4a4edca2d2f5587ef81b50a316  ./common/monitor/squad-usage-read
 fac2e72f734a7821ea3121010292836c9cf5478e94f934f9ab211752517cc2c9  ./common/monitor/squad-usage-wait
@@ -733,7 +733,7 @@ a59ee5040990d899e321a5b60cb0efa766a6f66c17f01215f7579a080ba6f603  ./tests/setup-
 a6c5bb9c0b064cc3d59d1c27500f66d22f5ba52839afa1dbbdcde6d532f82fe5  ./tests/setup-runtimes-both-changes-test.sh
 aa03f77f85dc73a75048a50267d331ce66338f2d54745c758e7d5d309a7fdddd  ./tests/setup-runtimes-both-issues-test.sh
 bebfff3bc6b1fda21b88f36dfcd50878711c0609ccc205d7643f80d524f331a7  ./tests/setup-runtimes-both-test.sh
-3f20d2fa1668ac3b97c916c4d6e67dadf4bac2208db1d9715c65a6b98b5d5f50  ./tests/setup-runtimes-test-lib.sh
+fdd30f4eba2eb408a2e7bf484708affecd6a1cdeb0e30ae55834f78c1a587c18  ./tests/setup-runtimes-test-lib.sh
 6b6369063bad32faa4ed17590f2078773e7db36fc09ff67eeed02109a1a997f4  ./tests/setup-tag-test.sh
 e21574a9e6bf9dd12e207a5a5f472661de040ceb6e112bc4eedcd9bfa3658f9c  ./tests/setup-test.sh
 988a7f34189829bf2801c6177c00ffff55ae472c7f8fa0783978dcd52cf13764  ./tests/setup-version-cache-check.sh
@@ -826,7 +826,7 @@ ade03af4dc3f6b3561e30bba28af204c75af1be74165527997e347917be876c1  ./tests/squad-
 08f573581fa6edcb10ec80eefe9864a9bc20f7d312d12e57a26c8bc783930606  ./tests/squad-run-cut-test.sh
 ca32912f56551764f0241bfbe8b6c50057a37c92ad57b3686fa0865650233b62  ./tests/squad-task-post-test.sh
 8e8cd39a1797ec75547afafa5ee03862c0f04f878f723be2d395c9b00b66ae50  ./tests/squad-task-read-test.sh
-8c7a8d8956f4b8622efdec413b5e8c250678a96f71a9f161e51badb6f63c4529  ./tests/squad-usage-check-test.sh
+70e005480e3d2be5f84438da9f5bf3c8ece94cf0515ba2b159a37b844e3a35c9  ./tests/squad-usage-check-test.sh
 7ff6024e00e2ffd4a01548013ff835f862c6ef20a5182e34dc28f75e5ba75d39  ./tests/squad-usage-read-test.sh
 6c326d3fa8e70bff7606eb190fbd23eac619e7a91d850f7603320f1024e45a6f  ./tests/squad-usage-wait-answer-cancel-test.sh
 d954f2195551e917f4a2889c4def9108e05e1df299b0723c76060aa934b97789  ./tests/squad-usage-wait-answer-test.sh

@@ -63,6 +63,12 @@ if [[ "$*" == --version ]]; then
 	jq -r '.versions.codex' "$USAGE_FIXTURE_ROOT/tests/fixtures/cli/USAGE-CAPTURE.json"
 	exit 0
 fi
+if [[ "$*" == 'login status' ]]; then
+	printf 'codex-login\n' >>"$USAGE_TEST_DIR/login-calls"
+	cat "$USAGE_TEST_DIR/codex-login.err" >&2
+	[[ ! -f $USAGE_TEST_DIR/codex-login-hang ]] || exec sleep 600
+	exit "$(cat "$USAGE_TEST_DIR/codex-login.status")"
+fi
 [[ "$*" == app-server ]]
 stub_args=("$@")
 stub() { recorded=1; python3 "$USAGE_FIXTURE_ROOT/tests/cli-stub.py" usage "$USAGE_TEST_DIR" codex - "$@" -- ${stub_args[@]+"${stub_args[@]}"}; }
@@ -91,6 +97,11 @@ claude_auth() { # 終了コード JSON
 	printf '%s\n' "$2" >"$test_dir/claude-auth.json"
 }
 claude_auth 0 '{"loggedIn":true,"authMethod":"claude.ai","email":"fake.person@example.invalid","orgName":"Fake Org Inc"}'
+codex_login() { # 終了コード stderr
+	echo "$1" >"$test_dir/codex-login.status"
+	printf '%s\n' "$2" >"$test_dir/codex-login.err"
+}
+codex_login 0 'Logged in using ChatGPT'
 
 assert_fetch() {
 	"fetch_$1" >"$test_dir/actual" 2>"$test_dir/err"
@@ -254,7 +265,8 @@ echo '{"id":2,"result":{"ordinaryUsageAllowed":true,"rateLimitsByLimitId":{"code
 	cd "$test_dir"
 	bash "$script"
 	jq -e '. == {"claude:Current session": {level: "warn", issue: "test-issue"},
-		"codex:codex:10080": {level: "warn", issue: "test-issue"}}' "$state_file" >/dev/null
+		"codex:codex:10080": {level: "warn", issue: "test-issue"},
+		"login:codex": {level: "ok", issue: ""}}' "$state_file" >/dev/null
 	jq -se '[.[] | select(.[0:2] == ["issue", "create"])] | length == 2' "$test_dir/calls.jsonl" >/dev/null
 	: >"$test_dir/calls.jsonl"
 	USAGE_CHECK_RUNTIMES='claude codex' bash "$script"
@@ -353,12 +365,13 @@ for selected in claude codex; do
 	PATH="$selected_bin" /bin/bash "$script"
 	jq -e --arg key "$disabled_key" '.[$key]=={level:"warn",issue:"disabled-issue"} and all(to_entries[]|select(.key!=$key); .value.level=="ok" and .value.issue=="")' "$state_file" >/dev/null
 	jq -se '[.[]|select(.[0:2]==["issue","status"])]==[["issue","status","test-issue","done","--no-start"]]' "$test_dir/calls.jsonl" >/dev/null
-	# ログインの行は、見張るランタイムの claude にだけできる。claude を見張らなければ、ログインを読みもしない。
+	# 見張るランタイムのログインだけを読む。
 	if [[ $selected == claude ]]; then
 		grep -qx claude-auth "$test_dir/login-calls"
+		! grep -q '^codex-' "$test_dir/login-calls" || exit 1
 	else
-		[[ ! -s $test_dir/login-calls ]]
-		jq -e 'keys | all(startswith("login:") | not)' "$state_file" >/dev/null
+		grep -qx codex-login "$test_dir/login-calls"
+		! grep -q '^claude-' "$test_dir/login-calls" || exit 1
 	fi
 
 	# 選んだ側がなければ、使用量や CLI を呼ぶ前に失敗する。
@@ -564,17 +577,20 @@ transition_case login:claude "$l" warn unverified 'ログインを確認でき�
 )
 echo 'PASS 本体: 合わないタスクを更新せず、状態から外して 1 で終え、次の実行で題にキーを付けて作り直す'
 
-# ===== Claude Code のログインの行 =====
+# ===== ログインの行 =====
 login_state_file() { printf '%s/login-states/%s/%s.state\n' "$test_dir" "$USAGE_CHECK_PROJECT" "$USAGE_CHECK_MEMBER"; }
 usage_zero='{"is_error":false,"result":"Current session: 0% used · resets Oct 27 at 12:29pm (Asia/Tokyo)"}'
 login_title='[ログイン] Claude Code のログイン（login:claude）'
+codex_login_title='[ログイン] Codex のログイン（login:codex）'
 login_reset() {
 	reset_server
-	rm -f "$(login_state_file)" "$test_dir/description.md" "$test_dir/create-response.json" "$test_dir/claude-auth-hang"
+	rm -f "$(login_state_file)" "$test_dir/description.md" "$test_dir/create-response.json" \
+		"$test_dir/claude-auth-hang" "$test_dir/codex-login-hang"
 	: >"$test_dir/runtime-calls"; : >"$test_dir/login-calls"
 	echo "$usage_zero" >"$test_dir/claude.json"; echo 0 >"$test_dir/claude.status"
 	echo '2.1.322 (Claude Code)' >"$test_dir/claude-version"
 	claude_auth 0 '{"loggedIn":true,"authMethod":"claude.ai","email":"fake.person@example.invalid","orgName":"Fake Org Inc"}'
+	codex_login 0 'Logged in using ChatGPT'
 	echo '{"id":2,"result":{"ordinaryUsageAllowed":true,"rateLimitsByLimitId":{}}}' >"$test_dir/codex.jsonl"
 }
 # 本体を、ログインの状態のファイルで動かす。stdout と stderr は out と err に置く。
@@ -685,8 +701,9 @@ echo 'PASS ログインの警告の日数: USAGE_LOGIN_WARN_DAYS で変わり、
 login_reset
 claude_auth 1 '{"loggedIn":false}'
 login_run codex
-[[ ! -s $test_dir/login-calls ]]
+[[ $(cat "$test_dir/login-calls") == codex-login ]]
 no_login_row
+jq -e '."login:codex" == {level: "ok", issue: ""}' "$(login_state_file)" >/dev/null
 login_run 'claude codex'
 [[ $(created_title) == "$login_title" ]]
 jq -e '."login:claude".level == "error"' "$(login_state_file)" >/dev/null
@@ -747,3 +764,68 @@ jq -e '."claude:Current session" == {level: "ok", issue: ""} and ."login:claude"
 jq -se 'length == 1 and (.[0].body | startswith("リセットされた"))' "$test_dir/comments.jsonl" >/dev/null
 assert_no_leak
 echo 'PASS ログインの行: error のツールは使用率を読まず、使用上限の行を前回のままにする。確認失敗のツールは読む'
+
+# Codex の終了コードと出力の組み合わせ。終了コード 1 の定型文だけを未ログインとする。
+codex_login_case() {
+	local code=$1 output=$2 level=$3 title=$4 sentence=$5
+	login_reset
+	codex_login "$code" "$output"
+	login_run codex
+	[[ $(cat "$test_dir/login-calls") == codex-login ]]
+	[[ $(created_title) == "$title" ]]
+	jq -e --arg level "$level" '."login:codex" == {level: $level, issue: "test-issue"}' "$(login_state_file)" >/dev/null
+	[[ $(head -n 1 "$test_dir/description.md") == "$sentence" ]]
+	grep -q "終了コード $code" "$test_dir/description.md"
+	assert_no_leak
+}
+codex_unverified_title='[ログイン] Codex のログインを確認できない（login:codex）'
+codex_login_case 1 'Not logged in' error "$codex_login_title" "$sentence_error"
+[[ ! -s $test_dir/runtime-calls ]]
+codex_login_case 1 'Not logged in: fake.person@example.invalid' unverified "$codex_unverified_title" "$sentence_unverified"
+[[ $(cat "$test_dir/runtime-calls") == codex ]]
+codex_login_case 2 'Not logged in' unverified "$codex_unverified_title" "$sentence_unverified"
+echo 'PASS Codex のログイン: 終了コード 1 と定型文で error になり、確認失敗では使用量を読む'
+
+login_reset
+codex_login 0 'fake.person@example.invalid'
+touch "$test_dir/codex-login-hang"
+login_run codex USAGE_LOGIN_READ_SECONDS=1
+[[ $(created_title) == "$codex_unverified_title" ]]
+grep -qx 'codex login status が時間切れになった' "$test_dir/description.md"
+assert_no_leak
+echo 'PASS Codex のログイン: 時間切れは確認失敗'
+
+# Codex の使用量を読めない場合は、同じ実行で Claude の使用量を読めても復旧扱いにしない。
+for prev in error unverified; do
+	login_reset
+	mkdir -p "$(dirname "$(login_state_file)")"
+	jq -n --arg level "$prev" '{"login:codex": {level: $level, issue: "login-issue"}, "codex:allowed": {level: "warn", issue: "usage-issue"}}' >"$(login_state_file)"
+	echo "$codex_login_title" >"$test_dir/get-title"
+	if [[ $prev == error ]]; then
+		codex_login 1 'Not logged in'
+		login_run codex
+		[[ ! -s $test_dir/runtime-calls && ! -s $test_dir/calls.jsonl ]]
+		jq -e '."codex:allowed" == {level: "warn", issue: "usage-issue"}' "$(login_state_file)" >/dev/null
+	fi
+	# 使用量の行を初期化し、ログインの復旧を読む。
+	jq -n --arg level "$prev" '{"login:codex": {level: $level, issue: "login-issue"}}' >"$(login_state_file)"
+	codex_login 0 'fake.person@example.invalid'
+	cp "$test_dir/codex.jsonl" "$test_dir/codex-ok.jsonl"
+	echo '{"id":2,"error":{"message":"ログインが必要"}}' >"$test_dir/codex.jsonl"
+	login_run 'claude codex'
+	[[ $(cat "$test_dir/runtime-calls") == $'claude\ncodex' ]]
+	jq -e --arg level "$prev" '."login:codex" == {level: $level, issue: "login-issue"} and ."codex:fetch".level == "error"' "$(login_state_file)" >/dev/null
+	jq -se 'all(.[]; .[0:2] != ["issue", "comment"] and .[0:2] != ["issue", "status"])' "$test_dir/calls.jsonl" >/dev/null
+	assert_no_leak
+	reset_server
+	mv "$test_dir/codex-ok.jsonl" "$test_dir/codex.jsonl"
+	# 使用量の取得エラーのタスクは別キー。ログインの更新だけを確認する。
+	jq -n --arg level "$prev" '{"login:codex": {level: $level, issue: "login-issue"}}' >"$(login_state_file)"
+	echo "$codex_login_title" >"$test_dir/get-title"
+	login_run codex
+	jq -e '."login:codex" == {level: "ok", issue: ""}' "$(login_state_file)" >/dev/null
+	jq -se 'length == 1 and (.[0].body | startswith("ログインし直された。\n\n"))' "$test_dir/comments.jsonl" >/dev/null
+	jq -se '[.[] | select(.[0:2] == ["issue", "status"])] == [["issue","status","login-issue","done","--no-start"]]' "$test_dir/calls.jsonl" >/dev/null
+	assert_no_leak
+	echo "PASS Codex のログインの戻り: ${prev} から、同じ実行で Codex の使用量を読めたときだけ ok に戻す"
+done
