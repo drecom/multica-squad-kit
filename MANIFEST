@@ -13,7 +13,7 @@ e26217d9263a7ee07305e8624b87471bdf97acb3c4695c0046804fd6ffeb837a  ./.agents/rule
 413fd532816ee8052c4be65115622d62dffc68117c023ba598e9014c0553fbb1  ./.gitignore
 37feb6277999e20168efa6910ff4b72dcf7439b15ec664f04d67a6637f20506b  ./.markdownlint.json
 e34d5f4f1e74c19cff26ca20e7ca8c53ee8cb3c75bfe133a3a584ddf9bfcecc5  ./AGENTS.md
-40210cd380a7f7d4ce228f55a19269b86b3e304bf1cd9b2e1fd9c058eaab9e40  ./CHANGELOG.md
+0ebcb7d298025fdd7733727b72b293587bd813a4b7858054fa716a467ccb161c  ./CHANGELOG.md
 7b0dffa60a21efdf8f85e0ffe0205b3d47a196b41850044aeb53a8095bf36326  ./CONTRIBUTING.md
 35b6fce60988f9b9a34c897a147fc2304550a86189154497fd665bc8009dfc8e  ./EXTENSIONS.md
 c64ff136b0a19ba329f98b05b879ced23358f4863b7aa22d560c2359dba780a9  ./README.md
@@ -64,7 +64,7 @@ a42bc9f4e0cab7a342bdd980e845b816354c3787152f1cd6c2b80b592d1d56ea  ./common/monit
 d01f8b949abb8359dd72254134adeb4c24d8bc9772d0868865718aeb1345d3c5  ./common/monitor/squad-run-cut-values
 691349b88eef89a875045ed1f729ad7a1074fe3bf75f58181a26410fb6e25357  ./common/monitor/squad-task-post
 411889e07d816359c09e63acdda2fe809c0dbb9ca5a6b94b8de30ab01144938b  ./common/monitor/squad-task-read
-795ec0075b241f26e12bc231d4b8b5f6b247a640c9ba0aaccd3ab0a62f85d244  ./common/monitor/squad-usage-check
+b29fefd84e10c8b83857379288dbb95cfc720f1eb5374ea7108df0d6ac991924  ./common/monitor/squad-usage-check
 67746f87ae656f2e23961f61772297fc617a13dc86f5122a61e25b26a53b133b  ./common/monitor/squad-usage-lib
 3d6fd26a2ba05859edcf8af5fd449cb9358eaf4a4edca2d2f5587ef81b50a316  ./common/monitor/squad-usage-read
 fac2e72f734a7821ea3121010292836c9cf5478e94f934f9ab211752517cc2c9  ./common/monitor/squad-usage-wait
@@ -169,7 +169,7 @@ b8145ced477ed48eb7c0f599f44fc85c3e15990085d6de4521f276286cee6ff8  ./lib/terminal
 f57a7a829cf4cac51462f7a2dc04912b57a99927b8541727faf70f7e4fa701a4  ./lib/version.sh
 405d6c439cb72b4f19d46452714e5ef46f3b9517a1ce8bea0cd57d24afcd2836  ./lib/webhooks.sh
 50c2bfd06e66458d38fe423d6f4c2bf3223efe098dde74b561e21105c807af40  ./lib/workspace.sh
-93d276f6d511fdfa623c435e634a55524f0ae43608ea2e3089fcd53593183605  ./manual.md
+e2c4aaf004d5a62bc69adac4966b5d611e4e12dc38c433da80616095c46f9734  ./manual.md
 633f1030aafe88149effa1a7c3d64247fd6100f682ffbaae2c212d44b443a538  ./scripts/build-assets.sh
 58a7f0238d3b698745dba710637832fad1c4dc3c051353b4a04505f77c798202  ./scripts/check-links.py
 44f95ffd36dfaf4829e3ea7a6c81dd60c6569595754aff1e8285e6d654c45eb1  ./scripts/check-style.py
@@ -826,7 +826,7 @@ ade03af4dc3f6b3561e30bba28af204c75af1be74165527997e347917be876c1  ./tests/squad-
 08f573581fa6edcb10ec80eefe9864a9bc20f7d312d12e57a26c8bc783930606  ./tests/squad-run-cut-test.sh
 ca32912f56551764f0241bfbe8b6c50057a37c92ad57b3686fa0865650233b62  ./tests/squad-task-post-test.sh
 8e8cd39a1797ec75547afafa5ee03862c0f04f878f723be2d395c9b00b66ae50  ./tests/squad-task-read-test.sh
-a62849195db43a5e75b8d2088e4d15b818cc85414c175d9ae4d07c2d8d3f7ee8  ./tests/squad-usage-check-test.sh
+493a70a3a0cf201ff19780f1d34c7d2b500ffe3900fcdfe41199546e96864c71  ./tests/squad-usage-check-test.sh
 7ff6024e00e2ffd4a01548013ff835f862c6ef20a5182e34dc28f75e5ba75d39  ./tests/squad-usage-read-test.sh
 6c326d3fa8e70bff7606eb190fbd23eac619e7a91d850f7603320f1024e45a6f  ./tests/squad-usage-wait-answer-cancel-test.sh
 d954f2195551e917f4a2889c4def9108e05e1df299b0723c76060aa934b97789  ./tests/squad-usage-wait-answer-test.sh

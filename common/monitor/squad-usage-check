@@ -300,8 +300,10 @@ write_description() {
 	printf '%s\n' "$description"
 }
 
-read_task() {
-	python3 - "$1" <<'PY'
+# サーバーの読み取りを、時間切れ付きで実行する。標準出力に JSON を出し、失敗か時間切れなら 1 で終わる。
+# CLI が止まると、ログインの警告を含む見張り全体が止まるので、時間を区切る。
+read_server() {
+	python3 - "$@" <<'PY'
 import os
 import subprocess
 import sys
@@ -309,13 +311,17 @@ import sys
 try:
     limit = int(os.environ.get("USAGE_TASK_READ_SECONDS", "30"))
     result = subprocess.run(
-        ["multica", "issue", "get", sys.argv[1], "--output", "json"],
+        ["multica", *sys.argv[1:]],
         stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=limit,
     )
 except (OSError, ValueError, subprocess.TimeoutExpired):
     sys.exit(1)
 sys.exit(result.returncode)
 PY
+}
+
+read_task() {
+	read_server issue get "$1" --output json
 }
 
 # 読み取りの結果は、この実行で確認したキーと ID の組にだけ使う。
@@ -370,22 +376,32 @@ verify_task() {
 }
 
 # 区切りでキーと ID を連結せず、検証が終わるまで行を JSON のまま扱う。
+# 状態のファイル全体を 1 回の jq で読み、形の合わない行と、前のバージョンの形でタスクのある行だけを出す。
+# 処理済みの行が増えても、起動の検査で起こすプロセスの数を変えないため。
 checked_state_rows() {
 	jq -c --arg uuid "$(issue_id_pattern)" '
 		def level: IN("ok", "warn", "limited", "error", "unverified");
 		def issue: type == "string" and length == 36 and test($uuid);
 		def boolean: type == "boolean";
 		def optional($key; f): if has($key) then .[$key] | f else true end;
+		def mark: type == "object" and (.op == "create" or .op == "comment") and (.to | level)
+			and (.at | type == "number")
+			and (if .op == "comment" then (.from | level) else (.to != "ok" and (has("from") | not)) end)
+			and (keys - ["op", "from", "to", "at"] | length == 0);
 		to_entries[] | .valid = (
 			(.key | test("^(claude:|codex:|login:).+") and (explode | all(. >= 32 and (. < 127 or . > 159))))
 			and (.value | type == "object" and (.level | level) and
 				(if has("posted") then
 					(.issue | issue) and (.posted | level) and (.labeled | boolean) and optional("shown"; level and . != "ok")
-					and (keys - ["level", "issue", "posted", "shown", "labeled"] | length == 0)
+					and optional("pending"; mark and .op == "comment")
+					and (keys - ["level", "issue", "posted", "shown", "labeled", "pending"] | length == 0)
+				elif has("pending") then
+					(.pending | mark and .op == "create") and (keys - ["level", "pending"] | length == 0)
 				else
 					optional("issue"; . == "" or issue) and optional("keyed"; boolean) and optional("retitle"; boolean)
 					and (keys - ["level", "issue", "keyed", "retitle"] | length == 0)
-				end)))' <<<"$state"
+				end)))
+		| select((.valid | not) or (.value | (has("posted") or has("pending") or keys == ["level"]) | not))' <<<"$state"
 }
 
 migrate_task() {
@@ -406,9 +422,6 @@ reconcile_legacy_tasks() {
 			echo "状態のファイルの行 ${key_json} の形が合わない。状態から外した" >&2
 			task_failed=true
 			discard_row "$key_json" || task_failed=true
-			continue
-		fi
-		if jq -e '.value | has("posted") or (keys == ["level"])' <<<"$entry" >/dev/null; then
 			continue
 		fi
 		key=$(jq -r '.key' <<<"$entry") || return 1
@@ -433,26 +446,201 @@ update_task_text() {
 	rm -f -- "$description" || :
 }
 
-# 状態の変化を、既存のタスクにコメントする。
+# 変化のコメントの本文。使用率などの値を含む。
+change_body() {
+	local key=$1 level=$2 prev=$3 detail=$4
+	case "$level:$prev:${key%%:*}" in
+	ok:*:login) printf 'ログインし直された。\n\n%s\n' "$detail" ;;
+	limited:*) printf '使用上限に達した。リセットまで、このモデルのエージェントは失敗する。\n\n%s\n' "$detail" ;;
+	ok:error:*) printf '使用量をまた取れるようになった。\n' ;;
+	*:limited:*) printf '戻った。使用上限で失敗したタスクは multica issue rerun で再実行する。\n\n%s\n' "$detail" ;;
+	ok:warn:*) printf 'リセットされた。\n\n%s\n' "$detail" ;;
+	*) printf '%s。\n\n%s\n' "$(state_sentence "$key" "$level")" "$detail" ;;
+	esac
+}
+
+# コメントの最後の行。値の入る本文と別に、キーと変化だけで、送ったかを照合できるようにする。
+change_line() {
+	printf '（%s: %s → %s）' "$1" "$3" "$2"
+}
+
+# 状態の変化を、既存のタスクにコメントする。最後の行は change_line。
 comment_change() {
 	local key=$1 level=$2 prev=$3 issue=$4 detail=$5
-	case "$level:$prev:${key%%:*}" in
-	ok:*:login) printf 'ログインし直された。\n\n%s\n' "$detail" | usage_comment "$issue" ;;
-	limited:*) printf '使用上限に達した。リセットまで、このモデルのエージェントは失敗する。\n\n%s\n' "$detail" |
-		usage_comment "$issue" ;;
-	ok:error:*) printf '使用量をまた取れるようになった。\n' | usage_comment "$issue" ;;
-	*:limited:*) printf '戻った。使用上限で失敗したタスクは multica issue rerun で再実行する。\n\n%s\n' "$detail" |
-		usage_comment "$issue" ;;
-	ok:warn:*) printf 'リセットされた。\n\n%s\n' "$detail" | usage_comment "$issue" ;;
-	*) printf '%s。\n\n%s\n' "$(state_sentence "$key" "$level")" "$detail" | usage_comment "$issue" ;;
+	{
+		change_body "$key" "$level" "$prev" "$detail"
+		printf '\n%s\n' "$(change_line "$key" "$level" "$prev")"
+	} | usage_comment "$issue"
+}
+
+# 送る前の印を付けた行を作る。操作は create か comment。
+marked_row() {
+	local row=$1 op=$2 to=$3 from=${4-}
+	jq -c --arg op "$op" --arg to "$to" --arg from "$from" --argjson at "$(date +%s)" '
+		.pending = ({op: $op, to: $to, at: $at} + (if $op == "comment" then {from: $from} else {} end))' <<<"$row"
+}
+
+# 起票の照合。印の時刻の少し前より後に作られた、このキーの開いたタスクを、新しい順に 1 行ずつ出す。
+# 読めないか、時間切れなら 1 で終わる。時計の差を吸収するため、時刻は 10 分の幅を持たせる。
+find_created_tasks() {
+	local key=$1 at=$2 pages offset=0 page meta more count code
+	pages=$(usage_tmpfile) || return 1
+	while :; do
+		if ! page=$(read_server issue list --project "$USAGE_CHECK_PROJECT" --limit 100 --offset "$offset" \
+			--sort created_at --direction asc --output json); then
+			echo "プロジェクトのタスクの一覧を読めなかった" >&2
+			rm -f -- "$pages"
+			return 1
+		fi
+		meta=$(jq -r 'select(type == "object" and (.issues | type) == "array" and (.has_more | type) == "boolean")
+			| [.has_more, (.issues | length)] | @tsv' <<<"$page" 2>/dev/null) || meta=
+		if [[ -z $meta ]]; then
+			echo "プロジェクトのタスクの一覧の形が合わない" >&2
+			rm -f -- "$pages"
+			return 1
+		fi
+		IFS=$'\t' read -r more count <<<"$meta"
+		jq -c . <<<"$page" >>"$pages" || { rm -f -- "$pages"; return 1; }
+		[[ $more == true ]] || break
+		if ((count == 0)); then
+			echo 'プロジェクトのタスクの一覧が、続きがあるのに空だった' >&2
+			rm -f -- "$pages"
+			return 1
+		fi
+		offset=$((offset + count))
+	done
+	code=0
+	python3 - "$USAGE_CHECK_PROJECT" "${MULTICA_AGENT_ID-}" "$(title_prefix "$key")" "$key" "$((at - 600))" "$pages" <<'PY' || code=$?
+import json
+import re
+import sys
+from datetime import datetime, timezone
+
+project, agent, prefix, key, since, path = sys.argv[1:7]
+
+
+def epoch(value):
+    text = re.sub(r"\.(\d+)", lambda m: "." + m.group(1)[:6].ljust(6, "0"), str(value)).replace("Z", "+00:00")
+    parsed = datetime.fromisoformat(text)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.timestamp()
+
+
+found = []
+with open(path, encoding="utf-8") as pages:
+    for index, line in enumerate(pages):
+        for number, task in enumerate(json.loads(line)["issues"]):
+            try:
+                title = task["title"]
+                if (isinstance(task, dict) and agent and task.get("project_id") == project
+                        and task.get("creator_type") == "agent" and task.get("creator_id") == agent
+                        and task.get("status") not in ("done", "cancelled")
+                        and isinstance(title, str) and title.startswith(prefix + " ")
+                        and title.endswith("（" + key + "）")
+                        and epoch(task["created_at"]) > float(since)
+                        and isinstance(task["id"], str)):
+                    found.append((epoch(task["created_at"]), index, number, task["id"]))
+            except (KeyError, TypeError, ValueError):
+                continue
+for _, _, _, task_id in sorted(found, reverse=True):
+    print(task_id)
+PY
+	rm -f -- "$pages"
+	return "$code"
+}
+
+# コメントの照合。見張りの作者の最新のコメントの最後の行が、期待する行と同じなら 0、違えば 1、読めなければ 2 で終わる。
+comment_was_posted() {
+	local issue=$1 expected=$2 comments code=0
+	if ! comments=$(read_server issue comment list "$issue" --full --output json); then
+		echo "タスク ${issue} のコメントを読めなかった" >&2
+		return 2
+	fi
+	python3 -c '
+import json
+import re
+import sys
+from datetime import datetime, timezone
+
+agent, expected = sys.argv[1:3]
+
+
+def epoch(value):
+    text = re.sub(r"\.(\d+)", lambda m: "." + m.group(1)[:6].ljust(6, "0"), str(value)).replace("Z", "+00:00")
+    parsed = datetime.fromisoformat(text)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.timestamp()
+
+
+try:
+    comments = json.load(sys.stdin)
+    if not isinstance(comments, list):
+        sys.exit(2)
+    mine = []
+    for number, comment in enumerate(comments):
+        if (isinstance(comment, dict) and agent and comment.get("author_type") == "agent"
+                and comment.get("author_id") == agent and isinstance(comment.get("content"), str)):
+            mine.append((epoch(comment["created_at"]), number, comment["content"]))
+except (ValueError, KeyError, TypeError, AttributeError):
+    sys.exit(2)
+if not mine:
+    sys.exit(1)
+lines = [line.strip() for line in max(mine)[2].splitlines() if line.strip()]
+sys.exit(0 if lines and lines[-1] == expected else 1)
+' "${MULTICA_AGENT_ID-}" "$expected" <<<"$comments" || code=$?
+	if ((code == 2)); then echo "タスク ${issue} のコメントの形が合わない" >&2; fi
+	return "$code"
+}
+
+# 印のある行を、送る前にサーバーで照合する。
+# 0 は照合できた。済んでいれば済んだ欄を書き、済んでいなければ印だけを消して、どちらも保存した。
+# 1 は照合できなかった。印は残し、送らない。
+reconcile_pending() {
+	local key=$1 row=$2 op to at from issue ids newest others
+	IFS=$'\t' read -r op to at from issue < <(jq -r '[.pending.op, .pending.to, (.pending.at | floor | tostring),
+		(.pending.from // ""), (.issue // "")] | @tsv' <<<"$row") || return 1
+	case $op in
+	create)
+		ids=$(find_created_tasks "$key" "$at") || return 1
+		if [[ -n $ids ]]; then
+			newest=${ids%%$'\n'*}
+			others=${ids#"$newest"}
+			if [[ -n $others ]]; then
+				echo "同じキー（${key}）のタスクが複数ある。新しい ${newest} を使う。ほかのタスクは、手順書の案内で閉じる: $(tr '\n' ' ' <<<"$others")" >&2
+			fi
+			row=$(jq -c --arg issue "$newest" --arg to "$to" '
+				{level: .level, issue: $issue, shown: $to, posted: $to, labeled: false}' <<<"$row") || return 1
+			echo "送ったかを照合し、起票済みのタスク ${newest} を引き継いだ（${key}）" >&2
+			save_row "$key" "$row" || return 1
+			remember_verification "$key" "$newest" 0 || return 1
+			return 0
+		fi
+		;;
+	comment)
+		verify_task "$key" "$issue" || return 1
+		local code=0
+		comment_was_posted "$issue" "$(change_line "$key" "$to" "$from")" || code=$?
+		((code <= 1)) || return 1
+		if ((code == 0)); then
+			echo "送ったかを照合し、コメント済みのタスク ${issue} を引き継いだ（${key}）" >&2
+			row=$(jq -c --arg to "$to" '.posted = $to | del(.pending)' <<<"$row") || return 1
+			save_row "$key" "$row" || return 1
+			return 0
+		fi
+		;;
 	esac
+	row=$(jq -c 'del(.pending)' <<<"$row") || return 1
+	save_row "$key" "$row"
 }
 
 # 既に通知した状態と最新の観測から、今回必要な操作を決める。
 # 各操作が済んだ時点でその欄を保存し、失敗した操作は次の実行でやり直す。
+# 起票と変化のコメントは、送る前に印を保存する。印を保存できなければ送らない。
 apply() {
 	local key=$1 level=$2 title=$3 detail=$4
-	local row issue prev posted shown labeled response description uuid
+	local row issue prev posted shown labeled response description uuid pending marked
 	row=$(jq -c --arg key "$key" '.[$key] // {}' <<<"$state") || return 1
 	prev=$(jq -r '.level // empty' <<<"$row") || return 1
 	issue=$(jq -r '.issue // empty' <<<"$row") || return 1
@@ -464,6 +652,21 @@ apply() {
 		row=$(jq -c --arg key "$key" '.[$key]' <<<"$state") || return 1
 		posted=$prev
 	fi
+	pending=$(jq -c '.pending // empty' <<<"$row") || return 1
+	if [[ -n "$pending" ]]; then
+		# 送ったかが分からない操作を、重ねて送る前に、サーバーで照合する。
+		if ! reconcile_pending "$key" "$row"; then
+			# 照合できなくても、最新の観測は印を残したまま保存する。
+			if [[ "$level" != "$prev" ]]; then
+				row=$(jq -c --arg level "$level" '.level = $level' <<<"$row") && save_row "$key" "$row" || true
+			fi
+			return 1
+		fi
+		row=$(jq -c --arg key "$key" '.[$key] // {}' <<<"$state") || return 1
+		prev=$(jq -r '.level // empty' <<<"$row") || return 1
+		issue=$(jq -r '.issue // empty' <<<"$row") || return 1
+		posted=$(jq -r '.posted // empty' <<<"$row") || return 1
+	fi
 	if [[ "$level" != "$prev" ]]; then
 		# 観測されていない正常な使用枠のためだけには行を増やさない。
 		if [[ "$level" == ok && -z "$prev" && "$key" != login:* ]]; then return 0; fi
@@ -473,6 +676,11 @@ apply() {
 
 	if [[ -z "$issue" ]]; then
 		[[ "$level" != ok ]] || return 0
+		marked=$(marked_row "$row" create "$level") || return 1
+		if ! save_row "$key" "$marked"; then
+			echo "起票の前の印を保存できなかった。起票しない（${key}）" >&2
+			return 1
+		fi
 		description=$(write_description "$key" "$level" "$detail") || return 1
 		if ! response=$(squad_cli_read issue-create "$(title_prefix "$key") ${title}（${key}）" "$description" \
 			--assignee "$USAGE_CHECK_ASSIGNEE" --project "$USAGE_CHECK_PROJECT"); then
@@ -517,19 +725,51 @@ apply() {
 		fi
 	fi
 	if [[ "$posted" != "$level" ]]; then
-		if comment_change "$key" "$level" "$posted" "$issue" "$detail"; then
-			row=$(jq -c --arg level "$level" '.posted = $level | .level = $level' <<<"$row") || return 1
-			save_row "$key" "$row" || return 1
-			posted=$level
-		else
-			echo "タスク ${issue} の変化をコメントできなかった" >&2
+		marked=$(marked_row "$row" comment "$level" "$posted") || return 1
+		if ! save_row "$key" "$marked"; then
+			echo "タスク ${issue} のコメントの前の印を保存できなかった。コメントしない" >&2
 			task_failed=true
+		else
+			row=$marked
+			if comment_change "$key" "$level" "$posted" "$issue" "$detail"; then
+				row=$(jq -c --arg level "$level" '.posted = $level | .level = $level | del(.pending)' <<<"$row") || return 1
+				save_row "$key" "$row" || return 1
+				posted=$level
+			else
+				echo "タスク ${issue} の変化をコメントできなかった" >&2
+				task_failed=true
+			fi
 		fi
 	fi
 	if [[ "$level" == ok && "$posted" == ok ]]; then
 		multica issue status "$issue" done --no-start >/dev/null || return 1
 		save_row "$key" '{"level":"ok"}' || return 1
 	fi
+}
+
+# 観測が確定しない実行で、最新の観測を要しない操作を、前回の level で続ける。
+# 題と本文とコメントは観測の値を書くので、次の確定した観測へ回す。ok への戻りも、観測が確定するまで保留する。
+continue_row() {
+	local key=$1 row issue labeled
+	row=$(jq -c --arg key "$key" '.[$key] // {}' <<<"$state") || return 1
+	issue=$(jq -r 'select(has("posted") and .level != "ok") | .issue // empty' <<<"$row") || return 1
+	labeled=$(jq -r '.labeled // false' <<<"$row") || return 1
+	[[ -n $issue && $labeled != true ]] || return 0
+	verify_task "$key" "$issue" || return 1
+	if add_label "$issue"; then
+		row=$(jq -c '.labeled = true' <<<"$row") || return 1
+		save_row "$key" "$row"
+	else
+		return 1
+	fi
+}
+
+# ツールの使用上限の行すべてについて、continue_row を行う。
+continue_tool_rows() {
+	local tool=$1 key
+	while IFS= read -r key; do
+		[[ -z $key ]] || continue_row "$key" || task_failed=true
+	done < <(jq -r --arg p "${tool}:" 'keys[] | select(startswith($p) and . != ($p + "fetch"))' <<<"$state")
 }
 
 # 1 つのツールの結果を、枠ごとに反映する。
@@ -542,6 +782,7 @@ check() {
 	if ! rows=$("fetch_${tool}" 2>"$err_file"); then
 		apply "${tool}:fetch" error "${label} の使用量を取れない" "$(cat "$err_file")" || task_failed=true
 		rm -f "$err_file"
+		continue_tool_rows "$tool"
 		return
 	fi
 	rm -f "$err_file"
@@ -566,7 +807,7 @@ check() {
 
 # 見張るランタイムのログインの行を反映する。
 # ログインの読み取りはローカルの状態だけを見るので、資格が無効でも ok になる。
-# warn・error・確認失敗から ok に戻すのは、同じ実行で使用量を読めたときだけにする。読めなければ前回のままにする。
+# warn・error・確認失敗から ok に戻すのは、同じ実行で使用量を読めたときだけにする。読めなければ前回のままにし、ラベルなどの操作だけを続ける。
 # ログインが error のときは、使用率を読まない（同じ原因で、使用量を取れないタスクが重ならないため）。
 check_login() {
 	local tool=$1 usage_label=$2 login_label=$3
@@ -576,6 +817,7 @@ check_login() {
 	detail=${login#*$'\t'}
 	if [[ $level == error ]]; then
 		usage_read_ok=false
+		continue_tool_rows "$tool"
 	else
 		check "$tool" "$usage_label"
 	fi
@@ -583,7 +825,7 @@ check_login() {
 	if [[ $level == ok && $usage_read_ok != true ]]; then
 		if [[ $prev != ok ]]; then
 			echo "${login_label} のログインはローカルでは ok だが、使用量を読めないので、ログインの行は ${prev} のままにした" >&2
-			return
+			continue_row "$key" || task_failed=true
 		fi
 		return
 	fi
