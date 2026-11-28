@@ -232,6 +232,7 @@ link_check() {
 	local issue=$1 interval=${2:-300} parent=${3-} cmd task data pr_url prs line
 	local comments info result='' now mark=0 readable=1
 	local project record=0 pending=0 marked=0 ni_key=0 no_integration=0 suffix='' tried_epoch='' called=0 unwritten
+	local record_rejection=''
 	for cmd in jq python3 multica; do
 		if ! command -v "$cmd" >/dev/null 2>&1; then
 			printf '紐付け: 未確認 pr: 不明 理由: %s が見つからない\n' "$cmd"
@@ -260,7 +261,13 @@ link_check() {
 	project=$(jq -r '.project_id | select(type == "string")' <<<"$task")
 	case $line in
 	'紐付け: 紐付いていない '* | '紐付け: 紐付いている '*)
-		if [[ -n $project ]] && pr_link_record_exists "$project" "$pr_url"; then record=1; fi ;;
+		if [[ -n $project ]]; then
+			if pr_link_record_exists "$project" "$pr_url"; then
+				record=1
+			else
+				record_rejection=$PR_LINK_RECORD_REASON
+			fi
+		fi ;;
 	esac
 	if [[ $line == '紐付け: 紐付いている '* ]] && ((record)); then
 		# 自動の関連付けで紐付いたときも、そのリポジトリは連携ありと分かる。
@@ -368,7 +375,16 @@ link_check() {
 	fi
 	if [[ $line == '紐付け: 紐付いている '* ]]; then
 		# 試み直しの間に別のタスクが記録を結ぶことがあるので、最初に読んだ結果を使わず、紐付いたと分かった今、記録を読み直して消す。
-		if [[ -n $project ]] && pr_link_record_exists "$project" "$pr_url"; then link_record_drop "$project" "$pr_url"; fi
+		# 最初の読みで理由を出していれば、読み直すときは理由を繰り返さない。
+		if [[ -n $project ]] && {
+			if [[ -n $record_rejection ]]; then
+				pr_link_record_exists "$project" "$pr_url" 2>/dev/null
+			else
+				pr_link_record_exists "$project" "$pr_url"
+			fi
+		}; then
+			link_record_drop "$project" "$pr_url"
+		fi
 		link_marks_clear "$issue" "$mark" "$ni_key"
 	fi
 	printf '%s%s\n' "$line" "$suffix"

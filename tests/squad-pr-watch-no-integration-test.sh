@@ -314,6 +314,30 @@ set_keys_are '[]'
 [[ -L $PR_LINK_STATE_ROOT/proj-1/example/repo ]]
 echo 'PASS no-integration: 記録のパスを断ったときは記録がないものとして進み、1 行だけ出す'
 
+# 紐付いたあとの読み直しでも、同じ記録を断った理由は繰り返さない。
+for linked in initially after_retry; do
+	reset_ni
+	path=$(record_path proj-1 example/repo)
+	mkdir -p "${path%/*}" "$test_dir/elsewhere"
+	printf 'keep\n' >"$test_dir/elsewhere/file"
+	ln -s "$test_dir/elsewhere/file" "$path"
+	if [[ $linked == initially ]]; then
+		urls_json "$pr" >"$test_dir/pulls.json"
+	else
+		update_task ".metadata.pr_link_pending = \"$pr\""
+		printf '200' >"$test_dir/api-status"
+		urls_json "$pr" >"$test_dir/pulls-after.json"
+	fi
+	check_ni "紐付け: 紐付いている pr: $pr"
+	if [[ $linked == initially ]]; then no_api; else api_once; fi
+	if [[ $(wc -l <"$test_dir/err") -ne 1 ]] || ! grep -q 'シンボリックリンク' "$test_dir/err"; then
+		printf '記録を断った理由が 1 行ではない（%s）:\n%s\n' "$linked" "$(<"$test_dir/err")" >&2
+		exit 1
+	fi
+	[[ -L $path && $(<"$test_dir/elsewhere/file") == keep ]]
+	echo "PASS no-integration: 紐付いたときに記録を断った理由は 1 行（${linked}）"
+done
+
 # project_id がないタスクは、記録を読まず、今と同じ動作にする。
 reset_ni
 make_record
