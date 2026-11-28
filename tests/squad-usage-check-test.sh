@@ -26,6 +26,8 @@ LABEL_NAME=運用
 task_failed=false
 USAGE_WARN_PERCENT=80
 verified_pairs='{}'
+created_tasks=
+created_tasks_status=
 # ローカルのスタブだけで使う、形の合うタスク ID。
 fixture_id=0
 for name in ISSUE LOGIN USAGE LEGACY DISABLED OTHER; do
@@ -242,9 +244,10 @@ multica() {
 		record_mock_task create "$title" <<<"$response" || return 1
 		# サーバー側の一覧に、作ったタスクを足す。created-meta.json で作者などの欄を差し替える。
 		jq -cn --arg title "$title" --arg project "$USAGE_CHECK_PROJECT" --arg agent "${MULTICA_AGENT_ID-}" --argjson r "$response" \
+			--rawfile description "$file" \
 			--slurpfile m <(if [[ -f $test_dir/created-meta.json ]]; then cat "$test_dir/created-meta.json"; else echo '{}'; fi) '
-			{id: ($r.id? // null), title: $title, project_id: $project, creator_type: "agent", creator_id: $agent,
-				status: "todo", created_at: (now | floor | todate)} + $m[0]' >>"$test_dir/server-issues.jsonl" || return 1
+			{id: ($r.id? // null), title: $title, description: $description, project_id: $project, creator_type: "agent",
+				creator_id: $agent, status: "todo", created_at: (now | floor | todate)} + $m[0]' >>"$test_dir/server-issues.jsonl" || return 1
 		echo "$response"
 		;;
 	'issue list')
@@ -519,7 +522,7 @@ for field in id identifier; do
 	if apply claude:test-key warn 'テスト枠' '詳細' >"$test_dir/out" 2>"$test_dir/err"; then exit 1; fi
 	grep -qF "issue-create の $field" "$test_dir/err"
 	jq -e '.["claude:test-key"] | keys == ["level", "pending"] and .level == "warn"
-		and (.pending | .op == "create" and .to == "warn" and (.at | type == "number"))' <<<"$state" >/dev/null
+		and (.pending | .op == "create" and .to == "warn" and (.id | type == "string" and length == 36))' <<<"$state" >/dev/null
 	jq -se 'length==1 and .[0][0:2]==["issue","create"]' "$test_dir/calls.jsonl" >/dev/null
 done
 rm "$test_dir/create-response.json"
@@ -565,6 +568,8 @@ reset_server() {
 		"$test_dir/check-saved-id" "$test_dir/saved-id-checked" "$test_dir/check-pairs" \
 		"$test_dir/fail-list" "$test_dir/hang-list" "$test_dir/list-response.json" "$test_dir/created-meta.json" \
 		"$test_dir/fail-comment-list" "$test_dir/hang-comment-list" "$test_dir/comment-list-response.json" "$test_dir/comment-meta.json"
+	created_tasks=
+	created_tasks_status=
 	: >"$test_dir/server-issues.jsonl"
 	: >"$test_dir/server-comments.jsonl"
 	: >"$test_dir/calls.jsonl"
@@ -1268,7 +1273,7 @@ for next in error warn; do
 	rc=0
 	login_run 'claude codex' || rc=$?
 	[[ $rc == 1 ]]
-	jq -e --arg level "$next" '."login:claude" | del(.pending.at) == {level:$level, issue:env.TEST_LOGIN_ID, shown:"error", posted:"warn", labeled:true,
+	jq -e --arg level "$next" '."login:claude" | del(.pending.id) == {level:$level, issue:env.TEST_LOGIN_ID, shown:"error", posted:"warn", labeled:true,
 		pending:{op:"comment", from:"warn", to:"error"}}' \
 		"$(login_state_file)" >/dev/null
 	jq -se 'length == 1 and .[0] == ["issue","get",env.TEST_LOGIN_ID,"--output","json"]' "$test_dir/calls.jsonl" >/dev/null
@@ -1292,12 +1297,18 @@ call_count() { # 呼び出しの始めの語...
 	jq -s --argjson p "$(jq -cn '$ARGS.positional' --args "$@")" '[.[] | select(.[0:($p | length)] == $p)] | length' "$test_dir/calls.jsonl"
 }
 ago() { jq -nr --argjson s "$1" 'now - $s | floor | todate'; }
+# 既定の本文は、印 TEST_MARK_ID の warn の起票の本文で、最後の行が照合の行になる。
+# 配布物の検査が UUID の文字列を混入として数えるので、値は部品から組み立てる。
+printf -v TEST_MARK_ID '%s-%s-%s-%s-%s' 11111111 1111 4111 8111 111111111111
+printf -v TEST_MARK_ID_2 '%s-%s-%s-%s-%s' 22222222 2222 4222 8222 222222222222
+create_line_of() { printf '（claude:test-key: %s / %s）' "$1" "${2:-$TEST_MARK_ID}"; }
 add_server_issue() { # ID 題 [差し替えの JSON]
 	local override=${3-}
 	[[ -n $override ]] || override='{}'
-	jq -cn --arg id "$1" --arg title "$2" --argjson o "$override" --arg project "$USAGE_CHECK_PROJECT" --arg agent "$MULTICA_AGENT_ID" '
-		{id: $id, title: $title, project_id: $project, creator_type: "agent", creator_id: $agent, status: "todo",
-		 created_at: (now | floor | todate)} + $o' >>"$test_dir/server-issues.jsonl"
+	jq -cn --arg id "$1" --arg title "$2" --argjson o "$override" --arg project "$USAGE_CHECK_PROJECT" --arg agent "$MULTICA_AGENT_ID" \
+		--arg body "$(printf '使用上限が近い。\n\n詳細\n\nこのタスクは見張りが作った。\n\n%s\n' "$(create_line_of warn)")" '
+		{id: $id, title: $title, description: $body, project_id: $project, creator_type: "agent", creator_id: $agent,
+		 status: "todo", created_at: (now | floor | todate)} + $o' >>"$test_dir/server-issues.jsonl"
 }
 add_server_comment() { # 本文 [差し替えの JSON]
 	local override=${2-}
@@ -1310,6 +1321,8 @@ add_server_comment() { # 本文 [差し替えの JSON]
 next_run() {
 	state=$(cat "$STATE_FILE")
 	verified_pairs='{}'
+	created_tasks=
+	created_tasks_status=
 	task_failed=false
 	: >"$test_dir/calls.jsonl"
 }
@@ -1341,7 +1354,7 @@ for next in warn error; do
 	else
 		# 引き継いだ行の通知済みの状態は warn なので、error への変化を 1 回だけコメントする。
 		[[ $(comment_count) == 1 && $(call_count issue update) == 1 ]]
-		[[ $(last_line_of -1) == '（claude:test-key: warn → error）' ]]
+		[[ $(last_line_of -1) =~ ^'（claude:test-key: warn → error / '[0-9a-f-]{36}'）'$ ]]
 	fi
 	next_run
 	apply claude:test-key "$next" 'テスト枠' '詳細'
@@ -1359,7 +1372,7 @@ for next in error limited ok; do
 	rc=0
 	apply claude:test-key error 'テスト枠' '詳細' 2>"$test_dir/err" || rc=$?
 	[[ $rc == 1 && -z $save_fail_filter && $(comment_count) == 1 ]]
-	jq -e '."claude:test-key" | .pending == {op: "comment", to: "error", from: "warn", at: .pending.at} and .posted == "warn"' "$STATE_FILE" >/dev/null
+	jq -e '."claude:test-key" | .pending == {op: "comment", to: "error", from: "warn", id: .pending.id} and (.pending.id | length == 36) and .posted == "warn"' "$STATE_FILE" >/dev/null
 	next_run
 	apply claude:test-key "$next" 'テスト枠' '詳細' 2>"$test_dir/err"
 	[[ $task_failed == false ]]
@@ -1371,16 +1384,16 @@ for next in error limited ok; do
 		jq -e '."claude:test-key" == {level: "error", issue: env.TEST_ISSUE_ID, shown: "error", posted: "error", labeled: true}' "$STATE_FILE" >/dev/null
 		;;
 	limited)
-		[[ $(comment_count) == 2 && $(last_line_of -1) == '（claude:test-key: error → limited）' ]]
+		[[ $(comment_count) == 2 && $(last_line_of -1) =~ ^'（claude:test-key: error → limited / '[0-9a-f-]{36}'）'$ ]]
 		jq -e '."claude:test-key" == {level: "limited", issue: env.TEST_ISSUE_ID, shown: "limited", posted: "limited", labeled: true}' "$STATE_FILE" >/dev/null
 		;;
 	ok)
-		[[ $(comment_count) == 2 && $(last_line_of -1) == '（claude:test-key: error → ok）' && $(call_count issue status) == 1 ]]
+		[[ $(comment_count) == 2 && $(last_line_of -1) =~ ^'（claude:test-key: error → ok / '[0-9a-f-]{36}'）'$ && $(call_count issue status) == 1 ]]
 		jq -e '."claude:test-key" == {level: "ok"}' "$STATE_FILE" >/dev/null
 		;;
 	esac
 	# どの場合も、warn から error への変化は 1 回だけ送られている。
-	[[ $(jq -s '[.[] | select(.body | endswith("（claude:test-key: warn → error）\n"))] | length' "$test_dir/comments.jsonl") == 1 ]]
+	[[ $(jq -s '[.[] | select(.body | test("（claude:test-key: warn → error / [0-9a-f-]{36}）\n$"))] | length' "$test_dir/comments.jsonl") == 1 ]]
 	echo "PASS コメントの直後の保存の失敗: 次の観測が $next でも、コメントを済みとして引き継ぎ、同じ変化を重ねて送らない"
 done
 
@@ -1414,8 +1427,8 @@ jq -e '."claude:test-key".posted == "error" and (."claude:test-key" | has("pendi
 echo 'PASS 印の保存の失敗: 起票もコメントもせず、次の実行で普通に送る'
 
 # 印のある行を照合できなければ、印を残して送らない。起票の照合は、一覧が読めない・形が違う・時間切れのときに止まる。
-pending_create_state() { # 状態 [印の時刻]
-	jq -nc --arg l "$1" --argjson at "${2:-$(date +%s)}" '{"claude:test-key": {level: $l, pending: {op: "create", to: $l, at: $at}}}'
+pending_create_state() { # 状態 [印の ID]
+	jq -nc --arg l "$1" --arg id "${2:-$TEST_MARK_ID}" '{"claude:test-key": {level: $l, pending: {op: "create", to: $l, id: $id}}}'
 }
 for failure in fail-list hang-list shape-object shape-has-more shape-array; do
 	reset_server
@@ -1435,23 +1448,23 @@ for failure in fail-list hang-list shape-object shape-has-more shape-array; do
 	echo "PASS 起票の照合: $failure では、印を残し、起票しない"
 done
 
-comment_pending_state() { # 前 今 [印の時刻]
-	jq -nc --arg from "$1" --arg to "$2" --argjson at "${3:-$(date +%s)}" '
+comment_pending_state() { # 前 今 [印の ID]
+	jq -nc --arg from "$1" --arg to "$2" --arg id "${3:-$TEST_MARK_ID}" '
 		{"claude:test-key": {level: $to, issue: env.TEST_ISSUE_ID, shown: $to, posted: $from, labeled: true,
-			pending: {op: "comment", to: $to, from: $from, at: $at}}}'
+			pending: {op: "comment", to: $to, from: $from, id: $id}}}'
 }
 for failure in fail-comment-list hang-comment-list shape-object shape-missing-author; do
 	reset_server
 	echo "$test_title" >"$test_dir/get-title"
 	state=$(comment_pending_state warn error)
 	state_before=$state
-	add_server_comment 'お知らせ
+	add_server_comment "お知らせ
 
-（claude:test-key: warn → error）'
+（claude:test-key: warn → error / ${TEST_MARK_ID}）"
 	case $failure in
 	fail-comment-list | hang-comment-list) touch "$test_dir/$failure" ;;
 	shape-object) echo '{"comments":[]}' >"$test_dir/comment-list-response.json" ;;
-	shape-missing-author) echo '[{"content":"（claude:test-key: warn → error）"}]' >"$test_dir/comment-list-response.json" ;;
+	shape-missing-author) echo '[{"content":"（claude:test-key: warn → error / '"$TEST_MARK_ID"'）"}]' >"$test_dir/comment-list-response.json" ;;
 	esac
 	rc=0
 	USAGE_TASK_READ_SECONDS=2 apply claude:test-key error 'テスト枠' '詳細' 2>"$test_dir/err" || rc=$?
@@ -1465,7 +1478,7 @@ for failure in fail-comment-list hang-comment-list shape-object shape-missing-au
 	echo "PASS コメントの照合: $failure の扱い"
 done
 
-# 一覧の照合の対象。作者・プロジェクト・キー・状態・時刻のどれかが違うタスクは、同じ通知として扱わない。
+# 一覧の照合の対象。作者・プロジェクト・キー・状態・本文の印のどれかが違うタスクは、同じ通知として扱わない。
 create_filter_case() { # 名前 題 差し替えの JSON 引き継ぐか（adopt か new）
 	local name=$1 title=$2 override=$3 expected=$4 id
 	reset_server
@@ -1486,9 +1499,25 @@ create_filter_case() { # 名前 題 差し替えの JSON 引き継ぐか（adopt
 }
 create_filter_case '一致するタスク' "$test_title" '{}' adopt
 create_filter_case '状態が進行中のタスク' "$test_title" '{"status":"in_progress"}' adopt
-create_filter_case '印の 5 分前のタスク（幅の内）' "$test_title" "$(jq -nc --arg t "$(ago 300)" '{created_at: $t}')" adopt
+create_filter_case '1 時間前のタスク（時間の幅は見ない）' "$test_title" "$(jq -nc --arg t "$(ago 3600)" '{created_at: $t}')" adopt
 create_filter_case '小数秒つきの時刻' "$test_title" "$(jq -nc --arg t "$(ago 5 | sed 's/Z$/.123456789Z/')" '{created_at: $t}')" adopt
-create_filter_case '1 時間前のタスク（幅の外）' "$test_title" "$(jq -nc --arg t "$(ago 3600)" '{created_at: $t}')" new
+create_filter_case '印の ID が違う本文（前に同じキーで知らせたタスク）' "$test_title" "$(jq -nc --arg b "詳細
+
+$(create_line_of warn "$TEST_MARK_ID_2")" '{description: $b}')" new
+create_filter_case '状態が違う行の本文' "$test_title" "$(jq -nc --arg b "詳細
+
+$(create_line_of error)" '{description: $b}')" new
+create_filter_case '印の ID のない行の本文' "$test_title" "$(jq -nc '{description: "詳細\n\n（claude:test-key: warn）"}')" new
+create_filter_case '印の行が最後でない本文' "$test_title" "$(jq -nc --arg b "$(create_line_of warn)
+
+あとに続く文" '{description: $b}')" new
+create_filter_case '本文の最後の行のあとに空行と空白がある' "$test_title" "$(jq -nc --arg b "詳細
+
+$(create_line_of warn)
+
+  " '{description: $b}')" adopt
+create_filter_case '本文が null' "$test_title" '{"description":null}' new
+create_filter_case '本文が文字列でない' "$test_title" '{"description":123}' new
 create_filter_case '別のエージェントの作者' "$test_title" '{"creator_id":"other-agent"}' new
 create_filter_case '人の作者' "$test_title" '{"creator_type":"member"}' new
 create_filter_case '別のプロジェクト' "$test_title" '{"project_id":"other-project"}' new
@@ -1504,18 +1533,25 @@ reset_server
 state=$(pending_create_state warn)
 add_server_issue "$TEST_LEGACY_ID" "$test_title" "$(jq -nc --arg t "$(ago 10)" '{created_at: $t}')"
 add_server_issue "$TEST_OTHER_ID" "$test_title" "$(jq -nc --arg t "$(ago 60)" '{created_at: $t}')"
+# 印の ID が違うタスクは、重なりとして数えない。閉じてよいタスクに出さない。
+add_server_issue "$TEST_DISABLED_ID" "$test_title" "$(jq -nc --arg b "詳細
+
+$(create_line_of warn "$TEST_MARK_ID_2")" '{description: $b}')"
 apply claude:test-key warn 'テスト枠' '詳細' 2>"$test_dir/err"
 [[ $(call_count issue create) == 0 ]]
+grep -qF '閉じてよいタスク' "$test_dir/err"
 grep -qF "$TEST_OTHER_ID" "$test_dir/err"
+! grep -qF "$TEST_DISABLED_ID" "$test_dir/err"
 jq -e '."claude:test-key".issue == env.TEST_LEGACY_ID' "$STATE_FILE" >/dev/null
-echo 'PASS 起票の照合: 同じキーのタスクが複数あれば、最も新しいものを使い、ほかの ID を知らせる'
+echo 'PASS 起票の照合: 同じ印の ID のタスクが複数あれば、最も新しいものを使い、閉じてよい ID だけを知らせる'
 
 # 一覧は、続きがあるかぎり最後のページまで読む。
 reset_server
 state=$(pending_create_state warn)
-jq -cn --arg match "$TEST_OTHER_ID" --arg title "$test_title" --arg project "$USAGE_CHECK_PROJECT" --arg agent "$MULTICA_AGENT_ID" '
+jq -cn --arg match "$TEST_OTHER_ID" --arg mark "$TEST_MARK_ID" --arg title "$test_title" --arg project "$USAGE_CHECK_PROJECT" --arg agent "$MULTICA_AGENT_ID" '
 	range(150) | {id: (if . == 120 then $match else "x\(.)" end),
 		title: (if . == 120 then $title else "[使用上限] 別の枠（claude:other-\(.)）" end),
+		description: (if . == 120 then "詳細\n\n（claude:test-key: warn / \($mark)）" else "" end),
 		project_id: $project, creator_type: "agent", creator_id: $agent, status: "todo",
 		created_at: (now | floor | todate)}' >"$test_dir/server-issues.jsonl"
 apply claude:test-key warn 'テスト枠' '詳細' 2>"$test_dir/err"
@@ -1537,7 +1573,7 @@ comment_filter_case() { # 名前 コメントの JSON 行（本文と差し替�
 	jq -e '."claude:test-key" == {level: "error", issue: env.TEST_ISSUE_ID, shown: "error", posted: "error", labeled: true}' "$STATE_FILE" >/dev/null
 	echo "PASS コメントの照合の対象: $name は $expected"
 }
-line_error='（claude:test-key: warn → error）'
+line_error="（claude:test-key: warn → error / ${TEST_MARK_ID}）"
 setup_match() { add_server_comment "お知らせ
 
 $line_error"; }
@@ -1554,10 +1590,16 @@ setup_member_author() { add_server_comment "お知らせ
 $line_error" '{"author_type":"member"}'; }
 setup_other_change() { add_server_comment "お知らせ
 
-（claude:test-key: warn → limited）"; }
+（claude:test-key: warn → limited / ${TEST_MARK_ID}）"; }
 setup_other_key() { add_server_comment "お知らせ
 
-（claude:other-key: warn → error）"; }
+（claude:other-key: warn → error / ${TEST_MARK_ID}）"; }
+setup_other_mark_id() { add_server_comment "お知らせ
+
+（claude:test-key: warn → error / ${TEST_MARK_ID_2}）"; }
+setup_no_mark_id() { add_server_comment "お知らせ
+
+（claude:test-key: warn → error）"; }
 setup_middle_line() { add_server_comment "$line_error
 
 あとに続く文"; }
@@ -1574,6 +1616,8 @@ comment_filter_case '別の作者（エージェント）' setup_other_author se
 comment_filter_case '人の作者' setup_member_author send
 comment_filter_case '別の状態への変化の行' setup_other_change send
 comment_filter_case '別のキーの行' setup_other_key send
+comment_filter_case '印の ID が違う行（前に同じ変化を知らせたコメント）' setup_other_mark_id send
+comment_filter_case '印の ID のない行' setup_no_mark_id send
 comment_filter_case '最後の行でない行' setup_middle_line send
 comment_filter_case '最新のコメントでない一致' setup_older_match send
 comment_filter_case 'コメントがない' setup_none send
@@ -1638,3 +1682,109 @@ many=$(count_startup_jq 500)
 [[ $one == "$many" && $one == 1 ]]
 [[ $task_failed == false ]]
 echo 'PASS 起動の検査: 処理済みの行が 1 行でも 500 行でも、jq の起動は同じ数（1 回）'
+
+# ===== 印の ID による照合の守り =====
+# 同じキーの前の通知（印の ID が違う）は、起票の照合で引き継がず、書き換えない。
+reset_server
+state=$(pending_create_state error "$TEST_MARK_ID_2")
+add_server_issue "$TEST_OTHER_ID" "$test_title"
+apply claude:test-key error 'テスト枠' '詳細' 2>"$test_dir/err"
+[[ $task_failed == false && $(call_count issue create) == 1 ]]
+jq -e '."claude:test-key".issue == env.TEST_ISSUE_ID and (."claude:test-key" | has("pending") | not)' "$STATE_FILE" >/dev/null
+jq -se '[.[] | select(.[0:2] == ["issue", "label", "add"] or .[0:2] == ["issue", "update"] or .[0:3] == ["issue", "comment", "add"]) | .[(if .[1] == "comment" then 3 else 2 end)]] | map(select(. == env.TEST_OTHER_ID)) | length == 0' \
+	"$test_dir/calls.jsonl" >/dev/null
+[[ $(tail -n 1 "$test_dir/description.md") == "（claude:test-key: error / ${TEST_MARK_ID_2}）" ]]
+echo 'PASS 起票の照合: 同じキーで前に知らせたタスクは引き継がず、新しく起票して最後の行に印の ID を付ける'
+
+# 候補の ID が UUID の形でなければ、何も書かず、印を残して失敗にする。
+bad_ids=('x1' 'zzzzzzzz-0000-0000-0000-000000000001' $'00000000-0000-0000-0000-00000000001\n'
+	$'00000000-0000-0000-0000-0000000000\t1' '00000000 0000-0000-0000-000000000001' $'00000000-0000-0000-0000-0000000000\001')
+for bad_id in "${bad_ids[@]}"; do
+	reset_server
+	state=$(pending_create_state warn)
+	state_before=$state
+	add_server_issue "$bad_id" "$test_title"
+	rc=0
+	# 観測が変わっていても、観測の level も含めて何も書かない。
+	apply claude:test-key error 'テスト枠' '詳細' 2>"$test_dir/err" || rc=$?
+	[[ $rc == 1 && $state == "$state_before" && $(call_count issue create) == 0 && $(comment_count) == 0 ]]
+	[[ $(jq -sr '[.[] | select(.[0:2] == ["issue", "label"] or .[0:2] == ["issue", "update"] or .[0:2] == ["issue", "status"])] | length' "$test_dir/calls.jsonl") == 0 ]]
+	grep -qF 'UUID の形でない' "$test_dir/err"
+	echo "PASS 起票の照合: UUID の形でない ID の候補（$(printf '%q' "$bad_id")）には何も書かず、印を残す"
+done
+
+# 起票の照合の一覧は 1 回の実行で 1 度だけ読み、印のある行が増えても読み直さない。
+reset_server
+jq -cn --arg project "$USAGE_CHECK_PROJECT" --arg agent "$MULTICA_AGENT_ID" '
+	range(500) | {id: ("00000000-0000-0000-0000-" + (. | tostring | ("000000000000" + .)[-12:])),
+		title: "[使用上限] 別の枠（claude:other-\(.)）", description: "", project_id: $project, creator_type: "agent",
+		creator_id: $agent, status: "todo", created_at: (now | floor | todate)}' >"$test_dir/server-issues.jsonl"
+state=$(jq -nc --arg a "$TEST_MARK_ID" --arg b "$TEST_MARK_ID_2" '
+	{"claude:key-a": {level: "warn", pending: {op: "create", to: "warn", id: $a}},
+	 "claude:key-b": {level: "warn", pending: {op: "create", to: "warn", id: $b}}}')
+apply claude:key-a warn 'A' '詳細' 2>"$test_dir/err"
+pages=$(call_count issue list)
+((pages >= 5))
+apply claude:key-b warn 'B' '詳細' 2>>"$test_dir/err"
+[[ $(call_count issue list) == "$pages" && $(call_count issue create) == 2 && $task_failed == false ]]
+echo 'PASS 起票の照合: 印のある行が 2 行でも、一覧は 1 回の実行で 1 度だけ読む'
+
+# 取り違えた行は、観測が変わっても書き戻さない（題が変わって照合で外した行を、前のタスクの ID のまま残さない）。
+reset_server
+echo '[使用上限] 別の枠（claude:other-key）' >"$test_dir/get-title"
+state=$(comment_pending_state warn error)
+rc=0
+apply claude:test-key limited 'テスト枠' '詳細' 2>"$test_dir/err" || rc=$?
+[[ $rc == 1 && $(comment_count) == 0 ]]
+jq -e 'has("claude:test-key") | not' <<<"$state" >/dev/null
+echo 'PASS 起票とコメントの照合: 題が合わず外した行は、観測が変わっても状態に書き戻さない'
+
+# 観測が確定しない実行でも、送った起票とコメントの照合は続け、引き継いでラベルを付ける。
+unconfirmed_pending() { # 行の JSON
+	login_reset
+	mkdir -p "$(dirname "$(login_state_file)")"
+	jq -n --argjson row "$1" '{"claude:Current session": $row}' >"$(login_state_file)"
+	echo '[使用上限] Claude の Current session（claude:Current session）' >"$test_dir/get-title"
+	echo 1 >"$test_dir/claude.status"
+}
+current_line() { printf '（claude:Current session: %s / %s）' "$1" "$TEST_MARK_ID"; }
+unconfirmed_pending "$(jq -nc --arg id "$TEST_MARK_ID" '{level: "warn", pending: {op: "create", to: "warn", id: $id}}')"
+add_server_issue "$TEST_OTHER_ID" '[使用上限] Claude の Current session（claude:Current session）' \
+	"$(jq -nc --arg b "詳細
+
+$(current_line warn)" '{description: $b}')"
+rc=0
+login_run claude || rc=$?
+[[ $rc == 0 ]]
+jq -e '."claude:Current session" == {level: "warn", issue: env.TEST_OTHER_ID, shown: "warn", posted: "warn", labeled: true}' "$(login_state_file)" >/dev/null
+unconfirmed_assert "$TEST_OTHER_ID"
+jq -se '[.[] | select(.[0:2] == ["issue", "create"] and (.[3] | contains("Current session")))] | length == 0' "$test_dir/calls.jsonl" >/dev/null
+echo 'PASS 観測が確定しない実行: 送った起票を照合して引き継ぎ、ラベルを付け、起票し直さない'
+
+unconfirmed_pending "$(jq -nc --arg id "$TEST_MARK_ID" '{level: "error", issue: env.TEST_USAGE_ID, shown: "error", posted: "warn", labeled: true,
+	pending: {op: "comment", to: "error", from: "warn", id: $id}}')"
+add_server_comment "お知らせ
+
+（claude:Current session: warn → error / ${TEST_MARK_ID}）" "$(jq -nc '{issue_id: env.TEST_USAGE_ID}')"
+rc=0
+login_run claude || rc=$?
+[[ $rc == 0 && $(comment_count) == 0 ]]
+jq -e '."claude:Current session" == {level: "error", issue: env.TEST_USAGE_ID, shown: "error", posted: "error", labeled: true}' "$(login_state_file)" >/dev/null
+jq -se '[.[] | select(.[0:3] == ["issue", "comment", "add"] and .[3] == env.TEST_USAGE_ID)] | length == 0' "$test_dir/calls.jsonl" >/dev/null
+echo 'PASS 観測が確定しない実行: 送ったコメントを照合して引き継ぎ、コメントし直さない'
+
+# 観測が確定しない実行の jq の起動は、行の数によらない。
+count_unconfirmed_jq() { # 行の数
+	local rows=$1
+	: >"$jq_count_file"
+	jq -nc --argjson n "$rows" '[range($n) | {key: "claude:枠 \(.)", value: {level: "warn", issue: env.TEST_ISSUE_ID, shown: "warn", posted: "warn", labeled: true}}] | from_entries' >"$test_dir/startup-state.json"
+	state=$(cat "$test_dir/startup-state.json")
+	jq() { echo x >>"$jq_count_file"; command jq "$@"; }
+	continue_tool_rows claude
+	unset -f jq
+	wc -l <"$jq_count_file" | tr -d ' '
+}
+one=$(count_unconfirmed_jq 1)
+many=$(count_unconfirmed_jq 500)
+[[ $one == "$many" && $one == 1 ]]
+echo 'PASS 観測が確定しない実行: 処理済みの行が 1 行でも 500 行でも、jq の起動は同じ数（1 回）'
