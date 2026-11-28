@@ -148,7 +148,10 @@ def run(*args):
 
 
 # 古いバージョンでは、期限の欄がなくても、期限がないと読めてしまう。先にバージョンを見る。
-first = (run("--version").stdout.split("\n") or [""])[0]
+versioned = run("--version")
+if versioned.returncode != 0:
+    finish("unverified", f"claude --version が終了コード {versioned.returncode} で終わった")
+first = (versioned.stdout.split("\n") or [""])[0]
 found = re.match(r"^(\d{1,6})\.(\d{1,6})\.(\d{1,6})(?:[^0-9.]|$)", first)
 if not found:
     finish("unverified", "claude --version からバージョンを読めない")
@@ -185,10 +188,10 @@ try:
         epoch = expires / 1000 if expires > 1e11 else expires
     else:
         epoch = datetime.fromisoformat(str(expires).replace("Z", "+00:00")).timestamp()
+    remaining = epoch - time.time()
+    day = datetime.fromtimestamp(epoch, timezone.utc).astimezone().strftime("%Y-%m-%d")
 except (ValueError, OverflowError, OSError):
     finish("unverified", "claude auth status --json の期限を日時として読めない（終了コード 0）")
-remaining = epoch - time.time()
-day = datetime.fromtimestamp(epoch, timezone.utc).astimezone().strftime("%Y-%m-%d")
 if remaining <= 0:
     finish("error", f"ログインの期限を過ぎた（期限 {day}）")
 days = int(remaining // 86400)
@@ -275,15 +278,26 @@ state_sentence() {
 	esac
 }
 
+# タスクの本文のファイルを作り、パスを出す。作るときと、題と本文を書き換えるときが使う。
+write_description() {
+	local key=$1 level=$2 detail=$3 description
+	description=$(usage_tmpfile) || return 1
+	printf '%s\n\n%s\n\nこのタスクは使用上限の見張り（squad-usage-check）が作った。戻ったら、見張りがコメントして done にする。\n' \
+		"$(state_sentence "$key" "$level")" "$detail" >"$description" || { rm -f -- "$description"; return 1; }
+	printf '%s\n' "$description"
+}
+
 # 状態のファイルのタスクが、この見張りが、このキーで作ったものかをサーバーで確認する。
-# 状態のファイルは同じ OS の利用者のプロセスが書けるので、更新する前に毎回確認する。
-# 合わなければ、状態からそのキーを外し、外したことを stderr に書き、実行の結果を失敗にする。
-# 返り値: 0 は合った、1 は合わず外した、2 はサーバーのタスクを読めなかった（状態は変えない）。
+# 状態のファイルは同じ OS の利用者のプロセスが書けるので、更新する前に確認する。
+# 合えば、行に印 keyed を付ける。合わなければ、状態からそのキーを外し、外したことを stderr に書き、実行の結果を失敗にする。
+# タスクを読めなければ、状態は変えず、実行の結果を失敗にする。どの場合も、ほかの行の処理は続ける。
+# 返り値: 0 は合った、1 は合わず外した、2 はサーバーのタスクを読めなかった。
 task_failed=false
 verify_task() {
 	local key=$1 issue=$2 task prefix
 	if ! task=$(multica issue get "$issue" --output json) || ! jq -e 'type == "object"' <<<"$task" >/dev/null 2>&1; then
 		echo "タスク ${issue} をサーバーから読めなかった" >&2
+		task_failed=true
 		return 2
 	fi
 	prefix=$(title_prefix "$key")
@@ -291,6 +305,8 @@ verify_task() {
 		.project_id == $project and .creator_type == "agent" and ($agent | length) > 0 and .creator_id == $agent
 		and (.title | type) == "string"
 		and (.title | startswith($prefix + " ")) and (.title | endswith("（" + $key + "）"))' <<<"$task" >/dev/null; then
+		state=$(jq --arg k "$key" '.[$k].keyed = true' <<<"$state")
+		save_state
 		return 0
 	fi
 	echo "状態のファイルのタスク ${issue} は、このキー（${key}）の見張りが作ったものと合わない。更新せず、状態から外した" >&2
@@ -300,26 +316,59 @@ verify_task() {
 	return 1
 }
 
-# 1 つの枠の状態の変化を、タスクに反映する。
+# ok でない状態どうしの変化で、同じタスクの題と本文を新しい状態のものに書き換える。
+update_task_text() {
+	local key=$1 issue=$2 level=$3 title=$4 detail=$5 description
+	description=$(write_description "$key" "$level" "$detail") || return 1
+	multica issue update "$issue" --title "$(title_prefix "$key") ${title}（${key}）" --description-file "$description" >/dev/null || {
+		rm -f -- "$description"
+		return 1
+	}
+	rm -f -- "$description"
+}
+
+# 状態の変化を、既存のタスクにコメントし、ok なら done にする。
+comment_change() {
+	local key=$1 level=$2 prev=$3 issue=$4 detail=$5
+	case "$level:$prev:${key%%:*}" in
+	ok:*:login) printf 'ログインし直された。\n\n%s\n' "$detail" | usage_comment "$issue" ;;
+	limited:*) printf '使用上限に達した。リセットまで、このモデルのエージェントは失敗する。\n\n%s\n' "$detail" |
+		usage_comment "$issue" ;;
+	ok:error:*) printf '使用量をまた取れるようになった。\n' | usage_comment "$issue" ;;
+	*:limited:*) printf '戻った。使用上限で失敗したタスクは multica issue rerun で再実行する。\n\n%s\n' "$detail" |
+		usage_comment "$issue" ;;
+	ok:warn:*) printf 'リセットされた。\n\n%s\n' "$detail" | usage_comment "$issue" ;;
+	*) printf '%s。\n\n%s\n' "$(state_sentence "$key" "$level")" "$detail" | usage_comment "$issue" ;;
+	esac || return 1
+	if [[ "$level" == ok ]]; then
+		multica issue status "$issue" done --no-start >/dev/null || return 1
+	fi
+}
+
+# 1 つの枠の状態の変化を、タスクに反映する。既存のタスクの確認・更新の失敗は、実行の結果を失敗にして、あとの行の処理を続ける。
 #   ok → warn/limited/error/unverified: タスクを作る。題の終わりに、全角の括弧でキーを付ける
 #   limited → warn/ok、warn/error/unverified → ok: 戻ったとコメントし、ok なら done にする
-#   ok でない状態どうしの変化: 新しい状態の始めの文をコメントする
+#   ok でない状態どうしの変化: 題と本文を新しい状態のものに書き換え、新しい状態の始めの文をコメントする
 # 既存のタスクを更新する前に、verify_task でサーバーのタスクを確認する。
+# 印 keyed のない行のタスクは、状態が変わらなくても、その実行で確認する。
 apply() {
 	local key=$1 level=$2 title=$3 detail=$4
-	local prev issue
+	local prev issue keyed
 	# ログインの行は初回の ok でも、見張りの結果に残す。
 	prev=$(jq -r --arg k "$key" '.[$k].level // (if ($k | startswith("login:")) then "" else "ok" end)' <<<"$state")
 	issue=$(jq -r --arg k "$key" '.[$k].issue // empty' <<<"$state")
-	[[ "$level" == "$prev" ]] && return
+	keyed=$(jq -r --arg k "$key" '.[$k].keyed // false' <<<"$state")
+	if [[ "$level" == "$prev" ]]; then
+		if [[ -n "$issue" && "$keyed" != true ]]; then
+			verify_task "$key" "$issue" || true
+		fi
+		return 0
+	fi
 
 	if [[ -z "$issue" ]]; then
 		if [[ "$level" != ok ]]; then
-			local description
-			description=$(usage_tmpfile)
-			printf '%s\n\n%s\n\nこのタスクは使用上限の見張り（squad-usage-check）が作った。戻ったら、見張りがコメントして done にする。\n' \
-				"$(state_sentence "$key" "$level")" "$detail" >"$description"
-			local response
+			local description response
+			description=$(write_description "$key" "$level" "$detail") || return 1
 			if ! response=$(squad_cli_read issue-create "$(title_prefix "$key") ${title}（${key}）" "$description" \
 				--assignee "$USAGE_CHECK_ASSIGNEE" --project "$USAGE_CHECK_PROJECT"); then
 				rm -f -- "$description"
@@ -332,23 +381,22 @@ apply() {
 	else
 		local verified=0
 		verify_task "$key" "$issue" || verified=$?
-		case $verified in 0) ;; 1) return 0 ;; *) return 1 ;; esac
-		case "$level:$prev:${key%%:*}" in
-		ok:*:login) printf 'ログインし直された。\n\n%s\n' "$detail" | usage_comment "$issue" ;;
-		limited:*) printf '使用上限に達した。リセットまで、このモデルのエージェントは失敗する。\n\n%s\n' "$detail" |
-			usage_comment "$issue" ;;
-		ok:error:*) printf '使用量をまた取れるようになった。\n' | usage_comment "$issue" ;;
-		*:limited:*) printf '戻った。使用上限で失敗したタスクは multica issue rerun で再実行する。\n\n%s\n' "$detail" |
-			usage_comment "$issue" ;;
-		ok:warn:*) printf 'リセットされた。\n\n%s\n' "$detail" | usage_comment "$issue" ;;
-		*) printf '%s。\n\n%s\n' "$(state_sentence "$key" "$level")" "$detail" | usage_comment "$issue" ;;
-		esac
+		((verified == 0)) || return 0
+		if [[ "$level" != ok && "$prev" != ok ]] && ! update_task_text "$key" "$issue" "$level" "$title" "$detail"; then
+			echo "タスク ${issue} の題と本文を書き換えられなかった" >&2
+			task_failed=true
+		fi
+		if ! comment_change "$key" "$level" "$prev" "$issue" "$detail"; then
+			echo "タスク ${issue} を更新できなかった。状態は前回のままにする" >&2
+			task_failed=true
+			return 0
+		fi
 		if [[ "$level" == ok ]]; then
-			multica issue status "$issue" done --no-start >/dev/null
 			issue=""
 		fi
 	fi
-	state=$(jq --arg k "$key" --arg l "$level" --arg i "$issue" '.[$k] = {level: $l, issue: $i}' <<<"$state")
+	state=$(jq --arg k "$key" --arg l "$level" --arg i "$issue" '
+		.[$k] = (if $i == "" then {level: $l, issue: ""} else {level: $l, issue: $i, keyed: true} end)' <<<"$state")
 	save_state
 }
 
@@ -419,7 +467,7 @@ for runtime in "${usage_check_runtimes[@]}"; do
 	esac
 done
 save_state
-# ラベルを付けられなかったことと、状態のファイルのタスクが合わず外したことを、実行の結果で人に知らせる。
+# ラベルを付けられなかったことと、タスクの作成・確認・更新に失敗したことを、実行の結果で人に知らせる。
 if $label_failed || $task_failed; then
 	exit 1
 fi

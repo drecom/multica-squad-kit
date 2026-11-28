@@ -186,9 +186,9 @@ fresh() {
 	rm -rf -- "${state:?}" "${config:?}"
 	mkdir -p "$proj"
 }
-set_start() { # session_id 長さ
-	mkdir -p "$state/run-stops/start"
-	printf '%s\n' "$2" >"$(start_file "$1")"
+set_start() { # session_id 長さ [タスク]
+	mkdir -p -m 700 "$state" "$state/run-stops" "$state/run-stops/start"
+	(umask 077 && printf '%s %s\n' "${3-task-1}" "$2" >"$(start_file "$1")")
 }
 file_size() { wc -c <"$1" | tr -d ' '; }
 expect_no_record() { # ラベル
@@ -211,14 +211,14 @@ expect_record() { # ラベル
 fresh
 run_session "$start_hook" "$(start_input "$sid" "$transcript")"
 expect_silent_pass '記録のファイルがまだない'
-if [[ $(cat "$(start_file "$sid")") != 0 ]]; then fail "ファイルがないときは長さ 0 を書くはず: $(cat "$(start_file "$sid")")"; fi
+if [[ $(cat "$(start_file "$sid")") != 'task-1 0' ]]; then fail "ファイルがないときは長さ 0 を書くはず: $(cat "$(start_file "$sid")")"; fi
 if [[ $(perm "$state/run-stops/start") != 700 || $(perm "$(start_file "$sid")") != 600 ]]; then
 	fail '始めの長さの置き場は 700、ファイルは 600 のはず'
 fi
 { line_user "$sid"; line_admin "$sid"; } >"$transcript"
 run_session "$start_hook" "$(start_input "$sid" "$transcript")"
 expect_silent_pass '再開'
-if [[ $(cat "$(start_file "$sid")") != "$(file_size "$transcript")" ]]; then fail '今のファイルの長さを書き直すはず'; fi
+if [[ $(cat "$(start_file "$sid")") != "task-1 $(file_size "$transcript")" ]]; then fail '今のファイルの長さを書き直すはず'; fi
 if [[ -e $(month_file) ]]; then fail 'SessionStart は理由の記録に書かないはず'; fi
 echo 'PASS SessionStart: 始めの長さをバイトの数で書き（ファイルがなければ 0）、置き場は 700、ファイルは 600 になる'
 
@@ -454,6 +454,123 @@ run_session "$end_hook" "$(end_input "$sid" "$transcript")"
 expect_silent_pass '理由の記録のファイルがシンボリックリンク'
 if [[ -s $test_dir/elsewhere ]]; then fail 'シンボリックリンクの先に書いた'; fi
 echo 'PASS SessionEnd: 置き場の外・名前の違い・シンボリックリンク・壊れた入力・書けない置き場では、何も出さずに 0 で終わる'
+
+# --- 11b. 置き場と記録の種類・持ち主・権限、タスクの違い、窓の始めが行の始まりのとき ---
+
+# SessionEnd: 始めの長さのファイルのタスクが違えば、使わず、記録しない
+fresh
+{ line_user "$sid"; line_max "$sid" 5; } >"$transcript"
+set_start "$sid" 0 task-other
+run_session "$end_hook" "$(end_input "$sid" "$transcript")"
+expect_no_record '始めの長さのファイルのタスクが違う'
+set_start "$sid" 0
+run_session "$end_hook" "$(end_input "$sid" "$transcript")"
+expect_record '同じ記録で、タスクが合えば記録する'
+# SessionEnd: 始めの長さの置き場かファイルの権限が 700・600 より広いなら、使わない
+fresh
+{ line_user "$sid"; line_max "$sid" 5; } >"$transcript"
+set_start "$sid" 0
+chmod 755 "$state/run-stops/start"
+run_session "$end_hook" "$(end_input "$sid" "$transcript")"
+expect_no_record '始めの長さの置き場の権限が広い'
+chmod 700 "$state/run-stops/start"
+chmod 644 "$(start_file "$sid")"
+run_session "$end_hook" "$(end_input "$sid" "$transcript")"
+expect_no_record '始めの長さのファイルの権限が広い'
+# SessionEnd: 始めの長さの置き場やファイルがシンボリックリンクなら、たどらない
+fresh
+{ line_user "$sid"; line_max "$sid" 5; } >"$transcript"
+mkdir -p -m 700 "$test_dir/real-start" "$state/run-stops"
+(umask 077 && printf 'task-1 0\n' >"$test_dir/real-start/$sid")
+ln -s "$test_dir/real-start" "$state/run-stops/start"
+run_session "$end_hook" "$(end_input "$sid" "$transcript")"
+expect_no_record '始めの長さの置き場がシンボリックリンク'
+rm -f -- "$state/run-stops/start"
+mkdir -m 700 "$state/run-stops/start"
+ln -s "$test_dir/real-start/$sid" "$(start_file "$sid")"
+run_session "$end_hook" "$(end_input "$sid" "$transcript")"
+expect_no_record '始めの長さのファイルがシンボリックリンク'
+rm -rf -- "$test_dir/real-start"
+# SessionEnd: 理由の記録の置き場がシンボリックリンクなら、たどらない
+fresh
+{ line_user "$sid"; line_max "$sid" 5; } >"$transcript"
+mkdir -p "$test_dir/elsewhere-dir" "$state"
+chmod 700 "$state" "$test_dir/elsewhere-dir"
+ln -s "$test_dir/elsewhere-dir" "$state/run-stops"
+run_session "$end_hook" "$(end_input "$sid" "$transcript")"
+expect_silent_pass '理由の記録の置き場がシンボリックリンク'
+if [[ -n $(ls -A "$test_dir/elsewhere-dir") ]]; then fail 'シンボリックリンクの先に書いた'; fi
+rm -rf -- "$test_dir/elsewhere-dir"
+# SessionEnd: 理由の記録の置き場やファイルの権限が広いなら、足さない
+fresh
+{ line_user "$sid"; line_max "$sid" 5; } >"$transcript"
+set_start "$sid" 0
+chmod 755 "$state/run-stops"
+run_session "$end_hook" "$(end_input "$sid" "$transcript")"
+expect_no_record '理由の記録の置き場の権限が広い'
+chmod 700 "$state/run-stops"
+(umask 077 && : >"$(month_file)")
+chmod 644 "$(month_file)"
+set_start "$sid" 0
+run_session "$end_hook" "$(end_input "$sid" "$transcript")"
+expect_silent_pass '理由の記録のファイルの権限が広い'
+if [[ -s $(month_file) ]]; then fail '権限が広い記録のファイルには足さないはず'; fi
+# StopFailure: 置き場とファイルの権限が広いなら足さない。置き場がシンボリックリンクならたどらない
+rm -rf -- "${state:?}"
+mkdir -p "$state/run-stops"
+chmod 700 "$state"
+chmod 755 "$state/run-stops"
+run_hook "$(input rate_limit "$uuid")"
+expect_silent_pass 'StopFailure: 置き場の権限が広い'
+if [[ -e $(month_file) ]]; then fail 'StopFailure: 権限が広い置き場には書かないはず'; fi
+chmod 700 "$state/run-stops"
+: >"$(month_file)"
+chmod 644 "$(month_file)"
+run_hook "$(input rate_limit "$uuid")"
+expect_silent_pass 'StopFailure: ファイルの権限が広い'
+if [[ -s $(month_file) ]]; then fail 'StopFailure: 権限が広いファイルには足さないはず'; fi
+rm -rf -- "${state:?}"
+mkdir -p -m 700 "$state" "$test_dir/elsewhere-dir"
+ln -s "$test_dir/elsewhere-dir" "$state/run-stops"
+run_hook "$(input rate_limit "$uuid")"
+expect_silent_pass 'StopFailure: 置き場がシンボリックリンク'
+if [[ -n $(ls -A "$test_dir/elsewhere-dir") ]]; then fail 'StopFailure: シンボリックリンクの先に書いた'; fi
+rm -rf -- "$test_dir/elsewhere-dir"
+# SessionStart: 始めの長さのファイルの場所がシンボリックリンクなら、たどらず、一時ファイルで置き換える
+fresh
+mkdir -p -m 700 "$state" "$state/run-stops" "$state/run-stops/start"
+printf 'keep\n' >"$test_dir/link-target"
+ln -s "$test_dir/link-target" "$(start_file "$sid")"
+run_session "$start_hook" "$(start_input "$sid" "$transcript")"
+expect_silent_pass 'SessionStart: ファイルの場所がシンボリックリンク'
+if [[ $(cat "$test_dir/link-target") != keep ]]; then fail 'シンボリックリンクの先を書き換えた'; fi
+if [[ -L $(start_file "$sid") || $(cat "$(start_file "$sid")") != 'task-1 0' ]]; then fail 'シンボリックリンクを一時ファイル経由の通常のファイルに置き換えるはず'; fi
+if [[ -n $(find "$state/run-stops/start" -name '.tmp-*') ]]; then fail '一時ファイルが残った'; fi
+# SessionStart: 置き場がシンボリックリンク、権限が広いなら、書かない
+fresh
+mkdir -p -m 700 "$state" "$state/run-stops" "$test_dir/elsewhere-dir"
+ln -s "$test_dir/elsewhere-dir" "$state/run-stops/start"
+run_session "$start_hook" "$(start_input "$sid" "$transcript")"
+expect_silent_pass 'SessionStart: 置き場がシンボリックリンク'
+if [[ -n $(ls -A "$test_dir/elsewhere-dir") ]]; then fail 'SessionStart: シンボリックリンクの先に書いた'; fi
+rm -rf -- "$test_dir/elsewhere-dir"
+rm -f -- "$state/run-stops/start"
+mkdir -m 755 "$state/run-stops/start"
+run_session "$start_hook" "$(start_input "$sid" "$transcript")"
+expect_silent_pass 'SessionStart: 置き場の権限が広い'
+if [[ -e $(start_file "$sid") ]]; then fail 'SessionStart: 権限が広い置き場には書かないはず'; fi
+# 窓の始めがちょうど行の始まりのとき、その行を捨てない
+fresh
+filler=$(line_user "$sid")
+for ((i = 0; i < 1500; i++)); do printf '%s\n' "$filler"; done >"$transcript"
+set_start "$sid" "$(file_size "$transcript")"
+base_len=$(line_max "$sid" 5 | jq -c '. + {pad: ""}' | wc -c | tr -d ' ')
+line_max "$sid" 5 | jq -c --arg pad "$(head -c "$((65536 - base_len))" /dev/zero | tr '\0' x)" '. + {pad: $pad}' >>"$transcript"
+size=$(file_size "$transcript")
+if [[ $(tail -c "$((65536 + 1))" "$transcript" | head -c 1 | od -An -tx1 | tr -d ' \n') != 0a ]]; then fail "窓の直前は改行のはず（${size}）"; fi
+run_session "$end_hook" "$(end_input "$sid" "$transcript")"
+expect_record '窓の始めが行の始まり'
+echo 'PASS 置き場と記録の種類・持ち主・権限、タスクの違い、窓の始めが行の始まりのとき'
 
 # --- 12. SessionStart から SessionEnd まで ---
 

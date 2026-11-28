@@ -9,14 +9,16 @@ Claude Code が、標準入力に JSON で入力を渡す。
   2. 入力の hook_event_name が SessionEnd で、session_id が UUID の形かを見る
   3. transcript_path の実体が、CLAUDE_CONFIG_DIR の projects の下にあり、名前が <session_id>.jsonl の通常のファイルかを見る
   4. 状態の置き場（SQUAD_KIT_STATE_DIR。なければこのスクリプトと同じディレクトリの state/）の
-     run-stops/start/<session_id> から、SessionStart のフックが残した始めの長さを、数として読む
-  5. 記録のファイルの末尾の 64 KiB から、uuid の欄を持つ最後の行を探す
+     run-stops/start/<session_id> から、SessionStart のフックが残した「タスク 始めの長さ」を読む。
+     タスクが今の MULTICA_TASK_ID と同じで、長さが数のときだけ使う
+  5. 記録のファイルの末尾の 64 KiB から、uuid の欄を持つ最後の行を探す。窓の始めが行の始まりなら、その行も読む
   6. その行の始まりが始めの長さ以降（今回の実行で足された行）で、型が max_turns_reached の添付で、
      sessionId が入力の session_id と同じで、timestamp がフックの時刻の 10 分前より後かを見る
   7. すべて合うときだけ、run-stops/<年>-<月>.jsonl に、理由 max_turns の行を 1 行足す
 
-どれかが合わない、始めの長さがないか読めない、書けない、入力を読めないときは、何も出さずに 0 で終わる。
-始めの長さのファイルは、合うかどうかによらず消す。
+どれかが合わない、始めの長さがないか読めない、タスクが違う、書けない、入力を読めないときは、何も出さずに 0 で終わる。
+始めの長さのファイルは、合うかどうかによらず消す。run-stops と run-stops/start は、シンボリックリンクをたどらずに確認したディレクトリを起点に開き、
+すでにあるものは、種類・持ち主・権限（グループと他人になし）が合うときだけ使う。
 """
 import calendar
 import json
@@ -33,7 +35,7 @@ INPUT_LIMIT = 8 * 1024 * 1024
 TAIL_BYTES = 64 * 1024
 RECENT_SECONDS = 10 * 60
 SESSION_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
-LENGTH_RE = re.compile(r"^[0-9]{1,15}\n?$")
+START_RE = re.compile(r"^(\S+) ([0-9]{1,15})\n?$")
 TIME_RE = re.compile(r"^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)(?:\.\d+)?Z$")
 
 
@@ -56,11 +58,14 @@ def transcript_file(path, session_id):
     return real
 
 
-def open_regular(path):
-    """シンボリックリンクをたどらずに開き、通常のファイルでなければ閉じて OSError にする。"""
-    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+def open_regular(path, dir_fd=None, owned=False):
+    """シンボリックリンクをたどらずに開き、通常のファイルでなければ閉じて OSError にする。owned なら持ち主と権限も見る。"""
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0), dir_fd=dir_fd)
     try:
-        if not stat.S_ISREG(os.fstat(fd).st_mode):
+        info = os.fstat(fd)
+        if owned:
+            check_owned(info, stat.S_ISREG)
+        elif not stat.S_ISREG(info.st_mode):
             raise OSError("通常のファイルではない")
     except OSError:
         os.close(fd)
@@ -68,23 +73,43 @@ def open_regular(path):
     return fd
 
 
-def read_start_length(session_id):
-    """始めの長さのファイルを数として読み、消す。読めなければ None。"""
-    path = os.path.join(state_dir(), "run-stops", "start", session_id)
+def open_start_dir():
+    """run-stops/start を確認して開く。なければ FileNotFoundError。"""
+    state_fd = os.open(state_dir(), os.O_RDONLY | os.O_DIRECTORY)
     try:
-        fd = open_regular(path)
-        try:
-            text = os.read(fd, 64).decode("ascii")
-        finally:
-            os.close(fd)
-        return int(text) if LENGTH_RE.match(text) else None
-    except (OSError, ValueError):
-        return None
+        runs_fd = open_checked_dir(state_fd, "run-stops", False)
     finally:
+        os.close(state_fd)
+    try:
+        return open_checked_dir(runs_fd, "start", False)
+    finally:
+        os.close(runs_fd)
+
+
+def read_start_length(session_id, task_id):
+    """始めの長さのファイルを読み、消す。タスクが違うか、数として読めなければ None。"""
+    try:
+        dir_fd = open_start_dir()
+    except OSError:
+        return None
+    try:
         try:
-            os.unlink(path)
-        except OSError:
-            pass
+            fd = open_regular(session_id, dir_fd, owned=True)
+            try:
+                text = os.read(fd, 256).decode("utf-8")
+            finally:
+                os.close(fd)
+            found = START_RE.match(text)
+            return int(found.group(2)) if found and found.group(1) == task_id else None
+        except (OSError, ValueError):
+            return None
+        finally:
+            try:
+                os.unlink(session_id, dir_fd=dir_fd)
+            except OSError:
+                pass
+    finally:
+        os.close(dir_fd)
 
 
 def last_uuid_line(real):
@@ -93,10 +118,16 @@ def last_uuid_line(real):
     try:
         size = os.fstat(fd).st_size
         base = max(0, size - TAIL_BYTES)
-        data = os.pread(fd, size - base, base)
+        if base > 0:  # 窓の直前の 1 バイトも読み、窓の始めが行の始まりかを見分ける
+            data = os.pread(fd, size - base + 1, base - 1)
+            at_line_start = data[:1] == b"\n"
+            data = data[1:]
+        else:
+            data = os.pread(fd, size, 0)
+            at_line_start = True
     finally:
         os.close(fd)
-    if base > 0:  # 窓の先頭は行の途中かもしれないので、最初の改行までを捨てる
+    if not at_line_start:  # 窓の先頭は行の途中なので、最初の改行までを捨てる
         cut = data.find(b"\n")
         if cut < 0:
             return None
@@ -143,19 +174,50 @@ def reached_max_turns(real, session_id, start_length, now):
     )
 
 
+def open_checked_dir(parent_fd, name, create):
+    """parent_fd を起点に、シンボリックリンクをたどらずにディレクトリを開く。ないときは create なら権限 700 で作る。
+    ディレクトリで、このフックを動かす利用者の持ち物で、グループと他人に権限がないときだけ使い、合わなければ OSError にする。"""
+    flags = os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(name, flags, dir_fd=parent_fd)
+    except FileNotFoundError:
+        if not create:
+            raise
+        os.mkdir(name, 0o700, dir_fd=parent_fd)
+        fd = os.open(name, flags, dir_fd=parent_fd)
+    try:
+        check_owned(os.fstat(fd), stat.S_ISDIR)
+    except OSError:
+        os.close(fd)
+        raise
+    return fd
+
+
+def check_owned(info, kind):
+    if not kind(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o077:
+        raise OSError("置き場の種類・持ち主・権限が合わない")
+
+
 def append_record(record, now_struct):
-    """run-stops/<年>-<月>.jsonl に、1 行を 1 回の書き込みで足す。"""
-    directory = os.path.join(state_dir(), "run-stops")
+    """run-stops/<年>-<月>.jsonl に、1 行を 1 回の書き込みで足す。置き場かファイルが合わなければ OSError にする。"""
     old_umask = os.umask(0o077)
     try:
-        os.makedirs(directory, mode=0o700, exist_ok=True)
-        path = os.path.join(directory, time.strftime("%Y-%m", now_struct) + ".jsonl")
-        flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
-        fd = os.open(path, flags, 0o600)
+        os.makedirs(state_dir(), mode=0o700, exist_ok=True)
+        state_fd = os.open(state_dir(), os.O_RDONLY | os.O_DIRECTORY)
         try:
-            os.write(fd, (json.dumps(record, ensure_ascii=True) + "\n").encode("ascii"))
+            dir_fd = open_checked_dir(state_fd, "run-stops", True)
         finally:
-            os.close(fd)
+            os.close(state_fd)
+        try:
+            flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+            fd = os.open(time.strftime("%Y-%m", now_struct) + ".jsonl", flags, 0o600, dir_fd=dir_fd)
+            try:
+                check_owned(os.fstat(fd), stat.S_ISREG)
+                os.write(fd, (json.dumps(record, ensure_ascii=True) + "\n").encode("ascii"))
+            finally:
+                os.close(fd)
+        finally:
+            os.close(dir_fd)
     finally:
         os.umask(old_umask)
 
@@ -174,7 +236,7 @@ def main():
     if not isinstance(session_id, str) or not SESSION_RE.match(session_id):
         return 0
 
-    start_length = read_start_length(session_id)  # 合うかどうかによらず、始めの長さのファイルを消す
+    start_length = read_start_length(session_id, task_id)  # 合うかどうかによらず、始めの長さのファイルを消す
     try:
         real = transcript_file(end_input.get("transcript_path"), session_id)
         if real is None or start_length is None:

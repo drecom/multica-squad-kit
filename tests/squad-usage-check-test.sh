@@ -41,7 +41,7 @@ set -euo pipefail
 if [[ "$*" == --version ]]; then
 	printf 'claude-version\n' >>"$USAGE_TEST_DIR/login-calls"
 	cat "$USAGE_TEST_DIR/claude-version"
-	exit 0
+	exit "$(cat "$USAGE_TEST_DIR/claude-version.status" 2>/dev/null || echo 0)"
 fi
 if [[ "$*" == 'auth status --json' ]]; then
 	printf 'claude-auth\n' >>"$USAGE_TEST_DIR/login-calls"
@@ -226,6 +226,18 @@ multica() {
 			'.id = $id | .project_id = $project | .creator_type = "agent" | .creator_id = $agent | .title = $title' <<<"$get_default" |
 			jq --slurpfile o <(if [[ -f $test_dir/get-override.json ]]; then cat "$test_dir/get-override.json"; else echo '{}'; fi) '. + $o[0]'
 		;;
+	'issue update')
+		if [[ -f $test_dir/fail-update ]]; then echo 'mock update failure' >&2; return 1; fi
+		local title file
+		while (($#)); do
+			case $1 in
+			--title) title=$2 ;;
+			--description-file) file=$2 ;;
+			esac
+			shift
+		done
+		jq -n --arg t "$title" --rawfile d "$file" '{title: $t, description: $d}' >>"$test_dir/updates.jsonl"
+		;;
 	'issue status') test "$4" == done ;;
 	'label list')
 		if [[ -f $test_dir/label-response.json ]]; then cat "$test_dir/label-response.json"; else
@@ -248,7 +260,7 @@ for level in warn limited error; do
 		and ($creates[0] | value("--project") == $project and value("--assignee") == $assignee)
 		and ([.[] | select(.[0:3] == ["issue", "label", "add"])] | length) == 1
 	' "$test_dir/calls.jsonl" >/dev/null
-	jq -e --arg level "$level" '."test-key" == {level: $level, issue: "test-issue"}' "$STATE_FILE" >/dev/null
+	jq -e --arg level "$level" '."test-key" == {level: $level, issue: "test-issue", keyed: true}' "$STATE_FILE" >/dev/null
 	echo "PASS $level: タスクの作成時にプロジェクトと担当を渡し、状態を保存"
 done
 
@@ -264,8 +276,8 @@ echo '{"id":2,"result":{"ordinaryUsageAllowed":true,"rateLimitsByLimitId":{"code
 	export USAGE_WARN_PERCENT
 	cd "$test_dir"
 	bash "$script"
-	jq -e '. == {"claude:Current session": {level: "warn", issue: "test-issue"},
-		"codex:codex:10080": {level: "warn", issue: "test-issue"},
+	jq -e '. == {"claude:Current session": {level: "warn", issue: "test-issue", keyed: true},
+		"codex:codex:10080": {level: "warn", issue: "test-issue", keyed: true},
 		"login:claude": {level: "ok", issue: ""},
 		"login:codex": {level: "ok", issue: ""}}' "$state_file" >/dev/null
 	jq -se '[.[] | select(.[0:2] == ["issue", "create"])] | length == 2' "$test_dir/calls.jsonl" >/dev/null
@@ -342,7 +354,7 @@ for selected in claude codex; do
 	if [[ $selected == claude ]]; then disabled_key='codex:allowed'; else disabled_key='claude:Current session'; fi
 	state_file=$(usage_check_state_path)
 	mkdir -p "${state_file%/*}"
-	jq -n --arg key "$disabled_key" '{($key):{level:"warn",issue:"disabled-issue"}}' >"$state_file"
+	jq -n --arg key "$disabled_key" '{($key):{level:"warn",issue: "disabled-issue", keyed: true}}' >"$state_file"
 	echo '{"is_error":false,"result":"Current session: 80% used · resets Oct 27 at 12:29pm (Asia/Tokyo)"}' >"$test_dir/claude.json"
 	echo '{"id":2,"result":{"ordinaryUsageAllowed":true,"rateLimitsByLimitId":{"codex":{"primary":{"windowDurationMins":10080,"usedPercent":80,"resetsAt":604800},"secondary":null}}}}' >"$test_dir/codex.jsonl"
 	: >"$test_dir/calls.jsonl"; : >"$test_dir/runtime-calls"; : >"$test_dir/login-calls"
@@ -356,7 +368,7 @@ for selected in claude codex; do
 	grep -qx "$selected" "$test_dir/runtime-calls"
 	[[ $(jq -Rsc 'split("\n")|map(select(length>0))|unique|length' "$test_dir/runtime-calls") == 1 ]]
 	jq -se '[.[]|select(.[0:2]==["issue","create"])]|length==1' "$test_dir/calls.jsonl" >/dev/null
-	jq -e --arg key "$disabled_key" '.[$key]=={level:"warn",issue:"disabled-issue"}' "$state_file" >/dev/null
+	jq -e --arg key "$disabled_key" '.[$key]=={level:"warn",issue: "disabled-issue", keyed: true}' "$state_file" >/dev/null
 	: >"$test_dir/calls.jsonl"
 	PATH="$selected_bin" /bin/bash "$script"
 	[[ ! -s $test_dir/calls.jsonl ]]
@@ -364,7 +376,7 @@ for selected in claude codex; do
 	echo '{"id":2,"result":{"ordinaryUsageAllowed":true,"rateLimitsByLimitId":{}}}' >"$test_dir/codex.jsonl"
 	: >"$test_dir/comments.jsonl"
 	PATH="$selected_bin" /bin/bash "$script"
-	jq -e --arg key "$disabled_key" '.[$key]=={level:"warn",issue:"disabled-issue"} and all(to_entries[]|select(.key!=$key); .value.level=="ok" and .value.issue=="")' "$state_file" >/dev/null
+	jq -e --arg key "$disabled_key" '.[$key]=={level:"warn",issue: "disabled-issue", keyed: true} and all(to_entries[]|select(.key!=$key); .value.level=="ok" and .value.issue=="")' "$state_file" >/dev/null
 	jq -se '[.[]|select(.[0:2]==["issue","status"])]==[["issue","status","test-issue","done","--no-start"]]' "$test_dir/calls.jsonl" >/dev/null
 	# 見張るランタイムのログインだけを読む。
 	if [[ $selected == claude ]]; then
@@ -456,13 +468,13 @@ for case_ in 'test-key|テスト枠|[使用上限] テスト枠（test-key）' \
 	: >"$test_dir/calls.jsonl"
 	apply "$key" error "$title" '詳細'
 	[[ $(created_title) == "$expected" ]]
-	jq -e --arg k "$key" '.[$k] == {level: "error", issue: "test-issue"}' "$STATE_FILE" >/dev/null
+	jq -e --arg k "$key" '.[$k] == {level: "error", issue: "test-issue", keyed: true}' "$STATE_FILE" >/dev/null
 done
 echo 'PASS 題のキー: 作るタスクの題が、キーの種類の始めで始まり、全角の括弧で囲んだキーで終わる'
 
 # 更新する前のタスクの確認。合うタスクは、コメントも done もできる。
 comment_count() { [[ -f $test_dir/comments.jsonl ]] && jq -s 'length' "$test_dir/comments.jsonl" || echo 0; }
-reset_server() { rm -f "$test_dir/get-override.json" "$test_dir/fail-get"; : >"$test_dir/calls.jsonl"; : >"$test_dir/comments.jsonl"; task_failed=false; }
+reset_server() { rm -f "$test_dir/get-override.json" "$test_dir/fail-get" "$test_dir/fail-update" "$test_dir/fail-comment"; : >"$test_dir/calls.jsonl"; : >"$test_dir/comments.jsonl"; : >"$test_dir/updates.jsonl"; task_failed=false; }
 reset_server
 echo '[使用上限] テスト枠（test-key）' >"$test_dir/get-title"
 state='{"test-key":{"level":"warn","issue":"test-issue"}}'
@@ -478,12 +490,12 @@ mismatch_case() { # 名前 キー 題 差し替えの JSON 新しい状態
 	reset_server
 	echo "$title" >"$test_dir/get-title"
 	echo "$override" >"$test_dir/get-override.json"
-	state=$(jq -n --arg k "$key" '{($k): {level: "warn", issue: "test-issue"}, other: {level: "warn", issue: "other-issue"}}')
+	state=$(jq -n --arg k "$key" '{($k): {level: "warn", issue: "test-issue", keyed: true}, other: {level: "warn", issue: "other-issue", keyed: true}}')
 	apply "$key" "$level" '枠' '詳細' 2>"$test_dir/err"
 	if [[ $task_failed != true || $(comment_count) != 0 ]]; then echo "FAIL $name: 更新したか、失敗にしていない" >&2; exit 1; fi
 	jq -se '[.[] | select(.[0:2] == ["issue", "status"] or .[0:2] == ["issue", "comment"])] | length == 0' "$test_dir/calls.jsonl" >/dev/null
 	jq -e --arg k "$key" 'has($k) | not' <<<"$state" >/dev/null
-	jq -e '.other == {level: "warn", issue: "other-issue"}' <<<"$state" >/dev/null
+	jq -e '.other == {level: "warn", issue: "other-issue", keyed: true}' <<<"$state" >/dev/null
 	jq -e --arg k "$key" 'has($k) | not' "$STATE_FILE" >/dev/null
 	grep -qF "状態から外した" "$test_dir/err"
 	echo "PASS 更新の前の確認: $name は更新せず、状態から外して失敗にする"
@@ -524,23 +536,25 @@ reset_server
 touch "$test_dir/fail-get"
 state='{"test-key":{"level":"warn","issue":"test-issue"}}'
 state_before=$state
-if apply test-key limited '枠' '詳細' >"$test_dir/out" 2>"$test_dir/err"; then exit 1; fi
+apply test-key limited '枠' '詳細' >"$test_dir/out" 2>"$test_dir/err"
 rm "$test_dir/fail-get"
 grep -qF 'サーバーから読めなかった' "$test_dir/err"
-[[ $state == "$state_before" && $task_failed == false && $(comment_count) == 0 ]]
-echo 'PASS 更新の前の確認: タスクを読めないときは、状態を変えず更新もしない'
+[[ $state == "$state_before" && $task_failed == true && $(comment_count) == 0 ]]
+echo 'PASS 更新の前の確認: タスクを読めないときは、状態を変えず更新もせず、失敗にして次の行へ進む'
 
 # ok でない状態どうしの変化は、新しい状態の始めの文をコメントする。
 transition_case() { # キー 題 前の状態 新しい状態 コメントの始めの文
 	local key=$1 title=$2 prev=$3 level=$4 sentence=$5
 	reset_server
 	echo "$title" >"$test_dir/get-title"
-	state=$(jq -n --arg k "$key" --arg l "$prev" '{($k): {level: $l, issue: "test-issue"}}')
+	state=$(jq -n --arg k "$key" --arg l "$prev" '{($k): {level: $l, issue: "test-issue", keyed: true}}')
 	apply "$key" "$level" '枠' '詳細の文' 2>"$test_dir/err"
 	[[ $task_failed == false && ! -s $test_dir/err ]]
+	jq -se --arg t "$(title_prefix "$key") 枠（${key}）" --arg s "$sentence" \
+		'length == 1 and .[0].title == $t and (.[0].description | startswith($s + "\n\n詳細の文\n"))' "$test_dir/updates.jsonl" >/dev/null
 	jq -se --arg s "$sentence" 'length == 1 and (.[0].body | startswith($s + "。\n\n") and contains("詳細の文"))' "$test_dir/comments.jsonl" >/dev/null
 	jq -se '[.[] | select(.[0:2] == ["issue", "status"])] | length == 0' "$test_dir/calls.jsonl" >/dev/null
-	jq -e --arg k "$key" --arg l "$level" '.[$k] == {level: $l, issue: "test-issue"}' <<<"$state" >/dev/null
+	jq -e --arg k "$key" --arg l "$level" '.[$k] == {level: $l, issue: "test-issue", keyed: true}' <<<"$state" >/dev/null
 	echo "PASS 状態の変化: $key の $prev から $level で、新しい状態の文をコメントする"
 }
 t='[使用上限] 枠（test-key）'
@@ -562,7 +576,7 @@ transition_case login:claude "$l" warn unverified 'ログインを確認でき�
 	reset_server
 	echo '[使用上限] Claude の Current session（claude:Current session）' >"$test_dir/get-title"
 	echo '{"project_id":"other-project"}' >"$test_dir/get-override.json"
-	jq -n '{"claude:Current session": {level: "warn", issue: "test-issue"}}' >"$state_file"
+	jq -n '{"claude:Current session": {level: "warn", issue: "test-issue", keyed: true}}' >"$state_file"
 	echo '{"is_error":false,"result":"Current session: 100% used · resets Oct 27 at 12:29pm (Asia/Tokyo)"}' >"$test_dir/claude.json"
 	if (cd "$test_dir" && bash "$script") >"$test_dir/out" 2>"$test_dir/err"; then exit 1; fi
 	grep -qF '状態から外した' "$test_dir/err"
@@ -590,6 +604,7 @@ login_reset() {
 	: >"$test_dir/runtime-calls"; : >"$test_dir/login-calls"
 	echo "$usage_zero" >"$test_dir/claude.json"; echo 0 >"$test_dir/claude.status"
 	echo '2.1.322 (Claude Code)' >"$test_dir/claude-version"
+	rm -f "$test_dir/claude-version.status"
 	claude_auth 0 '{"loggedIn":true,"authMethod":"claude.ai","email":"fake.person@example.invalid","orgName":"Fake Org Inc"}'
 	codex_login 0 'Logged in using ChatGPT'
 	echo '{"id":2,"result":{"ordinaryUsageAllowed":true,"rateLimitsByLimitId":{}}}' >"$test_dir/codex.jsonl"
@@ -648,7 +663,7 @@ login_state_case() {
 		assert_initial_login_ok claude
 	else
 		[[ $(created_title) == "[ログイン] ${title}（login:claude）" ]]
-		jq -e --arg l "$level" '."login:claude" == {level: $l, issue: "test-issue"}' "$(login_state_file)" >/dev/null
+		jq -e --arg l "$level" '."login:claude" == {level: $l, issue: "test-issue", keyed: true}' "$(login_state_file)" >/dev/null
 		[[ $(head -n 1 "$test_dir/description.md") == "$sentence" ]]
 		[[ -z $detail ]] || grep -qE -- "$detail" "$test_dir/description.md"
 	fi
@@ -713,7 +728,7 @@ echo 'PASS ログインの行: 見張らないランタイムには行もタス�
 
 # 戻るとき。前回が warn・error・確認失敗で、ローカルでは ok のとき。
 login_prev_state() { # 前の状態
-	jq -n --arg l "$1" '{"login:claude": {level: $l, issue: "login-issue"}}' >"$(login_state_file)"
+	jq -n --arg l "$1" '{"login:claude": {level: $l, issue: "login-issue", keyed: true}}' >"$(login_state_file)"
 	echo "$login_title" >"$test_dir/get-title"
 }
 for prev in warn error unverified; do
@@ -734,7 +749,7 @@ for prev in warn error unverified; do
 	login_prev_state "$prev"
 	echo 1 >"$test_dir/claude.status"; echo 'ログイン済みでも使えない' >"$test_dir/claude.json"
 	login_run
-	jq -e --arg l "$prev" '."login:claude" == {level: $l, issue: "login-issue"}' "$(login_state_file)" >/dev/null
+	jq -e --arg l "$prev" '."login:claude" == {level: $l, issue: "login-issue", keyed: true}' "$(login_state_file)" >/dev/null
 	[[ $(comment_count) == 0 ]]
 	jq -se '[.[] | select(.[0:2] == ["issue", "status"] or .[0:2] == ["issue", "comment"])] | length == 0' "$test_dir/calls.jsonl" >/dev/null
 	grep -qx claude "$test_dir/runtime-calls"
@@ -745,18 +760,18 @@ done
 # error のツールは使用率を読まず、使用上限の行を前回のままにする。確認失敗のツールは使用率を読む。
 login_reset
 mkdir -p "$(dirname "$(login_state_file)")"
-jq -n '{"login:claude": {level: "error", issue: "login-issue"}, "claude:Current session": {level: "warn", issue: "usage-issue"}}' >"$(login_state_file)"
+jq -n '{"login:claude": {level: "error", issue: "login-issue", keyed: true}, "claude:Current session": {level: "warn", issue: "usage-issue", keyed: true}}' >"$(login_state_file)"
 echo "$login_title" >"$test_dir/get-title"
 claude_auth 1 '{"loggedIn":false,"email":"fake.person@example.invalid"}'
 login_run
 [[ ! -s $test_dir/runtime-calls ]]
-jq -e '. == {"login:claude": {level: "error", issue: "login-issue"}, "claude:Current session": {level: "warn", issue: "usage-issue"}}' "$(login_state_file)" >/dev/null
+jq -e '. == {"login:claude": {level: "error", issue: "login-issue", keyed: true}, "claude:Current session": {level: "warn", issue: "usage-issue", keyed: true}}' "$(login_state_file)" >/dev/null
 [[ $(comment_count) == 0 ]]
 jq -se '[.[] | select(.[0:2] == ["issue", "status"] or .[0:2] == ["issue", "comment"] or .[0:2] == ["issue", "create"])] | length == 0' "$test_dir/calls.jsonl" >/dev/null
 assert_no_leak
 login_reset
 mkdir -p "$(dirname "$(login_state_file)")"
-jq -n '{"claude:Current session": {level: "warn", issue: "usage-issue"}}' >"$(login_state_file)"
+jq -n '{"claude:Current session": {level: "warn", issue: "usage-issue", keyed: true}}' >"$(login_state_file)"
 echo '[使用上限] Claude の Current session（claude:Current session）' >"$test_dir/get-title"
 claude_auth 2 "$logged_in"
 login_run
@@ -774,7 +789,7 @@ codex_login_case() {
 	login_run codex
 	[[ $(cat "$test_dir/login-calls") == codex-login ]]
 	[[ $(created_title) == "$title" ]]
-	jq -e --arg level "$level" '."login:codex" == {level: $level, issue: "test-issue"}' "$(login_state_file)" >/dev/null
+	jq -e --arg level "$level" '."login:codex" == {level: $level, issue: "test-issue", keyed: true}' "$(login_state_file)" >/dev/null
 	[[ $(head -n 1 "$test_dir/description.md") == "$sentence" ]]
 	grep -q "終了コード $code" "$test_dir/description.md"
 	assert_no_leak
@@ -800,28 +815,28 @@ echo 'PASS Codex のログイン: 時間切れは確認失敗'
 for prev in error unverified; do
 	login_reset
 	mkdir -p "$(dirname "$(login_state_file)")"
-	jq -n --arg level "$prev" '{"login:codex": {level: $level, issue: "login-issue"}, "codex:allowed": {level: "warn", issue: "usage-issue"}}' >"$(login_state_file)"
+	jq -n --arg level "$prev" '{"login:codex": {level: $level, issue: "login-issue", keyed: true}, "codex:allowed": {level: "warn", issue: "usage-issue", keyed: true}}' >"$(login_state_file)"
 	echo "$codex_login_title" >"$test_dir/get-title"
 	if [[ $prev == error ]]; then
 		codex_login 1 'Not logged in'
 		login_run codex
 		[[ ! -s $test_dir/runtime-calls && ! -s $test_dir/calls.jsonl ]]
-		jq -e '."codex:allowed" == {level: "warn", issue: "usage-issue"}' "$(login_state_file)" >/dev/null
+		jq -e '."codex:allowed" == {level: "warn", issue: "usage-issue", keyed: true}' "$(login_state_file)" >/dev/null
 	fi
 	# 使用量の行を初期化し、ログインの復旧を読む。
-	jq -n --arg level "$prev" '{"login:codex": {level: $level, issue: "login-issue"}}' >"$(login_state_file)"
+	jq -n --arg level "$prev" '{"login:codex": {level: $level, issue: "login-issue", keyed: true}}' >"$(login_state_file)"
 	codex_login 0 'fake.person@example.invalid'
 	cp "$test_dir/codex.jsonl" "$test_dir/codex-ok.jsonl"
 	echo '{"id":2,"error":{"message":"ログインが必要"}}' >"$test_dir/codex.jsonl"
 	login_run 'claude codex'
 	[[ $(cat "$test_dir/runtime-calls") == $'claude\ncodex' ]]
-	jq -e --arg level "$prev" '."login:codex" == {level: $level, issue: "login-issue"} and ."codex:fetch".level == "error"' "$(login_state_file)" >/dev/null
+	jq -e --arg level "$prev" '."login:codex" == {level: $level, issue: "login-issue", keyed: true} and ."codex:fetch".level == "error"' "$(login_state_file)" >/dev/null
 	jq -se 'all(.[]; .[0:2] != ["issue", "comment"] and .[0:2] != ["issue", "status"])' "$test_dir/calls.jsonl" >/dev/null
 	assert_no_leak
 	reset_server
 	mv "$test_dir/codex-ok.jsonl" "$test_dir/codex.jsonl"
 	# 使用量の取得エラーのタスクは別キー。ログインの更新だけを確認する。
-	jq -n --arg level "$prev" '{"login:codex": {level: $level, issue: "login-issue"}}' >"$(login_state_file)"
+	jq -n --arg level "$prev" '{"login:codex": {level: $level, issue: "login-issue", keyed: true}}' >"$(login_state_file)"
 	echo "$codex_login_title" >"$test_dir/get-title"
 	login_run codex
 	jq -e '."login:codex" == {level: "ok", issue: ""}' "$(login_state_file)" >/dev/null
@@ -830,3 +845,74 @@ for prev in error unverified; do
 	assert_no_leak
 	echo "PASS Codex のログインの戻り: ${prev} から、同じ実行で Codex の使用量を読めたときだけ ok に戻す"
 done
+
+# claude --version が 0 以外で終わるときと、期限が日時にできない大きな値のときは、確認失敗にし、トレースバックを出さない。
+login_reset
+echo 3 >"$test_dir/claude-version.status"
+login_run
+[[ $(created_title) == '[ログイン] Claude Code のログインを確認できない（login:claude）' ]]
+grep -qx 'claude --version が終了コード 3 で終わった' "$test_dir/description.md"
+! grep -q Traceback "$test_dir/err"
+assert_no_leak
+login_reset
+claude_auth 0 '{"loggedIn":true,"authMethod":"claude.ai","email":"fake.person@example.invalid","loginExpiresAt":1e80}'
+login_run
+[[ $(created_title) == '[ログイン] Claude Code のログインを確認できない（login:claude）' ]]
+grep -q '期限を日時として読めない' "$test_dir/description.md"
+! grep -q Traceback "$test_dir/err"
+assert_no_leak
+echo 'PASS ログインの状態: claude --version の失敗と期限の大きな値は確認失敗で、トレースバックを出さない'
+
+# ok でない状態どうしの変化は、題と本文を書き換える。limited から warn でも書き換え、書き換えに失敗してもコメントと状態の記録は続けて 1 で終える。
+reset_server
+echo '[使用上限] 枠（test-key）' >"$test_dir/get-title"
+state='{"test-key":{"level":"limited","issue":"test-issue","keyed":true}}'
+apply test-key warn '枠' '詳細の文' 2>"$test_dir/err"
+jq -se '.[0].title == "[使用上限] 枠（test-key）" and (.[0].description | startswith("使用上限が近い。"))' "$test_dir/updates.jsonl" >/dev/null
+jq -se 'length == 1 and (.[0].body | startswith("戻った。"))' "$test_dir/comments.jsonl" >/dev/null
+echo 'PASS 題と本文の書き換え: limited から warn でも書き換え、「戻った」をコメントする'
+reset_server
+touch "$test_dir/fail-update"
+state='{"test-key":{"level":"warn","issue":"test-issue","keyed":true}}'
+apply test-key error '枠' '詳細の文' 2>"$test_dir/err"
+grep -qF '書き換えられなかった' "$test_dir/err"
+[[ $task_failed == true && $(comment_count) == 1 ]]
+jq -e '."test-key" == {level: "error", issue: "test-issue", keyed: true}' <<<"$state" >/dev/null
+reset_server
+echo 'PASS 題と本文の書き換え: 失敗してもコメントと状態の記録は続け、実行の結果を失敗にする'
+
+# 印 keyed のない行のタスクは、状態が変わらなくても確認する。合えば印を付け、合わなければ外す。印のある行は確認しない。
+reset_server
+echo '[使用上限] 枠（test-key）' >"$test_dir/get-title"
+state='{"test-key":{"level":"warn","issue":"test-issue"}}'
+apply test-key warn '枠' '詳細'
+jq -e '."test-key" == {level: "warn", issue: "test-issue", keyed: true}' <<<"$state" >/dev/null
+[[ $task_failed == false && $(comment_count) == 0 ]]
+reset_server
+echo '流し直す前の題' >"$test_dir/get-title"
+state='{"test-key":{"level":"warn","issue":"test-issue"}}'
+apply test-key warn '枠' '詳細' 2>"$test_dir/err"
+jq -e 'has("test-key") | not' <<<"$state" >/dev/null
+[[ $task_failed == true ]]
+reset_server
+state='{"test-key":{"level":"warn","issue":"test-issue","keyed":true}}'
+apply test-key warn '枠' '詳細'
+jq -se '[.[] | select(.[0:2] == ["issue", "get"])] | length == 0' "$test_dir/calls.jsonl" >/dev/null
+reset_server
+echo 'PASS 印 keyed: 印のない行は状態が同じでも確認して印を付け、合わなければ外し、印のある行は確認しない'
+
+# 使用上限のタスクの更新に失敗しても、あとのログインの行を処理してから 1 で終える。
+login_reset
+mkdir -p "$(dirname "$(login_state_file)")"
+jq -n '{"claude:Current session": {level: "warn", issue: "usage-issue", keyed: true}}' >"$(login_state_file)"
+echo '[使用上限] Claude の Current session（claude:Current session）' >"$test_dir/get-title"
+echo '{"is_error":false,"result":"Current session: 100% used · resets Oct 27 at 12:29pm (Asia/Tokyo)"}' >"$test_dir/claude.json"
+claude_auth 0 "$(expiry_json 3)"
+touch "$test_dir/fail-comment"
+if login_run; then exit 1; fi
+[[ $(created_title) == '[ログイン] Claude Code のログインの期限（login:claude）' ]]
+jq -e '."claude:Current session" == {level: "warn", issue: "usage-issue", keyed: true}
+	and ."login:claude" == {level: "warn", issue: "test-issue", keyed: true}' "$(login_state_file)" >/dev/null
+assert_no_leak
+login_reset
+echo 'PASS 更新の失敗: 使用上限のタスクを更新できなくても、ログインの行を処理してから失敗にする'
