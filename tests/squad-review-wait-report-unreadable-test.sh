@@ -34,7 +34,9 @@ reason_body() { # 本文の JSON 文字列 「<行> 行目: <理由>」 [返事�
 
 run_report() {
 	code=0
-	bash "$script" report test-issue trigger "$test_dir/result.md" >"$test_dir/output" 2>"$test_dir/error" || code=$?
+	# 特殊な SECONDS を普通の変数にして、偽の sleep だけで時計を進める。
+	bash -c 'unset SECONDS; SECONDS=0; source "$@"' report-test \
+		"$script" report test-issue trigger "$test_dir/result.md" >"$test_dir/output" 2>"$test_dir/error" || code=$?
 	[[ $code == 0 ]] || { printf '終了コード 0 を期待したが %s: %s\n' "$code" "$(<"$test_dir/error")" >&2; exit 1; }
 	[[ $(posted_decide_count) == 0 ]] || { echo '決める記録を書いてはいけない' >&2; exit 1; }
 	[[ -z $(decide_calls) ]] || { echo 'decide を流してはいけない' >&2; exit 1; }
@@ -164,7 +166,7 @@ echo 'PASS report: 決める記録を書いたあとに読めない候補が現�
 
 # 8-1, 8-2: 名乗りと知らせの信頼。ほぼ同時・順に返しても知らせは 1 つ。選ばれた役が書かなければ引き継ぐ。
 # 結果を書いていない作者の名乗りと知らせは数えない。60 秒より前の名乗りは飛ばす。
-# 名乗りの読み直しの待ちが 20 秒を 1 回（取得 3 回目）。別の役が選ばれたときは、知らせを待つ 20 秒がもう 1 回あり、取得 4 回目で読む。
+# 名乗りは 20 秒待って取得 3 回目で読む。別の役の知らせは、次の 20 秒と、期限までの残りで待つたびに読む。
 cand_json=$(jq -nc '"返事を待つ役: [@qa](mention://agent/a)\n  字下げ"')
 notice_text() { # 保存した結果の ID
 	printf '[@demo-squad](mention://squad/squad-test) 返事がそろいました。\n次の依頼を決められません: 制御記録を読めない（x: 2 行目: 行頭の空白）\n読めない制御記録: x 2 行目: 行頭の空白\n保存した結果: %s\n' "$1"
@@ -194,11 +196,21 @@ with_raw a-notice "$a" agent 13 "$(notice_text a-res)" <"$test_dir/comments.3.js
 run_report
 expect_one_notice 2 20,20
 [[ $(posted_notice_count) == 0 ]] || { echo '先に名乗った役が書いたら、書いてはいけない' >&2; exit 1; }
+# 先に名乗った a の知らせが 2 回目の読み直しで初めて見えても、b は書かない。
+phase2_base
+phase2_claims a_claim 11
+cp "$test_dir/comments.3.json" "$test_dir/comments.4.json"
+with_raw a-notice "$a" agent 13 "$(notice_text a-res)" <"$test_dir/comments.4.json" >"$test_dir/comments.5.json"
+run_report
+expect_one_notice 2 20,20,10
+[[ $(list_count) == 5 && $(posted_notice_count) == 0 ]] || { echo '2 回目の読み直しで先に名乗った役の知らせを確認したら、引き継がない' >&2; exit 1; }
+echo 'PASS report: 選ばれた役の知らせが 2 回目の読み直しで見えれば、引き継がずに終わる'
+
 # a の知らせが読めないままなら、b が引き継いで書く。
 phase2_base
 phase2_claims a_claim 11
 run_report
-expect_one_notice 3 20,20
+expect_one_notice 3 20,20,10
 [[ $(posted_notice_count) == 1 ]] || { echo '引き継いで知らせを 1 つ書く' >&2; exit 1; }
 assert_jq -s '.[2].body | contains("\n保存した結果: posted-1\n") and contains("読めない制御記録: x 2 行目: 行頭の空白\n")' "$test_dir/posted.jsonl"
 # a の名乗りが b より遅ければ、b が選ばれて、待たずに書く。
@@ -208,7 +220,7 @@ run_report
 expect_one_notice 3 20
 [[ $(posted_notice_count) == 1 ]] || { echo 'b が知らせを 1 つ書く' >&2; exit 1; }
 # 自分の名乗りより 60 秒より前の名乗りは飛ばして、自分が選ばれる。60 秒以内なら、a が選ばれて待つ。
-for case in 'a_claim 15 3 20' 'a_claim 25 3 20,20'; do
+for case in 'a_claim 15 3 20' 'a_claim 25 3 20,20,10'; do
 	read -r fn at count waits <<<"$case"
 	phase2_base
 	with_claim posted-2 "$b" 80 x squad-test posted-1 <"$test_dir/comments.json" | "$fn" "$at" >"$test_dir/comments.3.json"

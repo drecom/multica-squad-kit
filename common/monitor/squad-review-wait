@@ -40,7 +40,7 @@
 #         名乗りと知らせは、リーダーでないエージェントが、候補より後に、自分の結果（返事の回: の行があるコメント）を書いたあとに書いたものだけを数える。
 #         知らせは、`読めない制御記録:` と `保存した結果:` の行が 1 つずつで、保存した結果が同じ作者の結果（候補より後、知らせより前）であること。
 #         自分の名乗りより 60 秒（REVIEW_WAIT_CLAIM_SECONDS）より前の名乗りは飛ばす。残った名乗りのうち最も早いものの役だけが知らせを書く。
-#         別の役が選ばれたときは、期限の中でもう 1 回待って読み直し、知らせが読めなければ、止まったものと見て自分が引き継いで書く（重なってもよい）。
+#         別の役が選ばれたときは、期限の中で待つたびに読み直し、すべての知らせが読めたら終える。待てなくなったら、知らせが読めない候補だけ引き継いで書く（重なってもよい）。
 #       - 知らせるスクワッド: タスクの担当がスクワッドならそのスクワッド。そうでなければ認める回の最新のものから決める。決まらなければ投稿せず終了 1。
 #       - 終了: 結果と知らせが済めば 0。結果か自分の知らせを書けなければ 1（スクワッドをメンションして返す）。
 #     回がない・読めない候補もないとき、知らせるスクワッドが 1 つに決まらないときは、投稿せずエラーにする。呼び出した役は、通常の引き継ぎで返す。
@@ -481,8 +481,8 @@ post_unreadable_notice() {
 
 # 読めない候補ごとに、`読めない制御記録の知らせ:` の名乗りを書き、生きている名乗りのうち最も早い役だけが知らせを書く。
 # 生きている名乗りは、信頼の条件を満たし、自分の名乗りより前の REVIEW_WAIT_CLAIM_SECONDS 秒以内に書かれたもの。時刻はコメントの作成時刻で比べる。
-# 知らせ済みの候補は飛ばす。名乗りから知らせまでは、report の期限の中で（wait_within_deadline）待って読み直すのを最大 2 回までにする。
-# 別の役の名乗りが選ばれた候補は、期限の中でもう 1 回待って読み直す。知らせがまだ読めなければ、自分がその候補の知らせを書いて引き継ぐ。
+# 知らせ済みの候補は飛ばす。自分の名乗りは、report の期限の中で（wait_within_deadline）待って最大 2 回読み直す。
+# 別の役の名乗りが選ばれた候補は、待つたびに知らせを読み直す。待てなくなったら、知らせが読めない候補だけ引き継いで書く。
 # saved は、結果を書いたコメントの ID。attached は、結果を回に書いたとき true、回を付けずに保存したとき false。squad は知らせるスクワッドの JSON。
 # 0: 知らせ済み・知らせを書いた、1: 取得・投稿に失敗した、または自分の名乗りが読み直しで見えない。
 notify_unreadable() {
@@ -557,11 +557,16 @@ notify_unreadable() {
 		post_unreadable_notice "$issue" "$parent" "$squad" "$saved" "$attached" "$id" "$line" "$reason" "$roster" "${rolename-}" || return 1
 	done
 	((${#others[@]} > 0)) || return 0
-	# 別の役の名乗りが選ばれた候補は、期限の中でもう 1 回待って、知らせが読めるかを確認する。待てなくても読み直す。
-	# 読めなければ、選ばれた役が止まったものと見て、自分がその候補の知らせを書いて引き継ぐ。
+	# 初めから待てないときも読み直す。すべての知らせが読めたら、期限の前でも終える。
 	wait_within_deadline || true
-	comments=$(comments_of "$issue") || return 1
-	state=$(squad_cli_control notice "$comments" "$leaders" null "$squad_id" "${others[@]}") || return 1
+	while :; do
+		comments=$(comments_of "$issue") || return 1
+		state=$(squad_cli_control notice "$comments" "$leaders" null "$squad_id" "${others[@]}") || return 1
+		if jq -e 'all(.[]; .notified)' <<<"$state" >/dev/null; then
+			return 0
+		fi
+		wait_within_deadline || break
+	done
 	for id in "${others[@]}"; do
 		jq -e --arg id "$id" '.[$id].notified | not' <<<"$state" >/dev/null || continue
 		line=$(jq -r --arg id "$id" '.[] | select(.id == $id) | .line' <<<"$pending") || return 1

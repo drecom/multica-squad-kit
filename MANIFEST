@@ -56,7 +56,7 @@ f54cec61b627324eecf0230f68db70da92c0862f83104b0c71f62e929483b63e  ./common/monit
 c8c24bc23ee4aed3e41c8e3924f34284b92ba7a170856af3f53b9da2912dcb83  ./common/monitor/squad-pr-watch
 a42bc9f4e0cab7a342bdd980e845b816354c3787152f1cd6c2b80b592d1d56ea  ./common/monitor/squad-preflight
 7205b1c6c7863d119f6ab19b09f965d5443fe8414e7cee759e91d47724107d8a  ./common/monitor/squad-review-next
-eb0320e5f48bba476804c9437c32e860925baf35216946b6499fccd80aa68c66  ./common/monitor/squad-review-wait
+8d3ebeae902dc09483d1ff187feaaaf4d07c5f3b97eeac3dcb362aecf0666bb5  ./common/monitor/squad-review-wait
 637050a7e02f134fb23ee2bf1c0b475d4c5863d8e3777f238b2b1c247c6bf331  ./common/monitor/squad-run-cut
 d01f8b949abb8359dd72254134adeb4c24d8bc9772d0868865718aeb1345d3c5  ./common/monitor/squad-run-cut-values
 691349b88eef89a875045ed1f729ad7a1074fe3bf75f58181a26410fb6e25357  ./common/monitor/squad-task-post
@@ -821,7 +821,7 @@ c4015cf07e86aa3cf712237ba78887b0898866dba9a491298d5a45678a987e7b  ./tests/squad-
 9afd43c4f13654fc9c33e6318ee7142c555b7586f3901ea844113e2ec2374b80  ./tests/squad-review-wait-report-notice-test.sh
 8164b38f64f996b9ff85a0dd2e4158d2f5c1b2b0f8944f5165737c10576ee801  ./tests/squad-review-wait-report-proceed-test.sh
 1193e76683c9bf7707ff40d8ccddb7159375f6130ef74e816b36f2c024412401  ./tests/squad-review-wait-report-test.sh
-f5176fc01883cefcda6654703b239f24182cb142f6ae28a1a321d67749b0a128  ./tests/squad-review-wait-report-unreadable-test.sh
+5252d9f5eeecde8e70de8939e6e21fd04d2a332c5d1111ddcec1a15a1329cfb9  ./tests/squad-review-wait-report-unreadable-test.sh
 af4395f7045b3a54413de05e9cc4e850465aa8f63ae7ba90e583f36000df55fb  ./tests/squad-review-wait-status-test.sh
 08f573581fa6edcb10ec80eefe9864a9bc20f7d312d12e57a26c8bc783930606  ./tests/squad-run-cut-test.sh
 ca32912f56551764f0241bfbe8b6c50057a37c92ad57b3686fa0865650233b62  ./tests/squad-task-post-test.sh
