@@ -167,7 +167,7 @@ tests/squad-review-next-decide-rework-record-merge-test.sh 95
 tests/squad-review-next-decide-rework-record-test.sh 61
 tests/squad-review-next-decide-route-test.sh 135
 tests/squad-review-next-decide-unexecuted-test.sh 133
-tests/squad-review-next-decide-unlinked-test.sh 170
+tests/squad-review-next-decide-unlinked-test.sh 173
 tests/squad-review-next-decide-unreadable-scenario-test.sh 90
 tests/squad-review-next-decide-written-test.sh 39
 tests/squad-review-next-request-test.sh 95

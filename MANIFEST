@@ -55,7 +55,7 @@ c9f338dd47ba2cb8aa8e4d2ee2208700faf9f1aa05c5e7407b3bdc9e31d8f14c  ./common/monit
 1858d0c29d55ec65cdb49abd3fa50aa55362ace74705f2377ce15ba606ed3e78  ./common/monitor/squad-pr-link-lib
 6a574a6c0c03e4354fe3ac011ac836e985e9514dbfffdb2f8d7b9f70afc4c263  ./common/monitor/squad-pr-watch
 a42bc9f4e0cab7a342bdd980e845b816354c3787152f1cd6c2b80b592d1d56ea  ./common/monitor/squad-preflight
-1a759396eebc808770603b093f9c2146957667af475cc4cf4462c04d6e69cf66  ./common/monitor/squad-review-next
+18a9f2ba5c13235d09b2f2f2e107cfaa8710838f35366bdad476e14a2b0e7ca4  ./common/monitor/squad-review-next
 652c87bbe6b0c221424d58dda0e9806d48c8972cac162fee910b51078b7eec5e  ./common/monitor/squad-review-wait
 637050a7e02f134fb23ee2bf1c0b475d4c5863d8e3777f238b2b1c247c6bf331  ./common/monitor/squad-run-cut
 d01f8b949abb8359dd72254134adeb4c24d8bc9772d0868865718aeb1345d3c5  ./common/monitor/squad-run-cut-values
@@ -812,7 +812,7 @@ c6cc0b4588a01424ebd04ae5bea45770fa33d212fa5a2c8285f4c35a0b30de99  ./tests/squad-
 a1905e79ac130af7604eda453c89f6123a247053952a5c4b611cd5263b42d40f  ./tests/squad-review-next-decide-rework-record-test.sh
 6eefca4c65c11153655edde501751caf49830f7ea471032921d783864054c7d1  ./tests/squad-review-next-decide-route-test.sh
 85d53db7fd552ffe76f9263ce014d7e8d48242edd43282a0cb061935997ca215  ./tests/squad-review-next-decide-unexecuted-test.sh
-490c728bdc1b9960447d302f7a84e4cb93be55f990bd8b5619217bc4fe09d0e0  ./tests/squad-review-next-decide-unlinked-test.sh
+d0b01e69fb1b6d9820c8b48d4975211ab7a3f30b6c0da0c8d3508233f4395b71  ./tests/squad-review-next-decide-unlinked-test.sh
 19c8c262b20b319562c761fc458abbdbf09356ef172d2d13b3b6dee3b93a3c4d  ./tests/squad-review-next-decide-unreadable-scenario-test.sh
 930c6344fd34ad50a1567e9f3b162907d01bd4a1a6e7c940bfa335678f2b1607  ./tests/squad-review-next-decide-written-test.sh
 82892f0bc35a72aa2e61e00661c3f4940efb0c6f06c2da7b4b16016f621fb223  ./tests/squad-review-next-request-test.sh
@@ -850,7 +850,7 @@ c98729878e6706f5780a10fbbdd9246ef49a12182fb27d46624296d335659336  ./tests/termin
 c0509d732b2b3fa99f882283848bc2ba1c82ed3a6d0a90ac8263045dfee07010  ./tests/terminal-test.sh
 bb7b764515248a871ceb26e80ed0d7a543675fe39a1813d3355767cb94475dc7  ./tests/terms-test.sh
 81cdf5bc9e1337df5df660a48956d98fbc210eae1e56bcfa2f4345ea8d2ee54d  ./tests/test-runner-test.sh
-5eb82e35975e532bebbad9d9a5b55b0a10062579f49a871611726917a2be5f9a  ./tests/test-weights
+96e95bb260697f19b95c3d6ff88790eac5752d6d2c57a0980f71d4745fc9438f  ./tests/test-weights
 d94f944f10cbc4a4e1578f5c2c82bd96d60a44e38218caebf76174d8d570f7de  ./tests/tty-session-cases.py
 037b266696a320864da9cdca9b7638c912b8e8f68f57f38c0b1d4f71640d5b0b  ./tests/tty-session-test.sh
 4fca0a5d480aee948e2076f067072b905caa9de4d4bd0c4cd84ac061c10abf37  ./tests/tty-session.py

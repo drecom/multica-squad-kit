@@ -1292,14 +1292,14 @@ ci_wait_step() {
 }
 
 # マージの依頼の確認の 2〜5（docs/review-next-step.md の「マージの依頼」）。止まる値が出たら、書かずに終了 3 にする。
-# 進めたら、MERGE_HEAD（PR の今の head）、CONF_LINE、CI_LINES、WATCH_LINE、WATCH_FAILED を決める。LINKED と PR_URL と NO_INTEGRATION は、呼ぶ前に決めてある。紐付いていないときは、PR_URL を回の `対象の PR:` の正規形に決め直す。
+# 進めたら、MERGE_HEAD（PR の今の head）、CONF_LINE、CI_LINES、WATCH_LINE、WATCH_FAILED を決める。LINKED と PR_URL と NO_INTEGRATION は、呼ぶ前に決めてある。
 merge_checks() {
 	local issue=$1 round=$2 leader=$3 roster=$4 res=$5 task=$6 kind=$7 watch="$script_dir/squad-pr-watch" pr out line status=0 same repo number watcher
 	CI_LINES='' WATCH_LINE='' WATCH_FAILED=false
 	watcher=$(jq -r '.roles["ci-monitor"].id // empty' <<<"$roster")
 
-	# 紐付いていない PR は、PR を回の `対象の PR:` から取る（docs/pr-link-no-integration.md の「マージの依頼の PR」）。
-	# head を読む前に round-pr で回の PR を得て、link-check の pr: と違えば何も書かずに止まる。以降の PR は、この 1 つの値にする。
+	# 紐付いていない PR は、head を読む前に round-pr で回の PR を照合する（docs/pr-link-no-integration.md の「マージの依頼の PR」）。
+	# 回の PR を決められないときは、連携なしでなければ link-check の PR_URL で進む。
 	if [[ $LINKED == false ]]; then
 		status=0
 		out=$("$watch" round-pr "$issue" "$round" 2>/dev/null) || status=$?
@@ -1310,8 +1310,12 @@ merge_checks() {
 			[[ $same == true ]] || stop_leader "紐付け: 食い違い pr: ${PR_URL} 回の PR: ${line}"
 			PR_URL=$line
 			;;
+		1)
+			if [[ $NO_INTEGRATION == true ]]; then stop_leader "回の PR を決められない: ${line}"; fi
+			;;
 		2) stop_leader "紐付け: 古い回 回: ${round} 今の回: ${line}" ;;
-		*) stop_leader "回の PR を決められない: ${line:-squad-pr-watch round-pr が ${status} で終わった}" ;;
+		3) stop_leader "回の PR を読めない: ${line}" ;;
+		*) stop_leader "回の PR を読めない: round-pr が ${status} で終わった" ;;
 		esac
 	fi
 
