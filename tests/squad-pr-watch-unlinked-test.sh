@@ -4,9 +4,11 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
 source "$root/tests/pr-watch-test-lib.sh"
+# ホストの連携なしの記録が結果を変えないよう、記録の根を空の一時ディレクトリに向ける。
+export PR_LINK_STATE_ROOT=$test_dir/pr-link-state
 
-# 要素はまだ採取できていないため、約束で宣言した html_url だけをテストに使う。
-assert_jq '.entries["issue-pull-requests"].items.fields == [{path:"html_url",class:"required",nullable:false}]' "$test_dir/contracts.json"
+# 要素はまだ採取できていないため、約束で宣言した html_url だけを判定に使う。link_source は squad-pr-link が表示にだけ使う。
+assert_jq '.entries["issue-pull-requests"].items.fields == [{path:"html_url",class:"required",nullable:false},{path:"link_source",class:"optional",nullable:true}]' "$test_dir/contracts.json"
 mv "$test_dir/bin/multica" "$test_dir/bin/multica-base"
 cat >"$test_dir/bin/multica" <<'EOF'
 #!/usr/bin/env bash
@@ -16,6 +18,12 @@ if [[ "${1-} ${2-} ${3-}" == 'issue pull-requests test-issue' ]]; then
 	jq -cn --args '$ARGS.positional' -- "$@" >>"$PR_WATCH_TEST_DIR/calls.jsonl"
 	[[ ! -f $PR_WATCH_TEST_DIR/fail-pulls ]] || exit 1
 	cat "$PR_WATCH_TEST_DIR/pulls.json"
+elif [[ "${1-} ${2-} ${3-}" == 'issue get test-issue' ]] && jq -e '.metadata | has("pr_link_no_integration")' "$PR_WATCH_TEST_DIR/task.json" >/dev/null; then
+	# この機能が保存する metadata の鍵を除き、実物の見本で検証する。
+	jq 'del(.metadata.pr_link_pending, .metadata.pr_link_no_integration)' "$PR_WATCH_TEST_DIR/task.json" >"$PR_WATCH_TEST_DIR/task-base.json"
+	python3 "$PR_WATCH_TEST_ROOT/tests/cli-stub.py" pr-watch "$PR_WATCH_TEST_DIR" multica calls.jsonl \
+		emit issue-get "$PR_WATCH_TEST_DIR/task-base.json" -- "$@" >/dev/null
+	cat "$PR_WATCH_TEST_DIR/task.json"
 else
 	exec "$PR_WATCH_TEST_DIR/bin/multica-base" "$@"
 fi
@@ -110,3 +118,301 @@ for args in 'link-check' 'link-check test-issue trigger extra'; do
 	grep -q '使い方: squad-pr-watch link-check <タスク> \[<きっかけのコメント>\]' "$test_dir/error"
 done
 echo 'PASS link-check: 引数の数が違えば使い方を標準エラーに出し、2 で終える'
+
+# 登録の照合。回のコメントを名簿で認め、回の `対象の PR:` が pr_url と同じときだけ、規則に見張る PR と確認した回を固定する。
+export MULTICA_AGENT_ID=orchestrator
+repo_pr=https://github.com/example/repo/pull/67
+repo_other=https://github.com/example/repo/pull/68
+register_reset() {
+	reset_fixture
+	jq 'map(.name = "Demo-Test")' "$test_dir/squads.json" >"$test_dir/changed.json"
+	mv "$test_dir/changed.json" "$test_dir/squads.json"
+	fixture squad-member-list | jq '. as $base | [$base + {member_id: "orchestrator", member_type: "agent"}, $base + {member_id: "monitor", member_type: "agent"}]' >"$test_dir/members.json"
+}
+add_comment() { # ID 作者の種類 作者の ID 本文
+	jq --slurpfile base "$test_dir/comment-prototype.json" --arg id "$1" --arg type "$2" --arg author "$3" --arg content "$4" \
+		'. + [$base[0] + {id: $id, author_type: $type, author_id: $author, content: $content}]' "$test_dir/comments.json" >"$test_dir/changed.json"
+	mv "$test_dir/changed.json" "$test_dir/comments.json"
+}
+round_body() { # 対象の PR の行に入れる URL...
+	local body=$'確認するコミット: abcdef0\n返事を待つ役: [@demo-monitor-test](mention://agent/monitor)\n観点: code-reviewer（テスト）' url
+	for url; do body+=$'\n'"対象の PR: $url"; done
+	printf '%s' "$body"
+}
+no_integration() {
+	jq --arg pr "$1" '.metadata.pr_link_no_integration = $pr' "$test_dir/task.json" >"$test_dir/changed.json"
+	mv "$test_dir/changed.json" "$test_dir/task.json"
+}
+run_unlinked() {
+	status=0
+	(cd "$test_dir" && bash "$script" unlinked test-issue "$@") >"$test_dir/output" 2>"$test_dir/error" || status=$?
+}
+expect_one_reason() { [[ $(grep -c . "$test_dir/error") == 1 ]] || { cat "$test_dir/error" >&2; return 1; }; }
+
+register_reset
+add_comment round-1 agent orchestrator "$(round_body "$repo_pr")"
+run_unlinked round-1 monitor
+[[ $status == 0 && ! -s $test_dir/error ]]
+assert_jq -s 'length == 1 and (.[0].body | split("\n") | map(select(. != "")) | .[-2:] == ["見張る PR: https://github.com/example/repo/pull/67", "確認した回: round-1"])
+	and (.[0].body | contains("squad-pr-watch unlinked-check test-issue orchestrator monitor\n"))' "$test_dir/wakeups.jsonl"
+echo 'PASS unlinked: 回を認め、pr_url が回の対象の PR と同じなら、規則の最後に見張る PR と確認した回を足す'
+
+register_reset
+add_comment round-1 agent orchestrator "$(round_body "$repo_pr")"
+jq --arg pr "$repo_other" '.metadata.pr_url = $pr' "$test_dir/task.json" >"$test_dir/changed.json"
+mv "$test_dir/changed.json" "$test_dir/task.json"
+printf '%s\n' "$(fixture issue-wakeups | jq --arg instruction $'紐付いていない PR のマージ待ちの見張りで起きました。\n古い指示' '.id = "old" | .instruction = $instruction')" | jq -s . >"$test_dir/rules.json"
+run_unlinked round-1 monitor
+[[ $status == 0 && ! -s $test_dir/error && ! -s $test_dir/wakeups.jsonl ]]
+[[ $(<"$test_dir/output") == "紐付け: 食い違い pr: $repo_other 回の PR: $repo_pr" ]]
+assert_jq 'map(.id) == ["old"]' "$test_dir/rules.json"
+echo 'PASS unlinked: 回のあとに pr_url が別の PR に変わっていれば、規則を作らず、既存の規則にも触れず、食い違いの行を出して 0 で終える'
+
+# 引数の回のあとに、認める新しい回があるときは、連携なしでもそうでなくても、規則を作らず、既存の規則にも触れず、古い回の行を出して 0 で終える。
+# 人間と名簿の外のコメントは、新しい回に数えない。
+for mode in plain no_integration; do
+	register_reset
+	[[ $mode == plain ]] || no_integration "$repo_pr"
+	add_comment round-1 agent orchestrator "$(round_body "$repo_pr")"
+	add_comment human-round member human-1 "$(round_body "$repo_pr")"
+	add_comment rogue-round agent rogue "$(round_body "$repo_pr")"
+	run_unlinked round-1 monitor
+	[[ $status == 0 && ! -s $test_dir/error && $(<"$test_dir/output") == *'見張り: '* && $(<"$test_dir/output") != *'古い回'* ]] || { echo "人間と名簿の外のコメントで古い回になった: $mode" >&2; cat "$test_dir/output" "$test_dir/error" >&2; exit 1; }
+	: >"$test_dir/wakeups.jsonl"
+	printf '%s\n' "$(fixture issue-wakeups | jq --arg instruction $'紐付いていない PR のマージ待ちの見張りで起きました。\n古い指示' '.id = "old" | .instruction = $instruction')" | jq -s . >"$test_dir/rules.json"
+	add_comment round-2 agent orchestrator "$(round_body "$repo_other")"
+	run_unlinked round-1 monitor
+	[[ $status == 0 && ! -s $test_dir/error && ! -s $test_dir/wakeups.jsonl ]]
+	[[ $(<"$test_dir/output") == "紐付け: 古い回 回: round-1 今の回: round-2" ]] || { echo "古い回の行が違う: $mode: $(<"$test_dir/output")" >&2; exit 1; }
+	assert_jq 'map(.id) == ["old"]' "$test_dir/rules.json"
+	# 今の回なら、そのまま登録できる。
+	jq --arg pr "$repo_other" '.metadata.pr_url = $pr' "$test_dir/task.json" >"$test_dir/changed.json"
+	mv "$test_dir/changed.json" "$test_dir/task.json"
+	[[ $mode == plain ]] || no_integration "$repo_other"
+	run_unlinked round-2 monitor
+	[[ $status == 0 && ! -s $test_dir/error && $(<"$test_dir/output") == *'見張り: '* ]]
+	assert_jq -s 'length == 1 and (.[0].body | split("\n") | map(select(. != "")) | .[-2:] == ["見張る PR: https://github.com/example/repo/pull/68", "確認した回: round-2"])' "$test_dir/wakeups.jsonl"
+done
+echo 'PASS unlinked: 引数の回のあとに認める新しい回があれば、規則を作らず、既存の規則にも触れず、古い回の行を出して 0 で終える。人間と名簿の外のコメントは数えず、今の回なら登録できる'
+
+# 連携なしで回を認められないときは、規則を作らず、理由を標準エラーに 1 行出して 1 で終える。
+register_reset
+no_integration "$repo_pr"
+add_comment human-round member human-1 "$(round_body "$repo_pr")"
+add_comment result-round agent orchestrator "$(round_body "$repo_pr")"$'\n返事の回: round-1'
+add_comment rogue-round agent rogue "$(round_body "$repo_pr")"
+# 認める回でも、対象の PR の行が 1 つでない回は、今の回でなければ古い回になるので、足してすぐ流す。
+for args in 'human-round monitor' 'result-round monitor' 'no-such-comment monitor' 'rogue-round monitor --leader rogue' 'two-lines monitor' 'no-line monitor'; do
+	case $args in
+	two-lines*) add_comment two-lines agent orchestrator "$(round_body "$repo_pr" "$repo_pr")" ;;
+	no-line*) add_comment no-line agent orchestrator "$(round_body)" ;;
+	esac
+	: >"$test_dir/wakeups.jsonl"
+	# shellcheck disable=SC2086
+	run_unlinked $args
+	[[ $status == 1 && ! -s $test_dir/output && ! -s $test_dir/wakeups.jsonl ]] || { echo "連携なしで 1 で終わらない: $args" >&2; exit 1; }
+	expect_one_reason
+done
+echo 'PASS unlinked: 連携なしで、人間・結果・名簿の外のエージェント・存在しないコメント・対象の PR の行が 1 つでない回は、規則を作らず 1 で終わる'
+
+# 連携なしでないときは、2 行を足さずに今のとおり登録し、理由を標準エラーに 1 行出す。
+register_reset
+add_comment human-round member human-1 "$(round_body "$repo_pr")"
+for args in 'human-round monitor' 'no-such-comment monitor'; do
+	: >"$test_dir/wakeups.jsonl"
+	# shellcheck disable=SC2086
+	run_unlinked $args
+	[[ $status == 0 && $(<"$test_dir/output") == *'見張り: '* ]]
+	expect_one_reason
+	assert_jq -s 'length == 1 and (.[0].body | contains("見張る PR:") | not) and (.[0].body | contains("確認した回:") | not)' "$test_dir/wakeups.jsonl"
+done
+echo 'PASS unlinked: 連携なしでなく回を認められなければ、2 行を足さずに登録し、標準エラーに理由を 1 行出す'
+
+# round-pr は、unlinked と同じ読み方で回の `対象の PR:` を出す。何も書かず、規則も作らない。
+run_round_pr() {
+	status=0
+	: >"$test_dir/wakeups.jsonl"
+	(cd "$test_dir" && bash "$script" round-pr test-issue "$@") >"$test_dir/output" 2>"$test_dir/error" || status=$?
+	[[ ! -s $test_dir/wakeups.jsonl && ! -s $test_dir/posted.jsonl ]] || { echo 'round-pr が規則かコメントを書いた' >&2; return 1; }
+}
+
+# 今の回は、回の `対象の PR:` の正規形を 1 行出して 0 で終える。
+register_reset
+add_comment round-1 agent orchestrator "$(round_body "$repo_pr")"
+run_round_pr round-1
+[[ $status == 0 && ! -s $test_dir/error && $(<"$test_dir/output") == "$repo_pr" ]] || { echo "今の回が 0 で終わらない: $status: $(<"$test_dir/output")" >&2; exit 1; }
+register_reset
+add_comment round-1 agent orchestrator "$(round_body 'https://github.com/Example/Repo/pull/67/files?diff=split')"
+run_round_pr round-1
+[[ $status == 0 && ! -s $test_dir/error && $(<"$test_dir/output") == 'https://github.com/Example/Repo/pull/67' ]] || { echo "正規形で出ない: $status: $(<"$test_dir/output")" >&2; exit 1; }
+echo 'PASS round-pr: 今の回は、回の対象の PR の正規形を 1 行出して 0 で終え、何も書かない'
+
+# あとに新しい回があれば、今の回の ID を 1 行出して 2 で終える。
+register_reset
+add_comment round-1 agent orchestrator "$(round_body "$repo_pr")"
+add_comment round-2 agent orchestrator "$(round_body "$repo_other")"
+run_round_pr round-1
+[[ $status == 2 && ! -s $test_dir/error && $(<"$test_dir/output") == round-2 ]] || { echo "古い回が 2 で終わらない: $status: $(<"$test_dir/output")" >&2; exit 1; }
+run_round_pr round-2
+[[ $status == 0 && $(<"$test_dir/output") == "$repo_other" ]] || { echo "新しい回が 0 で終わらない: $status: $(<"$test_dir/output")" >&2; exit 1; }
+echo 'PASS round-pr: あとに新しい回がある回は、今の回の ID を出して 2 で終わる'
+
+# 回と認めないコメントと、対象の PR の行が 1 つでない回は、理由を 1 行出して 1 で終える。
+register_reset
+add_comment human-round member human-1 "$(round_body "$repo_pr")"
+add_comment result-round agent orchestrator "$(round_body "$repo_pr")"$'\n返事の回: round-1'
+add_comment rogue-round agent rogue "$(round_body "$repo_pr")"
+for name in human-round result-round rogue-round no-such-comment two-lines no-line not-a-url; do
+	case $name in
+	two-lines) add_comment two-lines agent orchestrator "$(round_body "$repo_pr" "$repo_pr")" ;;
+	no-line) add_comment no-line agent orchestrator "$(round_body)" ;;
+	not-a-url) add_comment not-a-url agent orchestrator "$(round_body 'not a url')" ;;
+	esac
+	run_round_pr "$name"
+	[[ $status == 1 && ! -s $test_dir/error && $(grep -c . "$test_dir/output") == 1 ]] || { echo "読めない回が 1 で終わらない: $name: $status: $(<"$test_dir/output")" >&2; exit 1; }
+done
+echo 'PASS round-pr: 回と認めないコメントと、対象の PR の行が 1 つでない回は、理由を 1 行出して 1 で終わる'
+
+# 囲みの中と引用・項目・字下げの `対象の PR:` は読まない。囲みの外に 1 つだけあれば、それを読む。
+fence=$'```'
+head_lines=$'確認するコミット: abcdef0\n返事を待つ役: [@demo-monitor-test](mention://agent/monitor)\n観点: code-reviewer（テスト）'
+for name in fence-only tilde-only quote-only item-only indent-only fence-two-outside real-and-fence-two; do
+	register_reset
+	case $name in
+	fence-only) body="$head_lines"$'\n'"$fence"$'\n対象の PR: '"$repo_pr"$'\n'"$fence" ;;
+	tilde-only) body="$head_lines"$'\n~~~\n対象の PR: '"$repo_pr"$'\n~~~' ;;
+	quote-only) body="$head_lines"$'\n> 対象の PR: '"$repo_pr" ;;
+	item-only) body="$head_lines"$'\n- 対象の PR: '"$repo_pr" ;;
+	indent-only) body="$head_lines"$'\n  対象の PR: '"$repo_pr" ;;
+	fence-two-outside) body="$head_lines"$'\n対象の PR: '"$repo_pr"$'\n対象の PR: '"$repo_other" ;;
+	real-and-fence-two) body="$head_lines"$'\n対象の PR: '"$repo_pr"$'\n'"$fence"$'\n対象の PR: '"$repo_other"$'\n対象の PR: '"$repo_pr"$'\n'"$fence" ;;
+	esac
+	add_comment round-1 agent orchestrator "$body"
+	run_round_pr round-1
+	if [[ $name == real-and-fence-two ]]; then
+		[[ $status == 0 && $(<"$test_dir/output") == "$repo_pr" ]] || { echo "囲みの外の 1 行を読まない: $name: $status: $(<"$test_dir/output")" >&2; exit 1; }
+	else
+		[[ $status == 1 && $(grep -c . "$test_dir/output") == 1 ]] || { echo "囲みや引用の行を読んだ: $name: $status: $(<"$test_dir/output")" >&2; exit 1; }
+	fi
+	# unlinked の登録も同じ読み方で、2 行を足さない。
+	register_reset
+	add_comment round-1 agent orchestrator "$body"
+	no_integration "$repo_pr"
+	run_unlinked round-1 monitor
+	if [[ $name == real-and-fence-two ]]; then
+		[[ $status == 0 ]]
+		assert_jq -s '.[0].body | contains("見張る PR: '"$repo_pr"'")' "$test_dir/wakeups.jsonl"
+	else
+		[[ $status == 1 ]]
+		assert_jq -s '(.[0].body // "") | contains("見張る PR:") | not' "$test_dir/wakeups.jsonl"
+	fi
+done
+echo 'PASS round-pr: 囲み・引用・項目・字下げの対象の PR は読まず、囲みの外の 1 行だけを読む。行が 2 つなら読まない'
+
+# 行のない回は、行を持つ最も近い前の認める回の `対象の PR:` を引き継ぐ。リーダーが手で書く設計と PR の見直しの回と最終レビューの回には行がないことがある。
+design_body() { # 追加する行...
+	local body=$'見直しの種類: 設計と PR の見直し\n確認するコミット: abcdef0\n返事を待つ役: [@demo-monitor-test](mention://agent/monitor)' line
+	for line; do body+=$'\n'"$line"; done
+	printf '%s' "$body"
+}
+final_body() {
+	printf '%s' $'見直しの種類: 最終レビュー\n確認するコミット: abcdef0\n返事を待つ役: [@demo-principal-test](mention://agent/principal)\n前の回: round-1'
+}
+# 最終レビューの回は、名簿の最上位の役を待つので、名簿を差し込んで認める。
+with_principal() {
+	UNLINKED_ROSTER='{"leader":"orchestrator","roles":{"claude-principal":{"id":"principal"}}}' UNLINKED_ROSTER_STATUS=0 "$@"
+}
+register_reset
+add_comment round-1 agent orchestrator "$(round_body "$repo_pr")"
+add_comment final-2 agent orchestrator "$(final_body)"
+with_principal run_round_pr final-2
+[[ $status == 0 && ! -s $test_dir/error && $(<"$test_dir/output") == "$repo_pr" ]] || { echo "行のない最終レビューの回が前の回の PR を引き継がない: $status: $(<"$test_dir/output")" >&2; exit 1; }
+echo 'PASS round-pr: 行のない最終レビューの回は、前のレビューと E2E の回の正規形を出して 0 で終わる'
+
+register_reset
+add_comment round-1 agent orchestrator "$(round_body "$repo_pr")"
+add_comment design-2 agent orchestrator "$(design_body)"
+run_round_pr design-2
+[[ $status == 0 && ! -s $test_dir/error && $(<"$test_dir/output") == "$repo_pr" ]] || { echo "行のない設計の回が引き継がない: $status: $(<"$test_dir/output")" >&2; exit 1; }
+# 行を持つ最も近い前の回から引き継ぎ、その前は見ない。
+add_comment round-3 agent orchestrator "$(round_body "$repo_other")"
+add_comment design-4 agent orchestrator "$(design_body)"
+run_round_pr design-4
+[[ $status == 0 && $(<"$test_dir/output") == "$repo_other" ]] || { echo "最も近い前の回から引き継がない: $status: $(<"$test_dir/output")" >&2; exit 1; }
+echo 'PASS round-pr: 行のない回は、行を持つ最も近い前の回の正規形を出して 0 で終わる'
+
+# どの回にも行がなければ 1 で終わる。人間のコメントの行は引き継がない。
+register_reset
+add_comment round-1 agent orchestrator "$(round_body)"
+add_comment human-2 member human-1 "$(round_body "$repo_pr")"
+add_comment design-3 agent orchestrator "$(design_body)"
+run_round_pr design-3
+[[ $status == 1 && ! -s $test_dir/error && $(grep -c . "$test_dir/output") == 1 && $(<"$test_dir/output") == '回とそれより前の回に `対象の PR:` の行がない' ]] || { echo "行がない理由が違う: $status: $(<"$test_dir/output")" >&2; exit 1; }
+run_round_pr human-2
+[[ $status == 1 && $(<"$test_dir/output") == '回を認められない'* ]] || { echo "人間のコメントを回にした: $status: $(<"$test_dir/output")" >&2; exit 1; }
+echo 'PASS round-pr: どの回にも行がなければ、理由を 1 行出して 1 で終わる。人間のコメントの行は引き継がない'
+
+# 前の回に行が 2 つあるときは、引き継がず、行を持つ回の ID を出して 1 で終わる。
+register_reset
+add_comment round-1 agent orchestrator "$(round_body "$repo_pr" "$repo_other")"
+add_comment design-2 agent orchestrator "$(design_body)"
+run_round_pr design-2
+[[ $status == 1 && $(grep -c . "$test_dir/output") == 1 && $(<"$test_dir/output") == *'行が 2 つ以上ある'* && $(<"$test_dir/output") == *round-1* ]] || { echo "2 行の理由が違う: $status: $(<"$test_dir/output")" >&2; exit 1; }
+echo 'PASS round-pr: 前の回に行が 2 つあれば、引き継がず、行が 2 つ以上あることと行を持つ回の ID を出して 1 で終わる'
+
+# 行が囲み・項目の中にだけある回は、前の回から引き継ぐ。引用か字下げの行を持つコメントは、本文全体が読めず回と認めない。
+for name in fence tilde item quote indent; do
+	register_reset
+	add_comment round-1 agent orchestrator "$(round_body "$repo_pr")"
+	case $name in
+	fence) body=$(design_body "$fence" "対象の PR: $repo_other" "$fence") ;;
+	tilde) body=$(design_body '~~~' "対象の PR: $repo_other" '~~~') ;;
+	item) body=$(design_body "- 対象の PR: $repo_other") ;;
+	quote) body=$(design_body "> 対象の PR: $repo_other") ;;
+	indent) body=$(design_body "  対象の PR: $repo_other") ;;
+	esac
+	add_comment design-2 agent orchestrator "$body"
+	run_round_pr design-2
+	case $name in
+	quote | indent)
+		[[ $status == 1 && $(grep -c . "$test_dir/output") == 1 && $(<"$test_dir/output") == '回を認められない'* ]] || { echo "引用か字下げのコメントを回と認めた: $name: $status: $(<"$test_dir/output")" >&2; exit 1; }
+		# 今の回は前の認める回のままで、その回の PR を使う。
+		run_round_pr round-1
+		[[ $status == 0 && $(<"$test_dir/output") == "$repo_pr" ]] || { echo "今の回が前の認める回のままでない: $name: $status: $(<"$test_dir/output")" >&2; exit 1; }
+		# unlinked も、引用か字下げのコメントを回として登録しない。
+		no_integration "$repo_pr"
+		run_unlinked design-2 monitor
+		[[ $status == 1 && ! -s $test_dir/output && $(grep -c . "$test_dir/error") == 1 ]] || { echo "unlinked が引用か字下げの回を登録した: $name: $status" >&2; exit 1; }
+		assert_jq -s '(.[0].body // "") | contains("見張る PR:") | not' "$test_dir/wakeups.jsonl" ;;
+	*)
+		[[ $status == 0 && $(<"$test_dir/output") == "$repo_pr" ]] || { echo "囲みか項目の行を読んだ: $name: $status: $(<"$test_dir/output")" >&2; exit 1; } ;;
+	esac
+done
+echo 'PASS round-pr: 行が囲み・項目の中にだけある回は前の回から引き継ぎ、引用か字下げの行を持つコメントは回と認めず 1 で終わる'
+
+# unlinked は、行のない設計と PR の見直しの回で、前の回の PR が pr_url と同じなら登録し、違えば食い違いで規則を作らない。
+register_reset
+add_comment round-1 agent orchestrator "$(round_body "$repo_pr")"
+add_comment design-2 agent orchestrator "$(design_body)"
+no_integration "$repo_pr"
+run_unlinked design-2 monitor
+[[ $status == 0 && ! -s $test_dir/error ]]
+assert_jq -s 'length == 1 and (.[0].body | split("\n") | map(select(. != "")) | .[-2:] == ["見張る PR: https://github.com/example/repo/pull/67", "確認した回: design-2"])' "$test_dir/wakeups.jsonl"
+register_reset
+add_comment round-1 agent orchestrator "$(round_body "$repo_other")"
+add_comment design-2 agent orchestrator "$(design_body)"
+jq --arg pr "$repo_pr" '.metadata.pr_url = $pr' "$test_dir/task.json" >"$test_dir/changed.json"
+mv "$test_dir/changed.json" "$test_dir/task.json"
+no_integration "$repo_pr"
+run_unlinked design-2 monitor
+[[ $status == 0 && ! -s $test_dir/error && ! -s $test_dir/wakeups.jsonl && $(<"$test_dir/output") == "紐付け: 食い違い pr: $repo_pr 回の PR: $repo_other" ]] || { echo "食い違いにならない: $status: $(<"$test_dir/output")" >&2; exit 1; }
+echo 'PASS unlinked: 行のない回は前の回の PR で登録を照合し、同じなら確認した回を渡した回にして登録し、違えば食い違いで規則を作らない'
+
+# 引数が足りないか多いときは、使い方を出して 2 で終える。
+for args in 'round-pr test-issue' 'round-pr test-issue round-1 extra'; do
+	status=0
+	# shellcheck disable=SC2086
+	(cd "$test_dir" && bash "$script" $args) >"$test_dir/output" 2>"$test_dir/error" || status=$?
+	[[ $status == 2 && ! -s $test_dir/output ]] && grep -q 'round-pr <タスク> <回のコメント>' "$test_dir/error" || { echo "引数の数で 2 で終わらない: $args: $status" >&2; exit 1; }
+done
+echo 'PASS round-pr: 引数の数が違えば使い方を標準エラーに出し、2 で終わる'

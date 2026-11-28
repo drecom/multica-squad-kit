@@ -102,6 +102,8 @@ export MULTICA_TOKEN=$test_token
 export MULTICA_SERVER_URL=https://multica.invalid/
 export MULTICA_WORKSPACE_ID=workspace-id
 url=https://github.com/Example/Template/pull/33
+# ホストの連携なしの記録が結果を変えないよう、記録の根を空の一時ディレクトリに向ける。
+export PR_LINK_STATE_ROOT=$test_dir/pr-link-state
 
 fixture() {
 	cli_fixture issue-get | jq '. + {id:"task-id",identifier:"TASK-7"} | .metadata.repository="example/template" | del(.metadata.pr_url)' >"$test_dir/issue.json"
@@ -115,6 +117,11 @@ fixture() {
 	: >"$test_dir/curl-starts"
 	: >"$test_dir/sleeps"
 	rm -f "$test_dir/get-fail" "$test_dir/set-fail" "$test_dir/marker-fail" "$test_dir/transport-fail" "$test_dir/config-verified" "$test_dir/ignore-timeout"
+}
+# 120 秒のあいだ 404 で終わる場面は、プロジェクトのないタスクで流す。プロジェクトがあれば連携なしの記録を読み書きする。
+without_project() {
+	jq 'del(.project_id)' "$test_dir/issue.json" >"$test_dir/next.json"
+	mv "$test_dir/next.json" "$test_dir/issue.json"
 }
 run_link() {
 	local expected=$1 status=0
@@ -213,6 +220,7 @@ jq -e --arg url "$url" '.metadata.pr_url == $url' "$test_dir/issue.json" >/dev/n
 echo 'PASS retry: 404 の間は 10 秒ごとに待ち、200 になってから metadata を書く'
 
 fixture
+without_project
 printf '[404,404,404,200]\n' >"$test_dir/statuses.json"
 printf '[29,29,29,29]\n' >"$test_dir/durations.json"
 run_link 1 TASK-7 "$url"
@@ -229,6 +237,7 @@ echo 'PASS HTTP timeout: 通信の時間を含めて 120 秒で打ち切り、�
 for duration in 3 4; do
 	for code in 200 404; do
 		fixture
+		without_project
 		printf '[404,404,404,%s]\n' "$code" >"$test_dir/statuses.json"
 		printf '[29,29,29,%s]\n' "$duration" >"$test_dir/durations.json"
 		# curl の制限を超えて応答が返っても、期限後は採用しない。
@@ -253,6 +262,7 @@ jq -e --arg url "$url" '.metadata.pr_url == $url' "$test_dir/issue.json" >/dev/n
 echo 'PASS slow success: 通信に時間がかかっても期限内の 200 なら metadata を書く'
 
 fixture
+without_project
 printf '[404]\n' >"$test_dir/statuses.json"
 printf '[29,29,29,2]\n' >"$test_dir/durations.json"
 run_link 1 TASK-7 "$url"
@@ -266,6 +276,7 @@ assert_marker
 echo 'PASS short sleep: 残り 1 秒なら待ちも 1 秒に制限し、期限以降は通信しない'
 
 fixture
+without_project
 printf '[404]\n' >"$test_dir/statuses.json"
 run_link 1 TASK-7 "$url"
 assert_warning
@@ -334,11 +345,13 @@ echo 'PASS marker repository: 作業先がないタスクでは、失敗して�
 
 # マークを書けなくても、標準出力・標準エラー・終了コードは書けたときと同じ。
 fixture
+without_project
 printf '[404]\n' >"$test_dir/statuses.json"
 run_link 1 TASK-7 "$url"
 cp "$test_dir/out" "$test_dir/out-with-marker"
 cp "$test_dir/err" "$test_dir/err-with-marker"
 fixture
+without_project
 printf '[404]\n' >"$test_dir/statuses.json"
 touch "$test_dir/marker-fail"
 run_link 1 TASK-7 "$url"

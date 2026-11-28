@@ -146,6 +146,187 @@ expect_call_has pr-watch-calls 'link-check test-issue final-1'
 expect_call_has pr-watch-calls 'unlinked test-issue final-1 --leader orchestrator'
 echo 'PASS review-next-decide: 試み直しで紐付いたマージの依頼には紐付けの依頼と段落がなく、紐付かないままなら両方が残る'
 
+# 連携なし（link-check の行の末尾に `連携: なし`）は、紐付いていないのと同じに CI・コンフリクトを確認して見張りを登録し、マージの依頼には 1 行と見張りの行だけを添える。
+no_integration() { printf '紐付け: 紐付いていない pr: %s 連携: なし\n' "$pr_url" >"$test_dir/link-out"; }
+# 紐付いていない（連携なしの印なし）のマージの依頼を先に書き、CI とコンフリクトの行の基準にする。
+retry_merge_setup
+unlinked
+printf 'CI %s: 成功\n' "${sha:0:7}" >"$test_dir/cinow-out"
+run final-1
+expect_status 0
+plain_lines=$(posted_body | grep -E '^(コンフリクト|CI )' || true)
+[[ -n $plain_lines ]] || fail "基準の本文にコンフリクトと CI の行がない: $(posted_body)"
+retry_merge_setup
+no_integration
+printf 'CI %s: 成功\n' "${sha:0:7}" >"$test_dir/cinow-out"
+run final-1
+expect_status 0
+body=$(posted_body)
+[[ $body == "[@Owner]"*'マージの依頼: '* ]] || fail "マージの依頼を書いていない: $body"
+[[ $body == *$'\n連携なしのリポジトリなので、マージのあとは見張りがマージを確認し、タスクを `done` にする。PR: `'"$pr_url"$'`\n見張り: 1 時間おき、2026-11-17 まで'* ]] || fail "連携なしの 1 行と見張りの行がない: $body"
+[[ $(grep -c 'マージのあとは見張りがマージを確認し' <<<"$body") == 1 ]] || fail "連携なしの 1 行が 1 回でない: $body"
+[[ $body != *'紐付けの失敗:'* && $body != *'紐付いていないので'* && $body != *'先に紐付けてほしい'* && $body != *'`done` にしてほしい'* && $body != *'GitHub 連携'* && $body != *'ワークスペースの設定'* && $body != *'登録できませんでした'* ]] || fail "連携なしなのに、紐付けか done の依頼、段落、連携の案内がある: $body"
+[[ $(grep -E '^(コンフリクト|CI )' <<<"$body" || true) == "$plain_lines" ]] || fail "コンフリクトと CI の行が連携なしの印なしと違う: $body"
+expect_call_has pr-watch-calls 'link-check test-issue final-1'
+expect_call_has pr-watch-calls 'conflicts-check test-issue'
+expect_call_has pr-watch-calls 'ci-now test-issue orchestrator final-1'
+expect_call_has pr-watch-calls 'unlinked test-issue final-1 --leader orchestrator'
+echo 'PASS review-next-decide: 連携なしのマージの依頼は、1 行と見張りの行だけを添え、紐付けと done の依頼・紐付けの失敗の段落・連携の案内を書かない'
+
+# 連携なしで unlinked が 0 以外で終わる、または見張りの行を出さないときは、何も書かず、決めた行を出して 3 で終わる。
+for broken in status noline; do
+	retry_merge_setup
+	no_integration
+	printf 'CI %s: 成功\n' "${sha:0:7}" >"$test_dir/cinow-out"
+	if [[ $broken == status ]]; then
+		echo 1 >"$test_dir/unlinked-status"
+	else
+		printf '{"id": "rule-1"}\n' >"$test_dir/unlinked-out"
+	fi
+	run final-1
+	expect_leader '連携なしの PR の見張りを登録できない（squad-pr-watch unlinked が 0 以外で終わった）'
+	[[ $(<"$test_dir/out") == '次の依頼を決められません: 連携なしの PR の見張りを登録できない（squad-pr-watch unlinked が 0 以外で終わった）' ]] || fail "止まる行が違う: $(<"$test_dir/out")"
+	[[ $(<"$test_dir/out") != *'紐付け'*'頼'* && $(<"$test_dir/out") != *'done にしてほしい'* ]] || fail "止まる行に紐付けか done の依頼がある: $(<"$test_dir/out")"
+	expect_call_has pr-watch-calls 'unlinked test-issue final-1 --leader orchestrator'
+done
+# 人間が見張りを直したあとの流し直しでは、登録できればマージを頼む。
+retry_merge_setup
+no_integration
+printf 'CI %s: 成功\n' "${sha:0:7}" >"$test_dir/cinow-out"
+run final-1
+expect_status 0
+[[ $(<"$test_dir/out") == $'次の依頼: マージの依頼'* ]] || fail "見張りを登録できたのにマージを頼んでいない: $(<"$test_dir/out")"
+echo 'PASS review-next-decide: 連携なしで見張りを登録できないときは、何も書かずに 3 で終わり、登録できればマージを頼む'
+
+# 回の head の照合のあと、unlinked の前に pr_url が回の対象の PR と違う PR に変わったときは、unlinked が食い違いの行を出す。
+# マージの依頼を書かず、その行で 3 で終わる。連携なしでも同じ。
+for mode in plain no_integration; do
+	retry_merge_setup
+	if [[ $mode == plain ]]; then unlinked; else no_integration; fi
+	printf 'CI %s: 成功\n' "${sha:0:7}" >"$test_dir/cinow-out"
+	mismatch="紐付け: 食い違い pr: https://github.com/demo/project/pull/8 回の PR: $pr_url"
+	printf '%s\n' "$mismatch" >"$test_dir/unlinked-out"
+	run final-1
+	expect_leader "$mismatch"
+	[[ $(<"$test_dir/out") == "次の依頼を決められません: $mismatch" ]] || fail "止まる行が違う: $(<"$test_dir/out")"
+	expect_call_has pr-watch-calls 'unlinked test-issue final-1 --leader orchestrator'
+done
+echo 'PASS review-next-decide: unlinked の前に pr_url が回の対象の PR と違う PR に変わると、マージの依頼を書かず、食い違いの行で 3 で終わる（連携なしも同じ）'
+
+# 回のあとに新しい回があり、unlinked が古い回の行を出したときも、マージの依頼を書かず、その行で 3 で終わる。連携なしでも同じ。
+for mode in plain no_integration; do
+	retry_merge_setup
+	if [[ $mode == plain ]]; then unlinked; else no_integration; fi
+	printf 'CI %s: 成功\n' "${sha:0:7}" >"$test_dir/cinow-out"
+	old_round='紐付け: 古い回 回: final-1 今の回: final-2'
+	printf '%s\n' "$old_round" >"$test_dir/unlinked-out"
+	run final-1
+	expect_leader "$old_round"
+	[[ $(<"$test_dir/out") == "次の依頼を決められません: $old_round" ]] || fail "止まる行が違う: $(<"$test_dir/out")"
+	[[ $(<"$test_dir/out") != *'マージの依頼'* ]] || fail "止まる行にマージの依頼がある: $(<"$test_dir/out")"
+	expect_call_has pr-watch-calls 'unlinked test-issue final-1 --leader orchestrator'
+done
+echo 'PASS review-next-decide: unlinked が古い回の行を出すと、マージの依頼を書かず、その行で 3 で終わる（連携なしも同じ）'
+
+# マージの依頼の PR は、紐付いていないとき回の `対象の PR:`（round-pr）から取る（docs/pr-link-no-integration.md の「マージの依頼の PR」）。
+# 回の PR が link-check の pr: と同じなら、head の読み取り・連携なしの 1 行・unlinked の登録に回の PR を使い、`前の回:` の次に `マージする PR:` を書く。連携なしでも同じ。
+for mode in plain no_integration; do
+	retry_merge_setup
+	if [[ $mode == plain ]]; then unlinked; else no_integration; fi
+	printf 'CI %s: 成功\n' "${sha:0:7}" >"$test_dir/cinow-out"
+	# link-check の pr: は大文字小文字が違っても同じ PR とみなし、回の PR（正規形）を使う。
+	link_line=$(<"$test_dir/link-out")
+	printf '%s\n' "${link_line/github.com/GitHub.com}" >"$test_dir/link-out"
+	run final-1
+	expect_status 0
+	body=$(posted_body)
+	[[ $body == *$'\n前の回: final-1\nマージする PR: '"$pr_url"$'\n'* ]] || fail "前の回の次に マージする PR: の行がない: $body"
+	[[ $(grep -c '^マージする PR: ' <<<"$body") == 1 ]] || fail "マージする PR: の行が 1 つでない: $body"
+	[[ $mode == plain || $body == *'PR: `'"$pr_url"'`'* ]] || fail "連携なしの 1 行の PR が回の PR でない: $body"
+	expect_call_has pr-watch-calls 'round-pr test-issue final-1'
+	expect_call_has pr-watch-calls 'unlinked test-issue final-1 --leader orchestrator'
+	[[ -s $test_dir/head-calls ]] || fail "head を読んでいない"
+done
+echo 'PASS review-next-decide: 紐付いていないマージの依頼は、回の対象の PR を使い、前の回の次に マージする PR: の行を書く（連携なしも同じ）'
+
+# 手で書いた最終レビューの回から対象の PR の行を外し、実際の round-pr が前の回から取った PR を使う。
+retry_merge_setup
+no_integration
+jq 'map(if .id == "final-1" then .content |= sub("\n対象の PR: [^\n]+$"; "") else . end)' \
+	"$test_dir/comments.json" >"$test_dir/comments.new"
+mv "$test_dir/comments.new" "$test_dir/comments.json"
+printf 'CI %s: 成功\n' "${sha:0:7}" >"$test_dir/cinow-out"
+(cd "$test_dir" && bash "$root/common/monitor/squad-pr-watch" round-pr test-issue final-1) >"$test_dir/roundpr-out"
+expect_calls roundpr-out "$pr_url"
+run final-1
+expect_status 0
+body=$(posted_body)
+[[ $body == *$'\n前の回: final-1\nマージする PR: '"$pr_url"$'\n'* ]] || fail "前の回から引き継いだ PR がない: $body"
+[[ $body == *'マージのあとは見張りがマージを確認し、タスクを `done` にする。PR: `'"$pr_url"'`'* ]] || fail "連携なしの 1 行の PR が引き継いだ PR でない: $body"
+expect_call_has pr-watch-calls 'unlinked test-issue final-1 --leader orchestrator'
+echo 'PASS review-next-decide: 行のない最終レビューの回は、前の回から引き継いだ PR でマージを頼む'
+
+# 紐付いている PR のマージの依頼には、round-pr を呼ばず、マージする PR: の行も書かない（変えない）。
+retry_merge_setup
+printf 'CI %s: 成功\n' "${sha:0:7}" >"$test_dir/cinow-out"
+printf '紐付け: 紐付いている pr: %s\n' "$pr_url" >"$test_dir/link-out"
+run final-1
+expect_status 0
+[[ $(posted_body) != *'マージする PR:'* ]] || fail "紐付いている PR のマージの依頼に マージする PR: がある: $(posted_body)"
+expect_call_lacks pr-watch-calls 'round-pr '
+echo 'PASS review-next-decide: 紐付いている PR のマージの依頼は、round-pr を呼ばず、マージする PR: の行も書かない'
+
+# link-check の pr: が回の PR と違うときは、head を読む前に、何も書かず、食い違いの行で 3 で終わる。同じ head でも止まる。連携なしでも同じ。
+for mode in plain no_integration; do
+	retry_merge_setup
+	if [[ $mode == plain ]]; then
+		printf '紐付け: 紐付いていない pr: https://github.com/demo/project/pull/8\n' >"$test_dir/link-out"
+	else
+		printf '紐付け: 紐付いていない pr: https://github.com/demo/project/pull/8 連携: なし\n' >"$test_dir/link-out"
+	fi
+	printf 'CI %s: 成功\n' "${sha:0:7}" >"$test_dir/cinow-out"
+	run final-1
+	mismatch="紐付け: 食い違い pr: https://github.com/demo/project/pull/8 回の PR: $pr_url"
+	expect_leader "$mismatch"
+	[[ $(<"$test_dir/out") == "次の依頼を決められません: $mismatch" ]] || fail "止まる行が違う: $(<"$test_dir/out")"
+	expect_no_calls head-calls
+	expect_call_lacks pr-watch-calls 'unlinked '
+done
+echo 'PASS review-next-decide: link-check の pr: が回の PR と違うと、head を読む前に何も書かず、食い違いの行で 3 で終わる（連携なしも同じ）'
+
+# round-pr が 2・3・それ以外（1 を除く）で終わると head を読む前に止まる。1 のときだけ連携なしの印で分ける。
+for mode in no_integration unlinked; do
+	for code in 1 2 3 127; do
+		retry_merge_setup
+		"$mode"
+		printf 'CI %s: 成功\n' "${sha:0:7}" >"$test_dir/cinow-out"
+		case $code in
+		1) reason='回とそれより前の回に `対象の PR:` の行がない'; expected="回の PR を決められない: $reason" ;;
+		2) reason=final-2; expected='紐付け: 古い回 回: final-1 今の回: final-2' ;;
+		3) reason='コメントを読めない'; expected="回の PR を読めない: $reason" ;;
+		127) reason='https://github.com/demo/project/pull/8'; expected='回の PR を読めない: round-pr が 127 で終わった' ;;
+		esac
+		# 後続の行に別の PR を紛れ込ませても、理由の 1 行か終了コードだけで判定する。
+		printf '%s\nマージする PR: https://github.com/demo/project/pull/8\n' "$reason" >"$test_dir/roundpr-out"
+		printf '%s\n' "$code" >"$test_dir/roundpr-status"
+		run final-1
+		if [[ $mode == unlinked && $code == 1 ]]; then
+			expect_status 0
+			body=$(posted_body)
+			[[ $body == *$'\n前の回: final-1\nマージする PR: '"$pr_url"$'\n'* ]] || fail "link-check の PR でマージを頼んでいない: $body"
+			[[ $body == *'紐付いていないので、マージのあとにタスクを `done` にしてほしい'* ]] || fail "人間への done の依頼がない: $body"
+			expect_calls head-calls 'pr view 7 --repo demo/project --json headRefOid'
+			expect_call_has pr-watch-calls 'unlinked test-issue final-1 --leader orchestrator'
+		else
+			expect_leader "$expected"
+			[[ $(<"$test_dir/out") == "次の依頼を決められません: $expected" ]] || fail "止まる行が違う: $(<"$test_dir/out")"
+			expect_no_calls head-calls
+			expect_calls pr-watch-calls $'link-check test-issue final-1\nround-pr test-issue final-1'
+		fi
+	done
+done
+echo 'PASS review-next-decide: round-pr の終了コードごとに理由を分け、連携なしの印がない 1 だけは link-check の PR で進む'
+
 # ---- 書く前の失敗。
 reset
 ok_round

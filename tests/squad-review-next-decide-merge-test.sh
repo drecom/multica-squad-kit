@@ -33,7 +33,7 @@ run final-1
 expect_merge_posted "$(merge_body final-1 "$sha" "$conf_line" "CI ${sha:0:7}: 成功" "${lines_all[@]}" \
 	"紐付いていないので、マージのあとにタスクを \`done\` にしてほしい（または先に紐付けてほしい）。PR: \`${pr_url}\`" \
 	'見張り: 1 時間おき、2026-11-17 まで')" final-1
-expect_calls pr-watch-calls $'link-check test-issue final-1\nconflicts-check test-issue\nci-held test-issue final-1\nci-now test-issue orchestrator final-1\nconflicts test-issue --leader orchestrator\nunlinked test-issue final-1 --leader orchestrator'
+expect_calls pr-watch-calls $'link-check test-issue final-1\nround-pr test-issue final-1\nconflicts-check test-issue\nci-held test-issue final-1\nci-now test-issue orchestrator final-1\nconflicts test-issue --leader orchestrator\nunlinked test-issue final-1 --leader orchestrator'
 echo 'PASS review-next-decide: 紐付いていないマージの依頼は、その場の CI を読み、unlinked を入れて、紐付けの案内と見張りの行を添える'
 
 # 紐付けの失敗の段落と連携の案内は、PR を作った役の引き継ぎから写す。

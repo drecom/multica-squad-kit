@@ -3,6 +3,9 @@
 # 150 秒は 1 本の目安で、機械では確認しない。上限は tests/run.sh の 450 秒。macOS の ==== PASS の実測値を写す。
 # 実測元: 7aa744b863551a5e15b2ced3068ca3d4721cd244（試行 1、macOS 全 6 シャード、並列 3 のシャードだけ。全 191 本のうち 127 本）。
 # 並列 5 に当たった 2/6 と 4/6 の 64 本は、56dc3a8d57a4776db1fa418589716d5b8695a578 の CI（macOS 全 5 シャード、並列 3）の実測。
+# squad-pr-link-no-integration と squad-pr-watch-no-integration は、手元の tests/run.sh の秒数（squad-pr-link-no-integration は一覧の読み直しの場面を足した後の 48 秒、squad-pr-watch-no-integration は unlinked-check の場面を足した後の CPU 時間 50 秒）に、同じ手元で測った squad-pr-watch-link-retry の CI との比（97 秒対 57 秒、約 1.7 倍）を掛けた見積もり。CI の ==== PASS の秒数が出たら写し直す。
+# squad-pr-watch-no-integration は 1 本が 380 秒に近づいたので、連携なしの記録を扱う link-check の場面（squad-pr-watch-no-integration）、unlinked-check の場面（-unlinked）、書く直前の読み直しとマージの依頼の場面（-reread）の 3 本に分けた。手元の tests/run.sh の秒数は、それぞれ約 64 秒、198 秒、164 秒（3 本を並列に流した値）に直した見積もり。CI の ==== PASS の秒数が出たら写し直す。
+# link-check の記録を断る場面を足したあとの squad-pr-watch-no-integration は、手元で単独指定したときの 58 秒から 60 秒と見積もる。
 tests/action-advisories-test.sh 9
 tests/agent-templates-test.sh 51
 tests/audit-targets-test.sh 2
@@ -92,7 +95,7 @@ tests/setup-version-test.sh 107
 tests/shell-test.sh 1
 tests/squad-cli-lib-body-table-test.sh 30
 tests/squad-cli-lib-check-runs-test.sh 101
-tests/squad-cli-lib-control-test.sh 10
+tests/squad-cli-lib-control-test.sh 21
 tests/squad-cli-lib-fence-test.sh 3
 tests/squad-cli-lib-gh-test.sh 95
 tests/squad-cli-lib-test.sh 71
@@ -114,6 +117,7 @@ tests/squad-dependabot-merge-escalate-test.sh 13
 tests/squad-dependabot-merge-list-large-test.sh 131
 tests/squad-dependabot-merge-list-test.sh 74
 tests/squad-dispatch-pick-test.sh 41
+tests/squad-pr-link-no-integration-test.sh 100
 tests/squad-pr-link-test.sh 34
 tests/squad-pr-watch-ci-arg-limit-test.sh 17
 tests/squad-pr-watch-ci-handoff-test.sh 94
@@ -125,11 +129,14 @@ tests/squad-pr-watch-ci-wait-rule-test.sh 35
 tests/squad-pr-watch-ci-wait-test.sh 84
 tests/squad-pr-watch-ci-wait-unreadable-test.sh 24
 tests/squad-pr-watch-link-retry-test.sh 105
+tests/squad-pr-watch-no-integration-reread-test.sh 220
+tests/squad-pr-watch-no-integration-test.sh 60
+tests/squad-pr-watch-no-integration-unlinked-test.sh 210
 tests/squad-pr-watch-register-test.sh 58
-tests/squad-pr-watch-unlinked-check-test.sh 50
+tests/squad-pr-watch-unlinked-check-test.sh 69
 tests/squad-pr-watch-unlinked-concurrent-test.sh 22
 tests/squad-pr-watch-unlinked-register-test.sh 20
-tests/squad-pr-watch-unlinked-test.sh 11
+tests/squad-pr-watch-unlinked-test.sh 50
 tests/squad-pr-watch-url-test.sh 16
 tests/squad-preflight-test.sh 14
 tests/squad-review-next-arg-limit-test.sh 63
@@ -160,7 +167,7 @@ tests/squad-review-next-decide-rework-record-merge-test.sh 95
 tests/squad-review-next-decide-rework-record-test.sh 61
 tests/squad-review-next-decide-route-test.sh 135
 tests/squad-review-next-decide-unexecuted-test.sh 133
-tests/squad-review-next-decide-unlinked-test.sh 120
+tests/squad-review-next-decide-unlinked-test.sh 173
 tests/squad-review-next-decide-unreadable-scenario-test.sh 90
 tests/squad-review-next-decide-written-test.sh 39
 tests/squad-review-next-request-test.sh 95

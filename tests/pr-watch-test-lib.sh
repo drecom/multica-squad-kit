@@ -107,6 +107,7 @@ case "${1-} ${2-} ${3-}" in
 	done
 	jq --arg thread "$thread" --argjson compact "$compact" '[.[]
 		| select($thread == "" or (.test_thread // "ci-thread") == $thread)
+		| (if has("test_thread") then .parent_id = .test_thread else . end)
 		| del(.test_thread)
 		| if $compact then del(.source_task_id) else . end]' "$dir/comments.json" >"$dir/comments-response.json"
 	emit issue-comments "$dir/comments-response.json"
@@ -121,7 +122,7 @@ case "${1-} ${2-} ${3-}" in
 	while (($#)); do
 		if [[ $1 == --content-file ]]; then
 			jq -Rs --argjson args "$args" '{args: $args, body: .}' <"$2" >>"$dir/posted.jsonl"
-			jq --slurpfile base "$dir/comment-prototype.json" --rawfile body "$2" --arg parent "$parent" '. + [$base[0] + {author_type: "agent", content: $body, test_thread: $parent}]' "$dir/comments.json" >"$dir/updated.json"
+			jq --slurpfile base "$dir/comment-prototype.json" --rawfile body "$2" --arg parent "$parent" '. + [$base[0] + {author_type: "agent", author_id: "orchestrator", content: $body, test_thread: $parent}]' "$dir/comments.json" >"$dir/updated.json"
 			mv "$dir/updated.json" "$dir/comments.json"
 			echo '{}'
 			exit 0
@@ -175,6 +176,13 @@ fixture agent-get | jq '. as $base | [
  $base + {id:"implementer",name:"demo-codex-implementer-test"}
 ]' >"$test_dir/agents.base.json"
 fixture issue-wakeup-create >"$test_dir/wakeup-prototype.json"
+
+# スクワッドの名簿を読めるようにする。知らせを書いたかの判定が、名簿のエージェントの返信だけを数えるため。
+roster_ready() {
+	jq 'map(.name = "Demo-Test")' "$test_dir/squads.json" >"$test_dir/squads-updated.json"
+	mv "$test_dir/squads-updated.json" "$test_dir/squads.json"
+	fixture squad-member-list | jq '. as $base | [$base + {member_id: "orchestrator", member_type: "agent"}, $base + {member_id: "monitor", member_type: "agent"}]' >"$test_dir/members.json"
+}
 
 reset_fixture() {
 	: >"$test_dir/calls.jsonl"

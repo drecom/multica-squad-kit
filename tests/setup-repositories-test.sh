@@ -49,10 +49,13 @@ echo '[{"resource_type":"github_repo","resource_ref":{"url":"https://github.com/
 printf '1\nNew project\nempty\n' >"$test_dir/input"
 TEMPLATE_STATE_ROOT="$test_dir/zero-candidates" deny
 [[ ! -e $test_dir/zero-candidates ]]
-grep -q 'GitHub 連携とリポジトリの紐付け' "$test_dir/err"
+grep -q 'リポジトリの登録と GitHub 連携' "$test_dir/err"
 grep -qF 'ワークスペースの設定 → コード' "$test_dir/err"
 grep -qF 'GitHub App が未設定なら' "$test_dir/err"
+grep -qF 'A. GitHub 連携で許可する' "$test_dir/err"
+grep -qF 'B. 連携を使わずに登録する' "$test_dir/err"
 grep -qF 'multica repo list --output json' "$test_dir/err"
+grep -qF 'multica repo add <リポジトリの URL> で登録すれば、候補に出ます。' "$test_dir/err"
 grep -q 'Existing project' "$test_dir/err"
 grep -q 'Neighbor' "$test_dir/err"
 echo 'PASS repositories: 全候補が他プロジェクトに属すと、理由と案内を出して保存前に止まる'

@@ -297,3 +297,336 @@ for order in before after; do
 	done
 done
 echo 'PASS merge_requested: 読める依頼と同じ head の読めない候補が同時にあるときは、順序によらず、読めない候補を優先して止める'
+
+# ---- マージの依頼に回と PR を渡す。作者・時刻・回・PR・head が合う制御記録だけを読む。
+sha=abcdef0123456789abcdef0123456789abcdef01
+watch_pr=https://github.com/example/repo/pull/67
+other_pr=https://github.com/example/repo/pull/68
+mergedr() { squad_cli_control merge_requested "$(<"$file")" '["L"]' null "$1" "$2" "$watch_pr"; }
+round_text=$'確認するコミット: '"$sha"$'\n返事を待つ役: '"$(mention qa)"$'\n観点: qa（テスト）'
+req() { printf 'マージの依頼: %s\n前の回: %s\nマージする PR: %s' "$1" "$2" "${3-$watch_pr}"; }
+# 合う依頼は読む。大文字の head も同じ SHA として読む。別の head は読まない。回を渡さないときも読む。
+reset
+agent r1 L "$round_text"
+agent m1 L "$(req "$sha" r1)"
+[[ $(mergedr "$sha" r1) == yes ]] || { echo "作者・時刻・回・head が合う依頼を読まない: $(mergedr "$sha" r1)" >&2; exit 1; }
+[[ $(mergedr "$(tr a-f A-F <<<"$sha")" r1) == yes ]] || { echo "大文字小文字だけ違う head を読まない" >&2; exit 1; }
+[[ $(mergedr other r1) == no ]] || { echo "別の head の依頼を読んだ" >&2; exit 1; }
+[[ $(merged "$sha") == yes ]] || { echo "回を渡さないときは今と同じに読む: $(merged "$sha")" >&2; exit 1; }
+reset
+agent r1 L "$round_text"
+agent m1 L "$(req "$sha" r1 'https://github.com/Example/Repo/pull/67')"
+[[ $(mergedr "$sha" r1) == yes ]] || { echo '大文字小文字だけ違う PR を読まない' >&2; exit 1; }
+for case in other-pr missing-pr two-prs two-heads short-head; do
+	reset
+	agent r1 L "$round_text"
+	head=$sha
+	case $case in
+	other-pr) body=$(req "$sha" r1 "$other_pr") ;;
+	missing-pr) body="マージの依頼: $sha"$'\n前の回: r1' ;;
+	two-prs) body="$(req "$sha" r1)"$'\nマージする PR: '"$watch_pr" ;;
+	two-heads) body="$(req "$sha" r1)"$'\nマージの依頼: '"$sha" ;;
+	short-head) head=${sha:0:7}; body=$(req "$head" r1) ;;
+	esac
+	agent m1 L "$body"
+	[[ $(mergedr "$head" r1) == no ]] || { echo "読まないはずの依頼を読んだ: $case" >&2; exit 1; }
+done
+echo 'PASS merge_requested: PR の違い・欠落・重複、head の重複と不完全な SHA を断る'
+# 回を渡さないときは、リーダーの前の回: のない依頼も読む（ci-wait）。回を渡すと読まない（手の依頼）。
+reset
+agent r1 L "$round_text"
+agent m L "マージの依頼: $sha"
+[[ $(mergedr "$sha" r1) == no && $(merged "$sha") == yes ]] || { echo "手の依頼を、回を渡して読んだか、回を渡さずに読まない: $(mergedr "$sha" r1)" >&2; exit 1; }
+# 前の回: が 2 つの依頼と、回のコメント自身にある依頼の行は読まない。
+reset
+agent r1 L "$round_text"
+agent m L "$(req "$sha" r1)"$'\n前の回: r1'
+[[ $(mergedr "$sha" r1) == no ]] || { echo "前の回: が 2 つの依頼を読んだ" >&2; exit 1; }
+reset
+agent r1 L "$round_text"$'\nマージの依頼: '"$sha"
+[[ $(mergedr "$sha" r1) == no && $(merged "$sha") == yes ]] || { echo "回のコメント自身の依頼を読んだ" >&2; exit 1; }
+# 回が合わない依頼。前の回（r0）を指す依頼は、今の回（r1）では読まない。
+reset
+agent r0 L "$round_text"
+agent r1 L "$round_text"
+agent m1 L "$(req "$sha" r0)"
+[[ $(mergedr "$sha" r1) == no ]] || { echo "別の回を指す依頼を、今の回の依頼と読んだ" >&2; exit 1; }
+# 今の回でない回は、その回を指す依頼があっても読まない。次の回（r2）ができると r1 の依頼は読まず、r2 の依頼だけを読む。
+reset
+agent r1 L "$round_text"
+agent m1 L "$(req "$sha" r1)"
+[[ $(mergedr "$sha" r1) == yes ]] || { echo "今の回の依頼を読まない" >&2; exit 1; }
+agent r2 L "$round_text"
+[[ $(mergedr "$sha" r1) == no && $(mergedr "$sha" r2) == no ]] || { echo "今の回でない回の依頼、または前の回の依頼を読んだ" >&2; exit 1; }
+agent m2 L "$(req "$sha" r2)"
+[[ $(mergedr "$sha" r2) == yes && $(mergedr "$sha" r1) == no ]] || { echo "次の回の依頼を読まない、または前の回を今の回と読んだ" >&2; exit 1; }
+# 時刻が合わない依頼。回より前に書かれた依頼は、回を指しても読まない。
+reset
+agent m1 L "$(req "$sha" r1)"
+agent r1 L "$round_text"
+[[ $(mergedr "$sha" r1) == no ]] || { echo "回より前の依頼を読んだ" >&2; exit 1; }
+# 作者が合わない依頼。回より後でも、読まないものは回を渡すときも読まない（ほかの役・結果・囲み・存在しない回・人間）。
+for case in fence result nonleader unknown-round human; do
+	reset
+	agent r1 L "$round_text"
+	case $case in
+	fence) agent m L $'```\nマージの依頼: '"$sha"$'\n前の回: r1\n```' ;;
+	result) agent m qa $'/note\n返事の回: r1\nマージの依頼: '"$sha"$'\n前の回: r1' ;;
+	nonleader) agent m cr "$(req "$sha" r1)" ;;
+	unknown-round) agent m qa "$(req "$sha" nothing)" ;;
+	human) add m L member "$(req "$sha" r1)" ;;
+	esac
+	[[ $(mergedr "$sha" r1) == no ]] || { echo "回を渡して、読まないはずの依頼を読んだ: $case" >&2; exit 1; }
+done
+# 決める実行の役は、決める記録より後の依頼を読む。決める記録より前の依頼と、次の回では前の回の依頼は読まない。
+reset
+agent r1 L "$round_text"
+agent m0 qa "$(req "$sha" r1)"
+agent d1 qa "$decide"
+[[ $(mergedr "$sha" r1) == no ]] || { echo "決める記録より前の依頼を読んだ" >&2; exit 1; }
+agent m qa "$(req "$sha" r1)"
+[[ $(mergedr "$sha" r1) == yes ]] || { echo "回を渡して、決める実行の役のマージの依頼を読まない" >&2; exit 1; }
+agent r2 L "$round_text"
+[[ $(mergedr "$sha" r2) == no ]] || { echo "前の回の決める役の依頼を読んだ" >&2; exit 1; }
+# 読めない候補は、回より前にあれば見ず、回より後にあれば止める。回を渡さないときは、どちらも止める。
+for unread in $'> マージの依頼: SHA' $'マージの依頼: SHA\n```\n閉じない'; do
+	body=${unread//SHA/$sha}
+	reset
+	agent bad L "$body"
+	agent r1 L "$round_text"
+	[[ $(mergedr "$sha" r1) == no ]] || { echo "回より前の読めない候補で止めた: $(mergedr "$sha" r1)" >&2; exit 1; }
+	[[ $(merged "$sha") == "blocked 制御記録を読めない（bad: "* ]] || { echo "回を渡さないとき、読めない候補で止めない" >&2; exit 1; }
+	agent bad2 L "$body"
+	[[ $(mergedr "$sha" r1) == "blocked 制御記録を読めない（bad2: "* ]] || { echo "回より後の読めない候補で止めない: $(mergedr "$sha" r1)" >&2; exit 1; }
+	# 読める依頼が回より後にあっても、同じ head の読めない候補が回より後にあれば止める。
+	agent m1 L "$(req "$sha" r1)"
+	[[ $(mergedr "$sha" r1) == "blocked "* ]] || { echo "回より後の読める依頼と読めない候補で止めない" >&2; exit 1; }
+done
+upper=$(tr '[:lower:]' '[:upper:]' <<<"$sha")
+for mode in uppercase other-values; do
+	reset
+	agent r1 L "$round_text"
+	if [[ $mode == uppercase ]]; then body=$(req "$upper" r1); else body=$(req '別の値' other-round "$other_pr"); fi
+	agent bad L "> $body"
+	[[ $(mergedr "$sha" r1) == 'blocked 制御記録を読めない（bad: '* ]]
+	[[ $(merged "$sha") == no ]]
+	agent m1 L "$(req "$sha" r1)"
+	[[ $(mergedr "$sha" r1) == 'blocked 制御記録を読めない（bad: '* ]]
+	[[ $(merged "$sha") == yes ]]
+done
+echo 'PASS merge_requested: 見張りは読めない候補を head・PR・回で絞らず、ci-wait は従来どおり head で拾う'
+# 回が見つからないときと空のときは、渡したものとして依頼なしと読む（回を省いたと読んで、前の回の依頼を拾わない）。
+reset
+agent r1 L "$round_text"
+agent m1 L "$(req "$sha" r1)"
+[[ $(mergedr "$sha" nothing) == no && $(mergedr "$sha" '') == no ]] || { echo "ない回・空の回で依頼を読んだ" >&2; exit 1; }
+echo 'PASS merge_requested: 回を渡すと、作者・時刻・回・head のすべてが合う依頼だけを読み、どれか 1 つが合わない依頼、今の回でない回、前の回: のない手の依頼は読まない。回がないか空でも依頼なしと読み、回を渡さないときは今と同じ'
+
+# ---- analyze の latest。認める回のうち、コメントの並びで最も新しいもの。人間と名簿の外のコメントでは変わらない。
+latest_is() { analyze | jq -e --arg want "$1" '.latest == (if $want == "null" then null else $want end)' >/dev/null || { printf '失敗: latest が %s でない\n' "$1" >&2; analyze | jq '{latest, rounds}' >&2; exit 1; }; }
+reset
+latest_is null
+base
+latest_is r1
+agent r2 L $'確認するコミット: '"$sha"$'\n返事を待つ役: '"$(mention qa)"$'\n観点: qa（テスト）'
+latest_is r2
+echo 'PASS analyze: latest は、認める回のうちコメントの並びで最も新しいもの'
+# 人間・名簿の外のエージェント・正しい前の回: のない決める実行の役のコメントは、回の形をしていても latest を変えない。
+round_text=$'確認するコミット: '"$sha"$'\n返事を待つ役: '"$(mention qa)"$'\n観点: qa（テスト）'
+base
+add h1 human-1 member "$round_text"
+latest_is r1
+agent s1 stranger "$round_text"
+latest_is r1
+agent q1 qa "$round_text"
+latest_is r1
+agent q2 qa "$round_text"$'\n前の回: nothing'
+latest_is r1
+echo 'PASS analyze: 人間、名簿の外のエージェント、前の回: のない決める実行の役の回の形のコメントでは、latest は変わらない'
+# 決める実行の役が、正しい前の回: で書いた回は、新しい回として認める。
+agent q3 qa $'コミットが合わず頼み直す役: qa\n'"$round_text"$'\n前の回: r1'
+latest_is q3
+agent h2 human-1 member "$round_text"$'\n前の回: q3'
+latest_is q3
+echo 'PASS analyze: 決める実行の役の正しい前の回: の回は latest になり、その後の人間のコメントでは変わらない'
+
+# ---- 回の PR。analyze が回ごとに round_pr_lines と round_pr_from を出す。行がなければ前の認める回から引き継ぐ。
+pr_a='対象の PR: https://github.com/example/repo/pull/67'
+pr_b='対象の PR: https://github.com/example/repo/pull/68'
+wait_line=$'返事を待つ役: '"$(mention qa)"
+review_round() { printf '確認するコミット: %s\n%s\n観点: qa（テスト）' "$sha" "$wait_line"; }
+final_round() { printf '見直しの種類: 最終レビュー\n確認するコミット: %s\n返事を待つ役: %s' "$sha" "$(mention P)"; }
+rpr() { # 回 → 「引き継ぎ元|行を , でつないだもの」
+	analyze | jq -r --arg r "$1" '.rounds[$r] | "\(.round_pr_from // "null")|\(.round_pr_lines | join(","))"'
+}
+rpr_is() { # 回 期待
+	[[ $(rpr "$1") == "$2" ]] || { printf '失敗: %s の回の PR: %s（期待 %s）\n' "$1" "$(rpr "$1")" "$2" >&2; analyze | jq '.rounds' >&2; exit 1; }
+}
+# 行のある回は、その行を使い、引き継ぎ元は回自身。行のない前の回は何も持たず、どの回にも行がなければ空と null。
+reset
+agent r1 L "$(review_round)"
+rpr_is r1 'null|'
+agent r2 L "$(review_round)"$'\n'"$pr_a"
+rpr_is r2 "r2|$pr_a"
+rpr_is r1 'null|'
+echo 'PASS round_pr: 行のある回は自身の行を使い、それより前の回に行がなければ空と null'
+# 行のない回は、前の認める回の行を新しい順に引き継ぐ。行のある最初の回で止め、それより前は見ない。
+agent r3 L "$(final_round)"
+agent r4 L "$(review_round)"$'\n'"$pr_b"
+agent r5 L "$(review_round)"
+rpr_is r3 "r2|$pr_a"
+rpr_is r5 "r4|$pr_b"
+rpr_is r2 "r2|$pr_a"
+echo 'PASS round_pr: 行のない最終レビューの回と新しい回は、行を持つ最も近い前の回から引き継ぐ'
+# 回の行が 2 つなら、2 つとも持ち、前の回の行で埋めない。後ろの回はその 2 行を引き継ぐ。
+reset
+agent r1 L "$(review_round)"$'\n'"$pr_a"
+agent r2 L "$(review_round)"$'\n'"$pr_a"$'\n'"$pr_b"
+agent r3 L "$(review_round)"
+rpr_is r2 "r2|$pr_a,$pr_b"
+rpr_is r3 "r2|$pr_a,$pr_b"
+echo 'PASS round_pr: 行が 2 つの回は 2 行を持ち、後ろの回は前の PR の行で埋めずに 2 行を引き継ぐ'
+# 囲みの中と項目の行は、数えず、引き継ぎも止めない。引用・字下げの行を含むコメントは読めないので、回にならない。
+for shape in fence tilde quote item indent result; do
+	reset
+	agent r1 L "$(review_round)"$'\n'"$pr_a"
+	case $shape in
+	fence) body="$(review_round)"$'\n```\n'"$pr_b"$'\n```' ;;
+	tilde) body="$(review_round)"$'\n~~~\n'"$pr_b"$'\n~~~' ;;
+	quote) body="$(review_round)"$'\n> '"$pr_b" ;;
+	item) body="$(review_round)"$'\n- '"$pr_b" ;;
+	indent) body="$(review_round)"$'\n  '"$pr_b" ;;
+	result) body=$'/note\n返事の回: r1\n'"$(review_round)"$'\n'"$pr_b" ;;
+	esac
+	agent r2 L "$body"
+	if [[ $shape == result || $shape == quote || $shape == indent ]]; then
+		# 引用と字下げの行は読める本文の範囲の外で、コメント全体が読めない。結果のコメントとともに、回と認めず、回の PR を持たない。
+		analyze | jq -e '.rounds.r2.ok | not' >/dev/null || { echo "回と認めてはいけないコメントを回と認めた: $shape" >&2; exit 1; }
+		rpr_is r2 'null|'
+	else
+		rpr_is r2 "r1|$pr_a"
+	fi
+done
+echo 'PASS round_pr: 囲みの中と項目の行は数えず前の回から引き継ぎ、引用・字下げの行を含むコメントと結果のコメントは回にしない'
+# 人間・名簿の外のエージェント・決める実行の役の行は、回でないので引き継がない。引き継ぎ元にもならない。
+reset
+agent r1 L "$(review_round)"
+agent h1 human-1 member "$(review_round)"$'\n'"$pr_b"
+agent s1 stranger "$(review_round)"$'\n'"$pr_b"
+agent q1 qa "$(review_round)"$'\n'"$pr_b"$'\n前の回: r1'
+agent r2 L "$(review_round)"
+rpr_is r2 'null|'
+analyze | jq -e '[.rounds.h1, .rounds.s1, .rounds.q1] | all(.ok | not) and all(.round_pr_from == null and .round_pr_lines == [])' >/dev/null || { echo "認めない回が回の PR を持つ" >&2; analyze | jq '.rounds' >&2; exit 1; }
+agent r3 L "$(review_round)"$'\n'"$pr_a"
+agent h2 human-1 member "$(review_round)"$'\n'"$pr_b"
+agent r4 L "$(review_round)"
+rpr_is r4 "r3|$pr_a"
+echo 'PASS round_pr: 人間・名簿の外のエージェント・前の回を持たない決める実行の役の行は、引き継がず、引き継ぎ元にもならない'
+# 設計と PR の見直し・要件の見直し・診断の回は、行があれば自身の行を、なければ前の回の行を使う。
+for kind in '設計と PR の見直し' '設計の見直し' '要件の見直し' '診断'; do
+	reset
+	agent r1 L "$(review_round)"$'\n'"$pr_a"
+	agent r2 L "見直しの種類: $kind"$'\n'"$wait_line"
+	agent r3 L "見直しの種類: $kind"$'\n'"$wait_line"$'\n'"$pr_b"
+	rpr_is r2 "r1|$pr_a"
+	rpr_is r3 "r3|$pr_b"
+done
+echo 'PASS round_pr: 見直し・診断の回は、行がなければ前の回の行を引き継ぎ、行があれば自身の行を使う'
+# 回の PR の欄は、ほかの欄（kind・ok・pr_lines）を変えない。
+reset
+agent r1 L "$(review_round)"$'\n'"$pr_a"
+agent r2 L "$(review_round)"
+check '回の PR の欄を足しても、pr_lines は回自身の行だけ' '.rounds.r1.pr_lines == ["'"${pr_a}"'"] and .rounds.r2.pr_lines == [] and .rounds.r2.round_pr_lines == ["'"${pr_a}"'"]'
+echo 'PASS round_pr: pr_lines は回自身の行のまま、round_pr_lines が引き継いだ行を持つ'
+
+# ---- リーダーのマージの依頼は、認める回ならどの種類の回も指せる。ほかの作者や種類の記録は、今のとおりレビューと最終レビューの回だけを指せる。
+design_round() { printf '見直しの種類: %s\n%s' "$1" "$wait_line"; }
+for kind in '設計と PR の見直し' '設計の見直し' '要件の見直し' '診断'; do
+	reset
+	agent r1 L "$(review_round)"$'\n'"$pr_a"
+	agent r2 L "$(design_round "$kind")"
+	agent m2 L "$(req "$sha" r2)"
+	[[ $(mergedr "$sha" r2) == yes ]] || { echo "リーダーのマージの依頼が $kind の回を指しても読まない" >&2; exit 1; }
+	[[ $(squad_cli_control merge_requested "$(<"$file")" '["L"]' null "$sha") == yes ]] || { echo "回を渡さない読みでも $kind の回の依頼を読まない" >&2; exit 1; }
+	analyze | jq -e '[.controls[] | select(.id == "m2")] == [{"id":"m2","prev":"r2","kind":"merge","role":"leader","written":true}]' >/dev/null || { echo "$kind の回を指す依頼が制御記録に出ない" >&2; analyze | jq .controls >&2; exit 1; }
+	# 3 行のない手の依頼は、回を指しても読まない。
+	reset
+	agent r2 L "$(design_round "$kind")"
+	agent m2 L $'マージの依頼: '"$sha"
+	[[ $(mergedr "$sha" r2) == no ]] || { echo "3 行のない手の依頼を $kind の回で読んだ" >&2; exit 1; }
+done
+echo 'PASS control: リーダーのマージの依頼は、設計の見直し・設計と PR の見直し・要件の見直し・診断の回を指して読め、3 行のない手の依頼は読まない'
+# 回を指す先は、認める回に限る。認めない回（結果・人間・引用）は、リーダーの依頼でも指せない。
+for target in result human quote; do
+	reset
+	agent r1 L "$(review_round)"
+	case $target in
+	result) agent t1 L $'/note\n返事の回: r1\n'"$(design_round 診断)" ;;
+	human) agent t1 human-1 member "$(design_round 診断)" ;;
+	quote) agent t1 L $'> 見直しの種類: 診断\n> '"$wait_line" ;;
+	esac
+	agent m1 L "$(req "$sha" t1)"
+	[[ $(counted_id() { analyze | jq -r '[.controls[] | select(.id == "m1")] | length'; }; counted_id) == 0 ]] || { echo "認めない回（$target）を指すリーダーの依頼を読んだ" >&2; exit 1; }
+	[[ $(mergedr "$sha" t1) == no ]] || { echo "認めない回（$target）を指す依頼を、依頼済みと読んだ" >&2; exit 1; }
+done
+echo 'PASS control: リーダーのマージの依頼でも、認めない回（結果・人間・引用）は指せない'
+# 指す回より前に書かれた依頼は、設計の見直しの回でも読まない。
+reset
+agent m1 L "$(req "$sha" r2)"
+agent r2 L "$(design_round 設計の見直し)"
+[[ $(mergedr "$sha" r2) == no ]] || { echo "回より前の依頼を設計の見直しの回で読んだ" >&2; exit 1; }
+echo 'PASS control: 指す回より前に書かれた依頼は、設計の見直しの回でも読まない'
+# 決める実行の役の記録と、リーダーのほかの種類の記録は、設計と PR の見直しの回と診断の回を指しても読まない。
+for kind in '設計と PR の見直し' '診断'; do
+	for ctl in merge retry fix final human; do
+		reset
+		agent r1 L "$(review_round)"
+		agent r2 L "$(design_round "$kind")"
+		agent d2 qa "$decide"
+		case $ctl in
+		merge) body="$(req "$sha" r2)" ;;
+		retry) body=$'コミットが合わず頼み直す役: qa\n前の回: r2' ;;
+		fix) body=$'修正の依頼: 直す\n前の回: r2' ;;
+		final) body=$'見直しの種類: 最終レビュー\n前の回: r2' ;;
+		human) body=$'使用率の待ち: 24 時間を超えるので人間に聞く\n前の回: r2' ;;
+		esac
+		# 決める実行の役 qa の記録は、どの種類も読まない。
+		agent x qa "$body"
+		[[ $(counted) == no ]] || { echo "決める実行の役の $ctl の記録が $kind の回を指して読まれた: $(counted)" >&2; exit 1; }
+		# リーダーのマージ以外の種類は、今のとおり読まない。
+		if [[ $ctl != merge ]]; then
+			reset
+			agent r1 L "$(review_round)"
+			agent r2 L "$(design_round "$kind")"
+			agent x L "$body"
+			[[ $(counted) == no ]] || { echo "リーダーの $ctl の記録が $kind の回を指して読まれた: $(counted)" >&2; exit 1; }
+		fi
+	done
+done
+echo 'PASS control: 決める実行の役の記録と、リーダーのマージ以外の記録は、設計と PR の見直しの回と診断の回を指しても読まない'
+# レビューと最終レビューの回を指す依頼は、今までと同じに読む。
+reset
+agent r1 L "$(review_round)"
+agent d1 qa "$decide"
+agent r2 L "$(final_round)"
+agent m1 qa "$(req "$sha" r1)"
+agent m2 L "$(req "$sha" r2)"
+analyze | jq -e '[.controls[] | {id, prev, role}] == [{"id":"m1","prev":"r1","role":"decide"},{"id":"m2","prev":"r2","role":"leader"}]' >/dev/null || { echo "レビューと最終レビューの回を指す依頼の読み方が変わった" >&2; analyze | jq .controls >&2; exit 1; }
+echo 'PASS control: レビューと最終レビューの回を指す依頼は、今までと同じに読む'
+# 読めないコメントや認めない回を挟んでも、引き継ぎは認める回だけをたどる。決める実行の役が書く認める回（頼み直し）も、行がなければ引き継ぐ。
+reset
+agent r1 L "$(review_round)"$'\n'"$pr_a"
+agent d1 qa "$decide"
+agent bad L "$(review_round)"$'\n> '"$pr_b"
+agent q2 qa $'コミットが合わず頼み直す役: qa\n'"$(review_round)"$'\n前の回: r1'
+agent r3 L "$(review_round)"
+rpr_is bad 'null|'
+rpr_is q2 "r1|$pr_a"
+rpr_is r3 "r1|$pr_a"
+agent d3 qa "$decide"
+agent q4 qa $'コミットが合わず頼み直す役: qa\n'"$(review_round)"$'\n'"$pr_b"$'\n前の回: r3'
+analyze | jq -e '.rounds.q4.ok' >/dev/null || { echo "頼み直しの回を認めない" >&2; exit 1; }
+agent r5 L "$(review_round)"
+rpr_is q4 "q4|$pr_b"
+rpr_is r5 "q4|$pr_b"
+echo 'PASS round_pr: 読めないコメントを挟んでも認める回だけをたどり、決める実行の役が書く頼み直しの回も引き継ぎ元になる'

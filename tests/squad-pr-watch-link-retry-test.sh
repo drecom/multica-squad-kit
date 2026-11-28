@@ -4,6 +4,8 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
 source "$root/tests/pr-watch-test-lib.sh"
+# ホストの連携なしの記録が結果を変えないよう、記録の根を空の一時ディレクトリに向ける。
+export PR_LINK_STATE_ROOT=$test_dir/pr-link-state
 pr=https://github.com/example/repo/pull/67
 other=https://github.com/example/repo/pull/68
 export MULTICA_TOKEN=fixture-token MULTICA_SERVER_URL=https://multica.invalid

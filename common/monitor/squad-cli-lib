@@ -99,12 +99,27 @@ squad_cli_contracts() {
           "nullable": true
         },
         {
+          "path": "metadata.pr_link_no_integration",
+          "class": "optional",
+          "nullable": true
+        },
+        {
+          "path": "metadata.pr_link_tried_at",
+          "class": "optional",
+          "nullable": true
+        },
+        {
           "path": "metadata.pr_url",
           "class": "optional",
           "nullable": true
         },
         {
           "path": "metadata.repository",
+          "class": "optional",
+          "nullable": true
+        },
+        {
+          "path": "project_id",
           "class": "optional",
           "nullable": true
         }
@@ -114,6 +129,25 @@ squad_cli_contracts() {
           "name": "metadata.pr_link_pending-present",
           "where": ".metadata | has(\"pr_link_pending\")",
           "unavailable": "紐付けに失敗したときに書くアプリケーションの metadata。導入前の採取にはないため、契約で宣言した欄を紐付け直しのテストで設定する。"
+        },
+        {
+          "name": "metadata.pr_link_no_integration-present",
+          "where": ".metadata | has(\"pr_link_no_integration\")",
+          "unavailable": "連携なしの PR に squad-pr-link が書くアプリケーションの metadata。導入前の採取にはないため、契約で宣言した欄を連携なしのテストで設定する。"
+        },
+        {
+          "name": "metadata.pr_link_tried_at-present",
+          "where": ".metadata | has(\"pr_link_tried_at\")",
+          "unavailable": "連携なしの PR の試み直しが書くアプリケーションの metadata。導入前の採取にはないため、契約で宣言した欄を連携なしのテストで設定する。"
+        },
+        {
+          "name": "project_id-present",
+          "where": "has(\"project_id\") and .project_id != null"
+        },
+        {
+          "name": "project_id-absent",
+          "where": "(has(\"project_id\") | not) or .project_id == null",
+          "unavailable": "プロジェクトのないタスクが採取にない。契約は、欄のない応答（テストの代用品）を読める形にしておく。"
         },
         {
           "name": "assigned",
@@ -191,7 +225,8 @@ squad_cli_contracts() {
       "items": {
         "path": ["pull_requests"],
         "fields": [
-          {"path": "html_url", "class": "required", "nullable": false}
+          {"path": "html_url", "class": "required", "nullable": false},
+          {"path": "link_source", "class": "optional", "nullable": true}
         ]
       },
       "samples": [
@@ -204,6 +239,11 @@ squad_cli_contracts() {
           "name": "element",
           "where": "has(\"html_url\")",
           "unavailable": "2026-11-13 時点で、このワークスペースに紐付いた PR を持つタスクがなく、要素の見本を取れなかった。紐付いたタスクができたら取り直す。"
+        },
+        {
+          "name": "link_source-present",
+          "where": "has(\"link_source\") and .link_source != null",
+          "unavailable": "要素の見本を取れていないため、link_source の値の見本もない。squad-pr-link が `紐付け方:` に出すだけで、判定には使わない。契約で宣言した欄を連携なしのテストで設定する。"
         }
       ]
     },
@@ -2157,11 +2197,37 @@ squad_cli_squad_for_round() {
 	return 2
 }
 
+# 呼ぶ人間を、スクワッド（JSON）の creator_id とメンバーの一覧から決める。HUMAN_ID と HUMAN_NAME に返す。
+# squad_cli_human_of_squad <スクワッドの JSON>
+# 決められなければ、理由を HUMAN_REASON に返して 1 を返す。理由の文は出さず、CLI の読み取りの診断だけを
+# squad_cli_read のまま標準エラーに出す。失敗の扱い（止まる、メンションを省く）は呼び出し元が決める。review-next と PR の見張りが同じ決め方を使う。
+squad_cli_human_of_squad() {
+	local squad=$1 members
+	HUMAN_ID='' HUMAN_NAME='' HUMAN_REASON=''
+	HUMAN_ID=$(jq -r '.creator_id // empty' <<<"$squad" 2>/dev/null) || HUMAN_ID=''
+	if [[ -z $HUMAN_ID ]]; then
+		HUMAN_REASON='呼ぶ人間を決められない（スクワッドの creator_id がない）'
+		return 1
+	fi
+	if ! members=$(squad_cli_read member-list); then
+		HUMAN_REASON='メンバーの一覧を読めない'
+		return 1
+	fi
+	HUMAN_NAME=$(jq -r --arg id "$HUMAN_ID" '[.[] | select(.user_id == $id)] | first | .name // empty' <<<"$members" 2>/dev/null) || HUMAN_NAME=''
+	if [[ -z $HUMAN_NAME ]]; then
+		HUMAN_REASON='呼ぶ人間の名前を読めない'
+		return 1
+	fi
+}
+
 # 制御記録と認める回の判定。review-next・review-wait・pr-watch が同じ判定を使う（docs/review-next-step.md の「制御記録の読み方」）。
 # 名簿は読まない。リーダーの ID の一覧と、必要なら名簿の最上位の役の ID の一覧を、呼び出し側が渡す。
 # 標準入力に {comments, leaders, principals} を渡し、モードで出すものを変える。
-#   analyze: 各コメントの {rounds, controls, finals} と rework_reviewed・short_path。finals は principals があるときだけ。
-#   merge_requested <head>: その head のマージの依頼があれば yes、なければ no。
+#   analyze: 各コメントの {rounds, controls, finals} と rework_reviewed・short_path。rounds の pr_lines は、読める本文の囲みの外にある `対象の PR:` の行。round_pr_lines と round_pr_from は、回の PR の行と、その行を持つ回の ID（行がなければ前の認める回から引き継ぎ、どの回にもなければ空と null）。finals は principals があるときだけ。
+#   merge_requested <head> [<回> <見張る PR>]: マージの依頼があれば yes、なければ no。回と PR を渡すと、作者・時刻・回・PR・head が合う依頼だけを読む（docs/pr-link-no-integration.md の「マージの依頼の照合」）。
+#     `前の回:`・`マージする PR:`・`マージの依頼:` は 1 行ずつ読む。回は同じ一覧の今の回、PR と 40 桁の head は大文字小文字を問わず照合する。
+#     回より後の読めない候補には `blocked` を返す。候補は `マージの依頼:` を含むかで拾い、回・PR・head の値で絞らない。回が見つからないか空のときは no を返す。
+#     回を渡さないときは、全コメントを読み、リーダーの `前の回:` のない依頼も読む（ci-wait が使う）。
 #   state: 認める回のうち最も新しいものの状態（なければ何も出さない）。
 read -r -d '' SQUAD_CLI_CONTROL_PY <<'SQUADCLICONTROLPY' || true
 import calendar
@@ -2488,7 +2554,9 @@ def control_now(i):
     ok, why, _ = recognize(pid)
     if not ok:
         return no(f"指す回を認められない（{why}）")
-    if round_kind(pid) not in ("review", "final"):
+    # 名簿のリーダーが書くマージの依頼だけは、認める回ならどの種類の回も指せる（リーダーは、設計と PR の見直しや診断の回が今の回のときも手でマージへ回す）。
+    leader_merge = kind == "merge" and data_i["author"] in leaders
+    if not leader_merge and round_kind(pid) not in ("review", "final"):
         return no("指す回がレビューと E2E の回でも最終レビューの回でもない")
     if data_i["author"] in leaders:
         return {"kind": kind, "prev": pid, "role": "leader", "reason": ""}
@@ -2593,6 +2661,8 @@ def blocked_final(r):
 
 if mode == "analyze":
     rounds, controls, finals = {}, [], {}
+    # 回の PR は、回の行から決める。行がなければ、同じ一覧でそれより前の認める回の、行のある最初の回から引き継ぐ。
+    inherited = (None, [])
     rework_reviewed = False
     short_path = False
     for i in sequence:
@@ -2605,7 +2675,13 @@ if mode == "analyze":
         rounds[i] = {
             "ok": ok, "reason": why, "kind": round_kind(i), "waited": waited(i),
             "prev": pid, "prev_line": present, "has_kind_line": field(i, "見直しの種類:") is not None,
+            "pr_lines": [line for line in parsed[i]["placed"] if line.startswith("対象の PR:")],
+            "round_pr_lines": [], "round_pr_from": None,
         }
+        if ok and parsed[i]["agent"]:
+            if rounds[i]["pr_lines"]:
+                inherited = (i, rounds[i]["pr_lines"])
+            rounds[i]["round_pr_from"], rounds[i]["round_pr_lines"] = inherited
         ctl = control(i)
         if ctl["kind"]:
             controls.append({"id": i, "prev": ctl["prev"], "kind": ctl["kind"], "role": ctl["role"], "written": ctl["kind"] in WRITTEN})
@@ -2615,22 +2691,48 @@ if mode == "analyze":
     target = args[0] if args else None
     emit({
         "rounds": rounds, "controls": controls, "finals": finals,
+        "latest": latest_round(),
         "rework_reviewed": rework_reviewed,
         "short_path": short_path,
         "blocked": blocked_round(target) if target in parsed else None,
         "blocked_final": blocked_final(target) if target in parsed else None,
     })
 elif mode == "merge_requested":
-    want = "マージの依頼: " + args[0]
-    # 読めない候補は、読める依頼と同じ head にあっても優先する。依頼済みと読まず、理由を返す。
-    held = blocked_text(unreadable([want]))
+    merge = "マージの依頼:"
+    want = merge + " " + args[0]
+    merge_pr = "マージする PR:"
+    head = args[0].lower()
+    # 回を渡したときは、その回が今の回でなければ依頼はない。回が見つからなくても、読む先がないので依頼はない。
+    after = args[1] if len(args) > 1 else None
+    watch_pr = args[2].lower() if len(args) > 2 else ""
+    if after is not None and (after not in pos or latest_round() != after):
+        # 回が同じ一覧で今の回でなければ、その回への依頼は読まない。
+        print("no")
+        sys.exit(0)
+    # 読めない候補は、読める依頼と同じ head にあっても優先する。見張りでは候補の値を照合せず、ci-wait では head で拾う。どちらも依頼済みと読まず、理由を返す。
+    held = blocked_text(unreadable([merge if after is not None else want], after))
     if held:
         print("blocked " + held)
         sys.exit(0)
     for i in sequence:
-        if not parsed[i]["agent"] or is_result(i) or want not in parsed[i]["placed"]:
+        if after is not None and pos[i] <= pos[after]:
             continue
-        if parsed[i]["author"] in leaders or control(i)["kind"] == "merge":
+        if not parsed[i]["agent"] or is_result(i):
+            continue
+        if after is None:
+            if want in parsed[i]["placed"] and (parsed[i]["author"] in leaders or control(i)["kind"] == "merge"):
+                print("yes")
+                sys.exit(0)
+            continue
+        ctl = control(i)
+        if ctl["kind"] != "merge" or ctl["prev"] != after:
+            continue
+        placed = parsed[i]["placed"]
+        prevs = [line for line in placed if line.startswith(PREV)]
+        prs = [line[len(merge_pr):].strip() for line in placed if line.startswith(merge_pr)]
+        heads = [line[len(merge):].strip().lower() for line in placed if line.startswith(merge)]
+        if (len(prevs) == 1 and watch_pr and len(prs) == 1 and prs[0].isascii()
+                and prs[0].lower() == watch_pr and heads == [head] and re.fullmatch(r"[0-9a-f]{40}", head)):
             print("yes")
             sys.exit(0)
     print("no")
@@ -2709,30 +2811,31 @@ squad_cli_read_roster_for_caller() {
 # squad は名簿を決めたスクワッドの ID で、使用率の答えの記録を同じスクワッドで探すために使う。
 # 2 つ目の引数にスクワッドの ID があれば、そのスクワッドの名簿を読む（回から決めたスクワッド）。
 # なければ、タスクの担当のスクワッドを使う。
+# 読み取りの失敗は 1、担当のスクワッドがないと確認できたときは 2 を返す。
 squad_cli_read_roster() {
 	local issue=$1 squad_id=${2-} task squads squad key member members ids id agent roles='{}' name role
 	if [[ -z $squad_id ]]; then
 		task=$(squad_cli_read issue-get "$issue") || return 1
-		squad_id=$(jq -r 'if .assignee_type == "squad" then .assignee_id else "" end' <<<"$task")
+		squad_id=$(jq -r 'if .assignee_type == "squad" then .assignee_id else "" end' <<<"$task") || return 1
 		if [[ -z $squad_id ]]; then
 			echo "タスクの担当がスクワッドではないため、名簿を読めない: $issue" >&2
-			return 1
+			return 2
 		fi
 	fi
 	squads=$(squad_cli_read squad-list) || return 1
 	squad=$(jq -c --arg id "$squad_id" '[.[] | select(.id == $id and .archived_at == null)] | first // empty' <<<"$squads") || return 1
 	if [[ -z $squad ]]; then
 		echo "タスクの担当のスクワッドが一覧にない、またはアーカイブ済み: $squad_id" >&2
-		return 1
+		return 2
 	fi
 	if ! jq -e '.name | ascii_downcase | split("-") | length == 2' <<<"$squad" >/dev/null; then
 		echo 'スクワッドの名前から、キーとメンバーのキーを読めない' >&2
 		return 1
 	fi
-	key=$(jq -r '.name | ascii_downcase | split("-")[0]' <<<"$squad")
-	member=$(jq -r '.name | ascii_downcase | split("-")[1]' <<<"$squad")
+	key=$(jq -r '.name | ascii_downcase | split("-")[0]' <<<"$squad") || return 1
+	member=$(jq -r '.name | ascii_downcase | split("-")[1]' <<<"$squad") || return 1
 	members=$(squad_cli_read squad-member-list "$squad_id") || return 1
-	ids=$(jq -r '.[] | select(.member_type == "agent") | .member_id' <<<"$members")
+	ids=$(jq -r '.[] | select(.member_type == "agent") | .member_id' <<<"$members") || return 1
 	while IFS= read -r id; do
 		[[ -n $id ]] || continue
 		agent=$(squad_cli_read agent-get "$id") || return 1
@@ -2745,7 +2848,7 @@ squad_cli_read_roster() {
 		[[ -n $role ]] || continue
 		# agent get の記録は指示を含み大きくなるので、引数でなく標準入力で渡す（名簿、記録の順）。
 		roles=$(printf '%s\n%s\n' "$roles" "$agent" | jq -sc --arg role "$role" \
-			'.[0] as $roles | .[1] as $agent | $roles | if has($role) then . else .[$role] = {id: $agent.id, model: $agent.model, name: $agent.name} end')
+			'.[0] as $roles | .[1] as $agent | $roles | if has($role) then . else .[$role] = {id: $agent.id, model: $agent.model, name: $agent.name} end') || return 1
 	done <<<"$ids"
 	jq -c --argjson roles "$roles" '{leader: .leader_id, squad: .id, roles: $roles}' <<<"$squad"
 }

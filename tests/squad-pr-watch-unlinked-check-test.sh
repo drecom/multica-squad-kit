@@ -8,7 +8,7 @@ pr=https://github.com/example/repo/pull/67
 other=https://github.com/example/repo/pull/68
 mark='紐付いていない PR のマージ待ちの見張りで起きました。'
 # 要素の実物は未採取なので、宣言された必須欄だけをケースに使う。
-assert_jq '.entries["issue-pull-requests"].items.fields == [{path:"html_url",class:"required",nullable:false}]' "$test_dir/contracts.json"
+assert_jq '.entries["issue-pull-requests"].items.fields == [{path:"html_url",class:"required",nullable:false},{path:"link_source",class:"optional",nullable:true}]' "$test_dir/contracts.json"
 update_task() {
 	jq "$1" "$test_dir/task.json" >"$test_dir/updated.json"
 	mv "$test_dir/updated.json" "$test_dir/task.json"
@@ -22,6 +22,7 @@ linked_urls() {
 }
 reset_unlinked() {
 	reset_fixture
+	roster_ready
 	update_task ".status = \"in_review\" | .metadata.pr_url = \"$pr\""
 	fixture issue-wakeups | jq --arg mark "$mark" '. as $base | [$base + {id:"mine",instruction:($mark + "\n確認")},
 		$base + {id:"other",instruction:"PR の CI が終わりました。"}]' >"$test_dir/rules.json"
@@ -109,6 +110,26 @@ assert_jq -s 'length == 2' "$test_dir/posted.jsonl"
 assert_mine_deleted
 echo 'PASS unlinked-check: 規則を消せず再実行しても食い違いを重ねず、一覧が変われば新しく知らせる'
 
+# 知らせの投稿が失敗したら、書いたことにも止めたことにもせず、規則を残して 1 で終わる（次の確認でやり直す）。
+reset_unlinked
+linked_urls "$other"
+echo 'issue comment add' >"$test_dir/fail"
+status=0
+run_unlinked monitor >"$test_dir/output" 2>"$test_dir/error" || status=$?
+[[ $status == 1 ]]
+assert_jq 'map(.id) == ["mine","other"]' "$test_dir/rules.json"
+rm "$test_dir/fail"
+line=$(run_unlinked monitor)
+assert_jq -s 'length == 1' "$test_dir/posted.jsonl"
+assert_mine_deleted
+reset_unlinked
+update_pr '.mergeable = "CONFLICTING"'
+echo 'issue comment add' >"$test_dir/fail"
+status=0
+line=$(run_unlinked monitor 2>/dev/null) || status=$?
+[[ $status == 1 && $line == *'知らせ: 書けなかった' && $line != *'知らせ: 書いた' ]]
+echo 'PASS unlinked-check: 知らせの投稿に失敗したら、規則を消さず、書いたと言わず、1 で終わる'
+
 for value in cli missing-field missing-url; do
 	reset_unlinked
 	case $value in
@@ -168,3 +189,26 @@ line=$(run_unlinked)
 [[ $line == *'CI abcdef0: 失敗あり'* && $line == *'コンフリクト: MERGEABLE'* ]]
 assert_jq -s 'length == 1' "$test_dir/posted.jsonl"
 echo 'PASS unlinked-check: 見張り役なしで片方が失敗しても取得済みの行を出し、回復後は CI を重ねない'
+
+# 見張りの期限が過ぎたあとに起きても、マージだけで自動的に done にしない。
+reset_unlinked
+update_pr '.state = "MERGED"'
+jq 'map(select(.id != "mine"))' "$test_dir/rules.json" >"$test_dir/updated.json"
+mv "$test_dir/updated.json" "$test_dir/rules.json"
+mv "$test_dir/bin/multica" "$test_dir/bin/multica-base"
+cat >"$test_dir/bin/multica" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+base=$PR_WATCH_TEST_DIR/bin/multica-base
+if [[ "${1-} ${2-} ${3-}" == 'issue get test-issue' ]]; then
+	"$base" "$@" | jq '.metadata.pr_link_no_integration = .metadata.pr_url'
+else
+	exec "$base" "$@"
+fi
+EOF
+chmod +x "$test_dir/bin/multica"
+line=$(run_unlinked monitor)
+[[ -z $line && ! -s $test_dir/posted.jsonl ]]
+assert_jq -s 'all(.[]; .[0:2] != ["issue","status"] and .[0:3] != ["issue","wakeup","delete"])' "$test_dir/calls.jsonl"
+assert_mine_deleted
+echo 'PASS unlinked-check: 期限後に連携なしの PR がマージされても、規則がなければ done や知らせを書かない'
