@@ -762,6 +762,17 @@ sed -n '/^## PR を作る・実装を積む$/,/^### PR の本文の置き場所�
 pr_link_check="$root/tests/pr-link-procedure-check.py"
 python3 "$pr_link_check" check "$test_dir/pr-link-procedure"
 python3 "$pr_link_check" table "$root/tests/pr-link-procedure-table.tsv" "$test_dir/pr-link-procedure" >"$test_dir/pr-link-table.out"
+grep -F 'gh pr create --title' "$test_dir/pr-link-procedure" | grep -qF 'タイトルの末尾に、半角の丸括弧でタスクの識別子を入れる'
+grep -qF 'gh pr edit --title --body-file' "$test_dir/pr-link-procedure"
+grep -qF 'タイトルの末尾のタスクの識別子は残す' "$test_dir/pr-link-procedure"
+# 連携なしの知らせの返信先として、きっかけのコメントの ID を渡す。省くのは、きっかけのコメントがない実行だけ。
+grep -qF '`squad-pr-link <タスク> <PR の URL> <きっかけのコメントの ID>` を呼ぶ' "$test_dir/pr-link-procedure"
+grep -qF 'きっかけのコメントがない実行は、この引数を省く' "$test_dir/pr-link-procedure"
+title_exception='タスクの識別子は、Multica が自動で関連付けるため、PR のタイトルに限り末尾に入れる。'
+for path in "$pr_skill" "$root/CONTRIBUTING.md" "$root/AGENTS.md"; do
+	grep -qF "$title_exception" "$path"
+done
+grep -qF '../../CONTRIBUTING.md#手順を足す条件' "$root/.agents/rules/docs.md"
 absent -qF '先頭、結論の行のすぐ次の行に' "$test_dir/pr-link-procedure"
 absent -qF '紐付け済みとして飛ばす' "$test_dir/pr-link-procedure"
 absent -qF 'PR とタスクは、タスクの画面で URL を指定して紐付ける' "$test_dir/pr-link-procedure"
