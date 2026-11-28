@@ -2189,6 +2189,9 @@ PREV = "前の回:"
 CLAIM = "返事の待ち: この回を次へ回します"
 DECIDE = "返事の待ち: 次の依頼を決めます"
 READY = "返事がそろいました"
+UNREADABLE_NOTICE = "読めない制御記録:"
+UNREADABLE_NOMINATION = "読めない制御記録の知らせ:"
+UNASSIGNED_RESULT = re.compile(RESULT + r" 未定（読めない依頼 \S+）")
 MAX_HOPS = 10
 KINDS = ("コミットが合わず頼み直す役:", "修正の依頼:", "見直しの種類: 最終レビュー", "マージの依頼:", "使用率の待ち:", "マージの前の CI の待ち:")
 WRITTEN = {"retry", "fix", "final", "merge", "human"}
@@ -2368,6 +2371,20 @@ def has_result_line(lines):
 
 def is_result(i):
     return has_result_line(parsed[i]["every"])
+
+
+def is_unreadable_report(i):
+    """読めない依頼への結果・名乗り・知らせか。依頼を同じ ID のまま直しても、返事と知らせには数えない。"""
+    info = parsed[i]
+    if info["reason"] is None:
+        return any(UNASSIGNED_RESULT.fullmatch(line) for line in info["placed"]) or (
+            not is_result(i) and any(
+                line.startswith((UNREADABLE_NOMINATION, UNREADABLE_NOTICE)) for line in info["placed"]
+            )
+        )
+    # 結果の本文が読めなくても、report が末尾に足した結果の行は読む。
+    last = next((line for line in reversed(info["every"]) if line), "")
+    return UNASSIGNED_RESULT.fullmatch(last) is not None
 
 
 def prev_of(i):
@@ -2711,12 +2728,13 @@ elif mode == "state":
         roles = sorted(set(waited(r)))
         after = [j for j in sequence if pos[j] > pos[r]]
         agents = [j for j in after if parsed[j]["agent"]]
+        replies = [j for j in agents if not is_unreadable_report(j)]
         records = sorted((parsed[j]["ns"], j) for j in agents if parsed[j]["author"] in roles and not is_result(j) and has(j, DECIDE))
         sort = lambda ids: [j for _, j in sorted((parsed[j]["ns"], j) for j in ids)]
-        ready_ids = sort(j for j in agents if READY in parsed[j]["first_line"])
+        ready_ids = sort(j for j in replies if READY in parsed[j]["first_line"])
         emit({
             "id": r, "author_id": parsed[r]["author"], "ts": parsed[r]["ns"] / 1e9, "waiting": roles,
-            "returned": sorted({parsed[j]["author"] for j in agents if parsed[j]["author"] in roles}),
+            "returned": sorted({parsed[j]["author"] for j in replies if parsed[j]["author"] in roles}),
             "ready_ids": ready_ids,
             "claim_ids": sort(j for j in agents if not is_result(j) and has(j, CLAIM)),
             "decide_ids": [j for _, j in records],
@@ -2733,9 +2751,9 @@ elif mode == "notice":
     # args = [知らせるスクワッドの ID, 候補の ID...]。条件は docs/review-next-step.md の「入力と信頼の表」の知らせと名乗りの条件。
     squad_id, wanted = args[0], args[1:]
     mention = re.compile(r"\[@[^\]\n]*\]\(mention://squad/" + re.escape(squad_id) + r"\) 返事がそろいました。")
-    notice_line = re.compile(r"読めない制御記録: (\S+)(?: .*)?")
+    notice_line = re.compile(UNREADABLE_NOTICE + r" (\S+)(?: .*)?")
     saved_line = re.compile(r"保存した結果: (\S+)")
-    claim_line = re.compile(r"読めない制御記録の知らせ: (\S+) (\S+)")
+    claim_line = re.compile(UNREADABLE_NOMINATION + r" (\S+) (\S+)")
 
     def trusted(j, cand):
         """作者がリーダーでないエージェントで、読める本文に返事の回: の行がなく、候補より後のコメントか。"""

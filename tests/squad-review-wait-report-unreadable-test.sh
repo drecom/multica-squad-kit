@@ -226,3 +226,25 @@ phase2_claims with_raw a-notice "$a" agent 12 "$(notice_text r1)"
 run_report
 expect_one_notice 3 20
 echo 'PASS report: 名乗りと知らせは結果を書いた作者のものだけを数え、60 秒より前の名乗りは飛ばし、選ばれた役が書かなければ引き継ぐ'
+
+# 8-2: 依頼を同じ ID のまま直したあと、以前の結果・名乗り・知らせを残した回への返事。
+reset_calls
+round_comments
+with_raw saved "$b" agent 9 $'/note\n以前の結果\n返事の回: 未定（読めない依頼 round）' <"$test_dir/comments.json" \
+	| with_claim_only nomination "$b" 10 round squad-test \
+	| with_raw notice "$b" agent 11 $'[@demo-squad](mention://squad/squad-test) 返事がそろいました。\n読めない制御記録: round 3 行目: 行頭の空白\n保存した結果: saved' \
+	>"$test_dir/edited-round.json"
+cp "$test_dir/edited-round.json" "$test_dir/comments.json"
+with_result posted-1 "$a" 12 <"$test_dir/comments.json" >"$test_dir/comments.2.json"
+run_report
+assert_jq -s 'length == 1 and (.[0].body | endswith("返事の回: round\n"))' "$test_dir/posted.jsonl"
+[[ $(slept) == 20 && $(list_count) == 3 ]] || { echo '直した依頼のもう一方の返事を待つ' >&2; exit 1; }
+
+# 新しい結果が両方そろったら、読めない知らせは通知済みの印にせず、決める実行へ進む。
+reset_calls
+with_result fresh-a "$a" 12 <"$test_dir/edited-round.json" >"$test_dir/comments.json"
+with_result posted-1 "$b" 13 <"$test_dir/comments.json" >"$test_dir/comments.2.json"
+with_raw posted-2 "$b" agent 14 $'/note\n返事の待ち: 次の依頼を決めます' <"$test_dir/comments.2.json" >"$test_dir/comments.3.json"
+bash "$script" report test-issue trigger "$test_dir/result.md"
+[[ $(posted_decide_count) == 1 && $(decide_calls) == 'decide test-issue round' ]]
+echo 'PASS report: 直した回の新しい結果だけを待ち、そろったら古い知らせがあっても decide を流す'

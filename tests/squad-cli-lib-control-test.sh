@@ -235,6 +235,27 @@ agent d9 stranger "$decide"
 echo 'PASS state: 返事を待つ役でない役の決める記録は、決める記録に数えない'
 
 state() { squad_cli_control state "$(<"$file")" '["L"]' null; }
+# その場で直して認める回になっても、読めなかったときのコメントは別に扱う。
+edited_round="返事を待つ役: $(mention qa) $(mention cr)"
+reset
+agent r1 L "$edited_round"
+agent saved qa $'/note\n診断の結果\n返事の回: 未定（読めない依頼 r1）'
+agent saved-unreadable qa $'/note\n```\n診断の結果\n返事の回: 未定（読めない依頼 r1）'
+agent nomination cr $'/note\n読めない制御記録の知らせ: r1 squad'
+agent notice cr $'[@squad](mention://squad/squad) 返事がそろいました。\n読めない制御記録: r1 2 行目: 行頭の空白\n保存した結果: saved'
+state | jq -e '.id == "r1" and .returned == [] and .ready_ids == [] and .ready == false' >/dev/null
+agent regular qa $'/note\n読めない制御記録: 調べた行\n読めない制御記録の知らせ: r1 squad\n返事の回: r1'
+agent regular-notice L '返事がそろいました。'
+state | jq -e '.returned == ["qa"] and .ready_ids == ["regular-notice"] and .ready == true' >/dev/null
+echo 'PASS state: 直した回で、回に付けずに保存した結果・名乗り・読めない知らせを数えず、通常の返事と知らせを数える'
+
+reset
+agent r1 L "$edited_round"
+agent example qa $'/note\n```\n読めない制御記録の知らせ: r1 squad\n返事の回: 未定（読めない依頼 r1）\n```'
+agent example-notice cr $'返事がそろいました。\n```\n読めない制御記録: r1 2 行目: 行頭の空白\n```'
+state | jq -e '.returned == ["cr", "qa"] and .ready_ids == ["example-notice"]' >/dev/null
+echo 'PASS state: 囲みの中の例は、回に付けずに保存した結果や名乗りや読めない知らせの目印にしない'
+
 base
 agent record L $'/note\r\n修正の依頼: 直す\r> 前の回: r1'
 agent z-round qa $'返事を待つ役: '"$(mention qa)"$'\n  字下げ'

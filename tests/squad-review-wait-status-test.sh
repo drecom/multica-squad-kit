@@ -131,6 +131,31 @@ cp "$test_dir/ready.json" "$test_dir/comments.json"
 check_status '返事の待ち: 返事がそろっていて、まだ次へ回していない'
 echo 'PASS status: 全員が返して記録がなければ、知らせの有無を問わず proceed へ進む'
 
+# 認める回と同じ ID の依頼が読めなかったころに書いたコメントを残す。
+reset_calls
+round_ts=$((now - 120))
+round_time=$(jq -nr --argjson ts "$round_ts" '$ts | todateiso8601')
+round_comments
+with_raw saved "$a" agent 5 $'/note\n以前の結果\n返事の回: 未定（読めない依頼 round）' <"$test_dir/comments.json" \
+	| with_claim_only nomination "$a" 6 round squad-test \
+	| with_raw notice "$a" agent 7 $'[@squad](mention://squad/squad-test) 返事がそろいました。\n読めない制御記録: round 3 行目: 行頭の空白\n保存した結果: saved' \
+	>"$test_dir/edited-round.json"
+jq '.[0].content += "\n  字下げ"' "$test_dir/edited-round.json" >"$test_dir/comments.json"
+check_status_blocked '制御記録を読めない（round: 3 行目: 行頭の空白）'
+
+cp "$test_dir/edited-round.json" "$test_dir/comments.json"
+printf '[]' >"$test_dir/runs.json"
+check_status $'/note\n返事の待ち: 待つ上限に達しても返っていない役がいます\n- demo-code-reviewer-test: 実行なし\n- demo-qa-test: 実行なし' --timeout
+[[ $(bash "$script" proceed test-issue notice) == $'/note\n返事の待ち: 返っていない役がいるので何もしない' ]]
+[[ ! -s $test_dir/posted.jsonl ]]
+
+with_result new-a "$a" 8 <"$test_dir/edited-round.json" >"$test_dir/comments.json"
+check_status $'/note\n返事の待ち: 待つ上限に達しても返っていない役がいます\n- demo-qa-test: 実行なし' --timeout
+with_result new-b "$b" 9 <"$test_dir/comments.json" >"$test_dir/edited-round.json"
+cp "$test_dir/edited-round.json" "$test_dir/comments.json"
+check_status '返事の待ち: 返事がそろっていて、まだ次へ回していない'
+echo 'PASS status: 依頼をその場で直した回は、回に付けずに保存した結果・名乗り・読めない知らせを数えず、新しい返事を待つ'
+
 # CLI が秒までの時刻を返しても、当該コメントで始まった実行は拾う。
 round_ts=$((now - 120))
 round_time=$(jq -nr --argjson ts "$round_ts" '$ts | todateiso8601')
