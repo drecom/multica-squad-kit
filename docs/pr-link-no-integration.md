@@ -830,7 +830,7 @@ PR のタイトルは、GitHub で PR を直せる人なら誰でも書ける。
 | `docs/review-next-step.md`（回の PR） | `round-pr` の表とテストの表の `decide` のマージの依頼の行を 1・3・そのほかに分け、依頼の 4 の行を回の PR の表の値にする。4 の行を手で書く連携なしの依頼に足して回の PR を決められない依頼から除き、制御記録の表の「指す回」の行に、名簿のリーダーが書くマージの依頼の例外を足す |
 | `docs/pr-link-retry.md` | 目的と範囲に、連携なしのリポジトリでは試み直しの記録の扱いがこの文書に従うと 1 文足す |
 | `lib/questions.sh` | 候補が 0 件のときの案内に、[セットアップの案内](#セットアップの案内)の文を足し、手順書の節の名前を直す |
-| `README.md`、`manual.md` | [README と手順書](#readme-と手順書)のとおりに直す。手順書の 0 件の案内の文は、STYLE.md に合わせて常体にする |
+| `README.md`、`manual.md` | [README と手順書](#readme-と手順書)のとおりに直す。手順書の 0 件の案内の文は、STYLE.md に合わせて常体にし、A と B の項目の末尾に句点を付けない |
 | `tests/squad-pr-link-test.sh` | 120 秒のあいだ 404 で終わる今の場面を、タスクにプロジェクトのない入力にする。期待と、120 秒のうちに紐付く場面は変えない（[テスト](#テスト)） |
 | `tests/squad-pr-link-no-integration-test.sh` | 新しく足す（[テスト](#テスト)） |
 | `tests/squad-pr-watch-no-integration-test.sh` | 新しく足す。照合のデータを読めない場面、マージの依頼がない場面、書く前に回が変わる場面、知らせ済みの判定の場面を含める（[テスト](#テスト)） |
@@ -853,7 +853,7 @@ PR のタイトルは、GitHub で PR を直せる人なら誰でも書ける。
 | `tests/test-weights` | 新しいテストの行を、そのテストを足すのと同じコミットで足す。`tests/test-runner-test.sh` が重みの行とテストのファイルの一致を見るためで、場面を足したフェーズでは重みを手元の秒数に合わせて直す |
 | `tests/fixtures/base-size/rule-lines-changed.tsv` | `references/pr.md` で書き直した 2 行（識別子を持ち出さない項目と、push のたびにタイトルを直す段落）と `SKILL.md` の状態の表の `done` の行を、書き直した行として足す。理由の欄には、`pr.md` の 2 行は PR のタイトルの識別子を例外にしたため、`done` の行は連携のないリポジトリでは見張りが `done` にするためと書く |
 | `tests/fixtures/base-size/rule-lines-changed.tsv`（今ある行） | `leader-pr-link.md` の食い違いの行と `leader-pr-merge.md` の `unlinked` の行は、書き直した行の欄と理由の欄を直した文に合わせる。`leader-pr-merge.md` の `unlinked` の出力の扱いの文は、今の行があれば直し、なければ書き直した行として足す |
-| `tests/fixtures/base-size/rule-lines-changed.tsv`（手のマージ） | `leader-pr-link.md` の古い回の行と手で流す `unlinked` の段落、`leader-review-stuck.md` の 1 行目、`leader-principal-final.md` の依頼の行を、書き直した行として足す。理由の欄には、回の PR を決められないときの出口を足したためと書く |
+| `tests/fixtures/base-size/rule-lines-changed.tsv`（手のマージ） | `leader-review-stuck.md` の 1 行目と `leader-principal-final.md` の依頼の行を、回の PR を決められないときの出口を足したためという理由で足す。`leader-pr-link.md` の古い回の行と手で流す `unlinked` の段落は、分ける前にない行なので足さない |
 | `tests/agent-templates-test.sh` | `leader-pr-merge.md` の手で流す `unlinked` の期待を、`<回のコメント>` の表記に直す |
 | `docs/usage-reduction.md` | 「大きさの上限」に、`leader-pr-merge.md` の上限との差が小さいことを 1 文足す。この文書と同じコミットで足した |
 | `MANIFEST` | `bash scripts/manifest.sh` で作り直す |
