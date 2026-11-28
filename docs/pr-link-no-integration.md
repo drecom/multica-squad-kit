@@ -721,7 +721,7 @@ PR のタイトルは、GitHub で PR を直せる人なら誰でも書ける。
 | `common/monitor/squad-cli-lib`（マージの依頼の回） | `squad_cli_control merge_requested` に省略できる回の ID と PR を足す。渡されたら[マージの依頼の照合](#マージの依頼の照合)の表の作者から `マージの依頼:` までで読み、回が今の回でなければ `no` を返す |
 | `common/monitor/squad-cli-lib`（読めない候補） | 回を渡したときの読めない候補を、回より後で `マージの依頼:` を含むものにし、head と PR で絞らない。回を渡さない今の呼び手の動作は変えない |
 | `common/monitor/squad-cli-lib`（名簿の終了コード） | `squad_cli_read_roster` は、読み取りの失敗で 1、担当のスクワッドがないと確認できたときに 2 を返す（[照合のデータを読めないとき](#照合のデータを読めないとき)） |
-| `common/monitor/squad-pr-link-lib` | 記録のパスを決める・読む・作る・消す関数と、`pr_link_pull_request` の結果の `PR_LINK_ALL_404` を足す（[404 だけが続いたことの判定](#404-だけが続いたことの判定)）。今の `PR_LINK_NOT_FOUND` と戻り値と待ち方、`pr_link_request_once` は変えない |
+| `common/monitor/squad-pr-link-lib` | 記録のパスを決める・読む・作る・消す関数と、`pr_link_pull_request` の結果の `PR_LINK_ALL_404` を足す（[404 だけが続いたことの判定](#404-だけが続いたことの判定)）。今の `PR_LINK_NOT_FOUND` と戻り値と待ち方、`pr_link_request_once` は変えず、頭の関数の説明と `PR_LINK_NOT_FOUND` の注記を今の動作（期限を過ぎれば最後の応答によらず 1）に合わせて書き直す |
 | `common/monitor/squad-pr-link` | [記録がないとき](#記録がないとき)・[同時に作るとき](#同時に作るとき)・[記録があるとき](#記録があるとき)・[一覧の読み直し](#一覧の読み直し)の動作と、[知らせ](#知らせ)の文を足す |
 | `common/monitor/squad-pr-watch` | `link-check` に `連携: なし` の判定・[マークの書き直し](#マークの書き直し)・記録の削除・`連携: なし` のときの試み直しを足し、使い方のコメントを直す（`unlinked` の 2 つ目の引数は `<回のコメント>`）。`unlinked` に[登録の照合](#登録の照合)と規則の 2 行を、`unlinked-check` に `done` と見張りの終わりの知らせと [done の照合](#done-の照合)と [done にしなかったときの知らせ](#done-にしなかったときの知らせ)を足す |
 | `common/monitor/squad-pr-watch`（マージの依頼の照合） | `unlinked-check` の照合の 2 と 5 を、1 回読んだコメントの一覧から決める。`merge_requested` に `見張る PR:` も渡し、書く直前の読み直しでタスクの状態も比べる |
