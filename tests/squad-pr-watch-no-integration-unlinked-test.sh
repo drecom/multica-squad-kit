@@ -155,6 +155,24 @@ rogue_round() { add_comment rogue-round agent rogue "$(round_body "$pr")"; }
 prepare_extra=rogue_round merged_refuses '回が名簿の外のエージェントのコメント' "$(rule_lines "$pr" rogue-round)"
 result_round() { add_comment result-round agent orchestrator "$(round_body "$pr")"$'\n返事の回: round-1'; }
 prepare_extra=result_round merged_refuses '回が結果のコメント' "$(rule_lines "$pr" result-round)"
+# 回のコメントの `対象の PR:` が囲みの中・引用・項目・字下げにしかないとき、または囲みの外が 2 つのときは、PR がマージされても done にしない。
+for attack in fence tilde quote item indent two-outside; do
+	attack_round() {
+		local head=$'確認するコミット: abcdef0\n返事を待つ役: [@demo-monitor-test](mention://agent/monitor)\n観点: code-reviewer（テスト）' body
+		case $attack in
+		fence) body="$head"$'\n```\n対象の PR: '"$pr"$'\n```' ;;
+		tilde) body="$head"$'\n~~~\n対象の PR: '"$pr"$'\n~~~' ;;
+		quote) body="$head"$'\n> 対象の PR: '"$pr" ;;
+		item) body="$head"$'\n- 対象の PR: '"$pr" ;;
+		indent) body="$head"$'\n  対象の PR: '"$pr" ;;
+		two-outside) body="$head"$'\n対象の PR: '"$pr"$'\n対象の PR: '"$other" ;;
+		esac
+		# 回（round-1）の本文だけを差し替える。マージの依頼・規則の 2 行・metadata は、done になる場面のままにする。
+		jq --arg body "$body" 'map(if .id == "round-1" then .content = $body else . end)' "$test_dir/comments.json" >"$test_dir/changed.json"
+		mv "$test_dir/changed.json" "$test_dir/comments.json"
+	}
+	prepare_extra=attack_round merged_refuses "回の対象の PR が囲み・引用・項目・字下げか 2 つ: $attack"
+done
 # 登録のあとに pr_url と連携なしのマークを別のマージ済みの PR に書き換えても、回の PR と合わないので done にしない。
 swapped_marks() { update_task ".metadata.pr_url = \"$other\" | .metadata.pr_link_pending = \"$other\" | .metadata.pr_link_no_integration = \"$other\""; }
 prepare_extra=swapped_marks merged_refuses 'pr_url とマークが別の PR に変わった'

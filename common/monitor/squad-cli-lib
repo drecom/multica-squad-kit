@@ -2223,7 +2223,7 @@ squad_cli_human_of_squad() {
 # 制御記録と認める回の判定。review-next・review-wait・pr-watch が同じ判定を使う（docs/review-next-step.md の「制御記録の読み方」）。
 # 名簿は読まない。リーダーの ID の一覧と、必要なら名簿の最上位の役の ID の一覧を、呼び出し側が渡す。
 # 標準入力に {comments, leaders, principals} を渡し、モードで出すものを変える。
-#   analyze: 各コメントの {rounds, controls, finals} と rework_reviewed・short_path。finals は principals があるときだけ。
+#   analyze: 各コメントの {rounds, controls, finals} と rework_reviewed・short_path。rounds の pr_lines は、読める本文の囲みの外にある `対象の PR:` の行。finals は principals があるときだけ。
 #   merge_requested <head> [<回> <見張る PR>]: マージの依頼があれば yes、なければ no。回と PR を渡すと、作者・時刻・回・PR・head が合う依頼だけを読む（docs/pr-link-no-integration.md の「マージの依頼の照合」）。
 #     `前の回:`・`マージする PR:`・`マージの依頼:` は 1 行ずつ読む。回は同じ一覧の今の回、PR と 40 桁の head は大文字小文字を問わず照合する。
 #     回より後の読めない候補には `blocked` を返す。候補は `マージの依頼:` を含むかで拾い、回・PR・head の値で絞らない。回が見つからないか空のときは no を返す。
@@ -2671,6 +2671,7 @@ if mode == "analyze":
         rounds[i] = {
             "ok": ok, "reason": why, "kind": round_kind(i), "waited": waited(i),
             "prev": pid, "prev_line": present, "has_kind_line": field(i, "見直しの種類:") is not None,
+            "pr_lines": [line for line in parsed[i]["placed"] if line.startswith("対象の PR:")],
         }
         ctl = control(i)
         if ctl["kind"]:

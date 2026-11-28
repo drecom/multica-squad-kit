@@ -273,6 +273,42 @@ for name in human-round result-round rogue-round no-such-comment two-lines no-li
 done
 echo 'PASS round-pr: 回と認めないコメントと、対象の PR の行が 1 つでない回は、理由を 1 行出して 1 で終わる'
 
+# 囲みの中と引用・項目・字下げの `対象の PR:` は読まない。囲みの外に 1 つだけあれば、それを読む。
+fence=$'```'
+head_lines=$'確認するコミット: abcdef0\n返事を待つ役: [@demo-monitor-test](mention://agent/monitor)\n観点: code-reviewer（テスト）'
+for name in fence-only tilde-only quote-only item-only indent-only fence-two-outside real-and-fence-two; do
+	register_reset
+	case $name in
+	fence-only) body="$head_lines"$'\n'"$fence"$'\n対象の PR: '"$repo_pr"$'\n'"$fence" ;;
+	tilde-only) body="$head_lines"$'\n~~~\n対象の PR: '"$repo_pr"$'\n~~~' ;;
+	quote-only) body="$head_lines"$'\n> 対象の PR: '"$repo_pr" ;;
+	item-only) body="$head_lines"$'\n- 対象の PR: '"$repo_pr" ;;
+	indent-only) body="$head_lines"$'\n  対象の PR: '"$repo_pr" ;;
+	fence-two-outside) body="$head_lines"$'\n対象の PR: '"$repo_pr"$'\n対象の PR: '"$repo_other" ;;
+	real-and-fence-two) body="$head_lines"$'\n対象の PR: '"$repo_pr"$'\n'"$fence"$'\n対象の PR: '"$repo_other"$'\n対象の PR: '"$repo_pr"$'\n'"$fence" ;;
+	esac
+	add_comment round-1 agent orchestrator "$body"
+	run_round_pr round-1
+	if [[ $name == real-and-fence-two ]]; then
+		[[ $status == 0 && $(<"$test_dir/output") == "$repo_pr" ]] || { echo "囲みの外の 1 行を読まない: $name: $status: $(<"$test_dir/output")" >&2; exit 1; }
+	else
+		[[ $status == 1 && $(grep -c . "$test_dir/output") == 1 ]] || { echo "囲みや引用の行を読んだ: $name: $status: $(<"$test_dir/output")" >&2; exit 1; }
+	fi
+	# unlinked の登録も同じ読み方で、2 行を足さない。
+	register_reset
+	add_comment round-1 agent orchestrator "$body"
+	no_integration "$repo_pr"
+	run_unlinked round-1 monitor
+	if [[ $name == real-and-fence-two ]]; then
+		[[ $status == 0 ]]
+		assert_jq -s '.[0].body | contains("見張る PR: '"$repo_pr"'")' "$test_dir/wakeups.jsonl"
+	else
+		[[ $status == 1 ]]
+		assert_jq -s '(.[0].body // "") | contains("見張る PR:") | not' "$test_dir/wakeups.jsonl"
+	fi
+done
+echo 'PASS round-pr: 囲み・引用・項目・字下げの対象の PR は読まず、囲みの外の 1 行だけを読む。行が 2 つなら読まない'
+
 # 引数が足りないか多いときは、使い方を出して 2 で終える。
 for args in 'round-pr test-issue' 'round-pr test-issue round-1 extra'; do
 	status=0

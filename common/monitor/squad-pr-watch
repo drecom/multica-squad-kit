@@ -852,8 +852,8 @@ unlinked_round_pr() {
 		echo "$value"
 		return 2
 	fi
-	lines=$(jq -r --arg round "$round" '[.[] | select(.id == $round) | (.content // "") | gsub("\r\n?"; "\n") | split("\n")[]
-		| select(startswith("対象の PR:"))] | .[]' <<<"$comments") || { echo '回のコメントを読めない'; return 3; }
+	# 回の PR は、回の判定と同じ読み方（読める本文の囲みの外の行）で読む。コードブロックや引用の例の行は読まない。
+	lines=$(jq -r --arg round "$round" '.rounds[$round].pr_lines[]?' <<<"$judge") || { echo '回のコメントを読めない'; return 3; }
 	if [[ $(grep -c . <<<"$lines") != 1 ]]; then
 		echo '回のコメントの `対象の PR:` の行が 1 つでない'
 		return 1
