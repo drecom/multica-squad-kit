@@ -227,3 +227,57 @@ for args in 'human-round monitor' 'no-such-comment monitor'; do
 	assert_jq -s 'length == 1 and (.[0].body | contains("見張る PR:") | not) and (.[0].body | contains("確認した回:") | not)' "$test_dir/wakeups.jsonl"
 done
 echo 'PASS unlinked: 連携なしでなく回を認められなければ、2 行を足さずに登録し、標準エラーに理由を 1 行出す'
+
+# round-pr は、unlinked と同じ読み方で回の `対象の PR:` を出す。何も書かず、規則も作らない。
+run_round_pr() {
+	status=0
+	: >"$test_dir/wakeups.jsonl"
+	(cd "$test_dir" && bash "$script" round-pr test-issue "$@") >"$test_dir/output" 2>"$test_dir/error" || status=$?
+	[[ ! -s $test_dir/wakeups.jsonl && ! -s $test_dir/posted.jsonl ]] || { echo 'round-pr が規則かコメントを書いた' >&2; return 1; }
+}
+
+# 今の回は、回の `対象の PR:` の正規形を 1 行出して 0 で終える。
+register_reset
+add_comment round-1 agent orchestrator "$(round_body "$repo_pr")"
+run_round_pr round-1
+[[ $status == 0 && ! -s $test_dir/error && $(<"$test_dir/output") == "$repo_pr" ]] || { echo "今の回が 0 で終わらない: $status: $(<"$test_dir/output")" >&2; exit 1; }
+register_reset
+add_comment round-1 agent orchestrator "$(round_body 'https://github.com/Example/Repo/pull/67/files?diff=split')"
+run_round_pr round-1
+[[ $status == 0 && ! -s $test_dir/error && $(<"$test_dir/output") == 'https://github.com/Example/Repo/pull/67' ]] || { echo "正規形で出ない: $status: $(<"$test_dir/output")" >&2; exit 1; }
+echo 'PASS round-pr: 今の回は、回の対象の PR の正規形を 1 行出して 0 で終え、何も書かない'
+
+# あとに新しい回があれば、今の回の ID を 1 行出して 2 で終える。
+register_reset
+add_comment round-1 agent orchestrator "$(round_body "$repo_pr")"
+add_comment round-2 agent orchestrator "$(round_body "$repo_other")"
+run_round_pr round-1
+[[ $status == 2 && ! -s $test_dir/error && $(<"$test_dir/output") == round-2 ]] || { echo "古い回が 2 で終わらない: $status: $(<"$test_dir/output")" >&2; exit 1; }
+run_round_pr round-2
+[[ $status == 0 && $(<"$test_dir/output") == "$repo_other" ]] || { echo "新しい回が 0 で終わらない: $status: $(<"$test_dir/output")" >&2; exit 1; }
+echo 'PASS round-pr: あとに新しい回がある回は、今の回の ID を出して 2 で終わる'
+
+# 回と認めないコメントと、対象の PR の行が 1 つでない回は、理由を 1 行出して 1 で終える。
+register_reset
+add_comment human-round member human-1 "$(round_body "$repo_pr")"
+add_comment result-round agent orchestrator "$(round_body "$repo_pr")"$'\n返事の回: round-1'
+add_comment rogue-round agent rogue "$(round_body "$repo_pr")"
+for name in human-round result-round rogue-round no-such-comment two-lines no-line not-a-url; do
+	case $name in
+	two-lines) add_comment two-lines agent orchestrator "$(round_body "$repo_pr" "$repo_pr")" ;;
+	no-line) add_comment no-line agent orchestrator "$(round_body)" ;;
+	not-a-url) add_comment not-a-url agent orchestrator "$(round_body 'not a url')" ;;
+	esac
+	run_round_pr "$name"
+	[[ $status == 1 && ! -s $test_dir/error && $(grep -c . "$test_dir/output") == 1 ]] || { echo "読めない回が 1 で終わらない: $name: $status: $(<"$test_dir/output")" >&2; exit 1; }
+done
+echo 'PASS round-pr: 回と認めないコメントと、対象の PR の行が 1 つでない回は、理由を 1 行出して 1 で終わる'
+
+# 引数が足りないか多いときは、使い方を出して 2 で終える。
+for args in 'round-pr test-issue' 'round-pr test-issue round-1 extra'; do
+	status=0
+	# shellcheck disable=SC2086
+	(cd "$test_dir" && bash "$script" $args) >"$test_dir/output" 2>"$test_dir/error" || status=$?
+	[[ $status == 2 && ! -s $test_dir/output ]] && grep -q 'round-pr <タスク> <回のコメント>' "$test_dir/error" || { echo "引数の数で 2 で終わらない: $args: $status" >&2; exit 1; }
+done
+echo 'PASS round-pr: 引数の数が違えば使い方を標準エラーに出し、2 で終わる'

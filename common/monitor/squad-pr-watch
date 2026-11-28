@@ -36,6 +36,10 @@
 #     回を認められないときは、連携なし（pr_link_no_integration が pr_url と同じ）なら規則を作らずに 1 で終わり、それ以外は 2 行を足さずに登録する。
 #     リーダーの ID は、省くと MULTICA_AGENT_ID から読む。unlinked-check に渡す ID と、見張り役がないときの起こす宛先になる。
 #     見張り役を渡したときは、今のとおり見張り役を起こす。
+#   squad-pr-watch round-pr <タスク> <回のコメント>
+#     回のコメントの `対象の PR:` の正規形を 1 行出す。`unlinked` が登録の照合に使う読み方と同じで、何も書かず、規則も作らない。
+#     回が今の回なら 0 で終わる。あとに新しい回があるときは今の回の ID を出して 2 で終わる。
+#     回と認められないときと `対象の PR:` が 1 つの PR の URL でないときは、理由を出して 1 で終わる。データを読めないときは 3 で終わる。
 #   squad-pr-watch unlinked-check <タスク> <リーダーの ID> [<見張り役の ID>]
 #     終了・紐付けを先に確認し、CI とコンフリクト、食い違いを重複なく知らせる。
 #   squad-pr-watch ci-wait <タスク> <リーダー> <きっかけのコメント> [<起きた規則>]
@@ -53,7 +57,7 @@ UNLINKED_LIMIT_HOURS=72
 UNLINKED_MAX_FIRES=100
 
 usage() {
-	echo '使い方: squad-pr-watch link-check <タスク> [<きっかけのコメント>] | conflicts <タスク> [--leader <リーダーの ID>] | conflicts-check <タスク> | ci <タスク> <見張り役の ID> <きっかけのコメント> | ci-check <タスク> <リーダーの ID> <見張り役の ID> | ci-now <タスク> <リーダーの ID> <きっかけのコメント> [<見張り役の ID>] | ci-held <タスク> <きっかけのコメント> | unlinked <タスク> <回のコメント> [<見張り役の ID>] [--leader <リーダーの ID>] | unlinked-check <タスク> <リーダーの ID> [<見張り役の ID>] | ci-wait <タスク> <リーダー> <きっかけのコメント> [<起きた規則>] | ci-wait-clear <タスク>' >&2
+	echo '使い方: squad-pr-watch link-check <タスク> [<きっかけのコメント>] | conflicts <タスク> [--leader <リーダーの ID>] | conflicts-check <タスク> | ci <タスク> <見張り役の ID> <きっかけのコメント> | ci-check <タスク> <リーダーの ID> <見張り役の ID> | ci-now <タスク> <リーダーの ID> <きっかけのコメント> [<見張り役の ID>] | ci-held <タスク> <きっかけのコメント> | unlinked <タスク> <回のコメント> [<見張り役の ID>] [--leader <リーダーの ID>] | round-pr <タスク> <回のコメント> | unlinked-check <タスク> <リーダーの ID> [<見張り役の ID>] | ci-wait <タスク> <リーダー> <きっかけのコメント> [<起きた規則>] | ci-wait-clear <タスク>' >&2
 	exit 2
 }
 
@@ -1579,6 +1583,11 @@ unlinked)
 	(($# == 3 || $# == 4)) || usage
 	require_commands jq python3 multica
 	unlinked "$2" "$3" "${4-}" "$leader_arg"
+	;;
+round-pr)
+	(($# == 3)) || usage
+	require_commands jq python3 multica
+	unlinked_round_pr "$2" "$3"
 	;;
 unlinked-check)
 	(($# == 3 || $# == 4)) || usage

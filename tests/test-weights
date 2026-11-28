@@ -136,7 +136,7 @@ tests/squad-pr-watch-register-test.sh 58
 tests/squad-pr-watch-unlinked-check-test.sh 69
 tests/squad-pr-watch-unlinked-concurrent-test.sh 22
 tests/squad-pr-watch-unlinked-register-test.sh 20
-tests/squad-pr-watch-unlinked-test.sh 25
+tests/squad-pr-watch-unlinked-test.sh 31
 tests/squad-pr-watch-url-test.sh 16
 tests/squad-preflight-test.sh 14
 tests/squad-review-next-arg-limit-test.sh 63
