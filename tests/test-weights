@@ -168,6 +168,7 @@ tests/squad-review-next-test.sh 128
 tests/squad-review-wait-body-test.sh 21
 tests/squad-review-wait-contract-test.sh 38
 tests/squad-review-wait-report-failure-test.sh 62
+tests/squad-review-wait-report-notice-test.sh 4
 tests/squad-review-wait-report-proceed-test.sh 54
 tests/squad-review-wait-report-test.sh 71
 tests/squad-review-wait-report-unreadable-test.sh 27
