@@ -164,6 +164,7 @@ tests/squad-review-next-decide-unexecuted-test.sh 133
 tests/squad-review-next-decide-unlinked-test.sh 120
 tests/squad-review-next-decide-unreadable-scenario-test.sh 90
 tests/squad-review-next-decide-written-test.sh 39
+tests/squad-review-next-diagnose-test.sh 25
 tests/squad-review-next-request-test.sh 95
 tests/squad-review-next-test.sh 128
 tests/squad-review-wait-body-test.sh 21

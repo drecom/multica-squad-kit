@@ -50,6 +50,9 @@ emit() { stub "$@"; }
 case "${1-} ${2-} ${3-}" in
 'version  ') echo 'multica fixture-version' ;;
 'squad list --output') emit emit squad-list "$dir/squads.json" ;;
+'squad member list') emit emit squad-member-list "$dir/members.json" ;;
+'issue label list') emit emit issue-labels "$dir/issue-labels.json" ;;
+'label list --output') emit emit label-list "$dir/labels.json" ;;
 "agent get $3")
  jq --arg id "$3" '.[] | select(.id == $id)' "$dir/agents.json" >"$dir/agent-response.json"
  emit emit agent-get "$dir/agent-response.json" ;;
