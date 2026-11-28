@@ -132,6 +132,7 @@ Claude Code の共有の `settings.json` に、フックと deny のルールを
 | --- | --- | --- |
 | `hooks.PreToolUse` | `Bash`・`Write`・`Edit`・`NotebookEdit` に、キットの PreToolUse のスクリプト | 守りを外すコマンドと書き込みを止める |
 | `hooks.Stop` | キットの Stop のスクリプト | 最後のコメントがない終わり方を続けさせる |
+| `hooks.StopFailure`・`hooks.SessionEnd` | キットの 2 つのスクリプト | 止まった理由を記録する（[役の実行の上限と止まった理由の記録](agent-run-stops.md)） |
 | `permissions.deny` | `Read` の人の `gh` の置き場・ホームの `.ssh`・`.git-credentials`・`.netrc` | 認証情報のファイルを、Read で読ませない |
 | `permissions.deny` | `PushNotification` | 無人の実行から、外へ知らせる道具を使わせない |
 | `permissions.blockWritesOutsideWorkingDirectories` | `true` | Write と Edit で、作業ディレクトリの外を書かせない |

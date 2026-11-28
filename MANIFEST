@@ -99,9 +99,10 @@ b95232d26ae1ae5fcdb6af4dadc63d3877c2a4f4a21d0a87752b2acf606c5dc5  ./common/skill
 77ceb35ddbb3520a7053b58a204f6da4b1340a2cb7de2dba89db48d4160dfb26  ./common/skills/squad-handoff/references/run-cut.md
 3f91e3e8613df7240d8eb1cac9116181ef22e772bb6f3273a93302dc65eae439  ./common/skills/squad-handoff/references/writing-forms.md
 19bf4eb0781004c0e270fd227004025b6e7a266a452098c2d4aae01d85b1018b  ./common/squad.md
-110fcbafebe54002621d8d204386d83a8315daa847056df5ac85940423aa685d  ./docs/README.md
-d97497bce384b2fd86bf89a19c710af539066f6c9dcbfc430a971989150fef75  ./docs/agent-guards.md
+2011a84f5df03e9384502d8b63593df9f60c40c2857db6150b16382786d7c6f0  ./docs/README.md
+38696ae5eb660793a98894bdff406a24e9281e85fec7680f81a3b984233ed19a  ./docs/agent-guards.md
 c380ac8fd57091fa1d1ad80ff9724cba6667a7199b440a40b4be9b0e25f83623  ./docs/agent-path.md
+b8910f3926baf82b959357c6fc91edb3de87db1013b77b1429031ac21edeeca8  ./docs/agent-run-stops.md
 ed0c9c538d24d6aa2dd4b33667c6346375fbb9502f2c6cbae3ed03120b13b55b  ./docs/agent-settings.md
 e1053a8614b8876ec371c43684db9c0ab2a90ad31fe7699dcac0272127ca81e0  ./docs/autopilot-targets.md
 345e824a373fcf5a1f3f7b1254fb1ef340bce2cc436c77aa29122f72cbd29244  ./docs/bug-repro-test.md
