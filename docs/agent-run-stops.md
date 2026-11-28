@@ -116,6 +116,8 @@ StopFailure・SessionStart・SessionEnd の 3 つのフックは、今の PreToo
 
 入力の `last_assistant_message` は、モデルの出力で、作業先の内容を含みうるので書かない。置き場は権限 700、ファイルは 600 にし、1 行を 1 回の書き込みで足す。
 
+`run-stops` と `run-stops/start` のディレクトリと、その中のファイルは、シンボリックリンクをたどらずに、確認したディレクトリを起点に開く。すでにあるものは、ディレクトリか通常のファイルで、フックを動かす利用者の持ち物で、グループと他人に権限がないときだけ使う。合わないときは、読まず書かずに 0 で終わる。役の子プロセスが置いたリンクを通して、置き場の外に書かないためである。
+
 書けないときは、何も出さずに 0 で終わる。StopFailure では、フックの出力と終了コードは実行の結果に効かなかった。記録の失敗で、実行の終わり方を変えないためである。
 
 ### SessionEnd での手数の上限の見分け
@@ -126,19 +128,21 @@ SessionStart のフックは、次のとおりに始めの長さを残す。
 
 1. 入力の `hook_event_name` が `SessionStart` で、`session_id` が UUID の形かを見る
 2. `transcript_path` を、下の SessionEnd の手順 2 と同じく確認する。ファイルがまだないときは、長さを 0 とする
-3. 状態の置き場の `run-stops/start/<session_id>` に、そのときのファイルの長さをバイトの数で書く
+3. 状態の置き場の `run-stops/start/<session_id>` に、`MULTICA_TASK_ID` と、そのときのファイルの長さをバイトの数で、空白で区切った 1 行に書く。同じディレクトリの一時ファイルに書いてから名前を替え、書きかけを読ませない
 
 SessionEnd のフックは、次のとおりに見分ける。
 
 1. 入力の `hook_event_name` が `SessionEnd` で、`session_id` が UUID の形かを見る
 2. `transcript_path` の実体が、`CLAUDE_CONFIG_DIR` の `projects` の下にあり、名前が `<session_id>.jsonl` の通常のファイルかを見る
-3. `run-stops/start/<session_id>` から、始めの長さを数として読む
+3. `run-stops/start/<session_id>` から、タスクと始めの長さを読む。タスクが今の `MULTICA_TASK_ID` と同じで、長さが数のときだけ使う
 4. ファイルの末尾の 64 KiB から、`uuid` の欄を持つ最後の行を探す
 5. その行の始まりが、始めの長さより後ろにあるかを見る
 6. その行が添付の型 `max_turns_reached` で、`sessionId` が入力の `session_id` と同じかを見る
 7. その行の `timestamp` が、フックの時刻の 10 分前より後かを見る
 
 すべて合うときだけ、`max_turns` で記録する。始めの長さがないか読めないときは、今回の実行との対応が取れないので記録しない。どれかが合わなければ、記録せずに 0 で終わる。
+
+始めの長さにタスクを添えるのは、ファイルの名前が `session_id` だけで決まるためである。同じ OS の利用者のプロセスが書けるので、別のタスクの実行が残した長さでは見分けない。
 
 SessionEnd は、合うかどうかによらず、そのセッションの始めの長さのファイルを消す。SessionStart は、7 日より古い始めの長さのファイルを消す。SessionEnd が届かずに終わった実行の分を、ためないためである。始めの長さのファイルは、記録のファイルと同じく権限 600 にする。
 
@@ -154,15 +158,17 @@ Claude Code の資料では、SessionStart は会話の圧縮のあとにも届�
 
 Codex の役の理由は、キットの記録ではなく、Multica の実行の記録で実行ごとに読む。Codex には失敗を受けるフックがなく、認証の失敗では Stop も届かなかったためである。
 
-Multica の実行の記録は、`multica agent tasks <役の ID> --output json` の `failure_reason` と `error` の欄に出る。失敗した実行ごとに、次の表を上から当てはめ、最初に合った行をその実行の理由とする。
+Multica の実行の記録は、`multica agent tasks <役の ID> --output json` の `failure_reason` と `error` の欄に出る。失敗した実行ごとに、先に構造化した理由の `failure_reason` を読み、次の表で理由を決める。
 
-| 理由 | 実行の記録で合うもの | このホストでの確認 |
+| 理由 | `failure_reason` | このホストでの確認 |
 | --- | --- | --- |
-| 認証の失敗 | `failure_reason` が `agent_error.provider_auth_or_access` か、`error` が `401 Unauthorized` を含む | `codex exec` で 401 の文を確認した。Multica の記録は実機の確認 6 で確認する |
-| 使用上限 | `failure_reason` が `agent_error.provider_quota_limit` か、`error` が `hit your usage limit` を含む | 使用上限の 429 を返す手元のサーバーで、`codex exec` がこの文で失敗した。Multica の記録は実機の確認 8 で確認する |
-| 起動の失敗など | ほかの値 | `agent_error.process_failure` を確認した |
+| 認証の失敗 | `agent_error.provider_auth_or_access` | Multica の記録は実機の確認 6 で確認する |
+| 使用上限 | `agent_error.provider_quota_limit` | Multica の記録は実機の確認 8 で確認する |
+| 起動の失敗など | ほかの値か、ない | `agent_error.process_failure` を確認した |
 
-`error` に照合する文は、Codex 0.172.0 のものである。Codex の文は引用符に `’` を使うので、その後ろの `hit your usage limit` から照合する。
+`failure_reason` が起動の失敗などの行のときだけ、`error` の文を手がかりに読む。`error` が `hit your usage limit` だけを含めば使用上限、`401 Unauthorized` だけを含めば認証の失敗と見込む。両方を含むか、どちらも含まなければ、起動の失敗などのままにする。`error` はツールの出力を含み、別の依頼の 401 の文が入りうるので、構造化した理由より先に読まない。
+
+`error` に照合する文は、Codex 0.172.0 のものである。このホストの `codex exec` で、401 の文と、使用上限の 429 を返す手元のサーバーでの文を確認した。Codex の文は引用符に `’` を使うので、その後ろの `hit your usage limit` から照合する。
 
 見張りの行とタスクは、実行の理由を決める根拠にしない。見張りの limited は定期に見た枠の状態で、個々の実行との対応がないためである。ログインの error と使用上限の limited のタスクは、同じころの別の失敗に気づく手がかりとして読む。
 
@@ -209,6 +215,10 @@ Claude Code は、`claude --version` で最低のバージョン以上かを先�
 
 ただし、limited から warn に変わったときは、今のとおり「戻った」と再実行の案内をコメントする。warn の始めの文に替えると、使用上限で失敗したタスクを再実行する案内がなくなるためである。
 
+ok でない状態どうしで変わったときは、コメントの前に、同じタスクの題と本文を新しい状態のものに書き換える。題は上の表の新しい状態の題にキーを付けたもの、本文は作るときと同じ形で、新しい状態の始めの文から始める。期限が切れたあとも warn の題と「期限の前に」の文が残ると、開いた人が次の操作を誤るためである。前の状態からの経過は、コメントに残る。
+
+書き換えは `multica issue update` の `--title` と `--description-file` で行い、limited から warn の変化でも行う。書き換えられなかったときも、コメントと状態の記録は続け、見張りの実行を 1 で終える。使用上限の行にも同じく効く。
+
 ログインが error のツールは、使用率を読まない。同じ原因で、使用量を取れないタスクが重ねてできないためである。そのツールの使用上限の行は、前回の状態のまま残す。確認失敗のツールは、使用率を読む。
 
 ### 更新する前のタスクの確認
@@ -222,6 +232,10 @@ Claude Code は、`claude --version` で最低のバージョン以上かを先�
 5. 題が、全角の括弧で囲んだ、いま処理しているキーで終わるかを見る
 
 どれかが合わなければ、コメントも done もしない。状態のファイルからそのタスクを外し、外したことを stderr に書く。見張りの実行は、ラベルの失敗と同じく 1 で終える。使用上限の行にも同じく効く。
+
+タスクを読めないときは、状態から外さずに前回のまま残す。どちらの場合も、ほかの行と、あとのランタイムとログインの行の処理を続けてから、1 で終える。
+
+状態のファイルの行は、題にキーを付けたタスクを指すと確認したら、印 `keyed` を付けて残す。キットが作ったタスクの行と、上の確認に合った行に付ける。印のない行にタスクがあるときは、状態が変わらなくても、その実行で上の確認をする。流し直す前に作った題にキーのないタスクが、状態の変わらないあいだ残り続けないためである。
 
 手順 5 で、同じ見張りが同じプロジェクトに作った、別のキーのタスクを更新しない。照合するキーは状態のファイルのキーで、題はサーバーの値である。状態のファイルが書き換えられても、別のキーのタスクの題とは合わない。人が題を書き換えたタスクも合わず、状態から外れる。
 
@@ -333,14 +347,14 @@ Codex に同じものがある項目は、このホストの Codex で確認し�
 | StopFailure の入力の `error`（Claude Code が書く） | 理由の記録 | `hook_event_name` が `StopFailure` で、知っている値 | 知らない値は `unknown` にする |
 | StopFailure の入力の `last_assistant_message`（モデルの出力で、作業先の内容に動かされうる） | 読まない | なし | 記録に写さない |
 | SessionStart と SessionEnd の入力の `session_id`・`transcript_path`（Claude Code が書く。指す先は役とその子プロセスも書ける） | 始めの長さと、手数の上限の見分け | `session_id` が UUID の形で、実体が設定ディレクトリの `projects` の下の `<session_id>.jsonl` の通常のファイル | 読まずに 0 で終わり、書かず記録しない |
-| 始めの長さのファイル（フック・役・その子プロセスが書ける） | 今回の実行で足された行の範囲 | 入力と同じ `session_id` の名前で、数として読める | 記録しない |
+| 始めの長さのファイル（フック・役・その子プロセスが書ける） | 今回の実行で足された行の範囲 | 入力と同じ `session_id` の名前の、自分の持ち物で権限 600 の通常のファイルにある。タスクが今の `MULTICA_TASK_ID` と同じで、長さを数として読める | 記録しない |
 | 実行の記録の末尾の行（Claude Code・役・その子プロセスが書ける） | 手数の上限の見分け | `uuid` を持つ最後の行が始めの長さより後ろにあり、`max_turns_reached` の添付で、`sessionId` が入力と同じで、10 分以内 | 記録しない |
 | `MULTICA_TASK_ID`・`MULTICA_AGENT_ID`（デーモンが渡す。役の子プロセスも変えられる） | 記録の欄 | あれば写す | `MULTICA_TASK_ID` がなければ何もしない |
 | `claude --version` の出力（Claude Code が書く） | 最低のバージョンの確認 | 先頭をバージョンとして読め、最低以上 | セットアップは止まる。見張りは確認失敗の行にする |
 | `claude auth status --json` の出力（`CLAUDE_CONFIG_DIR` の資格から Claude Code が書く。メールアドレスと組織を含む） | ログインの見張り | 終了コード 0 で 2 つの欄を JSON として読めるか、終了コード 1 で `loggedIn` が false。ok に戻るのは、同じ実行で使用量を読めたときだけ | 確認失敗の行にする。出力は写さない |
 | `codex login status` の終了コードと出力（`CODEX_HOME` の資格から Codex が返す） | ログインの見張り | 0 はローカルの状態だけを示す。戻ったとするのは同じ実行で使用量を読めたとき | 1 と `Not logged in` は error、ほかは確認失敗にする。出力は写さない |
 | 見張りの状態のファイルの `issue`（見張りと、同じ OS の利用者のプロセスが書ける） | コメントと done の対象 | サーバーのタスクのプロジェクト・作者と、題の始めと終わりのキーが、[更新する前のタスクの確認](#更新する前のタスクの確認)に合う | 更新せず、状態から外し、stderr に書いて 1 で終える |
-| Multica の実行の記録の `failure_reason`・`error`（Multica が書く。`error` はツールの出力を含む） | Codex の止まった理由 | 人が [Codex の止まった理由](#codex-の止まった理由) の表の順に照合する | どの行にも合わなければ、起動の失敗などとして読む |
+| Multica の実行の記録の `failure_reason`・`error`（Multica が書く。`error` はツールの出力を含む） | Codex の止まった理由 | 人が [Codex の止まった理由](#codex-の止まった理由) のとおり、`failure_reason` を先に読む。`error` は `failure_reason` で決まらないときの手がかりにする | `error` が両方の文を含むか、どちらも含まなければ、起動の失敗などとして読む |
 | 止まった理由の記録のファイル（フック・役・その子プロセスが書ける） | 人が手がかりとして読む | なし | 自動の判断には使わない |
 
 記録のファイルと実行の記録は、同じ OS の利用者のプロセスが書ける。偽の行で記録の理由が違っても、記録は人が読む手がかりで、役の判断にもガードにも使わない。この境界は[残る危うさ](#残る危うさ)に書く。
@@ -353,12 +367,15 @@ Codex に同じものがある項目は、このホストの Codex で確認し�
 | --- | --- |
 | `common/guard/stop-failure` | 新しく置く。StopFailure の入力から理由を記録する |
 | `common/guard/session-end` | 新しく置く。手数の上限で終わった実行を記録する |
-| `common/guard/session-start` | 新しく置く。実行の始めの記録の長さを残す |
+| `common/guard/session-start` | 新しく置く。実行の始めの記録の長さを、タスクと一緒に残す |
 | `lib/host.sh` | 合わせるフックに StopFailure・SessionStart・SessionEnd を `timeout` 付きで足し、3 つのスクリプトをガードの置き場に写す。置く前に確認する置き先の一覧にも 3 つの名前を足す |
 | `lib/check.sh` | Claude を使うとき、Claude Code の最低のバージョンを確認する |
 | `lib/project.sh` | Claude のモデルの役の custom_env に、手数の上限とコマンドの時間切れの既定を足す。人が上げた値は残し、付け外しする変数の一覧にも足す |
-| `common/monitor/squad-usage-check` | ログインの行と更新する前のタスクの確認を足し、題の終わりにキーを付け、ok でない状態どうしの変化をコメントし、実行の結果の説明にタスクを外したときを足す。`USAGE_LOGIN_WARN_DAYS` が 0 から 9999 の整数でなければ 1 で終え、ログインを読む時間切れの秒数はテストだけが `USAGE_LOGIN_READ_SECONDS` で変える |
+| `common/monitor/squad-usage-check` | ログインの行と、更新する前のタスクの確認を足す。印のない行のタスクは、状態が変わらなくても確認する |
+| `common/monitor/squad-usage-check` | 題の終わりにキーを付け、ok でない状態どうしの変化で題と本文を書き換えてコメントする。実行の結果の説明に、タスクを外したときを足す |
+| `common/monitor/squad-usage-check` | `USAGE_LOGIN_WARN_DAYS` が 0 から 9999 の整数でなければ 1 で終える。ログインを読む時間切れの秒数は、テストだけが `USAGE_LOGIN_READ_SECONDS` で変える |
 | `manual.md` | 「受け取る人の準備」に最低のバージョンを書く。「ホストとエージェント用のログイン」と「止まったときに見ること」に、ログインのタスクの直し方と、記録と Codex の実行の記録の読み方を書く |
+| `manual.md` | Codex の実行の記録は `failure_reason` を先に読むと書く。流し直す前のタスクは、状態によらず最初の実行で外れると書く |
 | `CHANGELOG.md` | 先頭の `## 次のバージョン` の節に、流し直しで変わることを書く |
 | `tests/` | [テストと実機の確認](#テストと実機の確認)のとおりに足す |
 | `tests/setup-fixture.sh`・`tests/host-test-lib.sh`・`tests/setup-runtimes-test-lib.sh` | Claude のスタブに `--version` の応答を足し、ランタイムの呼び出しの比較から `claude --version` を除く。`tests/setup-runtimes-test-lib.sh` は、見張りの状態にログインの行があることも確認する |
@@ -379,6 +396,7 @@ Codex に同じものがある項目は、このホストの Codex で確認し�
 - 状態の置き場に、止まった理由の記録のファイルが増える
 - 見張りのタスクに、`[ログイン]` で始まるものが増える
 - 見張りが作るタスクの題の終わりに、キーが付く
+- ok でない状態どうしで変わると、見張りのタスクの題と本文が新しい状態のものになる
 - ログインが切れたツールについて、使用量を取れないタスクができなくなる
 
 custom_env と設定は、役の次の実行から効く。デーモンを起動し直す必要はない。
@@ -391,7 +409,7 @@ custom_env と設定は、役の次の実行から効く。デーモンを起動
 | --- | --- | --- |
 | 1 回の実行のターンの数が上限を超える | Claude の役の実行 | 記録の理由を見て、タスクを分けるか `multica issue rerun` で再実行する。続けて達するなら、その役の custom_env の値を上げる |
 | Claude Code が最低のバージョンより古い | セットアップの道具の確認 | Claude Code を新しくしてから、流し直す |
-| 流し直す前に開いていた見張りのタスクがある | 流し直したあと最初の見張りの実行 | 題にキーがないので状態から外れ、見張りの実行が 1 回失敗する。古いタスクを手で done にし、戻っていない枠のタスクはキーの付いた題で作り直される |
+| 流し直す前に開いていた見張りのタスクがある | 流し直したあと最初の見張りの実行 | 題にキーがないので、状態が変わらなくても最初の実行で状態から外れ、その実行が 1 で終わる。古いタスクは手で done にし、ok でない枠のタスクは次の実行でキーの付いた題で作り直される |
 
 上げた値は、流し直しでも残る（[値の付け外し](#値の付け外し)）。
 
@@ -433,12 +451,19 @@ custom_env と設定は、役の次の実行から効く。デーモンを起動
 | 足す `tests/run-stops-test.sh` | 上限の添付が始めの長さより前にあり、そのあとに `uuid` の行がない記録を記録しないこと。始めの長さがない記録も記録しないこと |
 | 足す `tests/run-stops-test.sh` | SessionEnd が始めの長さのファイルを消し、SessionStart が 7 日より古いものを消すこと |
 | 足す `tests/run-stops-test.sh` | 置き場の外・名前の違い・シンボリックリンクの記録を読まないこと |
+| 足す `tests/run-stops-test.sh` | 始めの長さのファイルのタスクが今の `MULTICA_TASK_ID` と違うとき、記録しないこと |
+| 足す `tests/run-stops-test.sh` | `run-stops` かその中が、シンボリックリンク・通常でないファイル・グループか他人に権限のあるものなら、読まず書かずに 0 で終わること |
+| 足す `tests/run-stops-test.sh` | 上限の添付の行が、末尾の 64 KiB のちょうど始まりから始まるとき、`max_turns` で記録すること |
 | `tests/host-test.sh` | 3 つのフックが `timeout` 付きで書かれ、人のフックが残り、3 つのスクリプトがガードの置き場に写ること |
 | `tests/runtime-selection-test.sh` | Claude を使うとき、最低より古いか読めないバージョンで、セットアップが何も書かずに止まること |
 | `tests/project-create-test.sh`・`tests/project-runtimes-test.sh` | Claude のモデルの役にだけ 2 つの変数が付き、ランタイムを替えると外れること |
 | `tests/project-create-test.sh` | 流し直す前の値がキットの値より大きければ残り、小さいか数でなければキットの値になること |
 | `tests/squad-usage-check-test.sh` | ログインの行が、表の 4 つの状態になり、変化でタスクを作り・コメントし・done にすること |
 | `tests/squad-usage-check-test.sh` | warn から error、error から確認失敗への変化で、新しい状態の文をコメントすること |
+| `tests/squad-usage-check-test.sh` | ok でない状態どうしの変化で、題と本文を新しい状態のものに書き換えること。書き換えに失敗しても、コメントして 1 で終えること |
+| `tests/squad-usage-check-test.sh` | 印のない行のタスクは、状態が変わらなくても確認し、題にキーがなければ状態から外して 1 で終えること |
+| `tests/squad-usage-check-test.sh` | タスクを読めないときも、ログインの行とあとのランタイムを処理してから 1 で終えること |
+| `tests/squad-usage-check-test.sh` | `claude --version` が 0 以外で終わるときと、期限を日付にできないときに、確認失敗の行にし、Python のトレースバックを出さないこと |
 | `tests/squad-usage-check-test.sh` | ログインが 0 でも、同じ実行で使用量を読めないときは、error から ok に戻さないこと |
 | `tests/squad-usage-check-test.sh` | 前回が warn で、ローカルでは ok でも使用量を読めないときは、warn のままでコメントも done もしないこと |
 | `tests/squad-usage-check-test.sh` | ログインが error のツールで使用率を読まず、使用上限の行を前回のまま残すこと |
@@ -460,6 +485,47 @@ custom_env と設定は、役の次の実行から効く。デーモンを起動
 6. `multica --profile <名前>` でログインし、空の置き場を `CODEX_HOME` に渡してデーモンを起動する。試しの Codex の役をそのランタイムで動かし、記録が [Codex の止まった理由](#codex-の止まった理由) の認証の失敗に合う
 7. Dependabot のマージの役があるプロジェクトでは、流し直しのあと最初の実行が、手数の上限に達さずに終わる
 8. 6 のデーモンの `CODEX_HOME` の `config.toml` で、provider を手元のサーバーに向ける。サーバーが 429 と型 `usage_limit_reached` の誤りを返すとき、試しの役の記録が使用上限に合う
+
+8 の手元のサーバーは、どの依頼にも 429 と型 `usage_limit_reached` の誤りを返す。次を `stub.py` に保存し、`python3 -I stub.py` で起動する。確認が終わったら止める。
+
+```python
+import http.server, json, time
+
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        self.rfile.read(int(self.headers.get("content-length", 0)))
+        body = json.dumps({"error": {
+            "type": "usage_limit_reached",
+            "message": "The usage limit has been reached",
+            "plan_type": "plus",
+            "resets_at": int(time.time()) + 3600,
+        }}).encode()
+        self.send_response(429)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    do_GET = do_POST
+
+
+http.server.HTTPServer(("127.0.0.1", 18765), Handler).serve_forever()
+```
+
+6 のデーモンの `CODEX_HOME` の `config.toml` には、次を書く。試しの Codex の役の custom_env に `STUB_KEY` を足し、値は何でもよい。再試行で待たないよう、2 つの再試行の回数を 0 にする。
+
+```toml
+model_provider = "stub"
+
+[model_providers.stub]
+name = "stub"
+base_url = "http://127.0.0.1:18765/v1"
+wire_api = "responses"
+env_key = "STUB_KEY"
+request_max_retries = 0
+stream_max_retries = 0
+```
 
 6 と 8 のあとは、別の profile のデーモンを止め、その置き場を消す。マージの前に人が 1 から 6 と 8 を確認し、結果を PR に書く。7 は、Dependabot の PR が来たときに確認する。
 
