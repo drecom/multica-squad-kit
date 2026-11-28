@@ -7,6 +7,7 @@ source "$root/tests/pr-watch-test-lib.sh"
 pr=https://github.com/example/repo/pull/67
 other=https://github.com/example/repo/pull/68
 export MULTICA_TOKEN=fixture-token MULTICA_SERVER_URL=https://multica.invalid
+export PR_LINK_STATE_ROOT=$test_dir/pr-link-state
 
 # API のあとに一覧を更新し、読み直しの失敗も再現する。このテストだけの包みにする。
 mv "$test_dir/bin/multica" "$test_dir/bin/multica-base"
@@ -16,11 +17,14 @@ set -euo pipefail
 dir=$PR_WATCH_TEST_DIR
 if [[ "${1-} ${2-} ${3-}" == 'issue get test-issue' ]]; then
 	# この機能が保存する metadata の鍵を除き、実物の見本で検証する。
-	jq 'del(.metadata.pr_link_pending)' "$dir/task.json" >"$dir/task-base.json"
+	jq 'del(.metadata.pr_link_pending,.metadata.pr_link_no_integration,.metadata.pr_link_tried_at)' "$dir/task.json" >"$dir/task-base.json"
 	python3 "$PR_WATCH_TEST_ROOT/tests/cli-stub.py" pr-watch "$dir" multica calls.jsonl \
 		emit issue-get "$dir/task-base.json" -- "$@" >/dev/null
 	cat "$dir/task.json"
 	exit 0
+fi
+if [[ "${1-} ${2-} ${3-}" == 'issue metadata set' && $6 == pr_link_tried_at && -f $dir/fail-tried ]]; then
+	exit 1
 fi
 if [[ "${1-} ${2-} ${3-}" == 'issue comment add' ]]; then
 	python3 - "$@" <<'POSTPY'
@@ -81,7 +85,7 @@ reset_retry() {
 	reset_fixture
 	update_task ".metadata.pr_link_pending = \"$pr\""
 	: >"$test_dir/curl-calls.jsonl"
-	rm -f "$test_dir/api-called" "$test_dir/fail-after" "$test_dir/curl-config" "$test_dir/fail-post"
+	rm -f "$test_dir/api-called" "$test_dir/fail-after" "$test_dir/curl-config" "$test_dir/fail-post" "$test_dir/epoch" "$test_dir/fail-tried"
 	printf 'trigger-1' >"$test_dir/trigger-comment"
 	printf '200' >"$test_dir/api-status"
 	printf '{"pull_requests":[]}' >"$test_dir/pulls-after.json"
@@ -504,3 +508,136 @@ assert result.stdout == "/note\n止めた: PR がタスクに紐付いた\n", re
 assert [rule["id"] for rule in read("rules.json")] == ["other"], read("rules.json")
 print("PASS link-record: マージ待ちで紐付くと、見張りの規則を消し、止めた記録を出す")
 RECORDPY
+
+# 新しい場面だけ時計を固定し、API の試みと知らせの投稿を別々に数える。
+command -v date >"$test_dir/real-date"
+cat >"$test_dir/bin/date" <<'MOCK'
+#!/usr/bin/env bash
+dir=$PR_WATCH_TEST_DIR
+if [[ -f $dir/epoch ]]; then
+	if [[ $* == +%s ]]; then cat "$dir/epoch"; exit 0; fi
+	if [[ $* == '-u +%Y-%m-%dT%H:%M:%SZ' ]]; then
+		python3 -c 'import datetime, sys; print(datetime.datetime.fromtimestamp(int(sys.argv[1]), datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))' "$(<"$dir/epoch")"
+		exit 0
+	fi
+fi
+exec "$(<"$dir/real-date")" "$@"
+MOCK
+chmod +x "$test_dir/bin/date"
+
+record=$PR_LINK_STATE_ROOT/project-retry/example/repo
+reset_no_integration() {
+	reset_retry
+	rm -rf -- "$PR_LINK_STATE_ROOT"
+	update_task '.project_id = "project-retry"'
+	printf '404' >"$test_dir/api-status"
+	printf '1764288000' >"$test_dir/epoch"
+}
+write_record() {
+	mkdir -p "${record%/*}"
+	printf 'repository: example/repo\npr: %s\ntask: TASK-7\n記録した時刻: 2025-11-28T00:00:00Z\n' "$1" >"$record"
+}
+set_kind() {
+	update_task ".metadata.pr_link_no_integration = \"$1 ${2-$pr}\""
+}
+notice_count() {
+	jq -sr '[.[] | select(.body | startswith("/note\n連携なしの知らせ: "))] | length' "$test_dir/posted.jsonl"
+}
+same_notice() { printf '/note\n連携なしの知らせ: %s\n' "$1"; }
+no_integration_line="紐付け: 紐付いていない pr: $pr 連携: なし"
+lookup_plain="紐付け: 紐付いていない pr: $pr"
+
+reset_no_integration
+write_record "$pr"
+check_retry "$no_integration_line"
+assert_jq --arg mark "記録した $pr" '.metadata.pr_link_no_integration == $mark' "$test_dir/task.json"
+check_retry "$no_integration_line"
+[[ $(notice_count) == 1 ]]
+api_once
+echo 'PASS link-retry: 中断した同じ PR の印を戻し、記録の知らせを一度だけ書く'
+
+for state in linked other no-pending mismatch; do
+	reset_no_integration
+	case $state in
+	linked) write_record "$pr"; after_urls "$pr"; cp "$test_dir/pulls-after.json" "$test_dir/pulls.json" ;;
+	other) write_record "$other" ;;
+	no-pending) write_record "$pr"; update_task 'del(.metadata.pr_link_pending)' ;;
+	mismatch) set_kind '記録した' "$other" ;;
+	esac
+	if [[ $state == linked ]]; then
+		check_retry "紐付け: 紐付いている pr: $pr"
+		[[ ! -e $record ]]
+	else
+		check_retry "$lookup_plain"
+	fi
+	[[ $(notice_count) == 0 ]]
+	assert_jq -s 'all(.[]; .[0:3] != ["issue", "metadata", "set"] or .[5] != "pr_link_no_integration")' "$test_dir/calls.jsonl"
+done
+echo 'PASS link-retry: 紐付いた PR、別の PR の記録、マークなし、不一致の印では復旧しない'
+
+for prior in human other read-failure post-failure; do
+	reset_no_integration
+	set_kind '記録した'
+	case $prior in
+	human | other)
+		author=agent seen=$other
+		if [[ $prior == human ]]; then author=member; seen=$pr; fi
+		jq -n --slurpfile base "$test_dir/comment-prototype.json" --arg author "$author" --arg body "$(same_notice "$seen")" \
+			'[$base[0] + {author_type:$author,content:$body}]' >"$test_dir/comments.json" ;;
+	read-failure) printf 'issue comment list\n' >"$test_dir/fail" ;;
+	post-failure) touch "$test_dir/fail-post" ;;
+	esac
+	check_retry "$no_integration_line"
+	case $prior in
+	read-failure | post-failure) [[ $(notice_count) == 0 ]]; rm -f "$test_dir/fail" "$test_dir/fail-post" ;;
+	esac
+	check_retry "$no_integration_line"
+	[[ $(notice_count) == 1 ]]
+done
+echo 'PASS link-retry: 人間や別 PR の知らせを数えず、読むか書くかに失敗した知らせは次に試す'
+
+reset_no_integration
+set_kind '記録があった'
+touch "$test_dir/fail-tried"
+check_retry "$no_integration_line"
+no_api
+rm "$test_dir/fail-tried"
+MULTICA_TOKEN='' check_retry "$no_integration_line"
+no_api
+assert_jq '.metadata | has("pr_link_tried_at") | not' "$test_dir/task.json"
+check_retry "$no_integration_line"
+api_once
+assert_jq --arg expected "2025-11-28T00:00:00Z $pr" '.metadata.pr_link_tried_at == $expected' "$test_dir/task.json"
+printf '1764288299' >"$test_dir/epoch"
+check_retry "$no_integration_line"
+api_once
+printf '1764288301' >"$test_dir/epoch"
+check_retry "$no_integration_line"
+assert_jq -s 'length == 2' "$test_dir/curl-calls.jsonl"
+[[ ! -s $test_dir/posted.jsonl ]]
+echo 'PASS link-retry: 印がある場合は有効な試みだけ数え、時刻の保存前には呼ばない'
+
+for when in before after; do
+	reset_no_integration
+	write_record "$other"
+	set_kind '記録があった'
+	case $when in
+	before) after_urls "$pr"; cp "$test_dir/pulls-after.json" "$test_dir/pulls.json" ;;
+	after) after_urls "$pr" ;;
+	esac
+	check_retry "紐付け: 紐付いている pr: $pr"
+	pending_deleted
+	assert_jq '.metadata | has("pr_link_no_integration") | not' "$test_dir/task.json"
+	[[ ! -e $record && $(notice_count) == 0 ]]
+done
+echo 'PASS link-retry: 最初から紐付いている場合も試み直しで紐付く場合も記録と印を消す'
+
+reset_no_integration
+write_record "$pr"
+set_kind '記録があった' "$other"
+after_urls "$pr"
+cp "$test_dir/pulls-after.json" "$test_dir/pulls.json"
+check_retry "紐付け: 紐付いている pr: $pr"
+assert_jq --arg mark "記録があった $other" '.metadata.pr_link_no_integration == $mark' "$test_dir/task.json"
+[[ ! -e $record && $(notice_count) == 0 ]]
+echo 'PASS link-retry: 別の PR が紐付いても進行中の PR の印は消さない'

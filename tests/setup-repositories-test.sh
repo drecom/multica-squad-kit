@@ -53,6 +53,7 @@ grep -q 'GitHub 連携とリポジトリの紐付け' "$test_dir/err"
 grep -qF 'ワークスペースの設定 → コード' "$test_dir/err"
 grep -qF 'GitHub App が未設定なら' "$test_dir/err"
 grep -qF 'multica repo list --output json' "$test_dir/err"
+grep -qF 'multica repo add <リポジトリの URL>' "$test_dir/err"
 grep -q 'Existing project' "$test_dir/err"
 grep -q 'Neighbor' "$test_dir/err"
 echo 'PASS repositories: 全候補が他プロジェクトに属すと、理由と案内を出して保存前に止まる'
