@@ -8,7 +8,7 @@
 
 | 理由の行 | すること |
 | --- | --- |
-| `紐付け:`、CI、`コンフリクト:` の行 | [leader-pr-link.md](leader-pr-link.md)・[leader-pr-ci.md](leader-pr-ci.md)・[leader-pr-merge.md](leader-pr-merge.md) の手順を流し直して扱う。紐付けの食い違い・作業先と違う・読めない値、CI の失敗、コンフリクトの手順はそちらにある。決めた先が修正やマージの依頼なら、その手順で書く |
+| `紐付け:`、`回の PR を決められない`、`回の PR を読めない`、CI、`コンフリクト:` の行 | [leader-pr-link.md](leader-pr-link.md)・[leader-pr-ci.md](leader-pr-ci.md)・[leader-pr-merge.md](leader-pr-merge.md) の手順を流し直して扱う。紐付けの食い違い・作業先と違う・読めない値、CI の失敗、コンフリクトの手順はそちらにある。`回の PR を決められない` と `回の PR を読めない` は、`leader-pr-link.md` の「連携なしの PR」の順で扱う。決めた先が修正やマージの依頼なら、その手順で書く |
 | `設計の見直しの回はリーダーが扱う` | 設計の見直しと設計と PR の見直しの回である。結果の `設計への指摘:` の行と指摘を読み、[leader-principal-design.md](leader-principal-design.md) と [leader-principal-final.md](leader-principal-final.md) の手順で、設計の役への直しの依頼か、人間への承認の依頼を扱う。設計の役がない構成では、人間への直しの依頼を扱う |
 | `診断の回はリーダーが扱う` | 診断の回である。結果の `診断:` と `直す役:` の行を読み、[leader-principal-diagnose.md](leader-principal-diagnose.md) の「診断」の手順で、修正の役・設計の役への依頼か、人間への報告を扱う。設計の役がない構成では、設計の役への依頼は人間への直しの依頼にする |
 | `検証スキルが未記入で未実行` | 結果に `未実行: 検証スキルが未記入` の行がある役の分である。マークによらず、修正・最終レビュー・マージの依頼は書かれていない。squad-handoff の `references/missing-fill.md` の「リーダーが報告を受けたとき」の手順で、記入のタスクを探し直し、止まった役へ頼み直すか、人間を呼ぶ |

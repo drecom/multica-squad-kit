@@ -1081,6 +1081,14 @@ for phrase in 'squad-pr-watch link-check <タスク>' '紐付けていません:
 	grep -qF -- "$phrase" "$refs/leader-pr-link.md"
 done
 echo 'PASS templates: PR の紐付けの参照が、link-check の呼び方と「紐付けていません:」の行を持つ'
+# 読む側: リーダーが連携なしの PR を手でマージへ回すとき、leader-pr-link.md の順で squad-pr-watch round-pr と unlinked を流し、3 行の依頼を書く。
+for phrase in 'squad-pr-watch round-pr <タスク> <回>' '`マージの依頼: <head の完全な SHA>` の次の行に `前の回: <回>`、その次に `マージする PR: <round-pr の出力>`' '| 1。理由が「回を認められない」で始まる |' '| 127・そのほか |' '見張りでマージを確認できないので、マージのあとにタスクを `done` にしてほしい。PR: `<正規形>`' '今の回が `decide` の決めない種類'; do
+	grep -qF -- "$phrase" "$refs/leader-pr-link.md"
+done
+grep -qF -- '`回の PR を決められない`' "$refs/leader-review-stuck.md"
+grep -qF -- '`回の PR を読めない`' "$refs/leader-review-stuck.md"
+grep -qF -- '`対象の PR: <link-check の pr:>`' "$refs/leader-principal-final.md"
+echo 'PASS templates: リーダーの手順が、手のマージの順と回の PR を決められないときの 1 行、止まりの扱い、依頼の対象の PR の行を持つ'
 
 # 使用率の待ちの呼び方。リーダーが squad-usage-wait へ渡す形。
 for phrase in 'squad-usage-wait pick <タスク> <implement | fix>' 'squad-usage-wait answer <タスク> <工程>'; do
