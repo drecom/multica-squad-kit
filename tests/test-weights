@@ -133,6 +133,7 @@ tests/squad-pr-watch-unlinked-test.sh 11
 tests/squad-pr-watch-url-test.sh 16
 tests/squad-preflight-test.sh 14
 tests/squad-review-next-arg-limit-test.sh 63
+tests/squad-review-next-check-test.sh 15
 tests/squad-review-next-decide-body-test.sh 57
 tests/squad-review-next-decide-ciwait-fail-test.sh 113
 tests/squad-review-next-decide-ciwait-test.sh 88
