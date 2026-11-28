@@ -859,7 +859,7 @@ e45a4621e54abb773ee81a439afc0ba097ffcf13bf6d80b5941d98389f34e571  ./tests/vm-wsl
 45cfa8b10d7ae240677ae76844ce23d11f41b8b9bf974e7659c702ea6fdf9736  ./tests/vm-wsl-test.sh
 3eb59398bcf631fc810a77156482bc58633e3b79299b5a735f8d75001ac6c48b  ./tests/webhook-gh.py
 ab3bc7237ea426a9f1d56d978004adec93d8cf0f32227692a6cbe8632ee5ed29  ./tests/webhooks-test.sh
-69d612a5245ba8fd917a8aacb7b3502cf5787d1c15ca4121c85a557dcbd6076e  ./tests/workflow-rules-test.sh
+33bf0b6e648a6a1efb40bc2bb2ed7381cdc8bf4857bf67b16aa8d94825029b39  ./tests/workflow-rules-test.sh
 6083bca4bd8d29e62cde3c66ac773afc4691ebcc83146cbd3b3e2734dced4ef8  ./tests/workspace-test.sh
 193dfc94eb18a0f28b7ac6e4456c3fefba9da60c7fbc21bd03b57ec30e164076  ./vm/guest/provision.sh
 c5e2f652e378cb98bf025ed45445b569ef6359820d1a061862d50d0a9a293ae3  ./vm/guest/record-server

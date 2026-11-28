@@ -245,8 +245,10 @@ mutate('codeql-init-language', 'scan.yml', 'languages: ${{ matrix.language }}', 
 mutate('codeql-build', 'scan.yml', 'build-mode: none', 'build-mode: manual', 'codeql: ビルドのモードが違う')
 mutate('codeql-analyze', 'scan.yml', 'uses: github/codeql-action/analyze@', 'uses: github/codeql-action/init@', '手順がないか複数ある')
 mutate('codeql-category', 'scan.yml', 'category: /language:${{ matrix.language }}', 'category: codeql', 'codeql: 解析の分類が言語別ではない')
-mutate('codeql-tag', 'scan.yml', 'github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3',
-       'github/codeql-action/init@v4', 'uses は')
+scan_lines = (workflows / 'scan.yml').read_text(encoding='utf-8').splitlines()
+codeql_init = next(line for line in scan_lines if line.startswith('      - uses: github/codeql-action/init@'))
+mutate('codeql-tag', 'scan.yml', codeql_init,
+       '      - uses: github/codeql-action/init@v4', 'uses は')
 mutate('scan-credentials', 'scan.yml', '          persist-credentials: false\n', '', '認証設定の数')
 mutate('dependabot-version', 'dependabot.yml', 'version: 2', 'version: 1', 'dependabot: 設定のバージョンが違う')
 mutate('dependabot-ecosystem', 'dependabot.yml', 'package-ecosystem: github-actions', 'package-ecosystem: npm', 'dependabot: 対象が github-actions ではない')
