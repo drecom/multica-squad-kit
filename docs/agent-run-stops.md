@@ -357,12 +357,12 @@ Codex に同じものがある項目は、このホストの Codex で確認し�
 | `manual.md` | 「受け取る人の準備」に最低のバージョンを書く。「ホストとエージェント用のログイン」と「止まったときに見ること」に、ログインのタスクの直し方と、記録と Codex の実行の記録の読み方を書く |
 | `CHANGELOG.md` | 先頭の `## 次のバージョン` の節に、流し直しで変わることを書く |
 | `tests/` | [テストと実機の確認](#テストと実機の確認)のとおりに足す |
-| `tests/setup-fixture.sh`・`tests/host-test-lib.sh`・`tests/setup-runtimes-test-lib.sh` | Claude のスタブに `--version` の応答を足し、ランタイムの呼び出しの比較から `claude --version` を除く |
+| `tests/setup-fixture.sh`・`tests/host-test-lib.sh`・`tests/setup-runtimes-test-lib.sh` | Claude のスタブに `--version` の応答を足し、ランタイムの呼び出しの比較から `claude --version` を除く。`tests/setup-runtimes-test-lib.sh` は、見張りの状態にログインの行があることも確認する |
 | `tests/host-config-test.sh` | 最低より古いか読めない Claude Code で、ホストの準備が何も書かず、デーモンにも触れずに止まることを見る |
 | `tests/project-runtimes-first-test.sh` | 初回の登録の環境を完全一致で比べる期待値に、2 つの変数を足す |
 | `tests/test-weights` | テストの振り分けが読む重みに、`tests/run-stops-test.sh` の行を足す |
 | `MANIFEST` | ファイルを変えるたびに `bash scripts/manifest.sh` で作り直す |
-| `docs/agent-guards.md` | 「書くキー」の表と「想定する規模と許容時間」に、3 つのフックの行を足した。この文書と同じコミットで足した |
+| `docs/agent-guards.md` | 「書くキー」の表と「想定する規模と許容時間」の表に 3 つのフックの行を足し、その節の始めの文の対象にも 3 つのフックを足した。この文書と同じコミットで足した |
 | `docs/README.md` | 索引の「エージェントが動く環境」の表に、この文書の行を足した。この文書と同じコミットで足した |
 
 ## 互換性と影響を受ける利用者
