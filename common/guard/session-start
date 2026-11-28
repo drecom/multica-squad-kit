@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+# multica-squad-kit-managed
+"""Multica のエージェントの実行の始めに、実行の記録の長さを残すフック（SessionStart）。
+
+手数の上限で終わった実行を SessionEnd のフックが見分けるとき、今回の実行で足された行だけを見るために使う
+（設計は docs/agent-run-stops.md「SessionEnd での手数の上限の見分け」）。Claude Code が、標準入力に JSON で入力を渡す。
+  1. MULTICA_TASK_ID がない実行（人が端末で使う Claude Code など）は、何もせずに終わる
+  2. 入力の hook_event_name が SessionStart で、session_id が UUID の形かを見る
+  3. transcript_path の実体が、CLAUDE_CONFIG_DIR の projects の下にあり、名前が <session_id>.jsonl の通常のファイルかを見る
+     （ファイルがまだないときは、長さを 0 とする）
+  4. 状態の置き場（SQUAD_KIT_STATE_DIR。なければこのスクリプトと同じディレクトリの state/）の
+     run-stops/start/<session_id> に、そのときのファイルの長さをバイトの数で書く。7 日より古い始めの長さのファイルは消す
+
+置き場は権限 700、ファイルは 600 にする。書けないとき、入力を読めないときは、何も出さずに 0 で終わる。
+記録の失敗で、実行の始まり方を変えないため。
+"""
+import json
+import os
+import re
+import stat
+import sys
+import time
+
+sys.dont_write_bytecode = True
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+INPUT_LIMIT = 8 * 1024 * 1024
+SESSION_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+STALE_SECONDS = 7 * 24 * 60 * 60
+
+
+def state_dir():
+    return os.environ.get("SQUAD_KIT_STATE_DIR") or os.path.join(HERE, "state")
+
+
+def config_dir():
+    return os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
+
+
+def transcript_file(path, session_id):
+    """transcript_path の実体が、設定ディレクトリの projects の下の <session_id>.jsonl なら、その実体のパスを返す。違えば None。"""
+    if not isinstance(path, str) or not path or "\0" in path or not os.path.isabs(path):
+        return None
+    real = os.path.realpath(path)
+    projects = os.path.realpath(os.path.join(config_dir(), "projects"))
+    if os.path.basename(real) != session_id + ".jsonl" or os.path.commonpath([projects, real]) != projects or real == projects:
+        return None
+    return real
+
+
+def transcript_length(real):
+    """記録のファイルの長さ。まだないときは 0。通常のファイルでなければ None。"""
+    try:
+        fd = os.open(real, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+    except FileNotFoundError:
+        return 0
+    except OSError:
+        return None
+    try:
+        info = os.fstat(fd)
+        return info.st_size if stat.S_ISREG(info.st_mode) else None
+    finally:
+        os.close(fd)
+
+
+def remove_stale(directory, now):
+    """7 日より古い始めの長さのファイルを消す。通常のファイルだけを、シンボリックリンクをたどらずに見る。"""
+    try:
+        entries = list(os.scandir(directory))
+    except OSError:
+        return
+    for entry in entries:
+        try:
+            info = entry.stat(follow_symlinks=False)
+            if SESSION_RE.match(entry.name) and stat.S_ISREG(info.st_mode) and now - info.st_mtime > STALE_SECONDS:
+                os.unlink(entry.path)
+        except OSError:
+            continue
+
+
+def write_start(session_id, length):
+    directory = os.path.join(state_dir(), "run-stops", "start")
+    old_umask = os.umask(0o077)
+    try:
+        os.makedirs(directory, mode=0o700, exist_ok=True)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
+        fd = os.open(os.path.join(directory, session_id), flags, 0o600)
+        try:
+            os.write(fd, (str(length) + "\n").encode("ascii"))
+        finally:
+            os.close(fd)
+        remove_stale(directory, time.time())
+    finally:
+        os.umask(old_umask)
+
+
+def main():
+    if not os.environ.get("MULTICA_TASK_ID"):
+        return 0
+    try:
+        start_input = json.loads(sys.stdin.buffer.read(INPUT_LIMIT).decode("utf-8"))
+    except (ValueError, OSError):
+        return 0
+    if not isinstance(start_input, dict) or start_input.get("hook_event_name") != "SessionStart":
+        return 0
+    session_id = start_input.get("session_id")
+    if not isinstance(session_id, str) or not SESSION_RE.match(session_id):
+        return 0
+    try:
+        real = transcript_file(start_input.get("transcript_path"), session_id)
+        length = None if real is None else transcript_length(real)
+        if length is not None:
+            write_start(session_id, length)
+    except (OSError, ValueError):
+        pass
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

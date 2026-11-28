@@ -1,0 +1,201 @@
+#!/usr/bin/env python3
+# multica-squad-kit-managed
+"""Multica のエージェントの実行が、手数の上限で終わったとき、その理由を残すフック（SessionEnd）。
+
+手数の上限で終わった実行には、Stop も StopFailure も届かず、SessionEnd の入力にも終わった理由の区別がない。
+そのため、実行の記録に残る、型が max_turns_reached の添付の行を読む（設計は docs/agent-run-stops.md「SessionEnd での手数の上限の見分け」）。
+Claude Code が、標準入力に JSON で入力を渡す。
+  1. MULTICA_TASK_ID がない実行（人が端末で使う Claude Code など）は、何もせずに終わる
+  2. 入力の hook_event_name が SessionEnd で、session_id が UUID の形かを見る
+  3. transcript_path の実体が、CLAUDE_CONFIG_DIR の projects の下にあり、名前が <session_id>.jsonl の通常のファイルかを見る
+  4. 状態の置き場（SQUAD_KIT_STATE_DIR。なければこのスクリプトと同じディレクトリの state/）の
+     run-stops/start/<session_id> から、SessionStart のフックが残した始めの長さを、数として読む
+  5. 記録のファイルの末尾の 64 KiB から、uuid の欄を持つ最後の行を探す
+  6. その行の始まりが始めの長さ以降（今回の実行で足された行）で、型が max_turns_reached の添付で、
+     sessionId が入力の session_id と同じで、timestamp がフックの時刻の 10 分前より後かを見る
+  7. すべて合うときだけ、run-stops/<年>-<月>.jsonl に、理由 max_turns の行を 1 行足す
+
+どれかが合わない、始めの長さがないか読めない、書けない、入力を読めないときは、何も出さずに 0 で終わる。
+始めの長さのファイルは、合うかどうかによらず消す。
+"""
+import calendar
+import json
+import os
+import re
+import stat
+import sys
+import time
+
+sys.dont_write_bytecode = True
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+INPUT_LIMIT = 8 * 1024 * 1024
+TAIL_BYTES = 64 * 1024
+RECENT_SECONDS = 10 * 60
+SESSION_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+LENGTH_RE = re.compile(r"^[0-9]{1,15}\n?$")
+TIME_RE = re.compile(r"^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)(?:\.\d+)?Z$")
+
+
+def state_dir():
+    return os.environ.get("SQUAD_KIT_STATE_DIR") or os.path.join(HERE, "state")
+
+
+def config_dir():
+    return os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
+
+
+def transcript_file(path, session_id):
+    """transcript_path の実体が、設定ディレクトリの projects の下の <session_id>.jsonl なら、その実体のパスを返す。違えば None。"""
+    if not isinstance(path, str) or not path or "\0" in path or not os.path.isabs(path):
+        return None
+    real = os.path.realpath(path)
+    projects = os.path.realpath(os.path.join(config_dir(), "projects"))
+    if os.path.basename(real) != session_id + ".jsonl" or os.path.commonpath([projects, real]) != projects or real == projects:
+        return None
+    return real
+
+
+def open_regular(path):
+    """シンボリックリンクをたどらずに開き、通常のファイルでなければ閉じて OSError にする。"""
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OSError("通常のファイルではない")
+    except OSError:
+        os.close(fd)
+        raise
+    return fd
+
+
+def read_start_length(session_id):
+    """始めの長さのファイルを数として読み、消す。読めなければ None。"""
+    path = os.path.join(state_dir(), "run-stops", "start", session_id)
+    try:
+        fd = open_regular(path)
+        try:
+            text = os.read(fd, 64).decode("ascii")
+        finally:
+            os.close(fd)
+        return int(text) if LENGTH_RE.match(text) else None
+    except (OSError, ValueError):
+        return None
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+
+def last_uuid_line(real):
+    """記録の末尾の 64 KiB から、uuid の欄を持つ最後の行を探し、(行の始まりの位置, 行の内容) を返す。なければ None。"""
+    fd = open_regular(real)
+    try:
+        size = os.fstat(fd).st_size
+        base = max(0, size - TAIL_BYTES)
+        data = os.pread(fd, size - base, base)
+    finally:
+        os.close(fd)
+    if base > 0:  # 窓の先頭は行の途中かもしれないので、最初の改行までを捨てる
+        cut = data.find(b"\n")
+        if cut < 0:
+            return None
+        data = data[cut + 1:]
+        base += cut + 1
+    found = None
+    offset = base
+    for raw in data.split(b"\n"):
+        try:
+            obj = json.loads(raw.decode("utf-8")) if raw.strip() else None
+        except ValueError:
+            obj = None
+        if isinstance(obj, dict) and "uuid" in obj:
+            found = (offset, obj)
+        offset += len(raw) + 1
+    return found
+
+
+def epoch(text):
+    m = TIME_RE.match(text) if isinstance(text, str) else None
+    if m is None:
+        return None
+    try:
+        return calendar.timegm(tuple(int(m.group(i)) for i in range(1, 7)))
+    except (ValueError, OverflowError):
+        return None
+
+
+def reached_max_turns(real, session_id, start_length, now):
+    found = last_uuid_line(real)
+    if found is None:
+        return False
+    offset, line = found
+    attachment = line.get("attachment")
+    stamp = epoch(line.get("timestamp"))
+    return (
+        offset >= start_length
+        and line.get("type") == "attachment"
+        and isinstance(attachment, dict)
+        and attachment.get("type") == "max_turns_reached"
+        and line.get("sessionId") == session_id
+        and stamp is not None
+        and stamp > now - RECENT_SECONDS
+    )
+
+
+def append_record(record, now_struct):
+    """run-stops/<年>-<月>.jsonl に、1 行を 1 回の書き込みで足す。"""
+    directory = os.path.join(state_dir(), "run-stops")
+    old_umask = os.umask(0o077)
+    try:
+        os.makedirs(directory, mode=0o700, exist_ok=True)
+        path = os.path.join(directory, time.strftime("%Y-%m", now_struct) + ".jsonl")
+        flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+        fd = os.open(path, flags, 0o600)
+        try:
+            os.write(fd, (json.dumps(record, ensure_ascii=True) + "\n").encode("ascii"))
+        finally:
+            os.close(fd)
+    finally:
+        os.umask(old_umask)
+
+
+def main():
+    task_id = os.environ.get("MULTICA_TASK_ID", "")
+    if not task_id:
+        return 0
+    try:
+        end_input = json.loads(sys.stdin.buffer.read(INPUT_LIMIT).decode("utf-8"))
+    except (ValueError, OSError):
+        return 0
+    if not isinstance(end_input, dict) or end_input.get("hook_event_name") != "SessionEnd":
+        return 0
+    session_id = end_input.get("session_id")
+    if not isinstance(session_id, str) or not SESSION_RE.match(session_id):
+        return 0
+
+    start_length = read_start_length(session_id)  # 合うかどうかによらず、始めの長さのファイルを消す
+    try:
+        real = transcript_file(end_input.get("transcript_path"), session_id)
+        if real is None or start_length is None:
+            return 0
+        now = time.time()
+        if not reached_max_turns(real, session_id, start_length, now):
+            return 0
+        now_struct = time.gmtime(now)
+        record = {
+            "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", now_struct),
+            "task": task_id,
+            "agent": os.environ.get("MULTICA_AGENT_ID", ""),
+            "session": session_id,
+            "reason": "max_turns",
+            "source": "claude",
+        }
+        append_record(record, now_struct)
+    except (OSError, ValueError):
+        pass
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
