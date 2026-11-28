@@ -8,22 +8,25 @@
       表（tests/pr-link-procedure-table.tsv）の行ごとに、手順を 1 か所だけ変えた写しを作り、check の結果が期待と合うかを見る。
       合わない行があれば、行と場所を標準エラー出力に出して 1 で終わる。
 
-契約は、機械が読む次の 3 つだけにする。説明文は固定しない（docs/test-trim.md の「残す 6 種類」）。
-  - `squad-pr-link <タスク> <PR の URL>` の呼び方が手順にあること
+契約は、機械が読む次の 4 つにする。説明文は固定しない（docs/test-trim.md の「残す 6 種類」）。
+  - `squad-pr-link <タスク> <PR の URL> <きっかけのコメントの ID>` の呼び方が手順にあること
   - バッククォートで囲んだ語のうち、鍵の種類のものが、すべて pr_url か branch であり、2 つともあること
+  - バッククォートで囲んだ終了コードが 0 と 3 であり、両方あること
   - 失敗の記録の行 `紐付けの失敗: <標準エラーの警告の 1 行目>` が、枠の中にあること
 
 バッククォートの語は、種類に分けて見る。種類の決め方と、見る・見ないの理由は、表の列にある。
   - コマンド: 先頭の語が squad-pr-link か gh
   - 仮置き: < で始まり > で終わる
   - ラベル: 日本語を含み、: で終わる
+  - 終了コード: ASCII の数字だけでできた語
   - 鍵: 上のどれでもないもの。綴りに制限を置かない。数字・大文字・ハイフン・前後の文字や空白があっても鍵とみなし、pr_url と branch のどちらでもなければ落とす
 """
 import re
 import sys
 
 KEYS = ("pr_url", "branch")
-CALL = "squad-pr-link <タスク> <PR の URL>"
+EXIT_CODES = {"0", "3"}
+CALL = "squad-pr-link <タスク> <PR の URL> <きっかけのコメントの ID>"
 RECORD = "紐付けの失敗: <標準エラーの警告の 1 行目>"
 SPAN = re.compile(r"`([^`\n]*)`")
 TABLE_NAME = "tests/pr-link-procedure-table.tsv"
@@ -36,6 +39,8 @@ def kind_of(span):
         return "仮置き"
     if span.endswith(":") and not span.isascii():
         return "ラベル"
+    if span.isascii() and span.isdecimal():
+        return "終了コード"
     return "鍵"
 
 
@@ -66,7 +71,10 @@ def check(text):
     if CALL not in text:
         errors.append(f"呼び方 `{CALL}` がない")
     keys = set()
+    exit_codes = set()
     for kind, span in spans(text):
+        if kind == "終了コード":
+            exit_codes.add(span)
         if kind != "鍵":
             continue
         if span in KEYS:
@@ -76,6 +84,8 @@ def check(text):
     for key in KEYS:
         if key not in keys:
             errors.append(f"鍵 `{key}` がバッククォートで囲んで書かれていない")
+    if exit_codes != EXIT_CODES:
+        errors.append("バッククォートで囲んだ終了コードが 0 と 3 の組でない")
     if RECORD not in [line for inside, line in split(text) if inside]:
         errors.append(f"枠の中に記録の行 `{RECORD}` がない")
     return errors

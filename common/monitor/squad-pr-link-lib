@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # multica-squad-kit-managed
 # PR の紐付けを共有する。呼び出し元が source し、警告の文を作る。
-# 下の 3 つの関数を共有する。
 
 # API を呼ぶのに要る環境（トークン・サーバーの URL・curl）がそろっているかを確認する。
 # そろっていれば 0、足りなければ理由を PR_LINK_REASON に返して 1。
@@ -43,14 +42,15 @@ pr_link_request_once() {
 
 # pr_link_pull_request <タスクの ID> <PR の URL> <metadata の JSON>
 # 成功は 0、失敗は 1。理由は PR_LINK_REASON に返し、本文や診断は出さない。
-# 404 で待ち切れたときだけ PR_LINK_NOT_FOUND に 1 を返し、ほかは 0 にする。
+# 期限切れは PR_LINK_NOT_FOUND、404 だけでの期限切れは PR_LINK_ALL_404 に 1 を返す。
+# 期限内の 200 は、pr_url を書けなくても PR_LINK_LINKED に 1 を返す。
 pr_link_pull_request() {
-	local id=$1 url=$2 metadata=$3 repository url_repository status started now
+	local id=$1 url=$2 metadata=$3 repository url_repository status='' started now
 	local remaining request_timeout wait_time transport_failed
 	local interval=10 timeout=120
 	local timeout_reason='サーバーが PR を見つけられない（120 秒待った）'
 	PR_LINK_REASON=''
-	PR_LINK_NOT_FOUND=0
+	PR_LINK_NOT_FOUND=0 PR_LINK_ALL_404=0 PR_LINK_LINKED=0
 	repository=$(jq -r '.repository | select(. != null)' <<<"$metadata") || return 1
 	url_repository=${url#https://github.com/}
 	url_repository=${url_repository%/pull/*}
@@ -69,6 +69,7 @@ pr_link_pull_request() {
 		if (( remaining <= 0 )); then
 			PR_LINK_REASON=$timeout_reason
 			PR_LINK_NOT_FOUND=1
+			if [[ $status == 404 ]]; then PR_LINK_ALL_404=1; fi
 			return 1
 		fi
 		request_timeout=30
@@ -82,6 +83,7 @@ pr_link_pull_request() {
 		if (( remaining <= 0 )); then
 			PR_LINK_REASON=$timeout_reason
 			PR_LINK_NOT_FOUND=1
+			if ((! transport_failed)) && [[ $status == 404 ]]; then PR_LINK_ALL_404=1; fi
 			return 1
 		fi
 		if (( transport_failed )); then
@@ -90,11 +92,9 @@ pr_link_pull_request() {
 		fi
 		case "$status" in
 		200)
-			if multica issue metadata set "$id" --key pr_url --value "$url" --type string >/dev/null 2>&1; then
-				return 0
-			fi
-			PR_LINK_REASON='metadata を書けない'
-			return 1
+			PR_LINK_LINKED=1
+			pr_link_write_url "$id" "$url"
+			return $?
 			;;
 		404)
 			wait_time=$interval
@@ -108,3 +108,204 @@ pr_link_pull_request() {
 		esac
 	done
 }
+
+pr_link_write_url() {
+	if multica issue metadata set "$1" --key pr_url --value "$2" --type string >/dev/null 2>&1; then return 0; fi
+	PR_LINK_REASON='metadata を書けない'
+	return 1
+}
+
+# 記録があるときの紐付け。待つ経路と同じ欄に結果を返す。
+pr_link_attempt_once() {
+	PR_LINK_NOT_FOUND=0 PR_LINK_ALL_404=0 PR_LINK_LINKED=0
+	pr_link_check_api_env || return 1
+	if ! pr_link_request_once "$1" "$2" 30; then
+		PR_LINK_REASON='通信に失敗した'
+		return 1
+	fi
+	if [[ $PR_LINK_STATUS == 200 ]]; then
+		PR_LINK_LINKED=1
+		pr_link_write_url "$1" "$2"
+		return $?
+	fi
+	PR_LINK_REASON="応答の状態コード $PR_LINK_STATUS"
+	return 1
+}
+
+# JSON のまま渡し、シェルの変数で失われる NUL も検証する。
+pr_url_data() {
+	python3 - "$@" <<'URLPY'
+import datetime
+import json
+import re
+import sys
+from urllib.parse import urlsplit
+
+owner = r"[A-Za-z0-9-]+"
+repo = r"[A-Za-z0-9_.-]+"
+repository_pattern = re.compile(rf"{owner}/{repo}")
+
+def canonical(value):
+    if not isinstance(value, str):
+        raise ValueError("GitHub の PR の URL の形でない")
+    if any(ord(c) < 32 or 127 <= ord(c) <= 159 for c in value):
+        raise ValueError("制御文字を含む")
+    try:
+        parsed = urlsplit(value)
+        match = re.fullmatch(rf"/({owner})/({repo})/pull/([0-9]+)(?:/.*)?", parsed.path)
+        if parsed.scheme.lower() not in ("http", "https") or parsed.netloc.lower() != "github.com" or not match:
+            raise ValueError
+        account, project, number = match.groups()
+        number = int(number)
+        if project in (".", "..") or number < 1:
+            raise ValueError
+    except ValueError:
+        raise ValueError("GitHub の PR の URL の形でない") from None
+    return f"https://github.com/{account}/{project}/pull/{number}"
+
+metadata = json.loads(sys.argv[1])["metadata"]
+value = metadata.get("pr_url")
+state, url, reason = "absent", "", "metadata に pr_url がない"
+line = "紐付け: pr_url なし pr: 不明"
+if value is not None and value != "":
+    try:
+        url = canonical(value)
+        source = metadata.get("repository")
+        valid_source = (isinstance(source, str) and repository_pattern.fullmatch(source)
+                        and source.split("/")[1] not in (".", ".."))
+        if not valid_source or source.casefold() != "/".join(url.split("/")[3:5]).casefold():
+            state, reason = "foreign", "PR の URL が作業先と違う"
+            source = source if valid_source else ("なし" if source is None or source == "" else "不正")
+            line = f"紐付け: 作業先と違う pr: {url} 作業先: {source}"
+        else:
+            state, reason, line = "valid", "", ""
+    except ValueError as error:
+        state, reason = "invalid", "PR の URL が不正"
+        line = "紐付け: 不正な pr_url pr: 表示しない 理由: " + str(error)
+if len(sys.argv) > 2 and state in ("valid", "absent"):
+    try:
+        urls = [canonical(item["html_url"]) for item in json.loads(sys.argv[2])["pull_requests"]]
+        if state == "absent":
+            line += " 紐付いた PR: " + ", ".join(urls) if urls else ""
+        elif url.casefold() in [item.casefold() for item in urls]:
+            line = "紐付け: 紐付いている pr: " + url
+        elif not urls:
+            line = "紐付け: 紐付いていない pr: " + url
+        else:
+            line = "紐付け: 食い違い pr: " + url + " 紐付いた PR: " + ", ".join(urls)
+    except (ValueError, KeyError, TypeError):
+        line = "紐付け: 未確認 pr: " + (url or "不明") + " 理由: PR の URL を判定できない"
+pending_matches, mark_kind, tried_at = False, "", None
+if state == "valid":
+    try:
+        pending_matches = canonical(metadata.get("pr_link_pending")).casefold() == url.casefold()
+    except ValueError:
+        pass
+    mark = metadata.get("pr_link_no_integration")
+    if isinstance(mark, str):
+        for kind in ("記録した", "記録があった"):
+            if mark.startswith(kind + " "):
+                try:
+                    mark_url = mark[len(kind) + 1:]
+                    if mark_url == mark_url.strip() and canonical(mark_url).casefold() == url.casefold():
+                        mark_kind = kind
+                except ValueError:
+                    pass
+    tried = metadata.get("pr_link_tried_at")
+    if isinstance(tried, str):
+        stamp, _, tried_url = tried.partition(" ")
+        try:
+            if re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", stamp) and tried_url == tried_url.strip() and canonical(tried_url).casefold() == url.casefold():
+                tried_at = int(datetime.datetime.fromisoformat(stamp[:-1] + "+00:00").timestamp())
+        except (ValueError, OverflowError):
+            pass
+print(json.dumps(dict(state=state, url=url, reason=reason, line=line,
+                     pending_matches=pending_matches, mark_kind=mark_kind, tried_at=tried_at), ensure_ascii=False))
+URLPY
+}
+
+# `link-check` と同じ比較で、0 は一致、1 は一覧が空、2 は一覧を読めない、3 はほかの PR だけがある。
+pr_link_url_in_list() {
+	local url=$1 result repository=${1#https://github.com/}
+	repository=${repository%/pull/*}
+	result=$(pr_url_data "$(jq -cn --arg url "$url" --arg repo "$repository" '{metadata: {pr_url:$url, repository:$repo}}')" "$2") || return 2
+	case $(jq -r .line <<<"$result") in
+	'紐付け: 紐付いている '*) return 0 ;;
+	'紐付け: 紐付いていない '*) return 1 ;;
+	'紐付け: 食い違い '*) return 3 ;;
+	*) return 2 ;;
+	esac
+}
+
+pr_link_listed() {
+	local pulls
+	pulls=$(squad_cli_read issue-pull-requests "$1" 2>/dev/null) || return 2
+	pr_link_url_in_list "$2" "$pulls"
+}
+
+# 記録のパスを決めて検査する。0 は記録あり、1 は安全な未作成、2 はパスを断ったとき。
+pr_link_record_check() {
+	local project=$1 url=$2 root path owner repo piece reason=''
+	PR_LINK_RECORD=''
+	[[ -n $project ]] || return 2
+	root=${PR_LINK_STATE_ROOT:-${HOME:-}/.multica-agent/template/pr-link}
+	path=${url#https://github.com/}
+	path=${path%/pull/*}
+	owner=$(printf '%s' "${path%%/*}" | tr '[:upper:]' '[:lower:]')
+	repo=$(printf '%s' "${path#*/}" | tr '[:upper:]' '[:lower:]')
+	for piece in "$project" "$owner" "$repo"; do
+		case $piece in
+		'' | . | .. | *[!A-Za-z0-9_.-]*) reason='使えない文字がある'; break ;;
+		esac
+	done
+	if [[ -z $reason ]]; then
+		PR_LINK_RECORD=$root/$project/$owner/$repo
+		if [[ -L $root/$project || -L $root/$project/$owner || -L $PR_LINK_RECORD ]]; then
+			reason='シンボリックリンクがある'
+		elif [[ -e $PR_LINK_RECORD && ! -f $PR_LINK_RECORD ]]; then
+			reason='普通のファイルでない'
+		fi
+	fi
+	if [[ -n $reason ]]; then
+		if [[ ${PR_LINK_RECORD_WARNED:-0} == 0 ]]; then
+			printf '連携なしの記録のパスに%sため、記録はないものとして扱います。\n' "$reason" >&2
+			PR_LINK_RECORD_WARNED=1
+		fi
+		return 2
+	fi
+	[[ -f $PR_LINK_RECORD ]]
+}
+
+# 記録の pr: は一行だけ読み、比較には一覧と同じ URL の検証を使う。
+pr_link_record_matches() {
+	local record_url
+	pr_link_record_check "$1" "$2" || return 1
+	record_url=$(sed -n 's/^pr: //p' "$PR_LINK_RECORD" 2>/dev/null) || return 1
+	pr_link_url_in_list "$2" "$(jq -cn --arg url "$record_url" '{pull_requests:[{html_url:$url}]}')"
+}
+
+pr_link_record_remove() {
+	if pr_link_record_check "$1" "$2"; then rm -f -- "$PR_LINK_RECORD" 2>/dev/null || :; fi
+}
+
+# 同じディレクトリで用意して結ぶ。自分で結べたら 0、別の記録があれば 2、ほかは 1。
+pr_link_record_create() (
+	local project=$1 url=$2 identifier=$3 status=0 dir tmp path repo stamp
+	pr_link_record_check "$project" "$url" || status=$?
+	case $status in 0) return 2 ;; 2) return 1 ;; esac
+	path=$PR_LINK_RECORD
+	dir=${path%/*}
+	umask 077
+	mkdir -p -- "$dir" || return 1
+	status=0
+	pr_link_record_check "$project" "$url" || status=$?
+	case $status in 0) return 2 ;; 2) return 1 ;; esac
+	tmp=$(mktemp "$dir/.pr-link.XXXXXX") || return 1
+	trap 'rm -f -- "$tmp"' EXIT
+	repo=${dir##*/}/${path##*/}
+	stamp=$(date -u +%Y-%m-%dT%H:%M:%SZ) || return 1
+	printf 'repository: %s\npr: %s\ntask: %s\n記録した時刻: %s\n' "$repo" "$url" "$identifier" "$stamp" >"$tmp" || return 1
+	if ln -n -- "$tmp" "$path" 2>/dev/null; then return 0; fi
+	if pr_link_record_check "$project" "$url"; then return 2; fi
+	return 1
+)

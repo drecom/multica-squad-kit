@@ -60,79 +60,6 @@ require_commands() {
 }
 
 
-# JSON のまま渡し、シェルの変数で失われる NUL も検証する。
-pr_url_data() {
-	python3 - "$@" <<'URLPY'
-import json
-import re
-import sys
-from urllib.parse import urlsplit
-
-owner = r"[A-Za-z0-9-]+"
-repo = r"[A-Za-z0-9_.-]+"
-repository_pattern = re.compile(rf"{owner}/{repo}")
-
-def canonical(value):
-    if not isinstance(value, str):
-        raise ValueError("GitHub の PR の URL の形でない")
-    if any(ord(c) < 32 or 127 <= ord(c) <= 159 for c in value):
-        raise ValueError("制御文字を含む")
-    try:
-        parsed = urlsplit(value)
-        match = re.fullmatch(rf"/({owner})/({repo})/pull/([0-9]+)(?:/.*)?", parsed.path)
-        if parsed.scheme.lower() not in ("http", "https") or parsed.netloc.lower() != "github.com" or not match:
-            raise ValueError
-        account, project, number = match.groups()
-        number = int(number)
-        if project in (".", "..") or number < 1:
-            raise ValueError
-    except ValueError:
-        raise ValueError("GitHub の PR の URL の形でない") from None
-    return f"https://github.com/{account}/{project}/pull/{number}"
-
-metadata = json.loads(sys.argv[1])["metadata"]
-value = metadata.get("pr_url")
-state, url, reason = "absent", "", "metadata に pr_url がない"
-line = "紐付け: pr_url なし pr: 不明"
-if value is not None and value != "":
-    try:
-        url = canonical(value)
-        source = metadata.get("repository")
-        valid_source = (isinstance(source, str) and repository_pattern.fullmatch(source)
-                        and source.split("/")[1] not in (".", ".."))
-        if not valid_source or source.casefold() != "/".join(url.split("/")[3:5]).casefold():
-            state, reason = "foreign", "PR の URL が作業先と違う"
-            source = source if valid_source else ("なし" if source is None or source == "" else "不正")
-            line = f"紐付け: 作業先と違う pr: {url} 作業先: {source}"
-        else:
-            state, reason, line = "valid", "", ""
-    except ValueError as error:
-        state, reason = "invalid", "PR の URL が不正"
-        line = "紐付け: 不正な pr_url pr: 表示しない 理由: " + str(error)
-if len(sys.argv) > 2 and state in ("valid", "absent"):
-    try:
-        urls = [canonical(item["html_url"]) for item in json.loads(sys.argv[2])["pull_requests"]]
-        if state == "absent":
-            line += " 紐付いた PR: " + ", ".join(urls) if urls else ""
-        elif url.casefold() in [item.casefold() for item in urls]:
-            line = "紐付け: 紐付いている pr: " + url
-        elif not urls:
-            line = "紐付け: 紐付いていない pr: " + url
-        else:
-            line = "紐付け: 食い違い pr: " + url + " 紐付いた PR: " + ", ".join(urls)
-    except (ValueError, KeyError, TypeError):
-        line = "紐付け: 未確認 pr: " + (url or "不明") + " 理由: PR の URL を判定できない"
-pending_matches = False
-if state == "valid":
-    try:
-        pending_matches = canonical(metadata.get("pr_link_pending")).casefold() == url.casefold()
-    except ValueError:
-        pass
-print(json.dumps(dict(state=state, url=url, reason=reason, line=line,
-                     pending_matches=pending_matches), ensure_ascii=False))
-URLPY
-}
-
 # コメントの一覧は標準入力で受け、間隔に数える記録と、一度紐付いたかを検証する。記録はどのスレッドのものも数える。
 link_record_data() {
 	python3 -c '
@@ -144,24 +71,36 @@ import sys
 url, now, interval = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
 prefix = "紐付けの試み直し:"
 latest, linked = None, False
+if len(sys.argv) > 4 and sys.argv[4]:
+    tried = int(sys.argv[4])
+    if tried <= now:
+        latest = tried
+
+
+def stamp_of(comment):
+    try:
+        stamp = datetime.datetime.fromisoformat(comment["created_at"].replace("Z", "+00:00"))
+    except (ValueError, TypeError, AttributeError, KeyError):
+        return None
+    return None if stamp.tzinfo is None else stamp.timestamp()
+
+
 for comment in json.load(sys.stdin):
     content = comment.get("content")
     lines = content.splitlines() if isinstance(content, str) else []
     if comment.get("author_type") != "agent" or len(lines) < 2:
         continue
-    if lines[0] != "/note" or not lines[1].startswith(prefix):
+    if lines[0] != "/note":
+        continue
+    if not lines[1].startswith(prefix):
         continue
     match = re.search(r" pr: (\S+)(?: |$)", lines[1])
     if not match or match[1].casefold() != url.casefold():
         continue
     if lines[1][len(prefix):match.start()].strip() in ("紐付いた", "紐付いていた"):
         linked = True
-    try:
-        stamp = datetime.datetime.fromisoformat(comment["created_at"].replace("Z", "+00:00"))
-        if stamp.tzinfo is None:
-            continue
-        value = stamp.timestamp()
-    except (ValueError, TypeError, AttributeError):
+    value = stamp_of(comment)
+    if value is None:
         continue
     latest = value if latest is None else max(latest, value)
 print(json.dumps(dict(linked=linked,
@@ -180,11 +119,11 @@ link_record_post() (
 	squad_cli_read issue-comment-add "$issue" "$parent" "$body" >/dev/null || return 1
 )
 
-# 第 2 引数は、前の記録からこの秒数がたつまで試み直さない間隔。省くと 5 分にする。
-# 第 3 引数は、記録を返信にする元のコメント。省くと記録は根のコメントになる。
+# 第 2 引数は試み直しの間隔（省略時は 5 分）、第 3 引数は記録の返信先。
 link_check() {
 	local issue=$1 interval=${2:-300} parent=${3-} cmd task data pr_url prs line
-	local comments info result='' now mark=0 readable=1
+	local comments info='' result='' now pending=0 mark=0 kind tried='' retry=0
+	local project
 	for cmd in jq python3 multica; do
 		if ! command -v "$cmd" >/dev/null 2>&1; then
 			printf '紐付け: 未確認 pr: 不明 理由: %s が見つからない\n' "$cmd"
@@ -205,51 +144,58 @@ link_check() {
 	fi
 	data=$(pr_url_data "$task" "$prs")
 	line=$(jq -r .line <<<"$data")
+	project=$(jq -r '.project_id | select(type == "string")' <<<"$task")
+	kind=$(jq -r .mark_kind <<<"$data")
 	jq -e '.metadata | has("pr_link_pending")' <<<"$task" >/dev/null && mark=1
-	if { [[ $line == '紐付け: 紐付いていない '* ]] && jq -e '.pending_matches' <<<"$data" >/dev/null; } \
-		|| { [[ $line == '紐付け: 紐付いている '* ]] && ((mark)); }; then
-		now=$(date +%s)
-		if ! comments=$(squad_cli_read issue-comments "$issue") \
-			|| ! info=$(printf '%s\n' "$comments" | link_record_data "$pr_url" "$now" "$interval"); then
-			readable=0
+	if [[ $line == '紐付け: 紐付いていない '* ]]; then
+		jq -e '.pending_matches' <<<"$data" >/dev/null && pending=1
+		# 記録は、新しい PR で待つかと、切り替え途中の同じ PR の印の復旧にだけ使う。
+		if [[ -z $kind && -n $project ]] && ((pending)) && pr_link_record_matches "$project" "$pr_url"; then
+			kind='記録した'
+			# 書けなければ、その回は連携なしと扱うだけにして、次の回に戻し直す。知らせは投稿しない。
+			multica issue metadata set "$issue" --key pr_link_no_integration --value "$kind $pr_url" --type string >/dev/null 2>&1 || :
 		fi
-		if [[ $line == '紐付け: 紐付いていない '* ]]; then
-			# コメントを読めないときと、一度紐付いたときは試み直さない。一度紐付いたときはマークを消し直す。
-			if ((! readable)); then
-				printf '%s\n' "$line"
-				return 0
-			fi
-			if jq -e '.linked' <<<"$info" >/dev/null; then
-				multica issue metadata delete "$issue" --key pr_link_pending >/dev/null 2>&1 || :
-				printf '%s\n' "$line"
-				return 0
-			fi
-			if jq -e '.recent' <<<"$info" >/dev/null; then
-				printf '%s\n' "$line"
-				return 0
-			fi
-		elif ((! readable)) || jq -e '.linked' <<<"$info" >/dev/null; then
-			# 記録を書けないか、すでにあるので、記録は書かずにマークだけを消す。
-			multica issue metadata delete "$issue" --key pr_link_pending >/dev/null 2>&1 || :
-			printf '%s\n' "$line"
-			return 0
+		if [[ -n $kind ]]; then tried=$(jq -r '.tried_at // empty' <<<"$data"); fi
+	elif [[ $line != '紐付け: 紐付いている '* ]]; then
+		printf '%s\n' "$line"
+		return 0
+	fi
+
+	if ((pending)) || [[ $kind == '記録した' ]] || { [[ $line == '紐付け: 紐付いている '* ]] && ((mark)); }; then
+		now=$(date +%s)
+		if comments=$(squad_cli_read issue-comments "$issue"); then
+			info=$(printf '%s\n' "$comments" | link_record_data "$pr_url" "$now" "$interval" "$tried") || info=''
 		fi
 	fi
-	if [[ $line == '紐付け: 紐付いていない '* ]] && jq -e '.pending_matches' <<<"$data" >/dev/null; then
-		# 応答よりも、呼び出し後に読み直した一覧を優先して判定する。
-		if pr_link_check_api_env; then
-			if pr_link_request_once "$issue" "$pr_url" 30; then
-				case $PR_LINK_STATUS in
-				200) result='一覧にない（200）' ;;
-				404) result='見つからない（404）' ;;
-				*) result="失敗（応答の状態コード ${PR_LINK_STATUS}）" ;;
-				esac
-			else
-				result='失敗（通信に失敗した）'
+
+	if ((pending)) && [[ -n $info ]]; then
+		if jq -e '.linked' <<<"$info" >/dev/null; then
+			multica issue metadata delete "$issue" --key pr_link_pending >/dev/null 2>&1 || :
+		elif ! jq -e '.recent' <<<"$info" >/dev/null; then
+			if pr_link_check_api_env; then
+				# API を呼ぶ前に間隔の跡を残す。書けない回は呼ばない。
+				if [[ -z $kind ]] || multica issue metadata set "$issue" --key pr_link_tried_at \
+					--value "$(date -u +%Y-%m-%dT%H:%M:%SZ) $pr_url" --type string >/dev/null 2>&1; then
+					retry=1
+					if pr_link_request_once "$issue" "$pr_url" 30; then
+						case $PR_LINK_STATUS in
+						200) result='一覧にない（200）' ;;
+						404) result='見つからない（404）' ;;
+						*) result="失敗（応答の状態コード ${PR_LINK_STATUS}）" ;;
+						esac
+					else
+						result='失敗（通信に失敗した）'
+					fi
+				fi
+			elif [[ -z $kind ]]; then
+				retry=1
+				result="失敗（${PR_LINK_REASON}）"
 			fi
-		else
-			result="失敗（${PR_LINK_REASON}）"
 		fi
+	fi
+
+	if ((retry)); then
+		# 応答よりも、呼び出し後に読み直した一覧を優先する。
 		if ! prs=$(squad_cli_read issue-pull-requests "$issue"); then
 			line="紐付け: 未確認 pr: $pr_url 理由: 紐付いた PR の一覧を読めない（CLI の失敗か欄の不正）"
 		else
@@ -261,13 +207,26 @@ link_check() {
 		'紐付け: 紐付いている '*) result='紐付いた' ;;
 		'紐付け: 食い違い '*) result='食い違い' ;;
 		esac
-		link_record_post "$issue" "$parent" "$result" "$pr_url" >/dev/null 2>&1 || :
-	elif [[ $line == '紐付け: 紐付いている '* ]] && ((mark)); then
+		if [[ -z $kind || $result == '紐付いた' ]]; then
+			link_record_post "$issue" "$parent" "$result" "$pr_url" >/dev/null 2>&1 || :
+		fi
+	elif [[ $line == '紐付け: 紐付いている '* && -n $info ]] && ((mark)) && ! jq -e '.linked' <<<"$info" >/dev/null; then
 		link_record_post "$issue" "$parent" '紐付いていた' "$pr_url" >/dev/null 2>&1 || :
 	fi
-	if [[ $line == '紐付け: 紐付いている '* ]] && ((mark)); then
-		multica issue metadata delete "$issue" --key pr_link_pending >/dev/null 2>&1 || :
-	fi
+
+	case $line in
+	'紐付け: 紐付いている '*)
+		pr_link_record_remove "$project" "$pr_url"
+		if ((mark)); then multica issue metadata delete "$issue" --key pr_link_pending >/dev/null 2>&1 || :; fi
+		# 印は、どちらの種類でも、紐付いたと判定した回に消す。知らせは読まず、消さない。
+		if [[ -n $kind ]]; then
+			multica issue metadata delete "$issue" --key pr_link_no_integration >/dev/null 2>&1 || :
+		fi
+		;;
+	'紐付け: 紐付いていない '*)
+		if [[ -n $kind ]]; then line+=" 連携: なし"; fi
+		;;
+	esac
 	printf '%s\n' "$line"
 }
 
