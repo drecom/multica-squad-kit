@@ -536,7 +536,7 @@ run_hook "$(input rate_limit "$uuid")"
 expect_silent_pass 'StopFailure: 置き場がシンボリックリンク'
 if [[ -n $(ls -A "$test_dir/elsewhere-dir") ]]; then fail 'StopFailure: シンボリックリンクの先に書いた'; fi
 rm -rf -- "$test_dir/elsewhere-dir"
-# SessionStart: 始めの長さのファイルの場所がシンボリックリンクなら、たどらず、一時ファイルで置き換える
+# SessionStart: 始めの長さのファイルの場所がシンボリックリンクなら、たどらず残す
 fresh
 mkdir -p -m 700 "$state" "$state/run-stops" "$state/run-stops/start"
 printf 'keep\n' >"$test_dir/link-target"
@@ -544,7 +544,7 @@ ln -s "$test_dir/link-target" "$(start_file "$sid")"
 run_session "$start_hook" "$(start_input "$sid" "$transcript")"
 expect_silent_pass 'SessionStart: ファイルの場所がシンボリックリンク'
 if [[ $(cat "$test_dir/link-target") != keep ]]; then fail 'シンボリックリンクの先を書き換えた'; fi
-if [[ -L $(start_file "$sid") || $(cat "$(start_file "$sid")") != 'task-1 0' ]]; then fail 'シンボリックリンクを一時ファイル経由の通常のファイルに置き換えるはず'; fi
+if [[ ! -L $(start_file "$sid") ]]; then fail 'シンボリックリンクは残すはず'; fi
 if [[ -n $(find "$state/run-stops/start" -name '.tmp-*') ]]; then fail '一時ファイルが残った'; fi
 # SessionStart: 置き場がシンボリックリンク、権限が広いなら、書かない
 fresh
@@ -582,5 +582,81 @@ run_session "$end_hook" "$(end_input "$sid" "$transcript")"
 expect_record '始めに記録があった実行'
 if [[ -e $(start_file "$sid") ]]; then fail '終わりで始めの長さのファイルを消すはず'; fi
 echo 'PASS SessionStart と SessionEnd: 始めに記録があった実行でも、足された上限の添付を記録する'
+
+# 状態の置き場そのものがリンクなら、3 つのフックともリンク先に触れない。
+fresh
+line_max "$sid" 5 >"$transcript"
+set_start "$sid" 0
+linked_state="$test_dir/linked-state"
+mv "$state" "$linked_state"
+ln -s "$linked_state" "$state"
+state_path=$state
+state="$state/"
+run_session "$start_hook" "$(start_input "$sid" "$transcript")"
+expect_silent_pass 'SessionStart: 状態の置き場がシンボリックリンク'
+[[ $(cat "$(start_file "$sid")") == 'task-1 0' ]] || fail 'リンク先の始めの長さを書き換えた'
+run_session "$end_hook" "$(end_input "$sid" "$transcript")"
+expect_no_record 'SessionEnd: 状態の置き場がシンボリックリンク'
+[[ -f $(start_file "$sid") ]] || fail 'リンク先の始めの長さを消した'
+run_hook "$(input rate_limit "$uuid")"
+expect_no_record 'StopFailure: 状態の置き場がシンボリックリンク'
+state=$state_path
+echo 'PASS 3 つのフックは、状態の置き場がシンボリックリンクならリンク先を変えない'
+
+# 月のファイルがハードリンクなら、両方の記録処理が追記しない。
+fresh
+line_max "$sid" 5 >"$transcript"
+set_start "$sid" 0
+(umask 077 && printf 'keep\n' >"$test_dir/hardlink-target")
+ln "$test_dir/hardlink-target" "$(month_file)"
+run_session "$end_hook" "$(end_input "$sid" "$transcript")"
+expect_silent_pass 'SessionEnd: 月のファイルがハードリンク'
+[[ $(cat "$test_dir/hardlink-target") == keep ]] || fail 'SessionEnd がハードリンクに追記した'
+run_hook "$(input rate_limit "$uuid")"
+expect_silent_pass 'StopFailure: 月のファイルがハードリンク'
+[[ $(cat "$test_dir/hardlink-target") == keep ]] || fail 'StopFailure がハードリンクに追記した'
+echo 'PASS SessionEnd と StopFailure は、月のファイルがハードリンクなら追記しない'
+
+# フックを 10 個起動してから待つ。入出力のファイルは実行ごとに分ける。
+run_concurrent() {
+	local script=$1 phase=$2 i pid rc=0
+	local pids=()
+	for ((i = 1; i <= 10; i++)); do
+		env -i PATH="$PATH" HOME="$home" MULTICA_TASK_ID="$task_id" MULTICA_AGENT_ID="$agent_id" \
+			CLAUDE_CONFIG_DIR="$config" SQUAD_KIT_STATE_DIR="$state" "$script" \
+			<"$test_dir/$phase-$i.json" >"$test_dir/$phase-$i.out" 2>"$test_dir/$phase-$i.err" &
+		pids+=("$!")
+	done
+	for pid in "${pids[@]}"; do wait "$pid" || rc=1; done
+	[[ $rc == 0 ]] || fail "$phase: フックが 0 以外で終わった"
+	for ((i = 1; i <= 10; i++)); do
+		[[ ! -s $test_dir/$phase-$i.out && ! -s $test_dir/$phase-$i.err ]] || fail "$phase: フックから出力があった"
+	done
+}
+
+fresh
+for ((i = 1; i <= 10; i++)); do
+	concurrent_id=$(printf '%08x-%04x-%04x-%04x-%012x' 61 62 63 64 "$i")
+	concurrent_path="$proj/$concurrent_id.jsonl"
+	start_input "$concurrent_id" "$concurrent_path" >"$test_dir/start-$i.json"
+	end_input "$concurrent_id" "$concurrent_path" >"$test_dir/end-$i.json"
+	input rate_limit "$concurrent_id" >"$test_dir/failure-$i.json"
+done
+run_concurrent "$start_hook" start
+for ((i = 1; i <= 10; i++)); do
+	concurrent_id=$(printf '%08x-%04x-%04x-%04x-%012x' 61 62 63 64 "$i")
+	[[ -f $(start_file "$concurrent_id") && $(cat "$(start_file "$concurrent_id")") == 'task-1 0' ]] ||
+		fail 'SessionStart: 始めの長さがないか合わない'
+	line_max "$concurrent_id" 5 >"$proj/$concurrent_id.jsonl"
+done
+run_concurrent "$end_hook" end
+jq -se 'length == 10 and (map(.session) | unique | length == 10) and all(.[]; .reason == "max_turns")' \
+	"$state"/run-stops/*.jsonl >/dev/null || fail 'SessionEnd: 異なる実行の記録が 10 行必要'
+
+fresh
+run_concurrent "$hook" failure
+jq -se 'length == 10 and (map(.session) | unique | length == 10) and all(.[]; .reason == "rate_limit")' \
+	"$state"/run-stops/*.jsonl >/dev/null || fail "StopFailure: 異なる実行の記録が 10 行必要: $(cat "$state"/run-stops/*.jsonl)"
+echo 'PASS 同時実行: SessionStart の始めの長さ、SessionEnd と StopFailure の理由がそれぞれ 10 件残る'
 
 echo 'PASS suite run-stops: 止まった理由を残すフックの確認'

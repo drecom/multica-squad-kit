@@ -232,8 +232,10 @@ state='{}'
 
 # タスクを作るたびに保存する。途中で失敗しても、作ったタスクを忘れて同じものを作り直さないため。
 save_state() {
-	mkdir -p "$(dirname "$STATE_FILE")"
-	printf '%s\n' "$state" >"$STATE_FILE"
+	local next_state=${1-$state}
+	mkdir -p "$(dirname "$STATE_FILE")" || return 1
+	printf '%s\n' "$next_state" >"$STATE_FILE" || return 1
+	state=$next_state
 }
 
 # タスクにラベルを付ける。付けられなくてもタスクの状態の保存は続けるよう、失敗は返り値で返す。
@@ -287,6 +289,24 @@ write_description() {
 	printf '%s\n' "$description"
 }
 
+read_task() {
+	python3 - "$1" <<'PY'
+import os
+import subprocess
+import sys
+
+try:
+    limit = int(os.environ.get("USAGE_TASK_READ_SECONDS", "30"))
+    result = subprocess.run(
+        ["multica", "issue", "get", sys.argv[1], "--output", "json"],
+        stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=limit,
+    )
+except (OSError, ValueError, subprocess.TimeoutExpired):
+    sys.exit(1)
+sys.exit(result.returncode)
+PY
+}
+
 # 状態のファイルのタスクが、この見張りが、このキーで作ったものかをサーバーで確認する。
 # 状態のファイルは同じ OS の利用者のプロセスが書けるので、更新する前に確認する。
 # 合えば、行に印 keyed を付ける。合わなければ、状態からそのキーを外し、外したことを stderr に書き、実行の結果を失敗にする。
@@ -294,8 +314,8 @@ write_description() {
 # 返り値: 0 は合った、1 は合わず外した、2 はサーバーのタスクを読めなかった。
 task_failed=false
 verify_task() {
-	local key=$1 issue=$2 task prefix
-	if ! task=$(multica issue get "$issue" --output json) || ! jq -e 'type == "object"' <<<"$task" >/dev/null 2>&1; then
+	local key=$1 issue=$2 task prefix next_state
+	if ! task=$(read_task "$issue") || ! jq -e 'type == "object"' <<<"$task" >/dev/null 2>&1; then
 		echo "タスク ${issue} をサーバーから読めなかった" >&2
 		task_failed=true
 		return 2
@@ -305,15 +325,30 @@ verify_task() {
 		.project_id == $project and .creator_type == "agent" and ($agent | length) > 0 and .creator_id == $agent
 		and (.title | type) == "string"
 		and (.title | startswith($prefix + " ")) and (.title | endswith("（" + $key + "）"))' <<<"$task" >/dev/null; then
-		state=$(jq --arg k "$key" '.[$k].keyed = true' <<<"$state")
-		save_state
+		next_state=$(jq --arg k "$key" '.[$k].keyed = true' <<<"$state") || { task_failed=true; return 2; }
+		save_state "$next_state" || { task_failed=true; return 2; }
 		return 0
 	fi
-	echo "状態のファイルのタスク ${issue} は、このキー（${key}）の見張りが作ったものと合わない。更新せず、状態から外した" >&2
-	state=$(jq --arg k "$key" 'del(.[$k])' <<<"$state")
-	save_state
 	task_failed=true
+	next_state=$(jq --arg k "$key" 'del(.[$k])' <<<"$state") || return 2
+	save_state "$next_state" || return 2
+	echo "状態のファイルのタスク ${issue} は、このキー（${key}）の見張りが作ったものと合わない。更新せず、状態から外した" >&2
 	return 1
+}
+
+# 見張らない行も含め、状態を調べる前に印のないタスクを確認する。
+# その結果を残し、同じ実行の apply で読み直さない。
+legacy_checks='{}'
+reconcile_legacy_tasks() {
+	local key issue result
+	while IFS= read -r -d '' key && IFS= read -r -d '' issue; do
+		result=0
+		verify_task "$key" "$issue" || result=$?
+		legacy_checks=$(jq --arg k "$key" --argjson r "$result" '.[$k] = $r' <<<"$legacy_checks")
+	done < <(jq -j '
+		to_entries[] | select(.value | type == "object")
+		| select(.value.keyed != true and (.value.issue | type == "string" and length > 0))
+		| .key, "\u0000", .value.issue, "\u0000"' <<<"$state")
 }
 
 # ok でない状態どうしの変化で、同じタスクの題と本文を新しい状態のものに書き換える。
@@ -350,20 +385,17 @@ comment_change() {
 #   limited → warn/ok、warn/error/unverified → ok: 戻ったとコメントし、ok なら done にする
 #   ok でない状態どうしの変化: 題と本文を新しい状態のものに書き換え、新しい状態の始めの文をコメントする
 # 既存のタスクを更新する前に、verify_task でサーバーのタスクを確認する。
-# 印 keyed のない行のタスクは、状態が変わらなくても、その実行で確認する。
 apply() {
 	local key=$1 level=$2 title=$3 detail=$4
-	local prev issue keyed
+	local prev issue retitle verified next_state
 	# ログインの行は初回の ok でも、見張りの結果に残す。
-	prev=$(jq -r --arg k "$key" '.[$k].level // (if ($k | startswith("login:")) then "" else "ok" end)' <<<"$state")
-	issue=$(jq -r --arg k "$key" '.[$k].issue // empty' <<<"$state")
-	keyed=$(jq -r --arg k "$key" '.[$k].keyed // false' <<<"$state")
-	if [[ "$level" == "$prev" ]]; then
-		if [[ -n "$issue" && "$keyed" != true ]]; then
-			verify_task "$key" "$issue" || true
-		fi
+	prev=$(jq -r --arg k "$key" '.[$k].level // (if ($k | startswith("login:")) then "" else "ok" end)' <<<"$state") || return 1
+	issue=$(jq -r --arg k "$key" '.[$k].issue // empty' <<<"$state") || return 1
+	retitle=$(jq -r --arg k "$key" '.[$k].retitle == true' <<<"$state") || return 1
+	if [[ "$level" == "$prev" && "$retitle" != true ]]; then
 		return 0
 	fi
+	retitle=false
 
 	if [[ -z "$issue" ]]; then
 		if [[ "$level" != ok ]]; then
@@ -374,19 +406,23 @@ apply() {
 				rm -f -- "$description"
 				return 1
 			fi
-			issue=$(jq -r '.id' <<<"$response")
+			issue=$(jq -r '.id' <<<"$response") || return 1
 			rm -f -- "$description"
 			add_label "$issue" || label_failed=true
 		fi
 	else
-		local verified=0
-		verify_task "$key" "$issue" || verified=$?
-		((verified == 0)) || return 0
+		verified=$(jq -r --arg k "$key" '.[$k] // empty' <<<"$legacy_checks") || return 1
+		if [[ -z "$verified" ]]; then
+			verify_task "$key" "$issue" || return 0
+		elif [[ "$verified" != 0 ]]; then
+			return 0
+		fi
 		if [[ "$level" != ok && "$prev" != ok ]] && ! update_task_text "$key" "$issue" "$level" "$title" "$detail"; then
 			echo "タスク ${issue} の題と本文を書き換えられなかった" >&2
 			task_failed=true
+			retitle=true
 		fi
-		if ! comment_change "$key" "$level" "$prev" "$issue" "$detail"; then
+		if [[ "$level" != "$prev" ]] && ! comment_change "$key" "$level" "$prev" "$issue" "$detail"; then
 			echo "タスク ${issue} を更新できなかった。状態は前回のままにする" >&2
 			task_failed=true
 			return 0
@@ -395,9 +431,11 @@ apply() {
 			issue=""
 		fi
 	fi
-	state=$(jq --arg k "$key" --arg l "$level" --arg i "$issue" '
-		.[$k] = (if $i == "" then {level: $l, issue: ""} else {level: $l, issue: $i, keyed: true} end)' <<<"$state")
-	save_state
+	next_state=$(jq --arg k "$key" --arg l "$level" --arg i "$issue" --argjson retitle "$retitle" '
+		.[$k] = ({level: $l, issue: $i}
+			+ (if $i != "" then {keyed: true} else {} end)
+			+ (if $retitle then {retitle: true} else {} end))' <<<"$state") || return 1
+	save_state "$next_state"
 }
 
 # 1 つのツールの結果を、枠ごとに反映する。
@@ -406,15 +444,15 @@ usage_read_ok=false
 check() {
 	local tool=$1 label=$2 rows err_file
 	usage_read_ok=false
-	err_file=$(usage_tmpfile)
+	err_file=$(usage_tmpfile) || { task_failed=true; return; }
 	if ! rows=$("fetch_${tool}" 2>"$err_file"); then
-		apply "${tool}:fetch" error "${label} の使用量を取れない" "$(cat "$err_file")"
+		apply "${tool}:fetch" error "${label} の使用量を取れない" "$(cat "$err_file")" || task_failed=true
 		rm -f "$err_file"
 		return
 	fi
 	rm -f "$err_file"
 	usage_read_ok=true
-	apply "${tool}:fetch" ok "${label} の使用量を取れない" ""
+	apply "${tool}:fetch" ok "${label} の使用量を取れない" "" || task_failed=true
 
 	# 前回あって今回ない枠は、リセットで表示から消えたものとして ok に戻す。
 	local key
@@ -428,7 +466,7 @@ check() {
 	local level title detail
 	while IFS=$'\t' read -r key level title detail; do
 		[[ -z "$key" ]] && continue
-		apply "$key" "$level" "$title" "${title}: ${detail}"
+		apply "$key" "$level" "$title" "${title}: ${detail}" || task_failed=true
 	done <<<"$rows"
 }
 
@@ -447,19 +485,26 @@ check_login() {
 	else
 		check "$tool" "$usage_label"
 	fi
-	prev=$(jq -r --arg key "$key" '.[$key].level // "ok"' <<<"$state")
-	if [[ $level == ok && $prev != ok && $usage_read_ok != true ]]; then
-		echo "${login_label} のログインはローカルでは ok だが、使用量を読めないので、ログインの行は ${prev} のままにした" >&2
-		return
+	prev=$(jq -r --arg key "$key" '.[$key].level // "ok"' <<<"$state") || { task_failed=true; return; }
+	if [[ $level == ok && $usage_read_ok != true ]]; then
+		if [[ $prev != ok ]]; then
+			echo "${login_label} のログインはローカルでは ok だが、使用量を読めないので、ログインの行は ${prev} のままにした" >&2
+			return
+		fi
+		# 外した旧タスクのログイン行は、使用量を読めるまで復旧扱いにしない。
+		if jq -e --arg k "$key" '.[$k] == 1' <<<"$legacy_checks" >/dev/null; then
+			return
+		fi
 	fi
 	local title="${login_label} のログイン"
 	case $level in
 	warn) title+='の期限' ;;
 	unverified) title+='を確認できない' ;;
 	esac
-	apply "$key" "$level" "$title" "$detail"
+	apply "$key" "$level" "$title" "$detail" || task_failed=true
 }
 
+reconcile_legacy_tasks
 for runtime in "${usage_check_runtimes[@]}"; do
 	case $runtime in
 	claude) check_login claude Claude 'Claude Code' ;;

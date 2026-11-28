@@ -17,8 +17,8 @@ Claude Code が、標準入力に JSON で入力を渡す。
   7. すべて合うときだけ、run-stops/<年>-<月>.jsonl に、理由 max_turns の行を 1 行足す
 
 どれかが合わない、始めの長さがないか読めない、タスクが違う、書けない、入力を読めないときは、何も出さずに 0 で終わる。
-始めの長さのファイルは、合うかどうかによらず消す。run-stops と run-stops/start は、シンボリックリンクをたどらずに確認したディレクトリを起点に開き、
-すでにあるものは、種類・持ち主・権限（グループと他人になし）が合うときだけ使う。
+状態の置き場とその下は、シンボリックリンクをたどらずに開く。種類・持ち主・権限（グループと他人になし）を確認し、
+通常のファイルはリンクが 1 つのときだけ使う。条件に合う始めの長さのファイルは、内容によらず消す。
 """
 import calendar
 import json
@@ -75,7 +75,7 @@ def open_regular(path, dir_fd=None, owned=False):
 
 def open_start_dir():
     """run-stops/start を確認して開く。なければ FileNotFoundError。"""
-    state_fd = os.open(state_dir(), os.O_RDONLY | os.O_DIRECTORY)
+    state_fd = open_state_dir(False)
     try:
         runs_fd = open_checked_dir(state_fd, "run-stops", False)
     finally:
@@ -95,15 +95,16 @@ def read_start_length(session_id, task_id):
     try:
         try:
             fd = open_regular(session_id, dir_fd, owned=True)
-            try:
-                text = os.read(fd, 256).decode("utf-8")
-            finally:
-                os.close(fd)
+        except OSError:
+            return None
+        try:
+            text = os.read(fd, 256).decode("utf-8")
             found = START_RE.match(text)
             return int(found.group(2)) if found and found.group(1) == task_id else None
         except (OSError, ValueError):
             return None
         finally:
+            os.close(fd)
             try:
                 os.unlink(session_id, dir_fd=dir_fd)
             except OSError:
@@ -174,6 +175,16 @@ def reached_max_turns(real, session_id, start_length, now):
     )
 
 
+def open_state_dir(create):
+    # 親より上ではリンクを許す。末尾の / と /. は最後の名前を開く前に除く。
+    path = state_dir().rstrip("/") or "/"
+    while path.endswith("/."):
+        path = path[:-2].rstrip("/") or "/"
+    if create:
+        os.makedirs(os.path.dirname(path) or ".", mode=0o700, exist_ok=True)
+    return open_checked_dir(None, path, create)
+
+
 def open_checked_dir(parent_fd, name, create):
     """parent_fd を起点に、シンボリックリンクをたどらずにディレクトリを開く。ないときは create なら権限 700 で作る。
     ディレクトリで、このフックを動かす利用者の持ち物で、グループと他人に権限がないときだけ使い、合わなければ OSError にする。"""
@@ -183,7 +194,10 @@ def open_checked_dir(parent_fd, name, create):
     except FileNotFoundError:
         if not create:
             raise
-        os.mkdir(name, 0o700, dir_fd=parent_fd)
+        try:
+            os.mkdir(name, 0o700, dir_fd=parent_fd)
+        except FileExistsError:
+            pass
         fd = os.open(name, flags, dir_fd=parent_fd)
     try:
         check_owned(os.fstat(fd), stat.S_ISDIR)
@@ -196,14 +210,15 @@ def open_checked_dir(parent_fd, name, create):
 def check_owned(info, kind):
     if not kind(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o077:
         raise OSError("置き場の種類・持ち主・権限が合わない")
+    if stat.S_ISREG(info.st_mode) and info.st_nlink != 1:
+        raise OSError("ファイルのリンクの数が合わない")
 
 
 def append_record(record, now_struct):
     """run-stops/<年>-<月>.jsonl に、1 行を 1 回の書き込みで足す。置き場かファイルが合わなければ OSError にする。"""
     old_umask = os.umask(0o077)
     try:
-        os.makedirs(state_dir(), mode=0o700, exist_ok=True)
-        state_fd = os.open(state_dir(), os.O_RDONLY | os.O_DIRECTORY)
+        state_fd = open_state_dir(True)
         try:
             dir_fd = open_checked_dir(state_fd, "run-stops", True)
         finally:
@@ -236,7 +251,7 @@ def main():
     if not isinstance(session_id, str) or not SESSION_RE.match(session_id):
         return 0
 
-    start_length = read_start_length(session_id, task_id)  # 合うかどうかによらず、始めの長さのファイルを消す
+    start_length = read_start_length(session_id, task_id)  # 読める始めの長さのファイルは内容によらず消す
     try:
         real = transcript_file(end_input.get("transcript_path"), session_id)
         if real is None or start_length is None:

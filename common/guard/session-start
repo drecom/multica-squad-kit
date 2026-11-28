@@ -12,8 +12,9 @@
      run-stops/start/<session_id> に、MULTICA_TASK_ID と、そのときのファイルの長さをバイトの数で、空白で区切った 1 行に書く。
      同じディレクトリの一時ファイルに書いてから名前を替え、書きかけを読ませない。7 日より古い始めの長さのファイルは消す
 
-置き場は権限 700、ファイルは 600 にする。run-stops と run-stops/start は、シンボリックリンクをたどらずに確認したディレクトリを起点に開き、
-すでにあるものは、種類・持ち主・権限（グループと他人になし）が合うときだけ使う。合わないとき、書けないとき、入力を読めないときは、何も出さずに 0 で終わる。
+置き場は権限 700、ファイルは 600 にする。状態の置き場とその下は、シンボリックリンクをたどらずに開く。
+種類・持ち主・権限（グループと他人になし）を確認し、通常のファイルはリンクが 1 つのときだけ使う。
+合わないとき、書けないとき、入力を読めないときは、何も出さずに 0 で終わる。
 記録の失敗で、実行の始まり方を変えないため。
 """
 import json
@@ -66,6 +67,16 @@ def transcript_length(real):
         os.close(fd)
 
 
+def open_state_dir(create):
+    # 親より上ではリンクを許す。末尾の / と /. は最後の名前を開く前に除く。
+    path = state_dir().rstrip("/") or "/"
+    while path.endswith("/."):
+        path = path[:-2].rstrip("/") or "/"
+    if create:
+        os.makedirs(os.path.dirname(path) or ".", mode=0o700, exist_ok=True)
+    return open_checked_dir(None, path, create)
+
+
 def open_checked_dir(parent_fd, name, create):
     """parent_fd を起点に、シンボリックリンクをたどらずにディレクトリを開く。ないときは create なら権限 700 で作る。
     ディレクトリで、このフックを動かす利用者の持ち物で、グループと他人に権限がないときだけ使い、合わなければ OSError にする。"""
@@ -75,7 +86,10 @@ def open_checked_dir(parent_fd, name, create):
     except FileNotFoundError:
         if not create:
             raise
-        os.mkdir(name, 0o700, dir_fd=parent_fd)
+        try:
+            os.mkdir(name, 0o700, dir_fd=parent_fd)
+        except FileExistsError:
+            pass
         fd = os.open(name, flags, dir_fd=parent_fd)
     try:
         check_owned(os.fstat(fd), stat.S_ISDIR)
@@ -88,6 +102,8 @@ def open_checked_dir(parent_fd, name, create):
 def check_owned(info, kind):
     if not kind(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o077:
         raise OSError("置き場の種類・持ち主・権限が合わない")
+    if stat.S_ISREG(info.st_mode) and info.st_nlink != 1:
+        raise OSError("ファイルのリンクの数が合わない")
 
 
 def remove_stale(dir_fd, now):
@@ -98,9 +114,11 @@ def remove_stale(dir_fd, now):
         return
     for entry in entries:
         try:
+            if not (SESSION_RE.match(entry.name) or entry.name.startswith(TEMP_PREFIX)):
+                continue
             info = entry.stat(follow_symlinks=False)
-            if (SESSION_RE.match(entry.name) or entry.name.startswith(TEMP_PREFIX)) and stat.S_ISREG(info.st_mode) \
-                    and now - info.st_mtime > STALE_SECONDS:
+            check_owned(info, stat.S_ISREG)
+            if now - info.st_mtime > STALE_SECONDS:
                 os.unlink(entry.name, dir_fd=dir_fd)
         except OSError:
             continue
@@ -109,8 +127,7 @@ def remove_stale(dir_fd, now):
 def write_start(session_id, task_id, length):
     old_umask = os.umask(0o077)
     try:
-        os.makedirs(state_dir(), mode=0o700, exist_ok=True)
-        state_fd = os.open(state_dir(), os.O_RDONLY | os.O_DIRECTORY)
+        state_fd = open_state_dir(True)
         try:
             runs_fd = open_checked_dir(state_fd, "run-stops", True)
         finally:
@@ -120,11 +137,18 @@ def write_start(session_id, task_id, length):
         finally:
             os.close(runs_fd)
         try:
+            try:
+                existing = os.stat(session_id, dir_fd=dir_fd, follow_symlinks=False)
+            except FileNotFoundError:
+                pass
+            else:
+                check_owned(existing, stat.S_ISREG)
             temp = "%s%s.%d" % (TEMP_PREFIX, session_id, os.getpid())
             flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
             fd = os.open(temp, flags, 0o600, dir_fd=dir_fd)
             try:
                 try:
+                    check_owned(os.fstat(fd), stat.S_ISREG)
                     os.write(fd, ("%s %d\n" % (task_id, length)).encode("utf-8"))
                 finally:
                     os.close(fd)

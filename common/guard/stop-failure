@@ -9,8 +9,8 @@ Claude Code が、標準入力に JSON で StopFailure の入力を渡す。
      run-stops/<年>-<月>.jsonl に、理由の行を 1 行足す
 
 入力の last_assistant_message は、モデルの出力で作業先の内容を含みうるので、読まず、記録にも写さない。
-置き場は権限 700、ファイルは 600 にし、1 行を 1 回の書き込みで足す。run-stops とその中の記録のファイルは、シンボリックリンクをたどらずに
-確認したディレクトリを起点に開き、すでにあるものは、種類（ディレクトリか通常のファイル）・持ち主・権限（グループと他人になし）が合うときだけ使う。
+置き場は権限 700、ファイルは 600 にし、1 行を 1 回の書き込みで足す。状態の置き場とその下は、シンボリックリンクをたどらずに開く。
+種類・持ち主・権限（グループと他人になし）を確認し、通常のファイルはリンクが 1 つのときだけ使う。
 合わないとき、書けないとき、入力を読めないときは、何も出さずに 0 で終わる。記録の失敗で、実行の終わり方を変えないため。
 """
 import json
@@ -35,6 +35,16 @@ def state_dir():
     return os.environ.get("SQUAD_KIT_STATE_DIR") or os.path.join(HERE, "state")
 
 
+def open_state_dir(create):
+    # 親より上ではリンクを許す。末尾の / と /. は最後の名前を開く前に除く。
+    path = state_dir().rstrip("/") or "/"
+    while path.endswith("/."):
+        path = path[:-2].rstrip("/") or "/"
+    if create:
+        os.makedirs(os.path.dirname(path) or ".", mode=0o700, exist_ok=True)
+    return open_checked_dir(None, path, create)
+
+
 def open_checked_dir(parent_fd, name, create):
     """parent_fd を起点に、シンボリックリンクをたどらずにディレクトリを開く。ないときは create なら権限 700 で作る。
     ディレクトリで、このフックを動かす利用者の持ち物で、グループと他人に権限がないときだけ使い、合わなければ OSError にする。"""
@@ -44,7 +54,10 @@ def open_checked_dir(parent_fd, name, create):
     except FileNotFoundError:
         if not create:
             raise
-        os.mkdir(name, 0o700, dir_fd=parent_fd)
+        try:
+            os.mkdir(name, 0o700, dir_fd=parent_fd)
+        except FileExistsError:
+            pass
         fd = os.open(name, flags, dir_fd=parent_fd)
     try:
         check_owned(os.fstat(fd), stat.S_ISDIR)
@@ -57,14 +70,15 @@ def open_checked_dir(parent_fd, name, create):
 def check_owned(info, kind):
     if not kind(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o077:
         raise OSError("置き場の種類・持ち主・権限が合わない")
+    if stat.S_ISREG(info.st_mode) and info.st_nlink != 1:
+        raise OSError("ファイルのリンクの数が合わない")
 
 
 def append_record(record, now):
     """run-stops/<年>-<月>.jsonl に、1 行を 1 回の書き込みで足す。置き場かファイルが合わなければ OSError にする。"""
     old_umask = os.umask(0o077)
     try:
-        os.makedirs(state_dir(), mode=0o700, exist_ok=True)
-        state_fd = os.open(state_dir(), os.O_RDONLY | os.O_DIRECTORY)
+        state_fd = open_state_dir(True)
         try:
             dir_fd = open_checked_dir(state_fd, "run-stops", True)
         finally:
