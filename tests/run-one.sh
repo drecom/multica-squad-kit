@@ -14,6 +14,13 @@
 # テスト用の環境変数は env に渡し、python3 自身には渡さない。HOME の設定から
 # バージョンを決める python3 の shim が、空の HOME で動かなくなるのを避けるため。
 #
+# 時間切れの記録: 止めるより前に、セッションのプロセスの一覧（stop-session.py の LIST）を残し、
+# スタックを登録したプロセス（tests/tty-session.py。SQUAD_KIT_TEST_STACK_DIR を渡す）に SIGUSR2 を送って
+# 1 秒待ち、書かれたスタックを残す。stop-session.py の STACKS は、登録の印とプロセスの情報が合った PID にだけ送る。
+# 送る前に開いたファイルでスタックを回収するので、正常終了で PID の名前が消えても記録に残る。
+# 送った PID と送らなかった PID（理由つき）は記録に残す。1 つも送れなくても、TERM と KILL の後処理は続ける。
+# 記録は work/record に集め、テストを止めたあとでログの末尾へ足す（テストが開いたままのログを上書きしないため）。
+#
 # 結果の記録: result に「終了コード 秒数」を 1 行で書く。時間切れのときは、終了コードを 124 にし、
 # 3 つ目に上限の秒数を足す。session には、止めるセッションの ID を、テストが動いている間だけ書く。
 # run.sh が割り込まれたときに、残ったテストを止めるために読む。
@@ -28,10 +35,20 @@ status=0
 timed_out=no
 test_pid=
 stop_session() {
-	python3 -I "$root/tests/stop-session.py" "$test_pid" "$1" 2>/dev/null
+	python3 -I "$root/tests/stop-session.py" "$test_pid" "$@" 2>/dev/null
+}
+record_timeout() {
+	local listing
+	printf -- '---- 時間切れの記録（%s 秒）\n' "$limit" >"$work/record"
+	printf 'プロセスの一覧（PID 親 グループ 状態 経過 コマンド）\n' >>"$work/record"
+	listing=$(stop_session LIST) || :
+	printf '%s\n' "$listing" >>"$work/record"
+	printf 'SIGUSR2 の送り先（送った PID・送らなかった PID と理由）\n' >>"$work/record"
+	stop_session STACKS "$work/stacks" >>"$work/record" || :
 }
 # 割り込まれたら、セッションのテストを残さず、結果を残さずに終わる。
 trap 'if [[ -n $test_pid ]]; then stop_session KILL || :; fi; exit 143' HUP INT TERM
+mkdir -p "$work/stacks"
 python3 -c '
 import os, sys, time
 registered, parent = sys.argv[1], int(sys.argv[2])
@@ -42,7 +59,7 @@ while not os.path.exists(registered):
 os.setsid()
 os.execvp(sys.argv[3], sys.argv[3:])' \
 	"$work/session" "$$" \
-	env HOME="$work/home" TMPDIR="$work/tmp/" BASH_ENV="$root/tests/run-hook.sh" SQUAD_KIT_TEST_ERROR_FILE="$work/error" \
+	env HOME="$work/home" TMPDIR="$work/tmp/" BASH_ENV="$root/tests/run-hook.sh" SQUAD_KIT_TEST_ERROR_FILE="$work/error" SQUAD_KIT_TEST_STACK_DIR="$work/stacks" \
 	bash "$test" >"$work/log" 2>&1 &
 test_pid=$!
 # 読む側が書きかけを見ないよう、書いてから名前を付ける。
@@ -51,6 +68,7 @@ mv "$work/session.tmp" "$work/session"
 while kill -0 "$test_pid" 2>/dev/null; do
 	if (($(date +%s) - started >= limit)); then
 		timed_out=yes
+		record_timeout || :
 		stop_session TERM || :
 		for ((grace = 0; grace < 25; grace++)); do
 			stop_session ALIVE || break
@@ -65,6 +83,7 @@ wait "$test_pid" 2>/dev/null || status=$?
 rm -f "$work/session"
 elapsed=$(($(date +%s) - started))
 if [[ $timed_out == yes ]]; then
+	if [[ -f $work/record ]]; then cat "$work/record" >>"$work/log" || :; fi
 	printf '124 %s %s\n' "$elapsed" "$limit" >"$work/result"
 	printf 'done TIMEOUT %s %ss\n' "$test" "$limit"
 	exit 0

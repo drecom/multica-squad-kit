@@ -1,0 +1,15 @@
+# ガードの置き場のパスに含まれる文字の表。列は ID・パス（JSON の文字列）・文字の説明をタブで区切る。
+# tests/codex-hooks-test.sh が、役の引数（lib/project.sh）と hooks/list の引数（lib/codex-hooks.py）が同じ TOML の値を作り、
+# TOML として読め、シェルで 1 つのパスになることを行ごとに確認する。
+plain	"/tmp/guard"	ふつうのパス
+space	"/tmp/a b/guard"	空白
+single-quote	"/tmp/it's/guard"	単引用符
+double-quote	"/tmp/say \"hi\"/guard"	二重引用符
+backslash	"/tmp/a\\b/guard"	バックスラッシュ
+dollar	"/tmp/$HOME/guard"	ドル記号
+emoji	"/tmp/😀/guard"	絵文字（UTF-16 のサロゲートの対になる文字）
+non-ascii	"/tmp/日本語/é/guard"	非 ASCII
+newline	"/tmp/a\nb/guard"	改行
+tab	"/tmp/a\tb/guard"	タブ
+del	"/tmp/a\u007fb/guard"	DEL（0x7f）
+mixed	"/tmp/a b's 😀\\\"/guard"	空白・単引用符・絵文字・バックスラッシュ・二重引用符

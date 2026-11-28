@@ -1,159 +1,8 @@
 #!/usr/bin/env bash
+# この部分は、新しいホストの配置・Claude の共有の設定・入口・標準入力・デーモンの起動の判断・Claude のログインの確認を確認する。
 set -euo pipefail
-root=$(cd "$(dirname "$0")/.." && pwd)
-mkdir -p "$root/tmp"
-test_dir=$(mktemp -d "$root/tmp/host-test.XXXXXX")
-# 標準エラーを err に向けたまま止まっても、trap が err 自身へ書き足し続けないよう、元の標準エラーを控えて出す。
-exec 8>&2
-trap 'test_exit=$?; if [[ $test_exit != 0 ]]; then cat "$test_dir/out" "$test_dir/err" >&8; fi; rm -rf -- "$test_dir"' EXIT
-mkdir -p "$test_dir/bin"
-cp "$root/tests/guard-backend.sh" "$test_dir/bin/gh"
-cat >"$test_dir/bin/multica" <<'STUB'
-#!/bin/bash
-set -euo pipefail
-base=${0%/*}/..
-mode=$(<"$base/mode")
-printf '%s\n' "$*" >>"$base/calls"
-if [[ -f $base/fail && $(<"$base/fail") == "$*" ]]; then echo 'intentional CLI failure' >&2; exit 77; fi
-case "$*" in
-'user profile get --output json') echo '{"id":"member-a"}' ;;
-'daemon status --output json')
- case $mode in
- stopped|desktop) echo '{"status":"stopped","pid":null}' ;;
- busy) echo '{"status":"running","pid":4242,"daemon_id":"daemon-a","running_task_count":3,"active_task_count":3,"server_url":"https://example.test"}' ;;
- unknown) echo '{"status":"running","pid":4242,"daemon_id":"daemon-a"}' ;;
- *) echo '{"status":"running","pid":4242,"daemon_id":"daemon-a","running_task_count":0,"active_task_count":0,"server_url":"https://example.test"}' ;;
- esac ;;
-'runtime list --output json')
- if [[ $mode == stopped || -f $base/no-runtimes ]]; then echo '[]'; elif [[ -n ${TEST_RUNTIME_LIST:-} ]]; then cat "$TEST_RUNTIME_LIST"; else
-  echo '[{"id":"runtime-claude","owner_id":"member-a","daemon_id":"daemon-a","provider":"claude","status":"online"},{"id":"runtime-codex","owner_id":"member-a","daemon_id":"daemon-a","provider":"codex","status":"online"},{"id":"foreign","owner_id":"member-b","daemon_id":"daemon-a","provider":"claude","status":"online"},{"id":"other-host","owner_id":"member-a","daemon_id":"daemon-b","provider":"codex","status":"online"}]'
- fi ;;
-'daemon stop') echo stopped >"$base/mode" ;;
-'daemon start')
- [[ -z ${VSCODE_TEST_MARKER:-} && -z ${MULTICA_WORKSPACE_ID:-} && $SHELL == /bin/zsh ]] || exit 78
- printf 'CODEX_HOME=%s PATH=%s\n' "$CODEX_HOME" "$PATH" >"$base/process-env"
- printf '%s\n' "$MULTICA_SERVER_URL" >"$base/started-server"
- echo running >"$base/mode" ;;
-*) echo "unexpected CLI call: $*" >&2; exit 90 ;;
-esac
-STUB
-cat >"$test_dir/bin/ps" <<'STUB'
-#!/bin/bash
-base=${0%/*}/..
-# Codex の検証が、停止の確認に読む一覧は、本物の ps から返す。
-[[ $* != '-A -o pid,pgid,stat' && $* != '-A -o pid,pgid,stat,command' ]] || PATH=/bin:/usr/bin exec ps "$@"
-cat "$base/process-env"
-STUB
-cat >"$test_dir/bin/claude" <<'STUB'
-#!/bin/bash
-base=${0%/*}/..
-[[ $* == 'auth status' && $CLAUDE_CONFIG_DIR == */claude ]] || exit 91
-if [[ -t 0 ]]; then
- echo 'error: EINVAL: invalid argument, kqueue' >&2
- exit 1
-fi
-printf 'notty\n' >"$base/claude-stdin"
-if [[ -n ${TEST_CLAUDE_STDOUT:-} ]]; then
- cat "$TEST_CLAUDE_STDOUT"
- cat "$TEST_CLAUDE_STDERR" >&2
- exit "$TEST_CLAUDE_EXIT"
-fi
-if [[ -f $base/no-claude-auth ]]; then echo '{"loggedIn":false}'; else echo '{"loggedIn":true}'; fi
-STUB
-cat >"$test_dir/bin/codex" <<'STUB'
-#!/bin/bash
-base=${0%/*}/..
-if [[ $* == 'app-server --strict-config --listen stdio://' ]]; then
- [[ $CODEX_HOME == */codex && ! -t 0 ]] || exit 93
- printf '%s\n' "$CODEX_HOME" >>"$base/codex-checks"
- mode=$(cat "$base/codex-strict" 2>/dev/null || echo ok)
- case $mode in
- ok) exit 0 ;;
- fail) echo 'Error: /agent/codex/config.toml:3:1: unknown configuration field `bogus`' >&2; exit 1 ;;
- silent) exit 1 ;;
- old) echo "error: unexpected argument '--strict-config' found" >&2; exit 2 ;;
- other2) echo 'error: another usage error' >&2; exit 2 ;;
- secret) echo 'invalid type: string "SYNTHETIC_SECRET_VALUE", expected a map' >&2; exit 1 ;;
- zombie-desc)
-  # 子孫が先に終わり、TERM を無視する親が回収しない。子孫はゾンビのまま、親が動き続ける。子孫の PID は親が記録する。
-  exec python3 -c 'import os, signal, sys, time
-signal.signal(signal.SIGTERM, signal.SIG_IGN)
-pid = os.fork()
-if pid == 0:
-    os._exit(0)
-open(sys.argv[1], "w").write("%d\n" % pid)
-open(sys.argv[2], "w").write("%d\n" % os.getpid())
-time.sleep(300)' "$base/desc-pid" "$base/codex-pid" ;;
- term-*)
-  # term-<親>-<子孫>。親は TERM で終わる（exit）か無視する（ignore）。子孫は、なし（none）、TERM のあと 0.5 秒で終わる（finish）、無視する（ignore）。
-  spec=${mode#term-}; p=${spec%-*}; d=${spec#*-}
-  case $d in
-  finish) ( trap '/bin/sleep 0.5; echo done >"$base/desc-done"; exit 0' TERM; /bin/sleep 300 & wait ) & ;;
-  ignore) ( trap '' TERM; exec /bin/sleep 300 ) & ;;
-  esac
-  [[ $d == none ]] || printf '%s\n' "$!" >"$base/desc-pid"
-  printf '%s\n' "$$" >"$base/codex-pid"
-  case $p in
-  exit) trap 'exit 0' TERM; /bin/sleep 300 & wait $! ;;
-  ignore) trap '' TERM; exec /bin/sleep 300 ;;
-  esac ;;
- esac
-fi
-[[ $* == 'login status' && $CODEX_HOME == */codex ]] || exit 92
-[[ ! -f $base/no-codex-auth ]]
-STUB
-printf '#!/bin/bash\nexit 0\n' >"$test_dir/bin/sleep"
-chmod +x "$test_dir/bin/"*
-export PATH="$test_dir/bin:$PATH" TEMPLATE_AGENT_HOME="$test_dir/agent's home" TEMPLATE_DAEMON_ID_FILE="$test_dir/daemon.id"
-export VSCODE_TEST_MARKER=must-not-be-inherited
-printf daemon-a >"$TEMPLATE_DAEMON_ID_FILE"
-cat >"$test_dir/run.sh" <<'RUN'
-#!/bin/bash
-set -euo pipefail
-root=$1
-source "${DRAW_UI:-$root/lib/ui.sh}"
-source "$root/lib/check.sh"
-source "$root/lib/host.sh"
-die() { ui_phase_fail; ui_error "$*"; exit 1; }
-mc() { multica "$@"; }
-server_url=https://example.test
-runtimes=${TEST_RUNTIMES:-[\"claude\",\"codex\"]}
-command() {
- if [[ $* == "-v ${TEST_MISSING_RUNTIME:-__none__}" ]]; then return 1; fi
- builtin command "$@"
-}
-mktemp() {
- local path
- path=$(builtin command mktemp "$@") || return
- case $path in */claude-auth.*) printf '%s\n' "$path" >>"${TEMPLATE_DAEMON_ID_FILE%/*}/auth-work" ;; esac
- printf '%s\n' "$path"
-}
-if [[ ${TEST_AUTH_READER_FAIL:-no} == yes ]]; then
- test_python=$(type -P python3)
- python3() {
-  if [[ ${2:-} == */claude-auth.*/stdout ]]; then
-   echo 'reader exception: private-reader-value' >&2
-   return 1
-  fi
-  "$test_python" "$@"
- }
-fi
-if [[ ${TEST_HOST_STEPS:-no} == yes ]]; then
- ui_init
- ui_steps_begin err 2 'ホストを準備'
- ui_phase_start 1
-fi
-[[ -z ${TEST_CODEX_SECONDS:-} ]] || codex_check_seconds=$TEST_CODEX_SECONDS
-[[ -z ${TEST_CODEX_GRACE:-} ]] || codex_grace_seconds=$TEST_CODEX_GRACE
-[[ -z ${TEST_CODEX_CONFIRM:-} ]] || codex_confirm_seconds=$TEST_CODEX_CONFIRM
-# 拡張を使うセットアップと同じく、root を lib を持たない作業場所へ付け替え、原本は kit_root が指す（lib/extensions.sh）。
-if [[ -n ${TEST_EXTENSION_WORK:-} ]]; then kit_root=$root; root=$TEST_EXTENSION_WORK; fi
-prepare_host
-RUN
-run() { /bin/bash "$test_dir/run.sh" "$root" >"$test_dir/out" 2>"$test_dir/err"; }
-deny() { if run; then exit 1; fi; [[ -s $test_dir/err ]]; }
-set_mode() { printf '%s\n' "$1" >"$test_dir/mode"; : >"$test_dir/calls"; }
-agent_env() { printf 'CODEX_HOME=%s/codex PATH=%s/bin:/usr/bin\n' "$TEMPLATE_AGENT_HOME" "$TEMPLATE_AGENT_HOME" >"$test_dir/process-env"; }
+source "$(dirname "$0")/host-test-lib.sh"
+
 set_mode stopped
 run
 for file in "$root/common/monitor/"squad-*; do
@@ -169,11 +18,27 @@ for file in "$root/common/monitor/"squad-*; do
 done
 cmp "$root/common/guard/gh" "$TEMPLATE_AGENT_HOME/bin/gh"
 cmp "$root/common/guard/pre-push" "$TEMPLATE_AGENT_HOME/git-hooks/pre-push"
-cmp "$root/common/codex/config.toml" "$TEMPLATE_AGENT_HOME/codex/config.toml"
+for file in git-credential git-ssh pre-tool-use stop shell_split.py; do
+ cmp "$root/common/guard/$file" "$TEMPLATE_AGENT_HOME/guard/$file"
+ [[ -x $TEMPLATE_AGENT_HOME/guard/$file ]]
+done
+# 役の GH_CONFIG_DIR に渡す空の置き場。人だけが入れる権限で、中は空である。
+[[ -d $TEMPLATE_AGENT_HOME/guard/gh-empty && -z $(ls -A "$TEMPLATE_AGENT_HOME/guard/gh-empty") ]]
+[[ $(python3 -c 'import os,sys; print(oct(os.stat(sys.argv[1]).st_mode & 0o777)[2:])' "$TEMPLATE_AGENT_HOME/guard/gh-empty") == 700 ]]
+expected_codex_config
+cmp "$test_dir/expected-config" "$TEMPLATE_AGENT_HOME/codex/config.toml"
 [[ -d $TEMPLATE_AGENT_HOME/claude && ! -e $TEMPLATE_AGENT_HOME/allowed-repos ]]
 grep -qx 'daemon start' "$test_dir/calls"
 grep -qx 'https://example.test' "$test_dir/started-server"
 echo 'PASS host: 新しいホストへ共有ファイルと見張りを配置し、専用環境で一つのデーモンを起動する'
+
+# 人の gh の置き場は、gh 自身が使う順（GH_CONFIG_DIR、XDG_CONFIG_HOME の下、ホームの .config）で決める。
+human_gh() { env -u GH_CONFIG_DIR -u XDG_CONFIG_HOME "$@" bash -c 'source "$1"; host_human_gh_dir' -- "$root/lib/host.sh"; }
+[[ $(human_gh HOME=/home/h GH_CONFIG_DIR=/set/gh XDG_CONFIG_HOME=/xdg) == /set/gh ]]
+[[ $(human_gh HOME=/home/h XDG_CONFIG_HOME=/xdg) == /xdg/gh ]]
+[[ $(human_gh HOME=/home/h) == /home/h/.config/gh ]]
+[[ $(human_gh HOME=/home/h GH_CONFIG_DIR= XDG_CONFIG_HOME=) == /home/h/.config/gh ]]
+echo 'PASS host: 人の gh の置き場を、端末の GH_CONFIG_DIR、XDG_CONFIG_HOME の下、ホームの順で決める'
 [[ $(cat "$test_dir/codex-checks") == "$TEMPLATE_AGENT_HOME/codex" ]]
 python3 - "$TEMPLATE_AGENT_HOME/codex/config.toml" <<'PY'
 import sys
@@ -181,18 +46,50 @@ import tomllib
 
 with open(sys.argv[1], "rb") as source:
     config = tomllib.load(source)
+state = config.pop("hooks")["state"]
 assert config == {"allow_login_shell": False, "check_for_update_on_startup": False, "analytics": {"enabled": False}}, config
+# 信頼は、hooks/list が返した 2 つのフックの鍵と currentHash である。
+assert sorted(state) == ["/<session-flags>/config.toml:pre_tool_use:0:0", "/<session-flags>/config.toml:stop:0:0"], state
+assert all(set(value) == {"trusted_hash"} and value["trusted_hash"].startswith("sha256:") for value in state.values()), state
 PY
 ! grep -qF 'マークのない設定に' "$test_dir/err"
 echo 'PASS host: 新しいホストで Codex の設定に 2 つのキーを足し、専用の置き場で厳しい検証に 1 回かける'
 settings=$TEMPLATE_AGENT_HOME/claude/settings.json
+# prepare_host は、共有の settings.json を確認するだけで書かない。書くのは、役の設定を書いたあとである（prepare_project）。
+[[ ! -e $settings ]]
+cat >"$test_dir/settings-run.sh" <<'RUN'
+#!/bin/bash
+set -euo pipefail
+source "$1/lib/ui.sh"
+source "${TEST_SETTINGS_HOST:-$1/lib/host.sh}"
+die() { ui_error "$*"; exit 1; }
+host_paths
+host_claude_settings
+RUN
+settings_run() { /bin/bash "$test_dir/settings-run.sh" "$root" >"$test_dir/out" 2>"$test_dir/err"; }
+settings_run
 python3 - "$settings" "$test_dir/kit-settings.json" <<'PY'
 import json
+import os
 from pathlib import Path
+import shlex
 import sys
 
 settings = Path(sys.argv[1])
 actual = json.loads(settings.read_text())
+# 置き場の名前にアポストロフィがあるので、フックのコマンドは引用符で囲まれる。
+guard = os.path.normpath(os.path.dirname(os.path.dirname(settings))) + "/guard"
+pre_tool_use = shlex.quote(guard + "/pre-tool-use")
+stop = shlex.quote(guard + "/stop")
+assert pre_tool_use.startswith("'") and stop.startswith("'")
+home = os.path.normpath(os.environ["HOME"])
+kit_reads = [
+    "Read(/" + os.path.normpath(os.environ["GH_CONFIG_DIR"]) + "/**)",
+    "Read(/" + home + "/.ssh/**)",
+    "Read(/" + home + "/.git-credentials)",
+    "Read(/" + home + "/.netrc)",
+]
+assert all(item.startswith("Read(//") for item in kit_reads)
 assert actual == {
     "syncClaudeAiSkills": False,
     "syncClaudeAiPlugins": False,
@@ -205,26 +102,25 @@ assert actual == {
         "design", "design-sync", "dataviz", "debug", "doctor", "update-config",
         "fewer-permission-prompts", "plugin-authoring", "run-skill-generator",
     )},
-    "permissions": {"deny": ["Monitor", "ScheduleWakeup", "RemoteTrigger"]},
+    "permissions": {
+        "deny": ["Monitor", "ScheduleWakeup", "RemoteTrigger", "PushNotification", *kit_reads],
+        "blockWritesOutsideWorkingDirectories": True,
+    },
+    "hooks": {
+        "PreToolUse": [{"matcher": "Bash|Write|Edit|NotebookEdit", "hooks": [{"type": "command", "command": pre_tool_use}]}],
+        "Stop": [{"hooks": [{"type": "command", "command": stop}]}],
+    },
 }, actual
 assert settings.stat().st_mode & 0o777 == 0o600
 Path(sys.argv[2]).write_bytes(settings.read_bytes())
 PY
-echo 'PASS host: Claude の共有の設定をキットの 8 つのキーだけで作り、権限を 600 にする'
+echo 'PASS host: Claude の共有の設定をキットのキーだけで作り、フック・deny・書き込み制限を含め、権限を 600 にする'
 
-cat >"$test_dir/settings-run.sh" <<'RUN'
-#!/bin/bash
-set -euo pipefail
-source "$1/lib/ui.sh"
-source "${TEST_SETTINGS_HOST:-$1/lib/host.sh}"
-die() { ui_error "$*"; exit 1; }
-host_paths
-host_claude_settings
-RUN
-settings_run() { /bin/bash "$test_dir/settings-run.sh" "$root" >"$test_dir/out" 2>"$test_dir/err"; }
 python3 - "$settings" <<'PY'
 import json
+import os
 from pathlib import Path
+import shlex
 import sys
 
 settings = Path(sys.argv[1])
@@ -233,18 +129,34 @@ config.update(theme="dark", custom={"nested": [True, None, "人の値"]}, syncCl
 config["pluginConfigs"]["personal-plugin"] = {"options": {"enabled": True}}
 config["pluginConfigs"]["cc-plugin-agents-md@builtin"]["options"]["instructionFiles"] = "agents-md"
 config["skillOverrides"].update(batch="on", **{"personal-skill": "on", "code-review": "on"})
-config["permissions"] = {"allow": ["Read"], "deny": ["Bash(secret)", "Monitor"]}
+config["permissions"] = {"allow": ["Read"], "deny": ["Bash(secret)", "Monitor", "Read(//human/.aws/**)"], "blockWritesOutsideWorkingDirectories": False}
+# 人のフックと、キットの置き場のスクリプトを指す項目（matcher の違うもの・人のフックと同じ組・消された Stop）を作る。
+guard = os.path.dirname(os.path.dirname(settings)) + "/guard"
+kit_pre = shlex.quote(guard + "/pre-tool-use")
+config["hooks"] = {
+    "PreToolUse": [
+        {"matcher": "Bash", "hooks": [{"type": "command", "command": "/human/audit"}]},
+        {"matcher": "Bash", "hooks": [{"type": "command", "command": kit_pre}]},
+        {"matcher": "Write", "hooks": [{"type": "command", "command": "/human/write"}, {"type": "command", "command": kit_pre}]},
+        {"matcher": "Bash", "hooks": [{"type": "command", "command": "/elsewhere/guard/pre-tool-use"}]},
+    ],
+    "Stop": [{"hooks": [{"type": "command", "command": "/human/stop"}]}],
+    "SessionStart": [{"hooks": [{"type": "command", "command": "/human/start"}]}],
+}
 settings.write_text(json.dumps(config, ensure_ascii=False))
 settings.chmod(0o644)
 PY
 settings_run
-for key in syncClaudeAiSkills cleanupPeriodDays pluginConfigs.cc-plugin-agents-md@builtin skillOverrides.batch; do
+for key in syncClaudeAiSkills cleanupPeriodDays pluginConfigs.cc-plugin-agents-md@builtin skillOverrides.batch permissions.blockWritesOutsideWorkingDirectories hooks.PreToolUse; do
  grep -qF "$key" "$test_dir/err"
 done
+! grep -qF 'hooks.Stop' "$test_dir/err"
 grep -q '警告:' "$test_dir/err"
 python3 - "$settings" "$test_dir/kit-settings.json" <<'PY'
 import json
+import os
 from pathlib import Path
+import shlex
 import sys
 
 settings = Path(sys.argv[1])
@@ -253,7 +165,28 @@ expected = json.loads(Path(sys.argv[2]).read_text())
 expected.update(theme="dark", custom={"nested": [True, None, "人の値"]})
 expected["pluginConfigs"]["personal-plugin"] = {"options": {"enabled": True}}
 expected["skillOverrides"].update({"personal-skill": "on", "code-review": "on"})
-expected["permissions"] = {"allow": ["Read"], "deny": ["Bash(secret)", "Monitor", "ScheduleWakeup", "RemoteTrigger"]}
+kit_deny = expected["permissions"]["deny"][1:]
+expected["permissions"] = {
+    "allow": ["Read"],
+    "deny": ["Bash(secret)", "Monitor", "Read(//human/.aws/**)", *[item for item in kit_deny if item != "Monitor"]],
+    "blockWritesOutsideWorkingDirectories": True,
+}
+guard = os.path.dirname(os.path.dirname(settings)) + "/guard"
+kit_pre = shlex.quote(guard + "/pre-tool-use")
+kit_stop = shlex.quote(guard + "/stop")
+expected["hooks"] = {
+    "PreToolUse": [
+        {"matcher": "Bash", "hooks": [{"type": "command", "command": "/human/audit"}]},
+        {"matcher": "Write", "hooks": [{"type": "command", "command": "/human/write"}]},
+        {"matcher": "Bash", "hooks": [{"type": "command", "command": "/elsewhere/guard/pre-tool-use"}]},
+        {"matcher": "Bash|Write|Edit|NotebookEdit", "hooks": [{"type": "command", "command": kit_pre}]},
+    ],
+    "Stop": [
+        {"hooks": [{"type": "command", "command": "/human/stop"}]},
+        {"hooks": [{"type": "command", "command": kit_stop}]},
+    ],
+    "SessionStart": [{"hooks": [{"type": "command", "command": "/human/start"}]}],
+}
 assert actual == expected, actual
 assert settings.stat().st_mode & 0o777 == 0o600
 # 空白とキーの順番だけが違うときも書かない。
@@ -274,7 +207,7 @@ stat = settings.stat()
 assert [stat.st_ino, stat.st_mtime_ns, stat.st_mode, settings.read_text()] == json.loads(Path(str(settings) + ".before").read_text())
 assert not list(settings.parent.glob(".settings.*"))
 PY
-echo 'PASS host: 人のキー・プラグイン・スキル・権限を残し、キットの値を警告して戻し、同じ中身は書かない'
+echo 'PASS host: 人のキー・プラグイン・スキル・権限・フックを残し、キットの値を警告して戻し、同じ中身は書かない'
 
 # やめるキーがまだないため、将来その一覧に移した場合を作業用のコピーで確認する。
 python3 - "$root/lib/host.sh" "$test_dir/retired-host.sh" "$settings" <<'PY'
@@ -307,7 +240,7 @@ assert actual == expected, actual
 PY
 echo 'PASS host: やめたキーとキットの項目だけを消し、人の項目を残す'
 
-for invalid in '{' '[]' 'null' 'true' '"text"' '30' '{"permissions":[]}' '{"permissions":null}' '{"permissions":{"deny":{}}}' '{"permissions":{"deny":null}}' '{"pluginConfigs":[]}' '{"pluginConfigs":null}' '{"skillOverrides":[]}'; do
+for invalid in '{' '[]' 'null' 'true' '"text"' '30' '{"permissions":[]}' '{"permissions":null}' '{"permissions":{"deny":{}}}' '{"permissions":{"deny":null}}' '{"pluginConfigs":[]}' '{"pluginConfigs":null}' '{"skillOverrides":[]}' '{"hooks":[]}' '{"hooks":null}' '{"hooks":{"PreToolUse":{}}}' '{"hooks":{"Stop":null}}'; do
  printf '%s\n' "$invalid" >"$settings"
  cp "$settings" "$test_dir/invalid-settings"
  if settings_run; then exit 1; fi
@@ -318,7 +251,24 @@ done
 set_mode running
 deny
 [[ ! -s $test_dir/calls ]]
-echo 'PASS host: 壊れた JSON と最上位・permissions・deny・pluginConfigs・skillOverrides の形の違いで書かずに止まる'
+echo 'PASS host: 壊れた JSON と最上位・permissions・deny・pluginConfigs・skillOverrides・hooks と各イベントの形の違いで書かずに止まる'
+
+# 既存の disableAllHooks: true は、フックを無効にするので、役の登録の前に止めて直し方を案内する。
+for hooks_off in '{"disableAllHooks":true}' '{"disableAllHooks":true,"permissions":{"deny":["Read(/x)"]}}'; do
+ printf '%s\n' "$hooks_off" >"$settings"
+ cp "$settings" "$test_dir/hooks-off-settings"
+ if settings_run; then exit 1; fi
+ cmp "$settings" "$test_dir/hooks-off-settings"
+ grep -qF 'disableAllHooks' "$test_dir/err"
+ grep -qF '設定を直してから流し直してください' "$test_dir/err"
+ set_mode running
+ deny
+ grep -qF 'disableAllHooks' "$test_dir/err"
+ [[ ! -s $test_dir/calls ]]
+done
+printf '{"disableAllHooks":false}\n' >"$settings"
+settings_run
+echo 'PASS host: disableAllHooks が true の既存設定は、書き換えず、役の登録とデーモンの操作の前に止めて直し方を案内する（false は通す）'
 
 rm "$settings"
 for target in "$test_dir/kit-settings.json" "$test_dir/missing-settings.json"; do
@@ -348,6 +298,33 @@ cmp "$root/common/host/start-daemon" "$TEMPLATE_AGENT_HOME/start-daemon"
 [[ -x $TEMPLATE_AGENT_HOME/start-daemon && ! -e $TEMPLATE_AGENT_HOME/bin/start-daemon ]]
 ! grep -Eq '^daemon (stop|start)$' "$test_dir/calls"
 echo 'PASS host: 流し直すと管理マークのある古い入口を原本に更新し、実行権限を付ける'
+
+# 新しいガードと分割の部品は、配置先が原本と一致しなければ、役の登録の前に止めて対処を案内する。
+for file in git-credential git-ssh pre-tool-use stop shell_split.py; do
+ target=$TEMPLATE_AGENT_HOME/guard/$file
+ cp "$target" "$test_dir/guard-original"
+ # マークのない既存のファイル（人のファイル）は、上書きせず止める。
+ printf '#!/bin/sh\nexit 0\n' >"$target"
+ cp "$target" "$test_dir/guard-unmarked"
+ set_mode running
+ agent_env
+ deny
+ cmp "$target" "$test_dir/guard-unmarked"
+ grep -qF "ガードのファイルが原本と一致しません: $target" "$test_dir/err"
+ grep -qF '流し直してください' "$test_dir/err"
+ # 止まるときは「そのまま使います」の行を出さず、停止エラーに対象と直し方をまとめる。
+ if grep -qF 'そのまま使います' "$test_dir/err" "$test_dir/out"; then
+  echo "止まるはずのガードのファイルで「そのまま使います」を出した: $file" >&2
+  exit 1
+ fi
+ ! grep -Eq '^daemon (stop|start)$' "$test_dir/calls"
+ # 管理マークのある古い内容は、原本に戻る。
+ printf '#!/bin/sh\n# multica-squad-kit-managed\nexit 0\n' >"$target"
+ run
+ cmp "$root/common/guard/$file" "$target"
+ [[ -x $target ]]
+done
+echo 'PASS host: 新しいガードと分割の部品は、マークのない既存のファイルを上書きせず役の登録の前に止め、マークのある古い内容は原本に戻す'
 
 printf '#!/bin/bash\nprintf "manual entry\\n"\n' >"$TEMPLATE_AGENT_HOME/start-daemon"
 chmod 644 "$TEMPLATE_AGENT_HOME/start-daemon"
@@ -544,8 +521,7 @@ import sys
 
 actual = Path(sys.argv[1]).read_text()
 home = sys.argv[4]
-message = f"使用する gh のガード: {home}/bin/gh\n使用する git push のガード: {home}/git-hooks/pre-push\n使用する Codex の設定: {home}/codex/config.toml\n"
-message += f"エラー: エージェント用の Claude のログインを確認できませんでした。ログインが切れているとは限りません。端末から CLAUDE_CONFIG_DIR={home}/claude claude auth status を流して、ログインの状態を確認してから流し直してください。問い合わせるときは、下の診断の行だけを添えてください。\n"
+message = f"エラー: エージェント用の Claude のログインを確認できませんでした。ログインが切れているとは限りません。端末から CLAUDE_CONFIG_DIR={home}/claude claude auth status を流して、ログインの状態を確認してから流し直してください。問い合わせるときは、下の診断の行だけを添えてください。\n"
 message += f"  診断（claude auth status）:\n    分類: {sys.argv[6]}\n    終了コード: {sys.argv[3]}\n    標準出力の最初の値: {sys.argv[5]}\n"
 message += "    標準出力: " + ("あり（内容は省略）" if Path(sys.argv[2]).stat().st_size else "なし") + "\n"
 message += "    標準エラー: " + ("あり（内容は省略）" if Path(sys.argv[7]).stat().st_size else "なし") + "\n"
@@ -600,583 +576,3 @@ assert "ログインしてください" not in actual and "CLI failure" not in a
 PY
  echo 'PASS host: 一覧を書き換える端末でも、手順の失敗のあとにエラーと固定の診断を出す'
 )
-for fail in 'daemon status --output json' 'runtime list --output json'; do
- set_mode running
- printf '%s\n' "$fail" >"$test_dir/fail"
- deny
- if grep -Eq '^daemon (stop|start)$' "$test_dir/calls"; then exit 1; fi
-done
-rm "$test_dir/fail"
-echo 'PASS host: 状態・ランタイムの取得失敗を、停止してよい状態と扱わない'
-set_mode running
-printf wrong >"$test_dir/process-env"
-printf 'daemon stop\n' >"$test_dir/fail"
-deny
-if grep -q '^daemon start$' "$test_dir/calls"; then exit 1; fi
-set_mode stopped
-printf 'daemon start\n' >"$test_dir/fail"
-deny
-rm "$test_dir/fail"
-set_mode stopped
-touch "$test_dir/no-runtimes"
-deny
-grep -q 'オンラインになりません' "$test_dir/err"
-[[ $(grep -c '^daemon start$' "$test_dir/calls") == 1 ]]
-rm "$test_dir/no-runtimes"
-echo 'PASS host: 停止・起動の失敗とオンライン待ちの上限を失敗として返す'
-# 使わない側はコマンドなし・未ログイン・オフラインでも準備できる。
-for selected in claude codex; do
- (
-  export TEST_RUNTIMES="[\"$selected\"]" TEST_RUNTIME_LIST="$test_dir/selected-runtime.json"
-  export TEMPLATE_AGENT_HOME="$test_dir/$selected-only"
-  if [[ $selected == claude ]]; then export TEST_MISSING_RUNTIME=codex; else export TEST_MISSING_RUNTIME=claude; fi
-  touch "$test_dir/no-$TEST_MISSING_RUNTIME-auth"
-  : >"$test_dir/codex-checks"
-  printf '[{"id":"runtime-%s","owner_id":"member-a","daemon_id":"daemon-a","provider":"%s","status":"online"}]\n' "$selected" "$selected" >"$TEST_RUNTIME_LIST"
-  set_mode stopped
-  run
-  grep -qx 'daemon start' "$test_dir/calls"
-  if [[ $selected == claude ]]; then
-   [[ ! -e $TEMPLATE_AGENT_HOME/codex/config.toml ]]
-   ! grep -q '使用する Codex の設定' "$test_dir/err"
-   [[ ! -s $test_dir/codex-checks ]]
-   printf 'invalid existing config\n' >"$TEMPLATE_AGENT_HOME/codex/config.toml"
-  else
-   cmp "$root/common/codex/config.toml" "$TEMPLATE_AGENT_HOME/codex/config.toml"
-   [[ ! -e $TEMPLATE_AGENT_HOME/claude/settings.json ]]
-  fi
-  set_mode busy
-  agent_env
-  run
-  ! grep -Eq '^daemon (stop|start)$' "$test_dir/calls"
-  if [[ $selected == claude ]]; then grep -qx 'invalid existing config' "$TEMPLATE_AGENT_HOME/codex/config.toml"; fi
-  touch "$test_dir/no-$selected-auth"
-  : >"$test_dir/calls"
-  deny
-  grep -q 'ログインしてください' "$test_dir/err"
-  [[ ! -s $test_dir/calls ]]
-  rm "$test_dir/no-$selected-auth" "$test_dir/no-$TEST_MISSING_RUNTIME-auth"
- )
- echo "PASS host: $selected だけで起動・再利用し、選んだ側の認証を求め、使わない側は求めない"
-done
-# 同居する既存システムの Mac の代わり。マークのないファイルと資格情報を残す。
-sed '/^# multica-squad-kit-managed$/d' "$root/common/guard/gh" >"$TEMPLATE_AGENT_HOME/bin/gh"
-sed '/^# multica-squad-kit-managed$/d' "$root/common/guard/pre-push" >"$TEMPLATE_AGENT_HOME/git-hooks/pre-push"
-printf '# existing codex config\nallow_login_shell = false\n' >"$TEMPLATE_AGENT_HOME/codex/config.toml"
-printf 'original allowed repository\n' >"$TEMPLATE_AGENT_HOME/allowed-repos"
-printf 'existing credential\n' >"$TEMPLATE_AGENT_HOME/claude/credentials.json"
-printf 'existing codex credential\n' >"$TEMPLATE_AGENT_HOME/codex/auth.json"
-mkdir "$test_dir/original"
-for file in bin/gh git-hooks/pre-push codex/config.toml allowed-repos claude/credentials.json codex/auth.json; do
- mkdir -p "$test_dir/original/$(dirname "$file")"
- cp "$TEMPLATE_AGENT_HOME/$file" "$test_dir/original/$file"
-done
-set_mode running
-agent_env
-printf "# multica-squad-kit-managed\nchanged\n" >"$TEMPLATE_AGENT_HOME/bin/squad-pr-watch"
-for file in squad-pr-link squad-pr-link-lib; do
- printf '# multica-squad-kit-managed\nold\n' >"$TEMPLATE_AGENT_HOME/bin/$file"
- chmod 644 "$TEMPLATE_AGENT_HOME/bin/$file"
-done
-run
-for file in bin/gh git-hooks/pre-push codex/config.toml allowed-repos claude/credentials.json codex/auth.json; do cmp "$TEMPLATE_AGENT_HOME/$file" "$test_dir/original/$file"; done
-cmp "$root/common/monitor/squad-pr-watch" "$TEMPLATE_AGENT_HOME/bin/squad-pr-watch"
-grep -q 'マークのない既存' "$test_dir/err"
-echo 'PASS host: マークのない同居環境のガード・設定・資格情報・共有許可ファイルを変えず、専用の見張りだけ更新する'
-for file in squad-pr-link squad-pr-link-lib; do
- cmp "$root/common/monitor/$file" "$TEMPLATE_AGENT_HOME/bin/$file"
- [[ -x $TEMPLATE_AGENT_HOME/bin/$file ]]
-done
-echo 'PASS host: 流し直しでマークのある PR の紐付けコマンドと共有関数を原本に更新し、実行権限を付ける'
-
-for display in "使用する gh のガード: $TEMPLATE_AGENT_HOME/bin/gh" "使用する git push のガード: $TEMPLATE_AGENT_HOME/git-hooks/pre-push" "使用する Codex の設定: $TEMPLATE_AGENT_HOME/codex/config.toml"; do grep -qxF "$display" "$test_dir/err"; done
-echo 'PASS host: マークのない既存を保持する場合も、使用する三つの実ファイルを明示する'
-for invalid in '' 'allow_login_shell = true' 'allow_login_shell = "false"' 'allow_login_shell = 0' $'[profiles.other]\nallow_login_shell = false' $'allow_login_shell = false\nallow_login_shell = false' 'allow_login_shell = ['; do
- printf '%s\n' "$invalid" >"$TEMPLATE_AGENT_HOME/codex/config.toml"
- cp "$TEMPLATE_AGENT_HOME/codex/config.toml" "$test_dir/invalid-config"
- : >"$test_dir/calls"
- deny
- cmp "$test_dir/invalid-config" "$TEMPLATE_AGENT_HOME/codex/config.toml"
- grep -qF 'allow_login_shell = false を確認できません' "$test_dir/err"
- [[ ! -s $test_dir/calls ]]
-done
-cp "$test_dir/original/codex/config.toml" "$TEMPLATE_AGENT_HOME/codex/config.toml"
-echo 'PASS host: 確認した起動ファイルを使えない Codex の既存設定は保持し、直し方を出してデーモン操作前に止まる'
-
-for valid in '"allow_login_shell" = false' "'allow_login_shell' = false" $'allow_login_shell = false # comment\n[profiles.other]\nallow_login_shell = true'; do
- printf '%s\n' "$valid" >"$TEMPLATE_AGENT_HOME/codex/config.toml"
- cp "$TEMPLATE_AGENT_HOME/codex/config.toml" "$test_dir/valid-config"
- set_mode running
- agent_env
- run
- cmp "$test_dir/valid-config" "$TEMPLATE_AGENT_HOME/codex/config.toml"
- grep -q '^daemon status' "$test_dir/calls"
-done
-echo 'PASS host: TOML の引用キーとトップレベルの真偽値 false を読み、別テーブルの同名キーを混同しない'
-
-for delimiter in '"""' "'''"; do
- printf '%s\n' "model_instructions = $delimiter" 'allow_login_shell = false' "$delimiter" >"$TEMPLATE_AGENT_HOME/codex/config.toml"
- cp "$TEMPLATE_AGENT_HOME/codex/config.toml" "$test_dir/multiline-config"
- : >"$test_dir/calls"
- deny
- cmp "$test_dir/multiline-config" "$TEMPLATE_AGENT_HOME/codex/config.toml"
- grep -qF 'allow_login_shell = false を確認できません' "$test_dir/err"
- [[ ! -s $test_dir/calls ]]
- # 文字列内に true があっても、本物のトップレベルの false を使う。
- printf '%s\n' 'allow_login_shell = false' "model_instructions = $delimiter" 'allow_login_shell = true' "$delimiter" >"$TEMPLATE_AGENT_HOME/codex/config.toml"
- cp "$TEMPLATE_AGENT_HOME/codex/config.toml" "$test_dir/multiline-config"
- run
- cmp "$test_dir/multiline-config" "$TEMPLATE_AGENT_HOME/codex/config.toml"
-done
-cp "$test_dir/original/codex/config.toml" "$TEMPLATE_AGENT_HOME/codex/config.toml"
-echo 'PASS host: 基本・リテラルの複数行文字列をキーと扱わず、本物のトップレベルの値だけを判定する'
-
-for spec in 'guard/gh:bin/gh' 'guard/pre-push:git-hooks/pre-push' 'codex/config.toml:codex/config.toml'; do
- target=${spec#*:}
- printf '# multica-squad-kit-managed\nold\n' >"$TEMPLATE_AGENT_HOME/$target"
-done
-run
-cmp "$root/common/guard/gh" "$TEMPLATE_AGENT_HOME/bin/gh"
-cmp "$root/common/guard/pre-push" "$TEMPLATE_AGENT_HOME/git-hooks/pre-push"
-cmp "$root/common/codex/config.toml" "$TEMPLATE_AGENT_HOME/codex/config.toml"
-echo 'PASS host: マークのある共有ファイルは 原本の内容へ更新する'
-
-# マークのない設定に 2 つのキーがないときは、警告して書き換えずに先へ進む。
-config=$TEMPLATE_AGENT_HOME/codex/config.toml
-for unmarked in $'allow_login_shell = false' $'allow_login_shell = false\ncheck_for_update_on_startup = true\n[analytics]\nenabled = false' $'allow_login_shell = false\ncheck_for_update_on_startup = false\n[analytics]\nenabled = "false"' $'allow_login_shell = false\ncheck_for_update_on_startup = false\n[analytics]\nother = false'; do
- printf '%s\n' "$unmarked" >"$config"
- cp "$config" "$test_dir/unmarked-config"
- set_mode running
- agent_env
- run
- cmp "$config" "$test_dir/unmarked-config"
- grep -qF '警告: マークのない設定に、更新の確認と利用状況の送信を切るキーがありません' "$test_dir/err"
- grep -q '^daemon status' "$test_dir/calls"
-done
-printf '%s\n' $'allow_login_shell = false\ncheck_for_update_on_startup = false' >"$config"
-run
-grep -qF '[analytics] の enabled = false' "$test_dir/err"
-! grep -qF 'check_for_update_on_startup' "$test_dir/err"
-printf '%s\n' $'allow_login_shell = false\n[analytics]\nenabled = false' >"$config"
-run
-grep -qF 'check_for_update_on_startup = false' "$test_dir/err"
-! grep -qF 'analytics' "$test_dir/err"
-printf '%s\n' $'allow_login_shell = false\ncheck_for_update_on_startup = false\n[analytics]\nenabled = false' >"$config"
-run
-! grep -qF 'マークのない設定に' "$test_dir/err"
-echo 'PASS host: マークのない Codex の設定に 2 つのキーがないときだけ、書き換えずに警告して進む'
-
-# 設定の検証。0 で進み、0 以外で止まり、古い Codex と時間切れは警告して進む。
-cp "$test_dir/original/codex/config.toml" "$config"
-cp "$root/common/codex/config.toml" "$config"
-: >"$test_dir/codex-checks"
-echo ok >"$test_dir/codex-strict"
-set_mode running
-agent_env
-run
-[[ $(wc -l <"$test_dir/codex-checks") -eq 1 ]]
-! grep -qF 'strict-config' "$test_dir/err"
-for failure in fail silent other2 secret; do
- echo "$failure" >"$test_dir/codex-strict"
- cp "$config" "$test_dir/strict-config"
- set_mode running
- agent_env
- deny
- grep -qF 'Codex の設定が厳しい検証を通りません' "$test_dir/err"
- grep -qF 'キーを直すか消してから、セットアップを流し直してください' "$test_dir/err"
- grep -qF '終了コード' "$test_dir/err"
- grep -qF -- '--strict-config --listen stdio:// </dev/null' "$test_dir/err"
- # Codex の出力は、秘密値を含みうるので表示しない。
- ! grep -qF 'bogus' "$test_dir/err"
- ! grep -qF 'another usage error' "$test_dir/err"
- ! grep -qF 'SYNTHETIC_SECRET_VALUE' "$test_dir/err"
- cmp "$config" "$test_dir/strict-config"
- [[ ! -s $test_dir/calls ]]
-done
-# Codex を起動できないときは、設定の誤りと別の表示にし、設定のキーを直す案内を出さない。
-# 検証の処理が「起動できない」と返す。実際に起動できない場合は tests/codex-check-test.sh が確認する。
-mkdir -p "$test_dir/py-bin"
-cat >"$test_dir/py-bin/python3" <<'STUB'
-#!/bin/bash
-if [[ ${1:-} == */lib/codex-check.py ]]; then printf 'launch\n\n'; exit 0; fi
-PATH=${PATH#*py-bin:} exec python3 "$@"
-STUB
-chmod +x "$test_dir/py-bin/python3"
-PATH="$test_dir/py-bin:$PATH" deny
-grep -qF 'Codex を起動できませんでした' "$test_dir/err"
-grep -qF 'PATH に codex があり実行できることを確認' "$test_dir/err"
-! grep -qF '設定が厳しい検証を通りません' "$test_dir/err"
-! grep -qF 'キーを直すか消して' "$test_dir/err"
-! grep -qF '終了コード' "$test_dir/err"
-# 検証はログインの確認より前にあり、ログイン切れでも設定の誤りを先に出す。
-echo fail >"$test_dir/codex-strict"
-touch "$test_dir/no-codex-auth"
-deny
-grep -qF 'Codex の設定が厳しい検証を通りません' "$test_dir/err"
-! grep -qF 'codex login' "$test_dir/err"
-echo ok >"$test_dir/codex-strict"
-deny
-grep -qF 'codex login' "$test_dir/err"
-rm "$test_dir/no-codex-auth"
-echo 'PASS host: Codex の検証が 0 以外で書き換えずに止まり、ログインの確認より前に設定の誤りを出す'
-
-# 拡張を使うセットアップでは root が lib を持たない作業場所を指す。検証の処理は原本（kit_root）の lib から呼び、検証の結果も通常どおり扱う。
-mkdir -p "$test_dir/extension-work"
-cp -R "$root/common" "$root/skeleton" "$test_dir/extension-work/"
-[[ ! -e $test_dir/extension-work/lib ]]
-: >"$test_dir/codex-checks"
-echo ok >"$test_dir/codex-strict"
-set_mode running
-agent_env
-TEST_EXTENSION_WORK="$test_dir/extension-work" run
-[[ $(wc -l <"$test_dir/codex-checks") -eq 1 ]]
-if grep -qF 'Codex の設定の検証を実行できませんでした' "$test_dir/err"; then exit 1; fi
-echo fail >"$test_dir/codex-strict"
-set_mode running
-agent_env
-TEST_EXTENSION_WORK="$test_dir/extension-work" deny
-grep -qF 'Codex の設定が厳しい検証を通りません' "$test_dir/err"
-if grep -qF 'Codex の設定の検証を実行できませんでした' "$test_dir/err"; then exit 1; fi
-echo ok >"$test_dir/codex-strict"
-echo 'PASS host: 拡張の作業場所へ root を付け替えても、原本の lib の検証の処理を呼び、結果を通常どおり扱う'
-
-echo old >"$test_dir/codex-strict"
-set_mode running
-agent_env
-run
-grep -qF '警告: この Codex は --strict-config を受け付けないため、設定を検証できませんでした' "$test_dir/err"
-grep -q '^daemon status' "$test_dir/calls"
-# 時間切れの扱い。docs/agent-settings.md の「時間切れの扱い」の表と同じ行を、実際のプロセスで、次の表から流す。
-# 列: 名前|子孫の終了処理の印。上限 1 秒、猶予 3 秒で流し、どの行も猶予をすべて待ってから KILL を送る。
-# term-<親>-<子孫>: 親は TERM で終わる（exit）か無視する（ignore）。子孫は、なし（none）、終了処理をする（finish）、無視する（ignore）。
-# term-exit-none は、親だけがゾンビのグループになる。zombie-desc は、子孫がゾンビのまま親が動き続け、KILL のあとに親だけがゾンビになる。
-timeout_rows='term-exit-none|-
-term-exit-finish|あり
-term-exit-ignore|-
-term-ignore-none|-
-term-ignore-finish|あり
-term-ignore-ignore|-
-zombie-desc|-'
-# 生存は ps の状態で読む。kill -0 は、ゾンビを生きたプロセスと同じに返すので使わない。本物の ps を使う。
-proc_state() {
- local state
- state=$(/bin/ps -o stat= -p "$1" 2>/dev/null) || state=
- state=${state//[[:space:]]/}
- case $state in
- '') echo gone ;;
- Z*) echo zombie ;;
- *) echo running ;;
- esac
-}
-# PID が数値でなければ失敗にする。空の PID を「いない」と読んで通さない。
-is_pid() { [[ $1 =~ ^[0-9]+$ ]]; }
-not_running() { is_pid "$1" && [[ $(proc_state "$1") != running ]]; }
-is_gone() { is_pid "$1" && [[ $(proc_state "$1") == gone ]]; }
-# 判定が、生きたプロセス・ゾンビ・回収済み・空の PID を分けることを先に確認する。
-/bin/sleep 30 &
-live=$!
-[[ $(proc_state "$live") == running ]]
-! not_running "$live"
-! not_running ''
-! is_gone ''
-! not_running 'abc'
-python3 -c 'import os, sys, time
-pid = os.fork()
-if pid == 0:
-    os._exit(0)
-print(pid, flush=True)
-time.sleep(30)' >"$test_dir/zombie-pid" &
-zombie_parent=$!
-for _ in $(seq 1 100); do [[ -s $test_dir/zombie-pid ]] && break; /bin/sleep 0.1; done
-zombie=$(cat "$test_dir/zombie-pid")
-is_pid "$zombie"
-[[ $(proc_state "$zombie") == zombie ]]
-not_running "$zombie"
-! is_gone "$zombie"
-kill "$zombie_parent" "$live"
-wait "$zombie_parent" "$live" 2>/dev/null || true
-# 親が死ぬと、ゾンビはシステムが回収する。
-for _ in $(seq 1 100); do [[ $(proc_state "$zombie") == gone ]] && break; /bin/sleep 0.1; done
-is_gone "$zombie"
-# 別のプロセスのグループにいる対照のプロセスは、どの行でも残る。
-/bin/sleep 300 &
-control=$!
-while IFS='|' read -r row marker; do
- echo "$row" >"$test_dir/codex-strict"
- rm -f "$test_dir/desc-pid" "$test_dir/desc-done" "$test_dir/codex-pid"
- set_mode running
- agent_env
- started=$(python3 -c 'import time; print(int(time.time() * 1000))')
- TEST_CODEX_SECONDS=1 TEST_CODEX_GRACE=3 TEST_CODEX_CONFIRM=2 run
- elapsed=$(( $(python3 -c 'import time; print(int(time.time() * 1000))') - started ))
- grep -qF '警告: 設定の検証が 1 秒で終わらず、確認できませんでした' "$test_dir/err"
- grep -q '^daemon status' "$test_dir/calls"
- # 下限は待機 1 秒＋猶予 3 秒。上限は検証の許す 6 秒（待機 1＋猶予 3＋確認 2）に、準備全体の余裕 3 秒を足した 9 秒。
- [[ $elapsed -ge 3900 && $elapsed -le 9000 ]] || { echo "時間切れの行 $row: ${elapsed} ミリ秒（期待 3900〜9000）" >&2; exit 1; }
- # 直接の子は検証の処理が回収し、子孫は実行中で残らない。
- is_gone "$(cat "$test_dir/codex-pid")"
- if [[ $row == *-none ]]; then [[ ! -f $test_dir/desc-pid ]]; else not_running "$(cat "$test_dir/desc-pid")"; fi
- if [[ $marker == あり ]]; then [[ -f $test_dir/desc-done ]]; else [[ ! -f $test_dir/desc-done ]]; fi
- [[ $(proc_state "$control") == running ]]
- [[ $(/bin/ps -o pgid= -p "$control" | tr -d ' ') != "$(cat "$test_dir/codex-pid")" ]]
-done <<<"$timeout_rows"
-kill "$control"
-wait "$control" 2>/dev/null || true
-echo 'PASS host: 古い Codex と時間切れは警告して進み、実際のプロセスの 7 行（親の終了・無視と子孫のなし・終了処理・無視、子孫だけのゾンビ）で、猶予をすべて待ち、子孫の終了処理を最後まで残し、実行中のプロセスと別のグループの対照のプロセスの扱いが決めたとおりになる'
-# ゾンビだけのグループを、本物のプロセスで作る。signal 0・TERM・KILL の結果は OS で違い、macOS では EPERM を確認し、Linux では観測した結果を出す。
-# どの状態も、停止の判定は ps の状態の読み取り（lib/codex-check.py の Operations.state）で分け、シグナルの結果から決めない。
-python3 -I - "$root/lib/codex-check.py" <<'PY'
-import importlib.util
-import os
-import signal
-import subprocess
-import sys
-import time
-
-sys.dont_write_bytecode = True
-spec = importlib.util.spec_from_file_location("codex_check", sys.argv[1])
-check = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(check)
-
-
-def stat(pid):
-    done = subprocess.run(["/bin/ps", "-o", "stat=", "-p", str(pid)], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-    return done.stdout.decode().strip()
-
-
-def wait_for(predicate):
-    for _ in range(100):
-        if predicate():
-            return True
-        time.sleep(0.1)
-    return False
-
-
-def send(pgid, number):
-    try:
-        os.killpg(pgid, number)
-    except ProcessLookupError:
-        return "ESRCH"
-    except PermissionError:
-        return "EPERM"
-    return "ok"
-
-
-def start(script):
-    return subprocess.Popen(["/bin/bash", "-c", script], start_new_session=True)
-
-
-def read_state(proc):
-    return check.Operations(proc).state(proc.pid, 10)
-
-
-# 親だけがゾンビのグループ（子孫はいない）。
-parent = start("exit 0")
-assert wait_for(lambda: stat(parent.pid).startswith("Z")), "親がゾンビにならない"
-observed = [send(parent.pid, number) for number in (0, signal.SIGTERM, signal.SIGKILL)]
-assert read_state(parent) == check.STOPPED, "ゾンビだけのグループは停止済み"
-name = "macOS" if sys.platform == "darwin" else sys.platform
-print("観測 %s: ゾンビだけのグループへの signal 0・TERM・KILL の結果は %s" % (name, "・".join(observed)))
-if sys.platform == "darwin":
-    assert observed == ["EPERM"] * 3, observed
-else:
-    print("観測 %s: 設計の前提（成功）と%s" % (name, "一致する" if observed == ["ok"] * 3 else "違う"))
-# 直接の子を回収すると、グループは空になる。空のグループは ESRCH で、停止済みである。
-assert parent.wait() == 0
-assert [send(parent.pid, number) for number in (0, signal.SIGTERM, signal.SIGKILL)] == ["ESRCH"] * 3
-assert read_state(parent) == check.STOPPED, "空のグループは停止済み"
-
-# 親だけがゾンビで、子孫が動いているグループは、実行中である。
-mixed = start("/bin/sleep 300 & exit 0")
-assert wait_for(lambda: stat(mixed.pid).startswith("Z")), "親がゾンビにならない"
-assert read_state(mixed) == check.RUNNING
-assert send(mixed.pid, 0) == "ok", "動くプロセスがあれば、signal 0 は成功する"
-send(mixed.pid, signal.SIGKILL)
-mixed.wait()
-
-# 子孫だけがゾンビで、親が動いているグループは、実行中である。親が終われば、停止済みになる。
-descendant = subprocess.Popen([sys.executable, "-c", "import os, sys, time\n"
-                               "pid = os.fork()\n"
-                               "if pid == 0:\n"
-                               "    os._exit(0)\n"
-                               "print(pid, flush=True)\n"
-                               "time.sleep(300)"], stdout=subprocess.PIPE, start_new_session=True)
-zombie = int(descendant.stdout.readline())
-assert wait_for(lambda: stat(zombie).startswith("Z")), "子孫がゾンビにならない"
-assert read_state(descendant) == check.RUNNING
-send(descendant.pid, signal.SIGKILL)
-assert wait_for(lambda: stat(descendant.pid).startswith("Z"))
-assert read_state(descendant) == check.STOPPED
-descendant.wait()
-descendant.stdout.close()
-PY
-echo 'PASS host: ゾンビだけのグループが ps の状態で停止済みと読まれ、親だけ・子孫だけがゾンビで動くプロセスが残るグループは実行中と読まれ、macOS では signal 0・TERM・KILL が EPERM になる'
-# 停止を確認できないとき。ps を差し替えて、グループの状態を読めない場合と、実行中のプロセスが残る場合を作る。
-# 固定の診断で止まり、設定の誤りや python3 の不足と別の文になる。止まっても、KILL は送って直接の子は回収している。
-mkdir "$test_dir/ps-bin"
-cat >"$test_dir/ps-bin/ps" <<'STUB'
-#!/bin/bash
-base=${0%/*}/..
-case $(cat "$base/ps-mode") in
-fail) exit 1 ;;
-garbage) echo 'not a process table' ;;
-running) printf '  PID  PGID STAT COMMAND\n  %s   %s S    codex app-server\n' "$(cat "$base/codex-pid")" "$(cat "$base/codex-pid")" ;;
-esac
-STUB
-chmod +x "$test_dir/ps-bin/ps"
-echo term-ignore-none >"$test_dir/codex-strict"
-for ps_mode in fail garbage running; do
- echo "$ps_mode" >"$test_dir/ps-mode"
- rm -f "$test_dir/codex-pid"
- set_mode running
- agent_env
- started=$(python3 -c 'import time; print(int(time.time() * 1000))')
- PATH="$test_dir/ps-bin:$PATH" TEST_CODEX_SECONDS=1 TEST_CODEX_GRACE=2 TEST_CODEX_CONFIRM=2 deny
- elapsed=$(( $(python3 -c 'import time; print(int(time.time() * 1000))') - started ))
- [[ $elapsed -ge 4900 && $elapsed -le 9000 ]] || { echo "停止を確認できない行 $ps_mode: ${elapsed} ミリ秒（期待 4900〜9000）" >&2; exit 1; }
- grep -qF '検証のプロセスの停止を確認できませんでした' "$test_dir/err"
- grep -qF "グループ $(cat "$test_dir/codex-pid")" "$test_dir/err"
- grep -qF 'ps -A -o pid,pgid,stat,command' "$test_dir/err"
- ! grep -qF 'Codex の設定が厳しい検証を通りません' "$test_dir/err"
- ! grep -qF 'python3 を確認して' "$test_dir/err"
- [[ ! -s $test_dir/calls ]]
- is_gone "$(cat "$test_dir/codex-pid")"
-done
-echo ok >"$test_dir/codex-strict"
-echo 'PASS host: 停止を確認できないとき、ps が失敗する・読めない・実行中が残る場合のどれでも、設定の誤りや python3 の不足と別の固定の診断で止まる'
-# ID を受け取る関数を、実際の bash と zsh の起動ファイルで確認する。
-cat >"$test_dir/project.sh" <<'RUN'
-#!/bin/bash
-set -euo pipefail
-root=$1
-source "${DRAW_UI:-$root/lib/ui.sh}"
-source "$root/lib/host.sh"
-die() { echo "$*" >&2; exit 1; }
-shift
-prepare_project_host "$@"
-RUN
-/bin/bash "$test_dir/project.sh" "$root" project-a example/one
-/bin/bash "$test_dir/project.sh" "$root" project-b example/two
-[[ $(cat "$TEMPLATE_AGENT_HOME/allowed-repos.d/project-a") == example/one ]]
-[[ $(cat "$TEMPLATE_AGENT_HOME/allowed-repos.d/project-b") == example/two ]]
-for id in project-a project-b; do
- shell_dir="$TEMPLATE_AGENT_HOME/template/shell/$id"
- ! grep -q '{{' "$shell_dir/.zshenv"
- cmp "$shell_dir/.zshenv" "$shell_dir/env.sh"
- BASH_ENV="$shell_dir/env.sh" /bin/bash -c 'test "$SQUAD_KIT_ALLOWED_REPOS" = "$1"' -- "$TEMPLATE_AGENT_HOME/allowed-repos.d/$id"
- ZDOTDIR="$shell_dir" /bin/zsh -c 'test "$SQUAD_KIT_ALLOWED_REPOS" = "$1"' -- "$TEMPLATE_AGENT_HOME/allowed-repos.d/$id"
-done
-cmp "$TEMPLATE_AGENT_HOME/allowed-repos" "$test_dir/original/allowed-repos"
-cp "$TEMPLATE_AGENT_HOME/allowed-repos.d/project-a" "$test_dir/previous-project"
-/bin/bash "$test_dir/project.sh" "$root" project-b example/updated
-cmp "$TEMPLATE_AGENT_HOME/allowed-repos.d/project-a" "$test_dir/previous-project"
-if /bin/bash "$test_dir/project.sh" "$root" '../bad' example/no >"$test_dir/out" 2>"$test_dir/err"; then exit 1; fi
-echo 'PASS host: プロジェクトごとの許可ファイルが、引用符や空白のある保存先でも bash・zsh の子へ届く'
-
-/bin/bash "$test_dir/project.sh" "$root" project-a example/one EXAMPLE/TWO example/one
-printf 'example/one\nexample/two\n' >"$test_dir/selected"
-cmp "$test_dir/selected" "$TEMPLATE_AGENT_HOME/allowed-repos.d/project-a"
-[[ $(python3 -c 'import os,sys; print(oct(os.stat(sys.argv[1]).st_mode & 0o777)[2:])' "$TEMPLATE_AGENT_HOME/allowed-repos.d/project-a") == 600 ]]
-before_inode=$(python3 -c 'import os,sys; print(os.stat(sys.argv[1]).st_ino)' "$TEMPLATE_AGENT_HOME/allowed-repos.d/project-a")
-/bin/bash "$test_dir/project.sh" "$root" project-a example/one example/two
-[[ $(python3 -c 'import os,sys; print(os.stat(sys.argv[1]).st_ino)' "$TEMPLATE_AGENT_HOME/allowed-repos.d/project-a") == "$before_inode" ]]
-[[ $(cat "$TEMPLATE_AGENT_HOME/allowed-repos.d/project-b") == example/updated ]]
-cmp "$TEMPLATE_AGENT_HOME/allowed-repos" "$test_dir/original/allowed-repos"
-echo 'PASS host: 選んだ全件を一行ずつ小文字で重複なく許し、同じ選択の再実行と別プロジェクト・共有ファイルを保つ'
-
-# 起動ファイルと共有のガードは本体を使い、送信先の gh だけを PATH で差し替える。
-cp "$root/tests/guard-backend.sh" "$test_dir/bin/gh"
-chmod +x "$test_dir/bin/gh"
-export HOST_GH_CALLS="$test_dir/gh-calls" PATH="$TEMPLATE_AGENT_HOME/bin:$PATH"
-unset GH_HOST
-: >"$HOST_GH_CALLS"
-mkdir "$test_dir/repository"
-git -C "$test_dir/repository" init -q
-shell_dir="$TEMPLATE_AGENT_HOME/template/shell/project-a"
-probe() (
- cd "$test_dir/repository"
- ZDOTDIR="$shell_dir" BASH_ENV="$shell_dir/env.sh" "$1" -c "$2" -- "$3" "$4" >"$test_dir/out" 2>"$test_dir/err"
-)
-for shell in /bin/bash /bin/zsh; do
- for repo in example/one example/two; do
-  probe "$shell" 'gh pr comment 1 --repo "$1" --body probe' "$repo" ''
-  probe "$shell" '"$1" origin "$2" </dev/null' "$TEMPLATE_AGENT_HOME/git-hooks/pre-push" "https://github.com/$repo"
- done
- before=$(wc -l <"$HOST_GH_CALLS")
- if probe "$shell" 'gh pr comment 1 --repo "$1" --body probe' example/updated ''; then exit 1; fi
- [[ $(wc -l <"$HOST_GH_CALLS") == "$before" ]]
- if probe "$shell" '"$1" origin "$2" </dev/null' "$TEMPLATE_AGENT_HOME/git-hooks/pre-push" https://github.com/example/updated; then exit 1; fi
-done
-[[ $(wc -l <"$HOST_GH_CALLS" | tr -d ' ') == 4 ]]
-echo 'PASS host: bash・zsh の起動ファイルから両方の選択が gh と pre-push まで届き、別プロジェクトは送信前に拒否する'
-
-/bin/bash "$test_dir/project.sh" "$root" project-a example/one >"$test_dir/out" 2>"$test_dir/err"
-grep -qx '許すリポジトリから外しました: example/two' "$test_dir/err"
-[[ $(cat "$TEMPLATE_AGENT_HOME/allowed-repos.d/project-a") == example/one ]]
-for shell in /bin/bash /bin/zsh; do
- probe "$shell" 'gh pr comment 1 --repo "$1" --body probe' example/one ''
- before=$(wc -l <"$HOST_GH_CALLS")
- if probe "$shell" 'gh pr comment 1 --repo "$1" --body probe' example/two ''; then exit 1; fi
- [[ $(wc -l <"$HOST_GH_CALLS") == "$before" ]]
- if probe "$shell" '"$1" origin "$2" </dev/null' "$TEMPLATE_AGENT_HOME/git-hooks/pre-push" https://github.com/example/two; then exit 1; fi
-done
-/bin/bash "$test_dir/project.sh" "$root" project-a example/one >"$test_dir/out" 2>"$test_dir/err"
-! grep -q '許すリポジトリから外しました' "$test_dir/err"
-cmp "$TEMPLATE_AGENT_HOME/allowed-repos" "$test_dir/original/allowed-repos"
-[[ $(cat "$TEMPLATE_AGENT_HOME/allowed-repos.d/project-b") == example/updated ]]
-echo 'PASS host: 外した全件を許可から消して表示し、既存の起動ファイルのまま次の gh・push で拒否する'
-
-for invalid in '' 'bad/repo/path' $'example/two\nexample/three'; do
- if /bin/bash "$test_dir/project.sh" "$root" project-a example/one "$invalid" >"$test_dir/out" 2>"$test_dir/err"; then exit 1; fi
- [[ $(cat "$TEMPLATE_AGENT_HOME/allowed-repos.d/project-a") == example/one ]]
-done
-if /bin/bash "$test_dir/project.sh" "$root" project-new >"$test_dir/out" 2>"$test_dir/err"; then exit 1; fi
-[[ ! -e $TEMPLATE_AGENT_HOME/allowed-repos.d/project-new ]]
-echo 'PASS host: 空の選択や後ろの不正な値で前の許可を壊さず、空の許可ファイルも作らない'
-
-# 本物の gh が PATH の先でも、起動時と Claude の順の両方を確認する。
-export TEST_GUARD_CALLS="$test_dir/guard-calls"
-: >"$TEST_GUARD_CALLS"
-PATH="$test_dir/bin:$TEMPLATE_AGENT_HOME/bin:$PATH" /bin/bash "$test_dir/project.sh" "$root" project-a example/one example/two >"$test_dir/out" 2>"$test_dir/err"
-[[ $(grep -c '^許可の確認:' "$test_dir/err") == 2 ]]
-[[ $(wc -l <"$TEST_GUARD_CALLS" | tr -d ' ') == 4 ]]
-for repo in one two; do
- [[ $(grep -c "repos/example/$repo/git/refs" "$TEST_GUARD_CALLS") == 2 ]]
-done
-echo 'PASS host: 本物の gh が先でも起動時と Claude の順で確認し、許可の通信は各リポジトリ・シェルにつき 1 回に保つ'
-
-for target in allowed-repos.d/project-a template/shell/project-a/.zshenv template/shell/project-a/env.sh; do
- cp "$TEMPLATE_AGENT_HOME/$target" "$test_dir/before-${target##*/}"
-done
-assert_previous_project() {
- for target in allowed-repos.d/project-a template/shell/project-a/.zshenv template/shell/project-a/env.sh; do
-  cmp "$test_dir/before-${target##*/}" "$TEMPLATE_AGENT_HOME/$target"
- done
- [[ ! -e $TEMPLATE_AGENT_HOME/allowed-repos.d/project-new && ! -e $TEMPLATE_AGENT_HOME/template/shell/project-new ]]
- [[ ! -s $TEST_GUARD_CALLS ]]
- grep -q '従来の許可とシェル起動ファイルを保って停止' "$test_dir/err"
-}
-mkdir -p "$test_dir/package/lib" "$test_dir/package/common"
-cp "$root/lib/host.sh" "$root/lib/ui.sh" "$root/lib/terminal.sh" "$root/lib/clock.sh" "$test_dir/package/lib/"
-cp -R "$root/common/shell" "$test_dir/package/common/"
-# .zshenv は起動時に直せても、env.sh がコマンド直前に戻さなければ止める。
-head -n 2 "$root/common/shell/env.sh" >"$test_dir/package/common/shell/env.sh"
-for id in project-a project-new; do
- : >"$TEST_GUARD_CALLS"
- if PATH="$test_dir/bin:$TEMPLATE_AGENT_HOME/bin:$PATH" /bin/bash "$test_dir/project.sh" "$test_dir/package" "$id" example/changed >"$test_dir/out" 2>"$test_dir/err"; then exit 1; fi
- grep -q 'Claude の実行の順で gh がガードを選びません' "$test_dir/err"
- grep -q 'ひな形の env.sh' "$test_dir/err"
- assert_previous_project
-done
-echo 'PASS host: env.sh が PATH を戻さなければ Claude の順で通信前に止まり、既存の許可・起動ファイルを保ち新規にも書かない'
-
-# ガード以外に gh がない PATH でも、ほかのホストの本物を探しに行かない。
-mkdir "$test_dir/no-gh-bin"
-for tool in tr cat; do ln -s "$(command -v "$tool")" "$test_dir/no-gh-bin/$tool"; done
-for id in project-a project-new; do
- : >"$TEST_GUARD_CALLS"
- if PATH="$TEMPLATE_AGENT_HOME/bin:$test_dir/no-gh-bin" /bin/bash "$test_dir/project.sh" "$root" "$id" example/changed >"$test_dir/out" 2>"$test_dir/err"; then exit 1; fi
- grep -q '本物の gh がガードの外の PATH に見つかりません' "$test_dir/err"
- assert_previous_project
-done
-echo 'PASS host: ガードの外に gh がなければ理由を出し、従来の許可・起動ファイルを保って止まる'

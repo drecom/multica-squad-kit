@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # ZIP のルートから bash tests/project-runtimes-test.sh で実行する。
+# この部分は、片方だけへの移し・設計の役のモデルの流し直し・拡張の固定モデルを確認する。
 # ランタイムの選び直しと拡張の固定モデル
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -38,7 +39,8 @@ for selected in claude codex; do
   jq -e --arg selected "$selected" --arg env "$TEMPLATE_AGENT_HOME/template/shell/project-a/env.sh" 'if $selected=="claude" then .CLAUDE_ENV_FILE==$env else .CLAUDE_ENV_FILE==null end' "$TEST_DB/env/agent-demo-$role-owner.json" >/dev/null
   role_args='[]'
   if [[ $role == orchestrator ]]; then role_args='["--keep","value"]'; fi
-  jq -e --arg selected "$selected" --argjson prefix "$role_args" '.custom_args==($prefix+(if $selected=="codex" then ["-c","allow_login_shell=false","-c","features.shell_snapshot=false","-c","project_doc_max_bytes=65536"] else [] end))' "$TEST_DB/agents/agent-demo-$role-owner.json" >/dev/null
+  jq -e --arg selected "$selected" --arg g "$TEMPLATE_AGENT_HOME/guard" --argjson prefix "$role_args" "$HOOK_ARGS_DEF"'.custom_args==($prefix+(if $selected=="codex" then codex_args($g) else [] end))' "$TEST_DB/agents/agent-demo-$role-owner.json" >/dev/null
+  jq -e --arg selected "$selected" 'if $selected=="claude" then .mcp_config=={} else .mcp_config==null end' "$TEST_DB/agents/agent-demo-$role-owner.json" >/dev/null
  done
  jq -e --arg selected "$selected" --arg model "$(if [[ $selected == claude ]]; then echo claude-fable-5-2; else echo gpt-6.2-astra; fi)" '.model==$model and .runtime_id==("runtime-"+$selected) and .thinking_level=="xhigh"' "$TEST_DB/agents/agent-demo-$selected-principal-owner.json" >/dev/null
  jq -e '.EXTRA=="keep"' "$TEST_DB/env/agent-demo-orchestrator-owner.json" >/dev/null
@@ -90,91 +92,6 @@ for selected in both claude codex; do
 done
 unset TEST_RUNTIMES
 
-# 前の世代の Codex のモデルで登録済みの役は、流し直しで同じ格の新しい ID に替わる。Claude のモデルと思考の深さは替わらない。
-agent_snapshot() { for f in "$TEST_DB"/agents/agent-demo-*-owner.json; do jq -c '[.name,.model,.thinking_level,.runtime_id]' "$f"; done | sort; }
-old_codex_models() {
- # Codex の役のモデルを、同じ格の前の世代の ID にする。最上位の格は codex-principal と planner である。
- for f in "$TEST_DB"/agents/agent-demo-*-owner.json; do
-  jq -e '.model|startswith("gpt-")' "$f" >/dev/null || continue
-  jq '.model=(if (.name=="demo-codex-principal-owner" or .name=="demo-planner-owner") then "gpt-6-astra" else "gpt-6.1-sol" end)' "$f" >"$TEST_DB/new"
-  mv "$TEST_DB/new" "$f"
- done
-}
-for selected in both codex; do
- export TEST_EXCLUDED='[]' TEST_ROLE_COUNT=17
- rm -rf "$TEST_DB" "$TEMPLATE_AGENT_HOME"
- cp -R "$test_dir/completed/db" "$TEST_DB"
- cp -R "$test_dir/completed/host" "$TEMPLATE_AGENT_HOME"
- if [[ $selected == codex ]]; then
-  # 完了した見本は両方の構成の登録なので、先に Codex だけへ移してから前の世代の ID に戻す。
-  export TEST_RUNTIMES='["codex"]'
-  run
- else
-  unset TEST_RUNTIMES
- fi
- old_codex_models
- jq -e '.model|startswith("gpt-6.1-sol") or startswith("gpt-6-astra")' "$TEST_DB/agents/agent-demo-codex-principal-owner.json" >/dev/null
- before=$(agent_snapshot)
- : >"$TEST_DB/calls"
- run
- after=$(agent_snapshot)
- # 前の世代の ID の行を新しい ID に読み替えると、流す前と同じになる（Claude のモデルと思考の深さは変わらない）。
- [[ $(sed 's/gpt-6\.1-sol/gpt-6.2-sol/; s/gpt-6-astra/gpt-6.2-astra/' <<<"$before") == "$after" ]]
- ! grep -q 'gpt-6\.1-sol\|gpt-6-astra' <<<"$after"
- while IFS= read -r line; do
-  name=$(jq -r '.[0]' <<<"$line"); model=$(jq -r '.[1]' <<<"$line")
-  [[ $model == gpt-* ]] || continue
-  if [[ $name == demo-codex-principal-owner || $name == demo-planner-owner ]]; then [[ $model == gpt-6.2-astra ]]; else [[ $model == gpt-6.2-sol ]]; fi
- done <<<"$after"
- [[ $(grep -c 'gpt-6.2-astra' <<<"$after") -eq $(if [[ $selected == both ]]; then echo 1; else echo 2; fi) ]]
- ! jq -es 'any(.[]; .[0:2]==["agent","create"] or .[0:2]==["autopilot","create"])' "$TEST_DB/calls" >/dev/null
- echo "PASS project runtimes: 前の世代の Codex のモデルで登録済みの $selected の流し直しで、Codex の役のモデルが同じ格の新しい ID になり、Claude のモデルと思考の深さは変わらず、エージェントとオートパイロットは作られない"
-done
-unset TEST_RUNTIMES
-
-# 思考の深さが high で登録済みの Claude のリーダーと修正の役は、流し直しで medium になり、Codex の役の思考の深さは変わらない。
-export TEST_EXCLUDED='[]' TEST_ROLE_COUNT=17
-unset TEST_RUNTIMES
-rm -rf "$TEST_DB" "$TEMPLATE_AGENT_HOME"
-cp -R "$test_dir/completed/db" "$TEST_DB"
-cp -R "$test_dir/completed/host" "$TEMPLATE_AGENT_HOME"
-for role in orchestrator claude-fixer; do
- jq '.thinking_level="high"' "$TEST_DB/agents/agent-demo-$role-owner.json" >"$TEST_DB/new"
- mv "$TEST_DB/new" "$TEST_DB/agents/agent-demo-$role-owner.json"
-done
-before_codex=$(for role in codex-implementer codex-fixer; do jq -c '[.name,.thinking_level]' "$TEST_DB/agents/agent-demo-$role-owner.json"; done)
-: >"$TEST_DB/calls"
-run
-for role in orchestrator claude-fixer; do jq -e '.thinking_level=="medium"' "$TEST_DB/agents/agent-demo-$role-owner.json" >/dev/null; done
-jq -e '.thinking_level=="medium"' "$TEST_DB/agents/agent-demo-qa-owner.json" >/dev/null
-[[ $(for role in codex-implementer codex-fixer; do jq -c '[.name,.thinking_level]' "$TEST_DB/agents/agent-demo-$role-owner.json"; done) == "$before_codex" ]]
-! jq -es 'any(.[]; .[0:2]==["agent","create"] or .[0:2]==["autopilot","create"])' "$TEST_DB/calls" >/dev/null
-echo 'PASS project runtimes: 思考の深さが high で登録済みの Claude のリーダーと修正の役が、流し直しで medium になり、Codex の役と QA は変わらない'
-
-# Claude Code だけへ移した登録を流し直しても、エージェントは更新されず、どの役も Claude の決まった ID のままである。
-export TEST_EXCLUDED='[]' TEST_ROLE_COUNT=17 TEST_RUNTIMES='["claude"]'
-rm -rf "$TEST_DB" "$TEMPLATE_AGENT_HOME"
-cp -R "$test_dir/completed/db" "$TEST_DB"
-cp -R "$test_dir/completed/host" "$TEMPLATE_AGENT_HOME"
-run
-before=$(agent_snapshot)
-: >"$TEST_DB/calls"
-run
-after=$(agent_snapshot)
-[[ $before == "$after" ]]
-! jq -es 'any(.[]; .[0:2]==["agent","update"] or .[0:2]==["agent","create"] or .[0:2]==["autopilot","create"])' "$TEST_DB/calls" >/dev/null
-for role in orchestrator planner designer qa code-reviewer security-reviewer ux-reviewer performance-reviewer ci-monitor usage-monitor dependabot-merger claude-principal claude-implementer claude-fixer; do
- case $role in
-  planner|claude-principal) role_model=claude-fable-5-2 ;;
-  designer) role_model=claude-opus-5-5 ;;
-  *) role_model=claude-sonnet-5-5 ;;
- esac
- jq -e --arg model "$role_model" --arg runtime runtime-claude '.model==$model and .runtime_id==$runtime' "$TEST_DB/agents/agent-demo-$role-owner.json" >/dev/null
-done
-! grep -q 'gpt-6\.2' <(jq -s '.[]|select(.runtime_id=="runtime-claude")|.model' "$TEST_DB"/agents/agent-demo-*-owner.json)
-unset TEST_RUNTIMES
-echo 'PASS project runtimes: Claude Code だけへ移した登録の流し直しで、エージェントは更新されず、どの役も Claude の決まった ID のままである'
-
 # 拡張の固定モデルは、オンラインIDがあっても選んでいないランタイムでは使わない。
 mkdir -p "$test_dir/extension/agents"
 for selected in claude codex; do
@@ -187,3 +104,65 @@ for selected in claude codex; do
 done
 echo 'PASS extension runtimes: 選ばなかったランタイムのモデルを、全エージェントの作成前に拒否する'
 rm "$test_dir/extension/agents/helper.md"
+
+# 置き場に空白と単引用符があっても、Codex はフックのコマンドをシェルで実行するので、役の引数のコマンドは 1 つのパスとして読まれ、2 つのフックのスクリプトが起動する。
+export TEMPLATE_AGENT_HOME="$test_dir/ho st's home"
+export TEST_RUNTIMES='["codex"]' TEST_COMPLETE=yes TEST_ROLE_COUNT=14
+export TEST_REPOSITORIES='[{"url":"https://github.com/example/project","repository":"example/project"}]'
+reset_db
+cp "$root/common/guard/pre-tool-use" "$root/common/guard/stop" "$root/common/guard/shell_split.py" "$TEMPLATE_AGENT_HOME/guard/"
+chmod +x "$TEMPLATE_AGENT_HOME/guard/pre-tool-use" "$TEMPLATE_AGENT_HOME/guard/stop"
+run
+guard_env_dir="$test_dir/guard-env"
+mkdir -p "$guard_env_dir/bin" "$guard_env_dir/state"
+ln -sf "$(command -v python3)" "$guard_env_dir/bin/python3"
+# ガードは MULTICA_TASK_ID がないと何もせずに通す。実行の環境（エージェントの中か CI か）に左右されないよう、値と PATH（multica なし）と状態の置き場を固定する。
+python3 - "$TEST_DB/agents/agent-demo-codex-implementer-owner.json" "$TEMPLATE_AGENT_HOME" "$guard_env_dir" <<'PY'
+import json
+import subprocess
+import sys
+
+args = json.load(open(sys.argv[1], encoding="utf-8"))["custom_args"]
+guard = sys.argv[2] + "/guard"
+guard_env = {"PATH": sys.argv[3] + "/bin:/usr/bin:/bin", "HOME": sys.argv[3], "MULTICA_TASK_ID": "task-test", "SQUAD_KIT_STATE_DIR": sys.argv[3] + "/state"}
+commands = {}
+for value in args:
+    for name in ("PreToolUse", "Stop"):
+        if value.startswith("hooks.%s=" % name):
+            # 引数の値は TOML の文字列（JSON と同じ書き方）で、コマンドを 1 つ持つ。
+            start = value.index('command="') + len("command=")
+            commands[name] = json.loads(value[start:value.index('"}', start) + 1])
+assert set(commands) == {"PreToolUse", "Stop"}, args
+assert commands["PreToolUse"].startswith("'") and commands["PreToolUse"].endswith("'"), commands
+pre = subprocess.run(["/bin/sh", "-c", commands["PreToolUse"]], input='{"tool_name":"Bash","tool_input":{"command":"ls"}}', capture_output=True, text=True, env=guard_env)
+assert pre.returncode == 2 and "PreToolUse のガード" in pre.stderr, (pre.returncode, pre.stderr)
+stop = subprocess.run(["/bin/sh", "-c", commands["Stop"]], input='{"hook_event_name":"Stop"}', capture_output=True, text=True, env=guard_env)
+assert stop.returncode == 0 and "decision" in stop.stdout, (stop.returncode, stop.stdout, stop.stderr)
+# 引用しないと、同じパスは空白で割れて 127、単引用符で閉じずに 2 で終わる。
+bare = subprocess.run(["/bin/sh", "-c", guard + "/pre-tool-use"], input="{}", capture_output=True, text=True, env=guard_env)
+assert bare.returncode != 2 or "PreToolUse のガード" not in bare.stderr, bare
+PY
+echo 'PASS project runtimes: 置き場に空白と単引用符があっても、役の引数のコマンドをシェルで実行すると 2 つのフックのスクリプトが起動する'
+
+# 更新が途中で止まっても、共有の settings.json は書き換わらず（フックと deny は最後に書く）、登録済みの役はそのまま動く。
+agent_snapshot() { for f in "$TEST_DB"/agents/agent-demo-*-owner.json; do jq -c '[.name,.model,.thinking_level,.runtime_id]' "$f"; done | sort; }
+snapshot_shared() { { cat "$TEMPLATE_AGENT_HOME/claude/settings.json"; agent_snapshot; } | shasum | cut -d' ' -f1; }
+unset TEST_COMPLETE TEST_REPOSITORIES
+export TEST_EXCLUDED='[]' TEST_ROLE_COUNT=17 TEST_RUNTIMES='["claude","codex"]'
+for stop in env_set; do
+ rm -rf "$TEST_DB" "$TEMPLATE_AGENT_HOME"
+ cp -R "$test_dir/completed/db" "$TEST_DB"
+ cp -R "$test_dir/completed/host" "$TEMPLATE_AGENT_HOME"
+ mkdir -p "$TEMPLATE_AGENT_HOME/claude"
+ printf '%s\n' '{"theme":"dark","permissions":{"allow":["Bash(ls)"]}}' >"$TEMPLATE_AGENT_HOME/claude/settings.json"
+ before=$(snapshot_shared)
+ : >"$TEST_DB/calls"
+ # 役の custom_env を書いている途中で止まる。
+ TEST_FAIL='agent env set' deny
+ [[ $(snapshot_shared) == "$before" ]]
+ if grep -q 'hooks' "$TEMPLATE_AGENT_HOME/claude/settings.json"; then echo '止まったのにフックが書かれた' >&2; exit 1; fi
+ # 止まったあとに流し直すと、フックと deny がそろって書かれる。
+ run
+ grep -q 'hooks' "$TEMPLATE_AGENT_HOME/claude/settings.json"
+done
+echo 'PASS project runtimes: 更新が custom_env の書き込みの途中で止まっても、共有の settings.json は変わらず、流し直すと書かれる'

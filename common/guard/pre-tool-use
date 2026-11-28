@@ -1,0 +1,489 @@
+#!/usr/bin/env python3
+# multica-squad-kit-managed
+"""Multica のエージェントの実行で、ツールを呼ぶ前に、ガードを外す操作を止めるフック（PreToolUse）。
+
+Claude Code と Codex が、標準入力に JSON でツールの呼び出しを渡す。このスクリプトは、ツールごとに決めた項目だけを読む。
+  Bash・シェル:             1 つずつに分けたコマンドの、代入・実行するコマンド・引数・リダイレクトの先（shell_split.py で分ける）
+  Write・Edit・NotebookEdit: 書く先のパス（file_path・notebook_path）
+止めるときは、終了コード 2 で終わり、標準エラーに理由とガードを避けないことを書く。照合は docs/agent-guards.md の「PreToolUse で止めるもの」と
+「役の実行で分離を見る」に従う。
+
+MULTICA_TASK_ID がない実行（人が端末で使う Claude Code など）は、何もせずに通す。
+"""
+import importlib.util
+import json
+import os
+import re
+import shlex
+import sys
+
+sys.dont_write_bytecode = True
+
+EXIT_STOP = 2
+HERE = os.path.dirname(os.path.realpath(__file__))
+
+SHELL_TOOLS = {"bash", "shell", "exec_command", "local_shell"}
+WRITE_TOOLS = {"write", "edit", "multiedit", "notebookedit"}
+TOKEN_VARS = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN")
+GIT_ENV_EXACT = ("GIT_SSH", "GIT_SSH_COMMAND", "GIT_ASKPASS", "SSH_ASKPASS")
+GIT_ENV_PREFIX = ("GIT_CONFIG", "GIT_TRACE")
+SETTINGS_FILES = (".claude/settings.json", ".claude/settings.local.json", ".mcp.json")
+VAR_BUILTINS = ("export", "unset", "declare", "typeset", "readonly", "local")
+GIT_GLOBAL_OPT_ARG = ("-C", "--git-dir", "--work-tree", "--namespace", "--super-prefix")
+GIT_CONFIG_OPT_ARG = ("-f", "--file", "--blob", "--type", "--default", "--comment")
+GIT_CONFIG_READ = ("--get", "--get-all", "--get-regexp", "--get-urlmatch", "-l", "--list", "--get-color", "--get-colorbool")
+GIT_CONFIG_WRITE = ("--add", "--replace-all", "--unset", "--unset-all", "--rename-section", "--remove-section")
+GIT_CONFIG_VERBS = {"get": False, "list": False, "set": True, "unset": True, "edit": True,
+                    "rename-section": True, "remove-section": True}
+HOME_RE = re.compile(r"\$\{HOME\}|\$HOME(?![A-Za-z0-9_])")
+UNKNOWN_RE = re.compile(r"[$`*?\[{]")
+# ファイルに書く、または読むリダイレクト。ヒアドキュメント・here-string・fd の複製は、先がファイルではない
+FILE_REDIRECT_RE = re.compile(r"^[0-9]*(>>|>\||>|&>>|&>|<>|<)$")
+MARK = "PreToolUse のガード"
+AVOID = "このガードを避ける呼び方や設定の変更はしないでください。必要なら、タスクのコメントで呼ぶ人間に知らせてください"
+
+
+class Stop(Exception):
+    pass
+
+
+def load_splitter():
+    spec = importlib.util.spec_from_file_location("shell_split", os.path.join(HERE, "shell_split.py"))
+    if spec is None or spec.loader is None:
+        raise Stop("分割の部品（shell_split.py）を読めないので、コマンドを確認できません")
+    try:
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except Exception as e:
+        raise Stop("分割の部品（shell_split.py）を読めないので、コマンドを確認できません（%s）" % e)
+    return module
+
+
+def real(path):
+    return os.path.realpath(os.path.abspath(path))
+
+
+def home_dir():
+    return os.environ.get("HOME") or os.path.expanduser("~")
+
+
+def expand_path(text, dynamic, tilde=True):
+    """語を、パスの文字列にする。値が決まらないときは None。~ は、シェルが展開する語（tilde）だけ展開する。"""
+    home = home_dir()
+    t = text
+    if tilde and (t == "~" or t.startswith("~/")):
+        t = home + t[1:]
+    if dynamic:
+        t = HOME_RE.sub(lambda _m: home, t)
+        if UNKNOWN_RE.search(t):
+            return None
+    return t or None
+
+
+def protected_places():
+    home = home_dir()
+    places = []
+
+    def add(p):
+        if p:
+            places.append(real(p))
+
+    add(os.environ.get("SQUAD_KIT_GH_CONFIG_DIR"))
+    add(os.path.join(HERE, "gh-empty"))
+    add(os.path.join(home, ".ssh"))
+    add(os.path.join(home, ".git-credentials"))
+    add(os.path.join(home, ".netrc"))
+    return places
+
+
+def settings_paths(roots):
+    out = set()
+    for root in roots:
+        for name in SETTINGS_FILES:
+            out.add(real(os.path.join(root, name)))
+    return out
+
+
+def resolve(path, cwd):
+    return real(os.path.join(cwd, path))
+
+
+def in_places(path, cwd, places):
+    rp = resolve(path, cwd)
+    for p in places:
+        if rp == p or rp.startswith(p + os.sep):
+            return p
+    return None
+
+
+# --- 守る名前 ---
+
+def protected_var(name):
+    return name == "GH_CONFIG_DIR" or name.startswith("SQUAD_KIT_") or name in TOKEN_VARS
+
+
+def git_env_var(name):
+    return name in GIT_ENV_EXACT or name.startswith(GIT_ENV_PREFIX)
+
+
+def protected_key(key):
+    k = key.strip().lower()
+    return (k in ("core.hookspath", "core.sshcommand", "include.path")
+            or k.startswith(("credential.", "includeif."))
+            or k.endswith(("insteadof", "extraheader")))
+
+
+def var_name(text):
+    return re.split(r"[=+\[]", text, maxsplit=1)[0]
+
+
+# --- 1 つずつのコマンドの照合 ---
+
+def base(word):
+    return None if word.get("dynamic") else os.path.basename(word["text"])
+
+
+def check_variables(cmd):
+    for a in cmd["assign"]:
+        if protected_var(a["name"]):
+            return "守る変数 %s への代入" % a["name"]
+        if git_env_var(a["name"]):
+            return "git の環境変数 %s への代入" % a["name"]
+    argv = cmd["argv"]
+    if argv and base(argv[0]) in VAR_BUILTINS:
+        verb = base(argv[0])
+        for w in argv[1:]:
+            if w["text"].startswith("-"):
+                continue
+            name = var_name(w["text"])
+            if protected_var(name):
+                return "守る変数 %s への %s" % (name, verb)
+            if verb != "unset" and git_env_var(name):
+                return "git の環境変数 %s への %s" % (name, verb)
+    return None
+
+
+def check_env_wrapper(cmd):
+    """env の -i と -u を、実行するコマンドの前の語から読む。"""
+    words = cmd["words"]
+    prefix = words[:max(0, len(words) - len(cmd["argv"]))]
+    for idx, w in enumerate(prefix):
+        if base(w) != "env":
+            continue
+        j = idx + 1
+        while j < len(prefix):
+            t = prefix[j]["text"]
+            j += 1
+            if t == "--":
+                break
+            if t == "-" or t == "--ignore-environment":
+                return "環境を外す env -i"
+            if t.startswith("--"):
+                name, eq, val = t.partition("=")
+                if name in ("--unset",):
+                    if not eq and j < len(prefix):
+                        val = prefix[j]["text"]
+                        j += 1
+                    if protected_var(val):
+                        return "守る変数 %s の env -u" % val
+                elif name in ("--chdir", "--argv0", "--split-string") and not eq:
+                    j += 1
+            elif t.startswith("-") and len(t) > 1:
+                body = t[1:]
+                for k, ch in enumerate(body):
+                    if ch == "i":
+                        return "環境を外す env -i"
+                    if ch in "uCSaP":
+                        val = body[k + 1:]
+                        if not val and j < len(prefix):
+                            val = prefix[j]["text"]
+                            j += 1
+                        if ch == "u" and protected_var(val):
+                            return "守る変数 %s の env -u" % val
+                        break
+            elif "=" in t:
+                continue
+            else:
+                break
+    return None
+
+
+def git_parts(argv):
+    """git の -c と --config-env のキーと、サブコマンドと、その引数を返す。"""
+    n = len(argv)
+    i = 1
+    keys = []
+    while i < n:
+        t = argv[i]["text"]
+        if t == "--":
+            i += 1
+            break
+        if t == "-c":
+            if i + 1 < n:
+                keys.append(argv[i + 1])
+            i += 2
+        elif t.startswith("-c") and not t.startswith("--"):
+            keys.append({"text": t[2:], "dynamic": argv[i].get("dynamic")})
+            i += 1
+        elif t == "--config-env":
+            if i + 1 < n:
+                keys.append(argv[i + 1])
+            i += 2
+        elif t.startswith("--config-env="):
+            keys.append({"text": t[len("--config-env="):], "dynamic": argv[i].get("dynamic")})
+            i += 1
+        elif t in GIT_GLOBAL_OPT_ARG:
+            i += 2
+        elif t.startswith("-"):
+            i += 1
+        else:
+            break
+    sub = argv[i]["text"] if i < n else None
+    return keys, sub, argv[i + 1:] if i < n else []
+
+
+def check_git_config(rest):
+    pos = []
+    opts = []
+    i = 0
+    while i < len(rest):
+        t = rest[i]["text"]
+        if t == "--":
+            pos.extend(w["text"] for w in rest[i + 1:])
+            break
+        if t.startswith("-") and len(t) > 1:
+            opts.append(t.split("=", 1)[0])
+            if t in GIT_CONFIG_OPT_ARG:
+                i += 1
+        else:
+            pos.append(t)
+        i += 1
+    if pos and pos[0] in GIT_CONFIG_VERBS:
+        writing = GIT_CONFIG_VERBS[pos[0]]
+        keys = pos[1:]
+    else:
+        writing = bool(set(opts) & set(GIT_CONFIG_WRITE)) or (not (set(opts) & set(GIT_CONFIG_READ)) and len(pos) >= 2)
+        keys = pos
+    if writing:
+        for k in keys:
+            if protected_key(k):
+                return "git config で守るキー %s を書く" % k
+    return None
+
+
+def check_git(cmd):
+    argv = cmd["argv"]
+    if not argv or base(argv[0]) != "git":
+        return None
+    keys, sub, rest = git_parts(argv)
+    for k in keys:
+        key = k["text"].split("=", 1)[0]
+        if protected_key(key):
+            return "git の -c か --config-env で守るキー %s を渡す" % key
+    if sub == "push":
+        for w in rest:
+            t = w["text"]
+            if t == "--":
+                break
+            if len(t) >= 6 and t.startswith("--no-v") and "--no-verify".startswith(t):
+                return "git push の --no-verify（pre-push フックを飛ばす）"
+    elif sub == "credential" or (sub and sub.startswith("credential-")):
+        return "git credential（認証情報を取り出す）"
+    elif sub == "config":
+        return check_git_config(rest)
+    return None
+
+
+def check_security(cmd):
+    argv = cmd["argv"]
+    if not argv or base(argv[0]) != "security":
+        return None
+    for w in argv[1:]:
+        if w["text"].startswith("-"):
+            continue
+        if w["text"].startswith("find-"):
+            return "security %s（認証情報を取り出す）" % w["text"]
+        break
+    return None
+
+
+def check_places(cmd, cwd, places, settings):
+    for w in cmd["words"]:
+        cands = [w["text"]]
+        if "=" in w["text"]:
+            cands.append(w["text"].split("=", 1)[1])
+        for c in cands:
+            p = expand_path(c, w.get("dynamic"), w.get("tilde", False))
+            if p and in_places(p, cwd, places):
+                return "守る認証情報の置き場 %s" % c
+    for r in cmd["redirects"]:
+        if not FILE_REDIRECT_RE.match(r["op"]):
+            continue
+        p = expand_path(r["target"], r.get("dynamic"), r.get("tilde", False))
+        if not p:
+            continue
+        if in_places(p, cwd, places):
+            return "守る認証情報の置き場へのリダイレクト %s" % r["target"]
+        if r["op"].lstrip("0123456789") != "<":
+            if resolve(p, cwd) in settings:
+                return "読み込まれる設定へのリダイレクト %s" % r["target"]
+    return None
+
+
+def check_command(cmd, cwd, places, settings):
+    for check in (check_variables, check_env_wrapper, check_git, check_security):
+        reason = check(cmd)
+        if reason:
+            return reason
+    return check_places(cmd, cwd, places, settings)
+
+
+# --- 役の実行の分離 ---
+
+def isolation_problem():
+    for name in TOKEN_VARS:
+        if os.environ.get(name):
+            return "役の環境に %s がある" % name
+    empty = real(os.path.join(HERE, "gh-empty"))
+    config = os.environ.get("GH_CONFIG_DIR")
+    if not config or real(config) != empty:
+        return "GH_CONFIG_DIR がキットの空の置き場でない"
+    try:
+        if os.listdir(empty):
+            return "空の gh の置き場にファイルがある"
+    except OSError:
+        return "空の gh の置き場を読めない"
+    return None
+
+
+def not_multica(commands):
+    for cmd in commands:
+        argv = cmd["argv"]
+        if not argv:
+            continue
+        w = argv[0]
+        if w.get("dynamic") or w["text"] != "multica":
+            return w["text"]
+    return None
+
+
+# --- 入力の読み取り ---
+
+def shell_c_script(argv):
+    """["bash", "-lc", "文", ...] のように -c を使う配列から、シェルが実行する文を取る。-c がなければ None。
+    文のあとに位置引数があるときは、実行する文と検査する文がずれないよう止める。"""
+    i = 1
+    has_c = False
+    while i < len(argv):
+        t = argv[i]
+        if t == "--":
+            i += 1
+            break
+        if len(t) < 2 or t[0] not in "-+" or t.startswith(("--", "+-")):
+            if t.startswith("--"):
+                i += 1  # --norc などの長いオプション。値を取るもの（--rcfile）は下で止める
+                if t in ("--rcfile", "--init-file"):
+                    i += 1
+                continue
+            break
+        letters = t[1:]
+        if t[0] == "-" and "c" in letters:
+            has_c = True
+        i += 1 + sum(letters.count(x) for x in "oO")  # -o・-O は次の語を取る
+    if not has_c:
+        return None
+    if i >= len(argv):
+        stop("シェルの -c に実行する文がないので、確認できません")
+    if i != len(argv) - 1:
+        stop("シェルの -c の文のあとに引数があり、実行する文を確認できません")
+    return argv[i]
+
+
+def command_text(tool_input):
+    """Claude の command、Codex の command（文字列・配列）・cmd・action.command から、シェルの文を取る。"""
+    if not isinstance(tool_input, dict):
+        return None
+    for source in (tool_input, tool_input.get("action") if isinstance(tool_input.get("action"), dict) else {}):
+        for key in ("command", "cmd"):
+            v = source.get(key)
+            if isinstance(v, str) and v:
+                return v
+            if isinstance(v, list) and v and all(isinstance(x, str) for x in v):
+                if os.path.basename(v[0]) in ("bash", "sh", "zsh"):
+                    script = shell_c_script(v)
+                    if script is not None:
+                        return script
+                return " ".join(shlex.quote(x) for x in v)
+    return None
+
+
+def stop(reason, extra=AVOID):
+    sys.stderr.write("%s: %s。%s。\n" % (MARK, reason, extra))
+    sys.exit(EXIT_STOP)
+
+
+def main():
+    if not os.environ.get("MULTICA_TASK_ID"):
+        return 0
+    try:
+        data = json.loads(sys.stdin.buffer.read().decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        stop("フックの入力を JSON として読めないので、確認できません")
+    if not isinstance(data, dict):
+        stop("フックの入力が JSON のオブジェクトでないので、確認できません")
+    name = data.get("tool_name")
+    tool_input = data.get("tool_input")
+    if not isinstance(name, str):
+        stop("ツールの名前を読めないので、確認できません")
+    kind = name.lower()
+    cwd = data.get("cwd") if isinstance(data.get("cwd"), str) and data.get("cwd") else os.getcwd()
+    roots = {real(cwd), real(os.getcwd())}
+    if os.environ.get("CLAUDE_PROJECT_DIR"):
+        roots.add(real(os.environ["CLAUDE_PROJECT_DIR"]))
+    settings = settings_paths(roots)
+
+    if kind in WRITE_TOOLS:
+        if not isinstance(tool_input, dict):
+            stop("%s の入力を読めないので、確認できません" % name)
+        path = tool_input.get("file_path") or tool_input.get("notebook_path")
+        if not isinstance(path, str) or not path:
+            stop("%s の書く先のパスを読めないので、確認できません" % name)
+        p = expand_path(path, False)
+        if p and resolve(p, cwd) in settings:
+            stop("%s で、読み込まれる設定 %s を書く" % (name, path))
+        return 0
+
+    if kind not in SHELL_TOOLS:
+        return 0
+
+    text = command_text(tool_input)
+    if text is None:
+        stop("%s のコマンドを読めないので、確認できません" % name)
+    try:
+        splitter = load_splitter()
+        sys.setrecursionlimit(5000)
+        commands = splitter.split_script(text)["commands"]
+    except Stop as e:
+        stop(str(e))
+    except splitter.Unsplittable as e:
+        stop("コマンドを 1 つずつに分けられない（%s）ので、確認できません" % e)
+    except RecursionError:
+        stop("コマンドの入れ子が深すぎて、確認できません")
+
+    problem = isolation_problem()
+    if problem:
+        other = not_multica(commands)
+        if other is not None:
+            stop("認証の分離が成り立っていません（%s）。実行するコマンド %s は multica でないので止めます" % (problem, other),
+                 "multica のコマンドだけ通します。このガードを避ける呼び方や設定の変更はしないでください。タスクのコメントで呼ぶ人間に、環境の直しを頼んでください")
+
+    places = protected_places()
+    for cmd in commands:
+        reason = check_command(cmd, cwd, places, settings)
+        if reason:
+            stop(reason)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
