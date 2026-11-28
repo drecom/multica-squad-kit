@@ -1178,16 +1178,16 @@ unlinked_watch_check() {
 		echo "metadata の pr_url と pr_link_no_integration が規則の見張る PR（${watch}）と合わない"
 		return 1
 	fi
-	if [[ $mode == done ]]; then unlinked_merge_check "$issue" "$round" "$comments" "$merged_head"; fi
+	if [[ $mode == done ]]; then unlinked_merge_check "$issue" "$round" "$comments" "$merged_head" "$watch"; fi
 }
 
 # 照合の 5。確認した回より後に、マージした head（`gh` の応答の headRefOid）を指すマージの依頼があれば 0 を返す。
-# 第 3 引数は、照合の 2 で使ったコメントの一覧、第 4 引数はマージした PR の head。
-# 依頼は、回を `前の回:` に指す制御記録で、作者・時刻・回・head の照合は squad_cli_control の merge_requested が同じ一覧で行う。
+# 第 3 引数は照合の 2 で使ったコメントの一覧、第 4 引数はマージした PR の head、第 5 引数は規則の `見張る PR:` の正規形。
+# 作者・時刻・回・PR・head の照合は、squad_cli_control の merge_requested が同じ一覧で行う。
 # 依頼の head は 40 桁の完全な SHA で、headRefOid と大文字小文字を問わず同じにする。回の `確認するコミット:`（7 桁以上の接頭辞でもよい）にも当たる必要がある。
 # 依頼がなければ理由を出して 1 を返し、head や依頼の候補を読めないときは理由を出して 3 を返す。
 unlinked_merge_check() {
-	local issue=$1 round=$2 comments=$3 merged_head=$4 roster leaders commits commit requested
+	local issue=$1 round=$2 comments=$3 merged_head=$4 watch=$5 roster leaders commits commit requested
 	if [[ ! $merged_head =~ ^[0-9a-fA-F]{40}$ ]]; then echo 'gh の応答の headRefOid を読めない'; return 3; fi
 	roster=$(unlinked_roster "$issue") || { echo '名簿を読めない'; return 3; }
 	leaders=$(jq -c '[.leader // empty]' <<<"$roster") || { echo '名簿からリーダーを読めない'; return 3; }
@@ -1203,7 +1203,7 @@ unlinked_merge_check() {
 		echo "マージした head（${merged_head}）が回の確認するコミット（${commit}）と違う"
 		return 1
 	fi
-	requested=$(squad_cli_control merge_requested "$comments" "$leaders" null "$merged_head" "$round") || { echo 'マージの依頼を判定できない'; return 3; }
+	requested=$(squad_cli_control merge_requested "$comments" "$leaders" null "$merged_head" "$round" "$watch") || { echo 'マージの依頼を判定できない'; return 3; }
 	case $requested in
 	yes) return 0 ;;
 	'blocked '*) echo "${requested#blocked }"; return 3 ;;

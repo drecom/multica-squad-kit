@@ -48,12 +48,12 @@ b0d340d145f7fb575c71b6e2b9be94171da0b5a0bb1366d3f52d4c9041f57ed6  ./common/guard
 003d274f0e18b662fe11322a620d5498a66f56ca3a3f1b118d32f8078f173ea8  ./common/guard/stop
 cbfb45a119121c0449fe4bf6569ed7e9dacb7a618550575db7c2feaa873802e1  ./common/host/start-daemon
 8d7089db252c5cc09c3ae6aea590e3d1a1370450f4fb7f3f9e99fa4290542fff  ./common/labels
-09af6d97a4b7717fd1d495024d3e5f6a6a42f1b4ff8ed49e40f7da4d753d6ea5  ./common/monitor/squad-cli-lib
+7965b5efa3a013fb7772bfee467051d5a24399bda94bfc2f9212f6f2d1767f12  ./common/monitor/squad-cli-lib
 c9f338dd47ba2cb8aa8e4d2ee2208700faf9f1aa05c5e7407b3bdc9e31d8f14c  ./common/monitor/squad-dependabot-merge
 8f187cb0ff2e26d5e2f4d4acab7c8314f6107908c3c9af15366ab601c4ea52a8  ./common/monitor/squad-dispatch-pick
 11e92028db42a6d5d9c732e2be3719afa7be9466baa4d283126940178c406914  ./common/monitor/squad-pr-link
 1858d0c29d55ec65cdb49abd3fa50aa55362ace74705f2377ce15ba606ed3e78  ./common/monitor/squad-pr-link-lib
-e33387576d44626b9065f7d5613255b289808ea06f374cea4150a3f0737eb5ea  ./common/monitor/squad-pr-watch
+b462eb0dd088230a5c0d3b9df95bc2f91730e9b7fb0eb165fc13864a083a9954  ./common/monitor/squad-pr-watch
 a42bc9f4e0cab7a342bdd980e845b816354c3787152f1cd6c2b80b592d1d56ea  ./common/monitor/squad-preflight
 8e96c050df89382d2a639d0e93790258df99d73ce96704fdbeccf30c01371b97  ./common/monitor/squad-review-next
 652c87bbe6b0c221424d58dda0e9806d48c8972cac162fee910b51078b7eec5e  ./common/monitor/squad-review-wait
@@ -669,7 +669,7 @@ c814b4291af3be09bf1adfe01b9e5778dadcf4b2d70e268b2ca840fbdb067567  ./tests/own-re
 4acd5121695a2c9905a32050f963097846bb5b5c0ff74a0a94822af4fe457be4  ./tests/pr-link-procedure-table.tsv
 dc25895fd5677a8e06601ee32d44ccb93025e9097869f3b44f9d27f9ac95aa14  ./tests/pr-watch-ci-wait-lib.sh
 55b9576a609ce28779d3885049d0d16000e1df737bfd0594c76fb0a8d4131037  ./tests/pr-watch-fixture.py
-52a913a1a7ef24a712f6ad7c2ba0a0a96d082a1d1ff8acd52e0e72b90a2d6360  ./tests/pr-watch-no-integration-lib.sh
+9a99ef564b5b471854de3037286bae3a6e0ebbfe66efb77bc2a934c4b4307c4d  ./tests/pr-watch-no-integration-lib.sh
 8371794d1adc3e34e08d55dba4284bc47ec5815818f34f2c6e34e532388eec90  ./tests/pr-watch-test-lib.sh
 5a1e26a157c41cc1e8cfb3c0458c80fbf3174f183d0ad0d723f5605d8191f984  ./tests/pre-push-test.sh
 32bdfe52ae6a0e5949e26846ad289256ea94603c7d697af78dfb978e61d3b971  ./tests/project-changes-test.sh
@@ -740,7 +740,7 @@ ae066d4b0c090b7fc258c3148945fde730f3261ee083db94c0289de66b1b02d2  ./tests/shell-
 8b15fccb4916e3dbc55fb1f831ac001d7a343c4ac91b6881b4178a39472f1589  ./tests/squad-cli-lib-body-table-test.sh
 c4b098847391dd0a566509e0f8f5a6d7d29a59b26bc60cc77cf1ed1ace051805  ./tests/squad-cli-lib-check-runs-test.sh
 9251f4ace2f648d0a7039b3baa8ecb08e6fcf09ca736719a4f31aa3070ec812b  ./tests/squad-cli-lib-contract.py
-30203a71a6ca043d5c84e3483789a9ed536ee2f5678ef1811025a6822038e6e5  ./tests/squad-cli-lib-control-test.sh
+0562cda7cbc0810e5f4cf70464eaa63cb2fe0f738eb8cfe3e907540674e3cd4f  ./tests/squad-cli-lib-control-test.sh
 3bc47a2cb9ea3c908f1d37ffb44f38bca9c870b254c6c081d99cd03ae3616bd2  ./tests/squad-cli-lib-fence-test.sh
 abce74f707a9082a17839cc96ad824d1a1831f39d1c862002db81e90219e37fb  ./tests/squad-cli-lib-gh-test.sh
 b602e26f9f2e2af5ef9f0d91353aeba30a9363bf5193ad6e1049d8f9dcfa4220  ./tests/squad-cli-lib-test.sh
@@ -774,9 +774,9 @@ cdd7e99cefcc718e12674536e10734aeb7ddcb6d1d3f8294b804b3d414557bc7  ./tests/squad-
 71b97369187c1abd5504dbabb3b054cf7e33c5acbbddef986874dc863ccbbd42  ./tests/squad-pr-watch-ci-wait-test.sh
 b59fd338088fde3ca756ff9f854865bf48a86842ddc360a93f015278afaac535  ./tests/squad-pr-watch-ci-wait-unreadable-test.sh
 def5015725f8af9f925fc6aa9b2a9a942ead4358474b2763b6a797f5c3aa0e80  ./tests/squad-pr-watch-link-retry-test.sh
-0a708a2ef4aa4bb280b30cf0cfac493cec0b0913f4d20dbc50ffa6125a68fe70  ./tests/squad-pr-watch-no-integration-reread-test.sh
+93a64af6adf33aa724432d40c5b7af6632cfba7d79bc1de6e898bf8cd954c0dd  ./tests/squad-pr-watch-no-integration-reread-test.sh
 392578caabe265216e3bce2c72bc0cc8bd2949b06fb17308579ebbf3f0e23085  ./tests/squad-pr-watch-no-integration-test.sh
-327429ddf56bfb61aac26c9217f6b18e3cb1b26ad5a9d24aaa4fb2cbbce97e66  ./tests/squad-pr-watch-no-integration-unlinked-test.sh
+ce899baea19aceecf0652518809ec1bc6d1e5e2edd9329336ee8ea4dedcea1ff  ./tests/squad-pr-watch-no-integration-unlinked-test.sh
 e773879cdfae0cfa38d007b8fa84b30c13a1faef99768efcf92d422cf8388897  ./tests/squad-pr-watch-register-test.sh
 0ace286a074c68f3ddbe2332ad189f475dc4b163d8a52df29f5386e191f7418f  ./tests/squad-pr-watch-unlinked-check-test.sh
 f9a7a6a410035e8dc3e42db5065cb5b1a8356265eb8b13a7ce725c669e1614b7  ./tests/squad-pr-watch-unlinked-concurrent-test.sh
@@ -850,7 +850,7 @@ c98729878e6706f5780a10fbbdd9246ef49a12182fb27d46624296d335659336  ./tests/termin
 c0509d732b2b3fa99f882283848bc2ba1c82ed3a6d0a90ac8263045dfee07010  ./tests/terminal-test.sh
 bb7b764515248a871ceb26e80ed0d7a543675fe39a1813d3355767cb94475dc7  ./tests/terms-test.sh
 81cdf5bc9e1337df5df660a48956d98fbc210eae1e56bcfa2f4345ea8d2ee54d  ./tests/test-runner-test.sh
-9090dcd3e4665cc7c9a9b7829246911a434f3c7299fac4acfbbb605fad0b078a  ./tests/test-weights
+25cdd20dfc45b27185e3bb2564b88d16529919bd7134d729ed8a6dc4a53ee59f  ./tests/test-weights
 d94f944f10cbc4a4e1578f5c2c82bd96d60a44e38218caebf76174d8d570f7de  ./tests/tty-session-cases.py
 037b266696a320864da9cdca9b7638c912b8e8f68f57f38c0b1d4f71640d5b0b  ./tests/tty-session-test.sh
 4fca0a5d480aee948e2076f067072b905caa9de4d4bd0c4cd84ac061c10abf37  ./tests/tty-session.py

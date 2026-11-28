@@ -51,14 +51,14 @@ echo 'PASS no-integration: 規則の作り手が人間でも、照合が合え�
 # done の照合の 5。確認した回より後に、その回の確認するコミットを指すマージの依頼がなければ、マージされても done にしない。
 # レビュー中に人間が手でマージした PR は、依頼の前なので、done にせず、人間に知らせる。
 no_request() { drop_request; }
-human_request() { drop_request; add_comment merge-x member human-1 "マージの依頼: $merge_head"; }
-rogue_request() { drop_request; add_comment merge-x agent rogue "マージの依頼: $merge_head"; }
-other_head_request() { drop_request; add_comment merge-x agent orchestrator 'マージの依頼: 1111111111111111111111111111111111111111'; }
-fenced_request() { drop_request; add_comment merge-x agent orchestrator $'```\nマージの依頼: '"$merge_head"$'\n```'; }
-result_request() { drop_request; add_comment merge-x agent orchestrator $'/note\n返事の回: round-1\nマージの依頼: '"$merge_head"; }
+human_request() { drop_request; add_comment merge-x member human-1 "$(merge_request_body)"; }
+rogue_request() { drop_request; add_comment merge-x agent rogue "$(merge_request_body)"; }
+other_head_request() { drop_request; add_comment merge-x agent orchestrator "$(merge_request_body 1111111111111111111111111111111111111111)"; }
+fenced_request() { drop_request; add_comment merge-x agent orchestrator $'```\n'"$(merge_request_body)"$'\n```'; }
+result_request() { drop_request; add_comment merge-x agent orchestrator $'/note\n返事の回: round-1\n'"$(merge_request_body)"; }
 before_round_request() {
 	drop_request
-	jq --slurpfile base "$test_dir/comment-prototype.json" --arg content "マージの依頼: $merge_head" \
+	jq --slurpfile base "$test_dir/comment-prototype.json" --arg content "$(merge_request_body)" \
 		'[$base[0] + {id: "merge-before", author_type: "agent", author_id: "orchestrator", content: $content}] + .' \
 		"$test_dir/comments.json" >"$test_dir/changed.json"
 	mv "$test_dir/changed.json" "$test_dir/comments.json"
@@ -74,6 +74,16 @@ prepare_extra=before_round_request merged_refuses 'マージの依頼が回よ�
 unset prepare_extra
 echo 'PASS no-integration: 確認した回より後のマージの依頼がなければ、マージされても done にせず、理由と知らせを出して止める'
 
+other_pr_request() { drop_request; add_comment merge-x agent orchestrator "$(merge_request_body "$merge_head" round-1 "$other")"; }
+missing_pr_request() { drop_request; add_comment merge-x agent orchestrator "マージの依頼: $merge_head"$'\n前の回: round-1'; }
+two_pr_request() { drop_request; add_comment merge-x agent orchestrator "$(merge_request_body)"$'\nマージする PR: '"$pr"; }
+two_head_request() { drop_request; add_comment merge-x agent orchestrator "$(merge_request_body)"$'\nマージの依頼: '"$merge_head"; }
+prepare_extra=other_pr_request merged_refuses '依頼の PR だけが規則と違う'
+prepare_extra=missing_pr_request merged_refuses '依頼の PR の行がない'
+prepare_extra=two_pr_request merged_refuses '依頼の PR の行が 2 つ'
+prepare_extra=two_head_request merged_refuses '依頼の head の行が 2 つ'
+echo 'PASS no-integration: 依頼の PR・head の行が照合に合わなければ、done にせず知らせる'
+
 # 依頼として読むもの。名簿のリーダーのコメントと、回で待つ役の制御記録。回の確認するコミットは、接頭辞でも 40 桁でもよい。
 for case in leader control full; do
 	unlinked_scene record
@@ -81,7 +91,7 @@ for case in leader control full; do
 	control)
 		drop_request
 		add_comment decide-1 agent monitor $'/note\n返事の待ち: 次の依頼を決めます'
-		add_comment merge-x agent monitor "マージの依頼: $merge_head"$'\n前の回: round-1' ;;
+		add_comment merge-x agent monitor "$(merge_request_body)" ;;
 	full)
 		jq --arg commit "$merge_head" 'map(if .id == "round-1" then .content |= sub("確認するコミット: abcdef0"; "確認するコミット: " + $commit) else . end)' \
 			"$test_dir/comments.json" >"$test_dir/changed.json"
@@ -110,11 +120,27 @@ no_posts
 drop_request
 jq 'map(select(.id != "merge-x"))' "$test_dir/comments.json" >"$test_dir/changed.json"
 mv "$test_dir/changed.json" "$test_dir/comments.json"
-add_comment merge-1 agent orchestrator $'マージの依頼: '"$merge_head"$'\n前の回: round-1'
+add_comment merge-1 agent orchestrator "$(merge_request_body)"
 unlinked_run
 ((unlinked_status == 0))
 assert_jq '.status == "done"' "$test_dir/task.json"
 echo 'PASS no-integration: マージの依頼の候補を読めないときは、規則を残して 1 で終わり、読めれば次の確認で決める'
+
+upper=$(tr '[:lower:]' '[:upper:]' <<<"$merge_head")
+for candidate in alone with-request; do
+	unlinked_scene record
+	if [[ $candidate == alone ]]; then drop_request; fi
+	add_comment merge-x agent orchestrator "> $(merge_request_body "$upper")"
+	update_pr '.state = "MERGED"'
+	unlinked_run
+	((unlinked_status == 1)) || { echo "FAIL $candidate: 終了コード $unlinked_status" >&2; cat "$test_dir/err" >&2; exit 1; }
+	grep -Fq '制御記録を読めない（merge-x: 引用）' "$test_dir/err"
+	[[ $(done_calls) == '[]' ]]
+	assert_jq '.status == "in_review"' "$test_dir/task.json"
+	rule_kept
+	no_posts
+done
+echo 'PASS no-integration: 大文字 SHA の読めない候補は、読める依頼の有無によらず書き込まず規則を残す'
 
 # 見張りの終わりの知らせは、照合の 1 から 3 だけで書く。マージの依頼は要らない。
 unlinked_scene record "$(stamp -$((71 * 3600 + 60)))"
@@ -180,7 +206,7 @@ changed_window 'done: metadata が変わった'
 unlinked_scene record
 no_request
 update_pr '.state = "MERGED"'
-reread_add merge-x agent orchestrator $'マージの依頼: '"$merge_head"$'\n前の回: round-1'
+reread_add merge-x agent orchestrator "$(merge_request_body)"
 unlinked_run
 changed_window 'not-done: 依頼が書かれた'
 rm -f "$test_dir/rules-read"

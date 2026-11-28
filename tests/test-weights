@@ -94,7 +94,7 @@ tests/setup-version-test.sh 107
 tests/shell-test.sh 1
 tests/squad-cli-lib-body-table-test.sh 30
 tests/squad-cli-lib-check-runs-test.sh 101
-tests/squad-cli-lib-control-test.sh 10
+tests/squad-cli-lib-control-test.sh 11
 tests/squad-cli-lib-fence-test.sh 3
 tests/squad-cli-lib-gh-test.sh 95
 tests/squad-cli-lib-test.sh 71
@@ -128,7 +128,7 @@ tests/squad-pr-watch-ci-wait-rule-test.sh 35
 tests/squad-pr-watch-ci-wait-test.sh 84
 tests/squad-pr-watch-ci-wait-unreadable-test.sh 24
 tests/squad-pr-watch-link-retry-test.sh 105
-tests/squad-pr-watch-no-integration-reread-test.sh 175
+tests/squad-pr-watch-no-integration-reread-test.sh 210
 tests/squad-pr-watch-no-integration-test.sh 70
 tests/squad-pr-watch-no-integration-unlinked-test.sh 210
 tests/squad-pr-watch-register-test.sh 58

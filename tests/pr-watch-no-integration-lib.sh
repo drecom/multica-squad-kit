@@ -232,6 +232,9 @@ round_body() { # 対象の PR の行に入れる URL...
 }
 # 規則の指示の最後の 2 行。省くと、round-1 と $pr の標準の 2 行にする。
 rule_lines() { printf '見張る PR: %s\n確認した回: %s' "${1-$pr}" "${2-round-1}"; }
+merge_request_body() {
+	printf 'マージの依頼: %s\n前の回: %s\nマージする PR: %s' "${1-$merge_head}" "${2-round-1}" "${3-$pr}"
+}
 unlinked_prepare() {
 	local lines=${2-$(rule_lines)}
 	update_task ".status = \"in_review\" | .metadata.pr_url = \"$pr\""
@@ -246,7 +249,7 @@ unlinked_prepare() {
 	update_pr ".headRefOid = \"$merge_head\""
 	add_comment round-1 agent orchestrator "$(round_body "$pr")"
 	# 回の後のマージの依頼（done の照合の 5）。head は PR から読む 40 桁で、回の確認するコミット（abcdef0）で始まる。
-	add_comment merge-1 agent orchestrator $'マージの依頼: '"$merge_head"$'\n前の回: round-1'
+	add_comment merge-1 agent orchestrator "$(merge_request_body)"
 }
 merge_head=abcdef0123456789abcdef0123456789abcdef01
 unlinked_scene() {

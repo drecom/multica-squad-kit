@@ -298,10 +298,13 @@ for order in before after; do
 done
 echo 'PASS merge_requested: 読める依頼と同じ head の読めない候補が同時にあるときは、順序によらず、読めない候補を優先して止める'
 
-# ---- マージの依頼に回を渡す。作者・時刻・回・head のすべてが合う制御記録だけを読む。回を渡さないときは今と同じ。
-mergedr() { squad_cli_control merge_requested "$(<"$file")" '["L"]' null "$1" "$2"; }
+# ---- マージの依頼に回と PR を渡す。作者・時刻・回・PR・head が合う制御記録だけを読む。
+sha=abcdef0123456789abcdef0123456789abcdef01
+watch_pr=https://github.com/example/repo/pull/67
+other_pr=https://github.com/example/repo/pull/68
+mergedr() { squad_cli_control merge_requested "$(<"$file")" '["L"]' null "$1" "$2" "$watch_pr"; }
 round_text=$'確認するコミット: '"$sha"$'\n返事を待つ役: '"$(mention qa)"$'\n観点: qa（テスト）'
-req() { printf 'マージの依頼: %s\n前の回: %s' "$1" "$2"; }
+req() { printf 'マージの依頼: %s\n前の回: %s\nマージする PR: %s' "$1" "$2" "${3-$watch_pr}"; }
 # 合う依頼は読む。大文字の head も同じ SHA として読む。別の head は読まない。回を渡さないときも読む。
 reset
 agent r1 L "$round_text"
@@ -310,6 +313,25 @@ agent m1 L "$(req "$sha" r1)"
 [[ $(mergedr "$(tr a-f A-F <<<"$sha")" r1) == yes ]] || { echo "大文字小文字だけ違う head を読まない" >&2; exit 1; }
 [[ $(mergedr other r1) == no ]] || { echo "別の head の依頼を読んだ" >&2; exit 1; }
 [[ $(merged "$sha") == yes ]] || { echo "回を渡さないときは今と同じに読む: $(merged "$sha")" >&2; exit 1; }
+reset
+agent r1 L "$round_text"
+agent m1 L "$(req "$sha" r1 'https://github.com/Example/Repo/pull/67')"
+[[ $(mergedr "$sha" r1) == yes ]] || { echo '大文字小文字だけ違う PR を読まない' >&2; exit 1; }
+for case in other-pr missing-pr two-prs two-heads short-head; do
+	reset
+	agent r1 L "$round_text"
+	head=$sha
+	case $case in
+	other-pr) body=$(req "$sha" r1 "$other_pr") ;;
+	missing-pr) body="マージの依頼: $sha"$'\n前の回: r1' ;;
+	two-prs) body="$(req "$sha" r1)"$'\nマージする PR: '"$watch_pr" ;;
+	two-heads) body="$(req "$sha" r1)"$'\nマージの依頼: '"$sha" ;;
+	short-head) head=${sha:0:7}; body=$(req "$head" r1) ;;
+	esac
+	agent m1 L "$body"
+	[[ $(mergedr "$head" r1) == no ]] || { echo "読まないはずの依頼を読んだ: $case" >&2; exit 1; }
+done
+echo 'PASS merge_requested: PR の違い・欠落・重複、head の重複と不完全な SHA を断る'
 # 回を渡さないときは、リーダーの前の回: のない依頼も読む（ci-wait）。回を渡すと読まない（手の依頼）。
 reset
 agent r1 L "$round_text"
@@ -380,6 +402,19 @@ for unread in $'> マージの依頼: SHA' $'マージの依頼: SHA\n```\n閉�
 	agent m1 L "$(req "$sha" r1)"
 	[[ $(mergedr "$sha" r1) == "blocked "* ]] || { echo "回より後の読める依頼と読めない候補で止めない" >&2; exit 1; }
 done
+upper=$(tr '[:lower:]' '[:upper:]' <<<"$sha")
+for mode in uppercase other-values; do
+	reset
+	agent r1 L "$round_text"
+	if [[ $mode == uppercase ]]; then body=$(req "$upper" r1); else body=$(req '別の値' other-round "$other_pr"); fi
+	agent bad L "> $body"
+	[[ $(mergedr "$sha" r1) == 'blocked 制御記録を読めない（bad: '* ]]
+	[[ $(merged "$sha") == no ]]
+	agent m1 L "$(req "$sha" r1)"
+	[[ $(mergedr "$sha" r1) == 'blocked 制御記録を読めない（bad: '* ]]
+	[[ $(merged "$sha") == yes ]]
+done
+echo 'PASS merge_requested: 見張りは読めない候補を head・PR・回で絞らず、ci-wait は従来どおり head で拾う'
 # 回が見つからないときと空のときは、渡したものとして依頼なしと読む（回を省いたと読んで、前の回の依頼を拾わない）。
 reset
 agent r1 L "$round_text"

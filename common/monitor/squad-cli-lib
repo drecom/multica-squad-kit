@@ -2224,9 +2224,9 @@ squad_cli_human_of_squad() {
 # 名簿は読まない。リーダーの ID の一覧と、必要なら名簿の最上位の役の ID の一覧を、呼び出し側が渡す。
 # 標準入力に {comments, leaders, principals} を渡し、モードで出すものを変える。
 #   analyze: 各コメントの {rounds, controls, finals} と rework_reviewed・short_path。finals は principals があるときだけ。
-#   merge_requested <head> [<回>]: その head のマージの依頼があれば yes、なければ no。回を渡すと、作者・時刻・回・head のすべてが合う依頼だけを読む（docs/pr-link-no-integration.md の「マージの依頼の照合」）。
-#     作者と時刻は制御記録の条件（リーダーか決める実行の役で、回より後）、回は `前の回:` が 1 つだけで渡した回と同じかつその回が同じ一覧で今の回、head は 40 桁の SHA が大文字小文字を問わず同じ。
-#     `前の回:` のない手の依頼と、どれか 1 つが合わない依頼は読まない。回より前の読めない候補は見ない。回がコメントにないときと、空のときも、渡したものとして no を返す。
+#   merge_requested <head> [<回> <見張る PR>]: マージの依頼があれば yes、なければ no。回と PR を渡すと、作者・時刻・回・PR・head が合う依頼だけを読む（docs/pr-link-no-integration.md の「マージの依頼の照合」）。
+#     `前の回:`・`マージする PR:`・`マージの依頼:` は 1 行ずつ読む。回は同じ一覧の今の回、PR と 40 桁の head は大文字小文字を問わず照合する。
+#     回より後の読めない候補には `blocked` を返す。候補は `マージの依頼:` を含むかで拾い、回・PR・head の値で絞らない。回が見つからないか空のときは no を返す。
 #     回を渡さないときは、全コメントを読み、リーダーの `前の回:` のない依頼も読む（ci-wait が使う）。
 #   state: 認める回のうち最も新しいものの状態（なければ何も出さない）。
 read -r -d '' SQUAD_CLI_CONTROL_PY <<'SQUADCLICONTROLPY' || true
@@ -2688,15 +2688,19 @@ if mode == "analyze":
         "blocked_final": blocked_final(target) if target in parsed else None,
     })
 elif mode == "merge_requested":
-    want = "マージの依頼: " + args[0]
+    merge = "マージの依頼:"
+    want = merge + " " + args[0]
+    merge_pr = "マージする PR:"
+    head = args[0].lower()
     # 回を渡したときは、その回が今の回でなければ依頼はない。回が見つからなくても、読む先がないので依頼はない。
     after = args[1] if len(args) > 1 else None
+    watch_pr = args[2].lower() if len(args) > 2 else ""
     if after is not None and (after not in pos or latest_round() != after):
         # 回が同じ一覧で今の回でなければ、その回への依頼は読まない。
         print("no")
         sys.exit(0)
-    # 読めない候補は、読める依頼と同じ head にあっても優先する。依頼済みと読まず、理由を返す。
-    held = blocked_text(unreadable([want], after))
+    # 見張りでは、読めない候補の値を照合せず、読める依頼があっても止まる。ci-wait は従来どおり head で拾う。
+    held = blocked_text(unreadable([merge if after is not None else want], after))
     if held:
         print("blocked " + held)
         sys.exit(0)
@@ -2710,11 +2714,15 @@ elif mode == "merge_requested":
                 print("yes")
                 sys.exit(0)
             continue
-        # 回を渡したときは、制御記録の merge で、`前の回:` が 1 つだけ渡した回を指し、head の行が同じものだけを読む。
-        prevs = [line for line in parsed[i]["placed"] if line.startswith(PREV)]
-        heads = [line[len("マージの依頼: "):].strip().lower() for line in parsed[i]["placed"] if line.startswith("マージの依頼: ")]
         ctl = control(i)
-        if ctl["kind"] == "merge" and ctl["prev"] == after and len(prevs) == 1 and args[0].lower() in heads:
+        if ctl["kind"] != "merge" or ctl["prev"] != after:
+            continue
+        placed = parsed[i]["placed"]
+        prevs = [line for line in placed if line.startswith(PREV)]
+        prs = [line[len(merge_pr):].strip() for line in placed if line.startswith(merge_pr)]
+        heads = [line[len(merge):].strip().lower() for line in placed if line.startswith(merge)]
+        if (len(prevs) == 1 and watch_pr and len(prs) == 1 and prs[0].isascii()
+                and prs[0].lower() == watch_pr and heads == [head] and re.fullmatch(r"[0-9a-f]{40}", head)):
             print("yes")
             sys.exit(0)
     print("no")

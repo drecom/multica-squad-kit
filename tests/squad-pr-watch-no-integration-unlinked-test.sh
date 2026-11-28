@@ -351,20 +351,20 @@ prepare_extra=hand_request merged_refuses '名簿のリーダーが前の回な�
 other_pr_round_request() {
 	drop_request
 	prepend_comment other-round agent orchestrator "$(round_body "$other")"
-	add_comment merge-x agent orchestrator "マージの依頼: $merge_head"$'\n前の回: other-round'
+	add_comment merge-x agent orchestrator "$(merge_request_body "$merge_head" other-round)"
 }
 prepare_extra=other_pr_round_request merged_refuses '同じ head の依頼が、別の PR の回を前の回に指す'
 old_round_request() {
 	drop_request
 	prepend_comment round-0 agent orchestrator "$(round_body "$pr")"
-	add_comment merge-x agent orchestrator "マージの依頼: $merge_head"$'\n前の回: round-0'
+	add_comment merge-x agent orchestrator "$(merge_request_body "$merge_head" round-0)"
 }
 prepare_extra=old_round_request merged_refuses '規則の回より後に、前の回を指す依頼'
-role_request() { drop_request; add_comment merge-x agent monitor "マージの依頼: $merge_head"$'\n前の回: round-1'; }
+role_request() { drop_request; add_comment merge-x agent monitor "$(merge_request_body)"; }
 prepare_extra=role_request merged_refuses '規則の回を指す依頼を、その回を決める実行でない役が書いた'
-two_prev_request() { drop_request; add_comment merge-x agent orchestrator "マージの依頼: $merge_head"$'\n前の回: round-1\n前の回: other-round'; }
+two_prev_request() { drop_request; add_comment merge-x agent orchestrator "$(merge_request_body)"$'\n前の回: other-round'; }
 prepare_extra=two_prev_request merged_refuses '前の回の行が 2 つ'
-short_request() { drop_request; add_comment merge-x agent orchestrator $'マージの依頼: abcdef0\n前の回: round-1'; }
+short_request() { drop_request; add_comment merge-x agent orchestrator "$(merge_request_body abcdef0)"; }
 prepare_extra=short_request merged_refuses '依頼の head が 40 桁でない'
 pushed_head() { update_pr '.headRefOid = "abcdef0000000000000000000000000000000002"'; }
 prepare_extra=pushed_head merged_refuses '依頼のあとの push で、マージした head が依頼の head と違う（回のコミットで始まる）'
@@ -381,7 +381,7 @@ for case in request pr; do
 	upper=$(tr '[:lower:]' '[:upper:]' <<<"$merge_head")
 	if [[ $case == request ]]; then
 		drop_request
-		add_comment merge-x agent orchestrator "マージの依頼: $upper"$'\n前の回: round-1'
+		add_comment merge-x agent orchestrator "$(merge_request_body "$upper")"
 	else
 		update_pr ".headRefOid = \"$upper\""
 	fi
