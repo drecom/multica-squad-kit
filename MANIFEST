@@ -55,7 +55,7 @@ c9f338dd47ba2cb8aa8e4d2ee2208700faf9f1aa05c5e7407b3bdc9e31d8f14c  ./common/monit
 1858d0c29d55ec65cdb49abd3fa50aa55362ace74705f2377ce15ba606ed3e78  ./common/monitor/squad-pr-link-lib
 c6b2d8720e043a385d58943ea19929a5b946c404a2c49076b16bad3ac53e7ad6  ./common/monitor/squad-pr-watch
 a42bc9f4e0cab7a342bdd980e845b816354c3787152f1cd6c2b80b592d1d56ea  ./common/monitor/squad-preflight
-8e96c050df89382d2a639d0e93790258df99d73ce96704fdbeccf30c01371b97  ./common/monitor/squad-review-next
+1a759396eebc808770603b093f9c2146957667af475cc4cf4462c04d6e69cf66  ./common/monitor/squad-review-next
 652c87bbe6b0c221424d58dda0e9806d48c8972cac162fee910b51078b7eec5e  ./common/monitor/squad-review-wait
 637050a7e02f134fb23ee2bf1c0b475d4c5863d8e3777f238b2b1c247c6bf331  ./common/monitor/squad-run-cut
 d01f8b949abb8359dd72254134adeb4c24d8bc9772d0868865718aeb1345d3c5  ./common/monitor/squad-run-cut-values
@@ -128,7 +128,7 @@ ede3f6ee61f27bfe3b5ac7e07dd66e71c1408030ccd461997431e30cf1d37261  ./docs/pr-link
 2d4d5be982766743e55d5dfaa550e05784562ef48a753260714bb844060fda5a  ./docs/release.md
 87253fa66c18fc19620dac36e018e6e477368f8479e6700c4ffdfb5947293aae  ./docs/reread-followups.md
 f94cb3b02d9a5c18276f24fb3b5be7c8c59efd6deda1d8b92b3780ce54a5722e  ./docs/review-eval.md
-bf50b53178f6fe7c565f1ded618f5552d6298038cffa51de2fd3f112973c1743  ./docs/review-next-step.md
+5b2f9e8bb2b95dca57e167362a80d5b0827f429138bc0b191bbd4aa9e0028b28  ./docs/review-next-step.md
 9e935e4654ff003410c0292d65cd380e1e3619379236d521cbe45142a60bdeec  ./docs/review-rework.md
 ea489bd6b37ccef2488c766eee998ce62198247d71b54dab7e30d4105283f7fb  ./docs/screens.md
 532250eb72bfbc789cb82f2cf527bcdeb21dfbdb38bfc1184b75e62a23373030  ./docs/setup-completion.md
@@ -708,7 +708,7 @@ dd62a337332e6f6d8c161c10787f51b3b8190d9413e6dc855706918a956c463c  ./tests/releas
 68fe92061087f7240c45920657ca3812af7ab9e4927b40eddcf705bfae44dfee  ./tests/release-workflow-test.sh
 8b1c1e3704bfbcd060b3d8fc732119ac08a1e896a6ee77876e4bd7adce4b56e2  ./tests/review-body-table.sh
 c60c6769f2abecebf005593238b1b82bc6d28ba9aaee790e39b3b72acab47951  ./tests/review-body-table.tsv
-61db7970389d66ca13c588169074572e951798da3b490ad8ccbd4166a49ff966  ./tests/review-next-decide-common.sh
+ea67679b90078885535daf40156b739e17aedb7e63d32e1ecdae2e2b8f6ddf0b  ./tests/review-next-decide-common.sh
 79747765653155def4f8a57b0664599f7ac0cf183532d447ddaa889e5a8123b8  ./tests/review-next-decide-merge-note-lib.sh
 0b028bd379fa1c06e5ce4d437d84de6f459be8052348cb77bd60e59fade1792e  ./tests/review-next-decide-rework-record-lib.sh
 49c338ffd8f992f279d289d094ff1e8549eb32cae555db2f41c0d42db8eaa878  ./tests/review-next-test-lib.sh
@@ -803,7 +803,7 @@ ea58255958e8a98be09b2f6be6fb1ec09e22e70c59bc60c48c127346cb7ed1de  ./tests/squad-
 10ca60513cae554c9d27b51fa237c698aacadc12415f9f102ec3b703f8b195f2  ./tests/squad-review-next-decide-merge-note-depth-test.sh
 303dbbb9b7a74958f96508b4e875307ca42f4b56df6072fb78d4f45864f07c4f  ./tests/squad-review-next-decide-merge-note-test.sh
 adb1af03474d0272699b773145bc108d2be38a093c139dedbb9676ec436b2763  ./tests/squad-review-next-decide-merge-short-test.sh
-d212a26131465972b33f505f355f48578ca4e573091dd9a1dc2bc2109febf5c2  ./tests/squad-review-next-decide-merge-test.sh
+a3c0683e2f8fb7611ebc882e6491ddcae7bd0e790ea7d4b7010d41fdf5eb04c9  ./tests/squad-review-next-decide-merge-test.sh
 c30af744bb2f897be7b9de5f7ba2384844db156c60d05de7ca8b0172579108d3  ./tests/squad-review-next-decide-pr-test.sh
 8be0407eca2a3bad68e7f6fe8ccd8afe6a9f272bb91a79b9efc5aec706d17720  ./tests/squad-review-next-decide-recognize-test.sh
 c6cc0b4588a01424ebd04ae5bea45770fa33d212fa5a2c8285f4c35a0b30de99  ./tests/squad-review-next-decide-requirement-test.sh
@@ -812,7 +812,7 @@ c6cc0b4588a01424ebd04ae5bea45770fa33d212fa5a2c8285f4c35a0b30de99  ./tests/squad-
 a1905e79ac130af7604eda453c89f6123a247053952a5c4b611cd5263b42d40f  ./tests/squad-review-next-decide-rework-record-test.sh
 6eefca4c65c11153655edde501751caf49830f7ea471032921d783864054c7d1  ./tests/squad-review-next-decide-route-test.sh
 85d53db7fd552ffe76f9263ce014d7e8d48242edd43282a0cb061935997ca215  ./tests/squad-review-next-decide-unexecuted-test.sh
-ea52a6d7a34feb9bb3ec39b43c0c3bb747f9637f41a5bd14a99fc513f0bec239  ./tests/squad-review-next-decide-unlinked-test.sh
+490c728bdc1b9960447d302f7a84e4cb93be55f990bd8b5619217bc4fe09d0e0  ./tests/squad-review-next-decide-unlinked-test.sh
 19c8c262b20b319562c761fc458abbdbf09356ef172d2d13b3b6dee3b93a3c4d  ./tests/squad-review-next-decide-unreadable-scenario-test.sh
 930c6344fd34ad50a1567e9f3b162907d01bd4a1a6e7c940bfa335678f2b1607  ./tests/squad-review-next-decide-written-test.sh
 82892f0bc35a72aa2e61e00661c3f4940efb0c6f06c2da7b4b16016f621fb223  ./tests/squad-review-next-request-test.sh
@@ -850,7 +850,7 @@ c98729878e6706f5780a10fbbdd9246ef49a12182fb27d46624296d335659336  ./tests/termin
 c0509d732b2b3fa99f882283848bc2ba1c82ed3a6d0a90ac8263045dfee07010  ./tests/terminal-test.sh
 bb7b764515248a871ceb26e80ed0d7a543675fe39a1813d3355767cb94475dc7  ./tests/terms-test.sh
 81cdf5bc9e1337df5df660a48956d98fbc210eae1e56bcfa2f4345ea8d2ee54d  ./tests/test-runner-test.sh
-bba7b8f86427bfda9bea3a6167725fb44b8ba05f88f6974276dbce8b233b02c1  ./tests/test-weights
+ce99c6a8f68064766bb60bf94f545717ff1eb10a2863c0bcdf07546138d2b83b  ./tests/test-weights
 d94f944f10cbc4a4e1578f5c2c82bd96d60a44e38218caebf76174d8d570f7de  ./tests/tty-session-cases.py
 037b266696a320864da9cdca9b7638c912b8e8f68f57f38c0b1d4f71640d5b0b  ./tests/tty-session-test.sh
 4fca0a5d480aee948e2076f067072b905caa9de4d4bd0c4cd84ac061c10abf37  ./tests/tty-session.py

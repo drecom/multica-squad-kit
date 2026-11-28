@@ -47,6 +47,7 @@ conflicts-check) out_of conf-out; exit "$(status_of conf-status)" ;;
 ci-wait) out_of ciwait-out; exit "$(status_of ciwait-status)" ;;
 ci-wait-clear) exit "$(status_of clear-status)" ;;
 conflicts) out_of conflicts-out; exit "$(status_of conflicts-status)" ;;
+round-pr) out_of roundpr-out; exit "$(status_of roundpr-status)" ;;
 unlinked) out_of unlinked-out; exit "$(status_of unlinked-status)" ;;
 *) echo "想定外のサブコマンド: $cmd" >&2; exit 1 ;;
 esac
@@ -248,9 +249,10 @@ reset() {
 	rm -f "${test_dir:?}"/conflicts-out* "${test_dir:?}"/conflicts-status* "${test_dir:?}"/unlinked-out* "${test_dir:?}"/unlinked-status*
 	rm -f "${test_dir:?}"/link-out* "${test_dir:?}"/link-status* "${test_dir:?}"/held-out* "${test_dir:?}"/held-status* "${test_dir:?}"/ci-status*
 	rm -f "${test_dir:?}"/cinow-out* "${test_dir:?}"/cinow-status* "${test_dir:?}"/conf-out* "${test_dir:?}"/conf-status* "${test_dir:?}"/clear-status*
-	rm -f "${test_dir:?}"/ciwait-out* "${test_dir:?}"/ciwait-status*
+	rm -f "${test_dir:?}"/ciwait-out* "${test_dir:?}"/ciwait-status* "${test_dir:?}"/roundpr-out* "${test_dir:?}"/roundpr-status*
 	echo 0 >"$test_dir/watch-status"
 	printf '紐付け: 紐付いている pr: %s\n' "$pr_url" >"$test_dir/link-out"
+	printf '%s\n' "$pr_url" >"$test_dir/roundpr-out"
 	printf 'コンフリクト: MERGEABLE head: %s\n' "$sha" >"$test_dir/conf-out"
 	printf 'CI %s: 成功\n' "$sha" >"$test_dir/ciwait-out"
 	printf '{"headRefOid": "%s"}\n' "$sha" >"$test_dir/head.json"
@@ -357,6 +359,8 @@ merge_body() { # 前の回 head 行...
 	local round=$1 head=$2 line placed=false
 	shift 2
 	printf '[@Owner](mention://member/human-1) レビューと確認が済みました。PR のマージを判断してください。\nマージの依頼: %s\n前の回: %s\n' "$head" "$round"
+	# 紐付いていない PR（link-check の行が「紐付いていない」）の依頼だけ、前の回の次に回の PR を置く。
+	[[ $(<"$test_dir/link-out") != *'紐付いていない'* ]] || printf 'マージする PR: %s\n' "$pr_url"
 	for line in "$@"; do
 		case $line in
 		'✅ '* | '⚠️ '* | '❌ '*)
