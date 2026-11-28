@@ -319,6 +319,33 @@ if /bin/bash "$test_dir/project.sh" "$root" project-new >"$test_dir/out" 2>"$tes
 [[ ! -e $TEMPLATE_AGENT_HOME/allowed-repos.d/project-new ]]
 echo 'PASS host: 空の選択や後ろの不正な値で前の許可を壊さず、空の許可ファイルも作らない'
 
+# プロジェクト作成の置き先（許可ファイルと起動ファイル）も、書く前に確認して、1 件でも置けなければ何も書かずに止まる。
+stage_dir="$TEMPLATE_AGENT_HOME/template/shell/project-stage"
+stage_allowed="$TEMPLATE_AGENT_HOME/allowed-repos.d/project-stage"
+stage_stop() {
+ local pattern=$1
+ if /bin/bash "$test_dir/project.sh" "$root" project-stage example/one >"$test_dir/out" 2>"$test_dir/err"; then echo "止まらなかった: $pattern" >&2; exit 1; fi
+ grep -qF "$pattern" "$test_dir/err" || { echo "メッセージが違う: $pattern" >&2; cat "$test_dir/err" >&2; exit 1; }
+ grep -qF '何も書き換えていません' "$test_dir/err"
+ [[ -d $stage_allowed && ! -L $stage_allowed ]] || [[ ! -e $stage_allowed && ! -L $stage_allowed ]]
+ [[ -z $(ls -A "$stage_allowed" 2>/dev/null) ]]
+}
+mkdir -p "$stage_dir"
+printf '# multica-squad-kit-managed\n' >"$test_dir/stage-managed"
+ln -s "$test_dir/stage-managed" "$stage_dir/.zshenv"
+stage_stop 'シンボリックリンクは上書きしません'
+rm "$stage_dir/.zshenv"
+chmod 555 "$stage_dir"
+stage_stop '置き場がないか、書けません'
+chmod 755 "$stage_dir"
+mkdir "$stage_allowed"
+stage_stop '通常のファイルではありません'
+rmdir "$stage_allowed"
+/bin/bash "$test_dir/project.sh" "$root" project-stage example/one >"$test_dir/out" 2>"$test_dir/err"
+[[ $(cat "$stage_allowed") == example/one ]]
+rm -rf "$stage_dir" "$stage_allowed"
+echo 'PASS host: プロジェクト作成の置き先（許可ファイルのリンク・起動ファイルのリンク・書けない置き場）で、許可を書かずに止まり、直して流し直せば通る'
+
 # 本物の gh が PATH の先でも、起動時と Claude の順の両方を確認する。
 export TEST_GUARD_CALLS="$test_dir/guard-calls"
 : >"$TEST_GUARD_CALLS"

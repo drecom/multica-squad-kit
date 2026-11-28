@@ -1,0 +1,31 @@
+# lib/codex-hooks.py が受ける hooks/list の形の表。列は ID・スタブのモード・状態・詳細・無効なフック（JSON の配列）・形の説明をタブで区切る。
+# モードは tests/codex-hooks-stub.py の定義で、+ で組み合わせる。詳細は、状態が missing か ambiguous のときの対象のイベントである。
+# 規則: 役のフックは、source が sessionFlags で、イベント・コマンド・matcher が合う項目だけである。2 つ以上あれば ambiguous、なければ missing。
+# 役のフックの enabled が true でなければ（false・欠け・null・真偽値でない値）、無効の側に入れる。判定できない形は止める側に倒す。
+# tests/codex-hooks-test.sh が行ごとに確認する。
+session-only	ok	ok		[]	役の引数が作る 2 つの項目だけ
+user-same-enabled	same-user	ok		[]	人の設定が同じコマンドを有効で持つ（先頭）
+user-same-pre-disabled	same-user+pre-disabled	ok		[{"hook": "PreToolUse", "key": "/<session-flags>/config.toml:pre_tool_use:0:0"}]	人の設定の同じコマンドが有効でも、役の PreToolUse が無効なら無効に入れる
+user-same-stop-disabled	same-user+stop-disabled	ok		[{"hook": "Stop", "key": "/<session-flags>/config.toml:stop:0:0"}]	同じ。Stop
+user-same-disabled-session-enabled	same-user-disabled	ok		[]	人の設定の同じコマンドが無効でも、役のフックが有効なら無効に入れない
+managed-same-pre-disabled	same-managed+pre-disabled	ok		[{"hook": "PreToolUse", "key": "/<session-flags>/config.toml:pre_tool_use:0:0"}]	管理の設定の同じコマンドが有効でも、役の PreToolUse が無効なら無効に入れる
+managed-same-no-enabled	same-managed+no-enabled	ok		[{"hook": "Stop", "key": "/<session-flags>/config.toml:stop:0:0"}]	管理の設定の同じコマンドが有効でも、役の Stop の enabled が欠けていれば無効に入れる
+user-only	only-user	missing	preToolUse,stop		役のフックがなく、人の設定の同じコマンドだけ
+managed-only	only-managed	missing	preToolUse,stop		役のフックがなく、管理の設定の同じコマンドだけ
+pre-disabled	pre-disabled	ok		[{"hook": "PreToolUse", "key": "/<session-flags>/config.toml:pre_tool_use:0:0"}]	enabled が false（PreToolUse）
+stop-disabled	stop-disabled	ok		[{"hook": "Stop", "key": "/<session-flags>/config.toml:stop:0:0"}]	enabled が false（Stop）
+stop-no-enabled	no-enabled	ok		[{"hook": "Stop", "key": "/<session-flags>/config.toml:stop:0:0"}]	enabled が欠けている
+pre-enabled-null	enabled-null	ok		[{"hook": "PreToolUse", "key": "/<session-flags>/config.toml:pre_tool_use:0:0"}]	enabled が null
+pre-enabled-string	enabled-string	ok		[{"hook": "PreToolUse", "key": "/<session-flags>/config.toml:pre_tool_use:0:0"}]	enabled が文字列 "true"
+pre-enabled-number	enabled-number	ok		[{"hook": "PreToolUse", "key": "/<session-flags>/config.toml:pre_tool_use:0:0"}]	enabled が数値 1
+wrong-matcher	wrong-matcher	missing	preToolUse		役の PreToolUse の matcher が違う
+stop-with-matcher	stop-matcher	missing	stop		役の Stop に matcher がある
+duplicate-session	dup-session	ambiguous	preToolUse		役の PreToolUse に当たる項目が 2 つある
+other-command	other-command	missing	preToolUse		PreToolUse のコマンドが違う
+pre-only	pre-only	missing	stop		Stop がない
+stop-only	stop-only	missing	preToolUse		PreToolUse がない
+empty	empty	missing	preToolUse,stop		一覧が空
+exit	exit	failed		[]	app-server がすぐ終わる
+unreadable	unreadable	failed		[]	hooks/list がエラーを返す
+garbled	garbled	failed		[]	応答が JSON でない
+hang	hang	failed		[]	応答が来ない（時間切れ）

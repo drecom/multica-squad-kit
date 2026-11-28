@@ -192,6 +192,12 @@ prepare_daemon() {
 for tool in multica jq; do
 	command -v "$tool" >/dev/null 2>&1 || die "$tool がありません。$tool を導入してから、もう一度流してください。"
 done
+# gh はトークンの変数を保存した認証より先に使う。起動する端末にあると、デーモンを起動する前に止める。
+token_names=''
+for name in GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN; do
+	[[ -z ${!name:-} ]] || token_names+=${token_names:+、}$name
+done
+[[ -z $token_names ]] || die "この端末に ${token_names} があります。役の gh が認証されるのを防ぐため、デーモンを起動しません。何も変更していません。端末の設定（シェルの起動ファイルなど）から変数を消し、新しい端末でもう一度 bash ~/.multica-agent/start-daemon を流してください。"
 agent_home=${TEMPLATE_AGENT_HOME:-$HOME/.multica-agent}
 answers_dir=$agent_home/template/answers
 daemon_id_file=${TEMPLATE_DAEMON_ID_FILE:-$HOME/.multica/daemon.id}

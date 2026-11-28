@@ -38,6 +38,15 @@ def record(collection, id_):
     return next(item for item in db[collection] if item['id'] == id_)
 
 
+def visible_projects():
+    # 質問と先の事前確認では元の ID、その次の一覧からは同じ名前に別の ID を返す。
+    if (scenario / 'project-id-shift').exists():
+        calls = (scenario / 'calls.jsonl').read_text().splitlines()
+        if sum(json.loads(line)[:2] == ['project', 'list'] for line in calls) >= 3:
+            return [dict(project, id='projects-replacement') for project in db['projects']]
+    return db['projects']
+
+
 def create(collection, **values):
     item = {'id': f'{collection}-{len(db[collection]) + 1}', **values}
     db[collection].append(item)
@@ -118,12 +127,12 @@ elif event == ('skill', 'import'):
     item = create('skills', **skill_data(files, config))
     result = dict(status='created', skill=item)
 elif event == ('project', 'list'):
-    result = db['projects']
+    result = visible_projects()
 elif event == ('project', 'create'):
     result = create('projects', title=option('--title'), description=option('--description'))
     db['resources'] = [dict(resource_type='github_repo', resource_ref=dict(url=option('--repo')))]
 elif event == ('project', 'get'):
-    result = record('projects', args[2])
+    result = next(item for item in visible_projects() if item['id'] == args[2])
 elif tuple(args[:3]) == ('project', 'resource', 'list'):
     result = db['resources']
 elif event == ('agent', 'list'):

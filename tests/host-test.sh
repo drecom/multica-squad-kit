@@ -18,11 +18,27 @@ for file in "$root/common/monitor/"squad-*; do
 done
 cmp "$root/common/guard/gh" "$TEMPLATE_AGENT_HOME/bin/gh"
 cmp "$root/common/guard/pre-push" "$TEMPLATE_AGENT_HOME/git-hooks/pre-push"
-cmp "$root/common/codex/config.toml" "$TEMPLATE_AGENT_HOME/codex/config.toml"
+for file in git-credential git-ssh pre-tool-use stop shell_split.py; do
+ cmp "$root/common/guard/$file" "$TEMPLATE_AGENT_HOME/guard/$file"
+ [[ -x $TEMPLATE_AGENT_HOME/guard/$file ]]
+done
+# 役の GH_CONFIG_DIR に渡す空の置き場。人だけが入れる権限で、中は空である。
+[[ -d $TEMPLATE_AGENT_HOME/guard/gh-empty && -z $(ls -A "$TEMPLATE_AGENT_HOME/guard/gh-empty") ]]
+[[ $(python3 -c 'import os,sys; print(oct(os.stat(sys.argv[1]).st_mode & 0o777)[2:])' "$TEMPLATE_AGENT_HOME/guard/gh-empty") == 700 ]]
+expected_codex_config
+cmp "$test_dir/expected-config" "$TEMPLATE_AGENT_HOME/codex/config.toml"
 [[ -d $TEMPLATE_AGENT_HOME/claude && ! -e $TEMPLATE_AGENT_HOME/allowed-repos ]]
 grep -qx 'daemon start' "$test_dir/calls"
 grep -qx 'https://example.test' "$test_dir/started-server"
 echo 'PASS host: 新しいホストへ共有ファイルと見張りを配置し、専用環境で一つのデーモンを起動する'
+
+# 人の gh の置き場は、gh 自身が使う順（GH_CONFIG_DIR、XDG_CONFIG_HOME の下、ホームの .config）で決める。
+human_gh() { env -u GH_CONFIG_DIR -u XDG_CONFIG_HOME "$@" bash -c 'source "$1"; host_human_gh_dir' -- "$root/lib/host.sh"; }
+[[ $(human_gh HOME=/home/h GH_CONFIG_DIR=/set/gh XDG_CONFIG_HOME=/xdg) == /set/gh ]]
+[[ $(human_gh HOME=/home/h XDG_CONFIG_HOME=/xdg) == /xdg/gh ]]
+[[ $(human_gh HOME=/home/h) == /home/h/.config/gh ]]
+[[ $(human_gh HOME=/home/h GH_CONFIG_DIR= XDG_CONFIG_HOME=) == /home/h/.config/gh ]]
+echo 'PASS host: 人の gh の置き場を、端末の GH_CONFIG_DIR、XDG_CONFIG_HOME の下、ホームの順で決める'
 [[ $(cat "$test_dir/codex-checks") == "$TEMPLATE_AGENT_HOME/codex" ]]
 python3 - "$TEMPLATE_AGENT_HOME/codex/config.toml" <<'PY'
 import sys
@@ -30,18 +46,50 @@ import tomllib
 
 with open(sys.argv[1], "rb") as source:
     config = tomllib.load(source)
+state = config.pop("hooks")["state"]
 assert config == {"allow_login_shell": False, "check_for_update_on_startup": False, "analytics": {"enabled": False}}, config
+# 信頼は、hooks/list が返した 2 つのフックの鍵と currentHash である。
+assert sorted(state) == ["/<session-flags>/config.toml:pre_tool_use:0:0", "/<session-flags>/config.toml:stop:0:0"], state
+assert all(set(value) == {"trusted_hash"} and value["trusted_hash"].startswith("sha256:") for value in state.values()), state
 PY
 ! grep -qF 'マークのない設定に' "$test_dir/err"
 echo 'PASS host: 新しいホストで Codex の設定に 2 つのキーを足し、専用の置き場で厳しい検証に 1 回かける'
 settings=$TEMPLATE_AGENT_HOME/claude/settings.json
+# prepare_host は、共有の settings.json を確認するだけで書かない。書くのは、役の設定を書いたあとである（prepare_project）。
+[[ ! -e $settings ]]
+cat >"$test_dir/settings-run.sh" <<'RUN'
+#!/bin/bash
+set -euo pipefail
+source "$1/lib/ui.sh"
+source "${TEST_SETTINGS_HOST:-$1/lib/host.sh}"
+die() { ui_error "$*"; exit 1; }
+host_paths
+host_claude_settings
+RUN
+settings_run() { /bin/bash "$test_dir/settings-run.sh" "$root" >"$test_dir/out" 2>"$test_dir/err"; }
+settings_run
 python3 - "$settings" "$test_dir/kit-settings.json" <<'PY'
 import json
+import os
 from pathlib import Path
+import shlex
 import sys
 
 settings = Path(sys.argv[1])
 actual = json.loads(settings.read_text())
+# 置き場の名前にアポストロフィがあるので、フックのコマンドは引用符で囲まれる。
+guard = os.path.normpath(os.path.dirname(os.path.dirname(settings))) + "/guard"
+pre_tool_use = shlex.quote(guard + "/pre-tool-use")
+stop = shlex.quote(guard + "/stop")
+assert pre_tool_use.startswith("'") and stop.startswith("'")
+home = os.path.normpath(os.environ["HOME"])
+kit_reads = [
+    "Read(/" + os.path.normpath(os.environ["GH_CONFIG_DIR"]) + "/**)",
+    "Read(/" + home + "/.ssh/**)",
+    "Read(/" + home + "/.git-credentials)",
+    "Read(/" + home + "/.netrc)",
+]
+assert all(item.startswith("Read(//") for item in kit_reads)
 assert actual == {
     "syncClaudeAiSkills": False,
     "syncClaudeAiPlugins": False,
@@ -54,26 +102,25 @@ assert actual == {
         "design", "design-sync", "dataviz", "debug", "doctor", "update-config",
         "fewer-permission-prompts", "plugin-authoring", "run-skill-generator",
     )},
-    "permissions": {"deny": ["Monitor", "ScheduleWakeup", "RemoteTrigger"]},
+    "permissions": {
+        "deny": ["Monitor", "ScheduleWakeup", "RemoteTrigger", "PushNotification", *kit_reads],
+        "blockWritesOutsideWorkingDirectories": True,
+    },
+    "hooks": {
+        "PreToolUse": [{"matcher": "Bash|Write|Edit|NotebookEdit", "hooks": [{"type": "command", "command": pre_tool_use}]}],
+        "Stop": [{"hooks": [{"type": "command", "command": stop}]}],
+    },
 }, actual
 assert settings.stat().st_mode & 0o777 == 0o600
 Path(sys.argv[2]).write_bytes(settings.read_bytes())
 PY
-echo 'PASS host: Claude の共有の設定をキットの 8 つのキーだけで作り、権限を 600 にする'
+echo 'PASS host: Claude の共有の設定をキットのキーだけで作り、フック・deny・書き込み制限を含め、権限を 600 にする'
 
-cat >"$test_dir/settings-run.sh" <<'RUN'
-#!/bin/bash
-set -euo pipefail
-source "$1/lib/ui.sh"
-source "${TEST_SETTINGS_HOST:-$1/lib/host.sh}"
-die() { ui_error "$*"; exit 1; }
-host_paths
-host_claude_settings
-RUN
-settings_run() { /bin/bash "$test_dir/settings-run.sh" "$root" >"$test_dir/out" 2>"$test_dir/err"; }
 python3 - "$settings" <<'PY'
 import json
+import os
 from pathlib import Path
+import shlex
 import sys
 
 settings = Path(sys.argv[1])
@@ -82,18 +129,34 @@ config.update(theme="dark", custom={"nested": [True, None, "人の値"]}, syncCl
 config["pluginConfigs"]["personal-plugin"] = {"options": {"enabled": True}}
 config["pluginConfigs"]["cc-plugin-agents-md@builtin"]["options"]["instructionFiles"] = "agents-md"
 config["skillOverrides"].update(batch="on", **{"personal-skill": "on", "code-review": "on"})
-config["permissions"] = {"allow": ["Read"], "deny": ["Bash(secret)", "Monitor"]}
+config["permissions"] = {"allow": ["Read"], "deny": ["Bash(secret)", "Monitor", "Read(//human/.aws/**)"], "blockWritesOutsideWorkingDirectories": False}
+# 人のフックと、キットの置き場のスクリプトを指す項目（matcher の違うもの・人のフックと同じ組・消された Stop）を作る。
+guard = os.path.dirname(os.path.dirname(settings)) + "/guard"
+kit_pre = shlex.quote(guard + "/pre-tool-use")
+config["hooks"] = {
+    "PreToolUse": [
+        {"matcher": "Bash", "hooks": [{"type": "command", "command": "/human/audit"}]},
+        {"matcher": "Bash", "hooks": [{"type": "command", "command": kit_pre}]},
+        {"matcher": "Write", "hooks": [{"type": "command", "command": "/human/write"}, {"type": "command", "command": kit_pre}]},
+        {"matcher": "Bash", "hooks": [{"type": "command", "command": "/elsewhere/guard/pre-tool-use"}]},
+    ],
+    "Stop": [{"hooks": [{"type": "command", "command": "/human/stop"}]}],
+    "SessionStart": [{"hooks": [{"type": "command", "command": "/human/start"}]}],
+}
 settings.write_text(json.dumps(config, ensure_ascii=False))
 settings.chmod(0o644)
 PY
 settings_run
-for key in syncClaudeAiSkills cleanupPeriodDays pluginConfigs.cc-plugin-agents-md@builtin skillOverrides.batch; do
+for key in syncClaudeAiSkills cleanupPeriodDays pluginConfigs.cc-plugin-agents-md@builtin skillOverrides.batch permissions.blockWritesOutsideWorkingDirectories hooks.PreToolUse; do
  grep -qF "$key" "$test_dir/err"
 done
+! grep -qF 'hooks.Stop' "$test_dir/err"
 grep -q '警告:' "$test_dir/err"
 python3 - "$settings" "$test_dir/kit-settings.json" <<'PY'
 import json
+import os
 from pathlib import Path
+import shlex
 import sys
 
 settings = Path(sys.argv[1])
@@ -102,7 +165,28 @@ expected = json.loads(Path(sys.argv[2]).read_text())
 expected.update(theme="dark", custom={"nested": [True, None, "人の値"]})
 expected["pluginConfigs"]["personal-plugin"] = {"options": {"enabled": True}}
 expected["skillOverrides"].update({"personal-skill": "on", "code-review": "on"})
-expected["permissions"] = {"allow": ["Read"], "deny": ["Bash(secret)", "Monitor", "ScheduleWakeup", "RemoteTrigger"]}
+kit_deny = expected["permissions"]["deny"][1:]
+expected["permissions"] = {
+    "allow": ["Read"],
+    "deny": ["Bash(secret)", "Monitor", "Read(//human/.aws/**)", *[item for item in kit_deny if item != "Monitor"]],
+    "blockWritesOutsideWorkingDirectories": True,
+}
+guard = os.path.dirname(os.path.dirname(settings)) + "/guard"
+kit_pre = shlex.quote(guard + "/pre-tool-use")
+kit_stop = shlex.quote(guard + "/stop")
+expected["hooks"] = {
+    "PreToolUse": [
+        {"matcher": "Bash", "hooks": [{"type": "command", "command": "/human/audit"}]},
+        {"matcher": "Write", "hooks": [{"type": "command", "command": "/human/write"}]},
+        {"matcher": "Bash", "hooks": [{"type": "command", "command": "/elsewhere/guard/pre-tool-use"}]},
+        {"matcher": "Bash|Write|Edit|NotebookEdit", "hooks": [{"type": "command", "command": kit_pre}]},
+    ],
+    "Stop": [
+        {"hooks": [{"type": "command", "command": "/human/stop"}]},
+        {"hooks": [{"type": "command", "command": kit_stop}]},
+    ],
+    "SessionStart": [{"hooks": [{"type": "command", "command": "/human/start"}]}],
+}
 assert actual == expected, actual
 assert settings.stat().st_mode & 0o777 == 0o600
 # 空白とキーの順番だけが違うときも書かない。
@@ -123,7 +207,7 @@ stat = settings.stat()
 assert [stat.st_ino, stat.st_mtime_ns, stat.st_mode, settings.read_text()] == json.loads(Path(str(settings) + ".before").read_text())
 assert not list(settings.parent.glob(".settings.*"))
 PY
-echo 'PASS host: 人のキー・プラグイン・スキル・権限を残し、キットの値を警告して戻し、同じ中身は書かない'
+echo 'PASS host: 人のキー・プラグイン・スキル・権限・フックを残し、キットの値を警告して戻し、同じ中身は書かない'
 
 # やめるキーがまだないため、将来その一覧に移した場合を作業用のコピーで確認する。
 python3 - "$root/lib/host.sh" "$test_dir/retired-host.sh" "$settings" <<'PY'
@@ -156,7 +240,7 @@ assert actual == expected, actual
 PY
 echo 'PASS host: やめたキーとキットの項目だけを消し、人の項目を残す'
 
-for invalid in '{' '[]' 'null' 'true' '"text"' '30' '{"permissions":[]}' '{"permissions":null}' '{"permissions":{"deny":{}}}' '{"permissions":{"deny":null}}' '{"pluginConfigs":[]}' '{"pluginConfigs":null}' '{"skillOverrides":[]}'; do
+for invalid in '{' '[]' 'null' 'true' '"text"' '30' '{"permissions":[]}' '{"permissions":null}' '{"permissions":{"deny":{}}}' '{"permissions":{"deny":null}}' '{"pluginConfigs":[]}' '{"pluginConfigs":null}' '{"skillOverrides":[]}' '{"hooks":[]}' '{"hooks":null}' '{"hooks":{"PreToolUse":{}}}' '{"hooks":{"Stop":null}}'; do
  printf '%s\n' "$invalid" >"$settings"
  cp "$settings" "$test_dir/invalid-settings"
  if settings_run; then exit 1; fi
@@ -167,7 +251,24 @@ done
 set_mode running
 deny
 [[ ! -s $test_dir/calls ]]
-echo 'PASS host: 壊れた JSON と最上位・permissions・deny・pluginConfigs・skillOverrides の形の違いで書かずに止まる'
+echo 'PASS host: 壊れた JSON と最上位・permissions・deny・pluginConfigs・skillOverrides・hooks と各イベントの形の違いで書かずに止まる'
+
+# 既存の disableAllHooks: true は、フックを無効にするので、役の登録の前に止めて直し方を案内する。
+for hooks_off in '{"disableAllHooks":true}' '{"disableAllHooks":true,"permissions":{"deny":["Read(/x)"]}}'; do
+ printf '%s\n' "$hooks_off" >"$settings"
+ cp "$settings" "$test_dir/hooks-off-settings"
+ if settings_run; then exit 1; fi
+ cmp "$settings" "$test_dir/hooks-off-settings"
+ grep -qF 'disableAllHooks' "$test_dir/err"
+ grep -qF '設定を直してから流し直してください' "$test_dir/err"
+ set_mode running
+ deny
+ grep -qF 'disableAllHooks' "$test_dir/err"
+ [[ ! -s $test_dir/calls ]]
+done
+printf '{"disableAllHooks":false}\n' >"$settings"
+settings_run
+echo 'PASS host: disableAllHooks が true の既存設定は、書き換えず、役の登録とデーモンの操作の前に止めて直し方を案内する（false は通す）'
 
 rm "$settings"
 for target in "$test_dir/kit-settings.json" "$test_dir/missing-settings.json"; do
@@ -197,6 +298,33 @@ cmp "$root/common/host/start-daemon" "$TEMPLATE_AGENT_HOME/start-daemon"
 [[ -x $TEMPLATE_AGENT_HOME/start-daemon && ! -e $TEMPLATE_AGENT_HOME/bin/start-daemon ]]
 ! grep -Eq '^daemon (stop|start)$' "$test_dir/calls"
 echo 'PASS host: 流し直すと管理マークのある古い入口を原本に更新し、実行権限を付ける'
+
+# 新しいガードと分割の部品は、配置先が原本と一致しなければ、役の登録の前に止めて対処を案内する。
+for file in git-credential git-ssh pre-tool-use stop shell_split.py; do
+ target=$TEMPLATE_AGENT_HOME/guard/$file
+ cp "$target" "$test_dir/guard-original"
+ # マークのない既存のファイル（人のファイル）は、上書きせず止める。
+ printf '#!/bin/sh\nexit 0\n' >"$target"
+ cp "$target" "$test_dir/guard-unmarked"
+ set_mode running
+ agent_env
+ deny
+ cmp "$target" "$test_dir/guard-unmarked"
+ grep -qF "ガードのファイルが原本と一致しません: $target" "$test_dir/err"
+ grep -qF '流し直してください' "$test_dir/err"
+ # 止まるときは「そのまま使います」の行を出さず、停止エラーに対象と直し方をまとめる。
+ if grep -qF 'そのまま使います' "$test_dir/err" "$test_dir/out"; then
+  echo "止まるはずのガードのファイルで「そのまま使います」を出した: $file" >&2
+  exit 1
+ fi
+ ! grep -Eq '^daemon (stop|start)$' "$test_dir/calls"
+ # 管理マークのある古い内容は、原本に戻る。
+ printf '#!/bin/sh\n# multica-squad-kit-managed\nexit 0\n' >"$target"
+ run
+ cmp "$root/common/guard/$file" "$target"
+ [[ -x $target ]]
+done
+echo 'PASS host: 新しいガードと分割の部品は、マークのない既存のファイルを上書きせず役の登録の前に止め、マークのある古い内容は原本に戻す'
 
 printf '#!/bin/bash\nprintf "manual entry\\n"\n' >"$TEMPLATE_AGENT_HOME/start-daemon"
 chmod 644 "$TEMPLATE_AGENT_HOME/start-daemon"
@@ -393,8 +521,7 @@ import sys
 
 actual = Path(sys.argv[1]).read_text()
 home = sys.argv[4]
-message = f"使用する gh のガード: {home}/bin/gh\n使用する git push のガード: {home}/git-hooks/pre-push\n使用する Codex の設定: {home}/codex/config.toml\n"
-message += f"エラー: エージェント用の Claude のログインを確認できませんでした。ログインが切れているとは限りません。端末から CLAUDE_CONFIG_DIR={home}/claude claude auth status を流して、ログインの状態を確認してから流し直してください。問い合わせるときは、下の診断の行だけを添えてください。\n"
+message = f"エラー: エージェント用の Claude のログインを確認できませんでした。ログインが切れているとは限りません。端末から CLAUDE_CONFIG_DIR={home}/claude claude auth status を流して、ログインの状態を確認してから流し直してください。問い合わせるときは、下の診断の行だけを添えてください。\n"
 message += f"  診断（claude auth status）:\n    分類: {sys.argv[6]}\n    終了コード: {sys.argv[3]}\n    標準出力の最初の値: {sys.argv[5]}\n"
 message += "    標準出力: " + ("あり（内容は省略）" if Path(sys.argv[2]).stat().st_size else "なし") + "\n"
 message += "    標準エラー: " + ("あり（内容は省略）" if Path(sys.argv[7]).stat().st_size else "なし") + "\n"

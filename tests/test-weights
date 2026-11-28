@@ -15,6 +15,7 @@ tests/capture-cli-fixtures-test.sh 4
 tests/ci-install-test.sh 22
 tests/clock-test.sh 0
 tests/codex-check-test.sh 0
+tests/codex-hooks-test.sh 5
 tests/completion-colors-test.sh 2
 tests/confirmation-test.sh 14
 tests/content-test.sh 1
@@ -25,8 +26,14 @@ tests/extensions-key-file-test.sh 2
 tests/extensions-test.sh 2
 tests/gh-test.sh 19
 tests/guard-check-test.sh 14
-tests/host-config-test.sh 73
+tests/guard-git-test.sh 3
+tests/guard-hook-test.sh 45
+tests/host-config-test.sh 120
 tests/host-daemon-test.sh 55
+tests/host-order-1-test.sh 165
+tests/host-order-2-test.sh 165
+tests/host-order-3-test.sh 165
+tests/host-order-setup-test.sh 120
 tests/host-test.sh 100
 tests/host-timeout-test.sh 93
 tests/install-command-test.sh 21
@@ -38,6 +45,7 @@ tests/leader-eval-picks-test.sh 7
 tests/leader-eval-test.sh 88
 tests/link-scope-questions-test.sh 7
 tests/links-test.sh 15
+tests/manifest-test.sh 1
 tests/manual-test.sh 13
 tests/metrics-breakdown-test.sh 5
 tests/metrics-collect-test.sh 20
@@ -57,7 +65,7 @@ tests/project-linking-test.sh 56
 tests/project-progress-test.sh 38
 tests/project-runtimes-first-test.sh 41
 tests/project-runtimes-rerun-test.sh 142
-tests/project-runtimes-test.sh 73
+tests/project-runtimes-test.sh 120
 tests/project-select-test.sh 61
 tests/questions-fold-test.sh 28
 tests/questions-ui-test.sh 122

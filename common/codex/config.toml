@@ -8,3 +8,6 @@ check_for_update_on_startup = false
 
 [analytics]
 enabled = false
+
+# 役に渡すフックの信頼。セットアップが hooks/list の値を埋める。
+{{HOOKS_STATE}}

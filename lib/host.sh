@@ -5,6 +5,17 @@ host_paths() {
 	[[ $agent_home == /* && $agent_home != *$'\n'* ]] || die 'ホストの置き場は改行のない絶対パスにしてください。'
 }
 
+# 人の gh の置き場。gh 自身が使う順（GH_CONFIG_DIR、XDG_CONFIG_HOME の下、ホームの .config）と同じにする。
+host_human_gh_dir() {
+	if [[ -n ${GH_CONFIG_DIR:-} ]]; then
+		printf '%s\n' "$GH_CONFIG_DIR"
+	elif [[ -n ${XDG_CONFIG_HOME:-} ]]; then
+		printf '%s/gh\n' "$XDG_CONFIG_HOME"
+	else
+		printf '%s/.config/gh\n' "$HOME"
+	fi
+}
+
 host_install() {
 	local src=$1 dst=$2 executable=$3 dir
 	[[ ! -L $dst ]] || die "シンボリックリンクは上書きしません: $dst"
@@ -15,6 +26,21 @@ host_install() {
 		cp "$src" "$dst" || die "ファイルを写せません: $dst"
 	fi
 	[[ $executable != yes || -x $dst ]] || chmod 755 "$dst" || die "実行権限を付けられません: $dst"
+}
+
+# 役のフックが動くために原本と同じでなければならないファイルを置く。マークのない既存のファイルや、
+# 原本と内容が違うファイルが残るときは、人のファイルを上書きせず、役の登録の前に止めて対処を案内する。
+host_guard_file() {
+	local src=$1 dst=$2
+	# マークのない既存のファイルは、「そのまま使います」の警告を出さず、ここで止める。
+	if [[ -e $dst ]] && ! grep -qx '# multica-squad-kit-managed' "$dst"; then
+		die "ガードのファイルが原本と一致しません: ${dst}。マークのない既存のファイルが残っていると、役のフックが動きません。そのファイルの中身を確認して、不要なら移すか消してから、セットアップを流し直してください。既存のファイルは上書きしません。"
+	fi
+	host_shared_file "$src" "$dst" yes
+	if [[ -f $dst && -x $dst ]] && cmp -s "$src" "$dst"; then
+		return
+	fi
+	die "ガードのファイルが原本と一致しません: ${dst}。マークのない既存のファイル、または原本と違う内容のファイルが残っていると、役のフックが動きません。そのファイルの中身を確認して、不要なら移すか消してから、セットアップを流し直してください。既存のファイルは上書きしません。"
 }
 
 host_shared_file() {
@@ -144,6 +170,112 @@ PY
 	ui_notice warn "$config" "マークのない設定に、更新の確認と利用状況の送信を切るキーがありません: $missing" || ui_warning "マークのない設定に、更新の確認と利用状況の送信を切るキーがありません（${missing}）: $config"
 }
 
+# 設定を TOML として読み、止めた役のフックの鍵に enabled = false があるかを返す（0 はある）。見出しの書き方（空白・字下げ・ドット付きのキー）に依存しない。設定がない、読めて鍵がない、のときだけ 1。読めない設定は編集の案内を出す側（0）に倒す。何も書かない。
+host_codex_hook_disabled_in() {
+	[[ -f $1 ]] || return 1
+	python3 - "$1" "$2" <<'PY'
+import json
+import sys
+
+try:
+    import tomllib
+    with open(sys.argv[1], "rb") as source:
+        config = tomllib.load(source)
+except (ImportError, OSError, ValueError):
+    sys.exit(0)
+keys = [item["key"] for item in json.loads(sys.argv[2])]
+hooks = config.get("hooks")
+state = hooks.get("state") if isinstance(hooks, dict) else None
+if not isinstance(state, dict):
+    sys.exit(1)
+for key in keys:
+    entry = state.get(key)
+    if isinstance(entry, dict) and entry.get("enabled") is False:
+        sys.exit(0)
+sys.exit(1)
+PY
+}
+
+# Codex の設定のトップレベルの allow_login_shell が真偽値の false かを読む。ログインシェルでは別の起動ファイルが効くため、確認した環境とそろえる。何も書かない。
+host_codex_login_shell_off() {
+	python3 - "$1" <<'PY'
+import sys
+
+try:
+    import tomllib
+    with open(sys.argv[1], "rb") as source:
+        config = tomllib.load(source)
+except (ImportError, OSError, ValueError):
+    sys.exit(1)
+sys.exit(0 if config.get("allow_login_shell") is False else 1)
+PY
+}
+
+# 役に渡すフックの信頼と有効を、書き換える前に確認する。何も書かない。値は、役と同じ引数で起こした app-server の hooks/list から読む。
+# 読めない・フックが足りない・一意に決まらない・無効か有効と判定できない・マークのない人の設定に信頼がない、のどれでも止まる。
+# 止まらないときは、設定に書く信頼の行を codex_trust に残す（host_codex_write が書く）。
+host_codex_check() {
+	local config=$agent_home/codex/config.toml existing='' result status detail trust disabled names lines
+	codex_trust=
+	# 置き先は事前確認済み。通常の実体ファイルだけを読み、人の設定ならそのまま照合する。
+	if [[ -f $config && ! -L $config ]] && ! grep -qx '# multica-squad-kit-managed' "$config"; then existing=$config; fi
+	if ! result=$(python3 "${kit_root:-$root}/lib/codex-hooks.py" "$agent_home/codex" "$agent_home/guard" "${codex_check_seconds:-30}" ${existing:+"$existing"}); then
+		die 'Codex のフックの信頼の値を読む処理を実行できませんでした。python3 を確認して流し直してください。何も書き換えていません。'
+	fi
+	status=${result%%$'\n'*}
+	result=${result#*$'\n'}
+	detail=${result%%$'\n'*}
+	result=${result#*$'\n'}
+	disabled=${result%%$'\n'*}
+	trust=
+	[[ $result != *$'\n'* ]] || trust=${result#*$'\n'}
+	case $status in
+	ok) ;;
+	launch) die "Codex を起動できませんでした。信頼の値を読めないので、何も書いていません。PATH に codex があり実行できることを確認して、セットアップを流し直してください。" ;;
+	missing) die "Codex が返したフックの一覧に、キットのフックがありません（${detail}）。信頼の値を読めないので、何も書いていません。codex --version で Codex が新しいことを確認し、$config がフックを無効にしていないか確認してから、セットアップを流し直してください。" ;;
+	ambiguous) die "Codex が返したフックの一覧に、キットのフックに当たる項目が 2 つ以上あります（${detail}）。どれが効くか判定できないので、何も書いていません。codex --version で Codex が新しいことを確認し、同じコマンドのフックを設定している所がないか確認してから、セットアップを流し直してください。" ;;
+	*) die "Codex の hooks/list を読めませんでした。信頼の値を読めないので、何も書いていません。時間切れ、応答の誤り、Codex が古いことのどれかが考えられます。codex --version で Codex が新しいことを確認してから、セットアップを流し直してください。Codex の出力は秘密値を含みうるので表示しません。" ;;
+	esac
+	# 信頼の値はフックを無効にしても変わらない。有効は、役のフックの項目の enabled で見る。
+	names=$(jq -r 'map("\(.hook)（\(.key)）") | join("、")' <<<"$disabled") || die 'Codex のフックの有効を読めませんでした。'
+	if [[ -n $names ]]; then
+		if host_codex_hook_disabled_in "$config" "$disabled"; then
+			die "Codex の役のフックが、無効か、有効と確認できません: ${names}。Stop が無効だと最後のコメントの確認が、PreToolUse が無効だとガードが動きません。まず codex --version で Codex が新しいことと、フックを無効にしている設定がないことを確認してください。設定 $config の、上の鍵の [hooks.state.\"<鍵>\"] に enabled = false があれば、消すか true にしてから、セットアップを流し直してください。何も書き換えていません。"
+		fi
+		die "Codex の役のフックが、無効か、有効と確認できません: ${names}。Stop が無効だと最後のコメントの確認が、PreToolUse が無効だとガードが動きません。設定 $config には、このフックを無効にする enabled = false がないので、編集するものはありません。codex --version で Codex が新しいことと、フックを無効にしている設定（Codex の管理者の設定など）がないことを確認してから、セットアップを流し直してください。何も書き換えていません。"
+	fi
+	if [[ -n $existing && $detail != trusted ]]; then
+		die "Codex の役のフックは、信頼の記録がないと飛ばされ、PreToolUse と Stop が動きません。マークのない設定 $config に、次の行を足してからセットアップを流し直してください。何も書き換えていません。キットの設定に替えるときは、そのファイルを退避してから流し直してください。
+$trust"
+	fi
+	# 保つ人の設定は、書いたあとには直せない。ログインシェルの値も、ガードを書く前にここで読む。
+	if [[ -n $existing ]] && ! host_codex_login_shell_off "$existing"; then
+		die "Codex の設定で allow_login_shell = false を確認できません: ${existing}。設定が正しい TOML で、トップレベルの値が真偽値の false か確認してから流し直してください。何も書き換えていません。既存の設定は上書きしません。"
+	fi
+	codex_trust=$trust
+}
+
+# 確認したあとに、Codex の設定を書く。マークのある設定と、まだない設定は、ひな形に信頼を埋めて書く。マークのない人の設定は上書きしない。
+host_codex_config() {
+	local config=$agent_home/codex/config.toml
+	if [[ -e $config ]] && ! grep -qx '# multica-squad-kit-managed' "$config"; then
+		host_shared_file "$root/common/codex/config.toml" "$config" no
+	else
+		host_codex_template "$codex_trust"
+	fi
+}
+
+host_codex_template() (
+	local trust=$1 generated content marker='{{HOOKS_STATE}}'
+	mkdir -p "$root/tmp" || die 'Codex の設定の作業場所を作れませんでした。'
+	generated=$(mktemp "$root/tmp/codex-config.XXXXXX") || die 'Codex の設定の一時ファイルを作れませんでした。'
+	trap 'rm -f -- "$generated"' EXIT
+	content=$(<"$root/common/codex/config.toml") || die 'Codex の設定のひな形を読めませんでした。'
+	[[ $content == *"$marker"* ]] || die 'Codex の設定のひな形に、信頼の値を埋める場所がありません。'
+	printf '%s\n' "${content%%"$marker"*}$trust${content#*"$marker"}" >"$generated" || die 'Codex の設定を書けませんでした。'
+	host_shared_file "$generated" "$agent_home/codex/config.toml" no
+)
+
 # 設定を Codex の厳しい検証にかける。知らないキーなどで 0 以外なら止まる。
 # 古い Codex（引数を知らない）と時間切れは、確認できなかったと警告して先へ進む。
 # 時間切れの停止の手順は lib/codex-check.py が持つ。拡張を使うと root が lib を持たない作業場所へ付け替わるので、原本の kit_root から呼ぶ。停止を確認できなければ、固定の診断で止まる。
@@ -166,13 +298,18 @@ host_codex_validate() {
 }
 
 # JSON には管理マークを付けず、キットが持つキーと項目だけを合わせる。
+# フックは、コマンドのパスがキットの置き場（guard）の中にある項目だけをキットの項目として合わせる。
+# 引数が check のときは、書き換える前の確認だけを流し、何も書かない。write のときは、確認をして書く。
+# 共有の settings.json のフックは、役の custom_env より先に入ると既存の役を止めるので、write は役の設定のあとに呼ぶ。
 host_claude_settings() {
-	local settings=$agent_home/claude/settings.json message
-	if ! message=$(python3 - "$settings" <<'PY'
+	local mode=${1:-write} settings=$agent_home/claude/settings.json guard=$agent_home/guard human_gh message
+	human_gh=$(host_human_gh_dir) || die '人の gh の置き場を決められませんでした。'
+	if ! message=$(python3 - "$settings" "$guard" "$human_gh" "$mode" <<'PY'
 import copy
 import json
 import os
 from pathlib import Path
+import shlex
 import sys
 import tempfile
 
@@ -193,7 +330,31 @@ owned_items = {
         "fewer-permission-prompts", "plugin-authoring", "run-skill-generator",
     ), "off"),
 }
-owned_deny = ("Monitor", "ScheduleWakeup", "RemoteTrigger")
+settings = Path(sys.argv[1])
+guard = os.path.normpath(sys.argv[2])
+human_gh = os.path.normpath(sys.argv[3])
+write = sys.argv[4] == "write"
+home = os.path.normpath(os.environ.get("HOME") or "/")
+
+def deny_read(path, directory):
+    # 絶対パスは // で始める。ディレクトリは中のファイルまで含める。
+    return "Read(/" + path + ("/**" if directory else "") + ")"
+
+owned_deny = (
+    "Monitor", "ScheduleWakeup", "RemoteTrigger", "PushNotification",
+    deny_read(human_gh, True),
+    deny_read(home + "/.ssh", True),
+    deny_read(home + "/.git-credentials", False),
+    deny_read(home + "/.netrc", False),
+)
+owned_permissions = {"blockWritesOutsideWorkingDirectories": True}
+hook_groups = {
+    "PreToolUse": {
+        "matcher": "Bash|Write|Edit|NotebookEdit",
+        "hooks": [{"type": "command", "command": shlex.quote(guard + "/pre-tool-use")}],
+    },
+    "Stop": {"hooks": [{"type": "command", "command": shlex.quote(guard + "/stop")}]},
+}
 # キーをやめるときはここへ移す。項目を足すキーは、キットの項目だけを消す。
 retired_keys = ()
 retired_items = {}
@@ -217,7 +378,20 @@ def container(config, path, kind):
         raise ValueError(".".join(path) + " を" + shape + "に直してください。")
     return value
 
-settings = Path(sys.argv[1])
+def is_kit_hook(handler):
+    if not isinstance(handler, dict) or not isinstance(handler.get("command"), str):
+        return False
+    try:
+        words = shlex.split(handler["command"])
+    except ValueError:
+        return False
+    return bool(words) and os.path.dirname(os.path.normpath(words[0])) == guard
+
+def kit_handlers(group):
+    if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
+        return []
+    return [handler for handler in group["hooks"] if is_kit_hook(handler)]
+
 temporary = None
 try:
     if settings.is_symlink():
@@ -237,6 +411,11 @@ try:
         container(config, (key,), dict)
     container(config, ("permissions",), dict)
     container(config, ("permissions", "deny"), list)
+    container(config, ("hooks",), dict)
+    if config.get("disableAllHooks") is True:
+        raise ValueError("disableAllHooks が true で、すべてのフックが無効になっています。役の PreToolUse と Stop のガードが動かないので、このキーを false にするか消してください。")
+    for event in hook_groups:
+        container(config, ("hooks", event), list)
     for path, items in retired_items.items():
         value = container(config, path, (dict, list))
         if isinstance(value, dict):
@@ -257,11 +436,41 @@ try:
             if item in target and not same(target[item], value):
                 overwritten.append(key + "." + item)
             target[item] = value
-    deny = config.setdefault("permissions", {}).setdefault("deny", [])
+    permissions = config.setdefault("permissions", {})
+    for key, value in owned_permissions.items():
+        if key in permissions and not same(permissions[key], value):
+            overwritten.append("permissions." + key)
+        permissions[key] = value
+    deny = permissions.setdefault("deny", [])
     for item in owned_deny:
         if item not in deny:
             deny.append(item)
-    if not exists or not same(config, original):
+    # 人のフックは残し、キットの置き場のスクリプトを指す項目だけを、キットの値の 1 つに合わせる。
+    for event, desired in hook_groups.items():
+        groups = config.setdefault("hooks", {}).setdefault(event, [])
+        kept = []
+        found = changed = False
+        for group in groups:
+            handlers = kit_handlers(group)
+            if not handlers:
+                kept.append(group)
+                continue
+            others = [handler for handler in group["hooks"] if not is_kit_hook(handler)]
+            if others:
+                group["hooks"] = others
+                kept.append(group)
+                changed = True
+            elif not found and same(group, desired):
+                kept.append(group)
+                found = True
+            else:
+                changed = True
+        if not found:
+            kept.append(copy.deepcopy(desired))
+        groups[:] = kept
+        if changed:
+            overwritten.append("hooks." + event)
+    if write and (not exists or not same(config, original)):
         fd, temporary = tempfile.mkstemp(prefix=".settings.", dir=settings.parent)
         with os.fdopen(fd, "w", encoding="utf-8") as target:
             os.fchmod(target.fileno(), 0o600)
@@ -269,7 +478,7 @@ try:
             target.write("\n")
         os.replace(temporary, settings)
         temporary = None
-    if overwritten:
+    if write and overwritten:
         print("キットが持つ設定をキットの値で上書きしました: " + ", ".join(overwritten))
 except ValueError as error:
     print(str(error))
@@ -289,11 +498,118 @@ PY
 	fi
 }
 
+# 更新で置くファイルの一覧。種類は guard（マークのない既存のファイルは止める）、exec（gh と pre-push。マークのない既存のファイルは実行できれば使う）、shared（マークのない既存のファイルは使う）、
+# codex-config（Codex の設定。マークのない既存の設定は使う）、claude-settings（共有の settings.json。マークを持たず、置き場へ一時ファイルを作って差し替える）。
+# 置く前の確認（host_check_targets）が、使うランタイムに応じてこの一覧を読む。
+host_list_targets() {
+	local file name
+	host_target_kind=() host_target_dst=()
+	for name in git-credential git-ssh pre-tool-use stop shell_split.py; do
+		host_target_kind+=(guard)
+		host_target_dst+=("$agent_home/guard/$name")
+	done
+	host_target_kind+=(exec exec shared)
+	host_target_dst+=("$agent_home/bin/gh" "$agent_home/git-hooks/pre-push" "$agent_home/start-daemon")
+	for file in "$root/common/monitor/"squad-*; do
+		host_target_kind+=(shared)
+		host_target_dst+=("$agent_home/bin/${file##*/}")
+	done
+	if uses_runtime codex; then
+		host_target_kind+=(codex-config)
+		host_target_dst+=("$agent_home/codex/config.toml")
+	fi
+	if uses_runtime claude; then
+		host_target_kind+=(claude-settings)
+		host_target_dst+=("$agent_home/claude/settings.json")
+	fi
+}
+
+# 置き先を読む前に、親の権限とファイルの種類を調べる。新しい置き場は最も近い既存の親で調べる。
+# 直接書く管理ファイルは自身にも書き込みが要る。設定・許可・起動ファイルの差し替えは親に一時ファイルを作る。
+host_check_target() {
+	local kind=$1 dst=$2 dir parent_error
+	dir=${dst%/*}
+	while [[ -n $dir && ! -e $dir && ! -L $dir ]]; do dir=${dir%/*}; done
+	dir=${dir:-/}
+	parent_error="置き場がないか、書けません: ${dst%/*}。置き場の書き込みと探索の権限を確認してください。何も書き換えていません。権限を直してから流し直してください。"
+	[[ -d $dir && -x $dir ]] || die "$parent_error"
+	if [[ -L $dst && $kind != shell-startup ]]; then
+		die "シンボリックリンクは上書きしません: ${dst}。実体のファイルに置き換えてください。何も書き換えていません。そのリンクを確認し、不要なら消してから流し直してください。"
+	fi
+	if [[ ! -e $dst && ! -L $dst ]]; then
+		[[ -w $dir ]] || die "$parent_error"
+		return 0
+	fi
+	[[ -f $dst ]] || die "更新するファイルが通常のファイルではありません: ${dst}。通常のファイルに置き換えてください。何も書き換えていません。そのファイルを確認し、不要なら移すか消してから流し直してください。"
+	[[ -r $dst ]] || die "更新するファイルが読めません: ${dst}。何も書き換えていません。権限を確認してから流し直してください。"
+	case $kind in
+	claude-settings | allowed-repos)
+		[[ -w $dir ]] || die "$parent_error"
+		return 0 ;;
+	esac
+	if grep -qx '# multica-squad-kit-managed' "$dst"; then
+		[[ -w $dir ]] || die "$parent_error"
+		if [[ $kind == shell-startup ]]; then
+			[[ ! -L $dst ]] || die "シンボリックリンクは上書きしません: ${dst}。何も書き換えていません。そのリンクを確認し、不要なら消してから流し直してください。"
+		else
+			[[ -w $dst ]] || die "更新するファイルが書けません: ${dst}。何も書き換えていません。権限を確認してから流し直してください。"
+		fi
+	else
+		case $kind in
+		guard) die "ガードのファイルが原本と一致しません: ${dst}。何も書き換えていません。マークのない既存のファイルが残っていると、役のフックが動きません。そのファイルの中身を確認して、不要なら移すか消してから、セットアップを流し直してください。既存のファイルは上書きしません。" ;;
+		exec) [[ -x $dst ]] || die "既存のガードを利用できません: ${dst}。何も書き換えていません。実行権限・読み取り権限を管理者に確認してもらい、流し直してください。既存のファイルは上書きしません。" ;;
+		esac
+	fi
+}
+
+host_check_targets() {
+	local i
+	host_list_targets
+	for i in "${!host_target_dst[@]}"; do
+		host_check_target "${host_target_kind[$i]}" "${host_target_dst[$i]}"
+	done
+}
+
+# 許可と起動ファイルも、読む前に同じ規則で調べる。
+host_check_project_targets() {
+	local id=$1
+	[[ $id =~ ^[A-Za-z0-9_-]+$ ]] || die 'プロジェクト ID が不正です。'
+	host_paths
+	allowed_repos_file="$agent_home/allowed-repos.d/$id"
+	project_shell_dir="$agent_home/template/shell/$id"
+	host_check_target allowed-repos "$allowed_repos_file"
+	host_check_target shell-startup "$project_shell_dir/.zshenv"
+	host_check_target shell-startup "$project_shell_dir/env.sh"
+}
+
 prepare_host() {
-	local file
+	local file real_gh_dir
 	host_paths
 	check_runtime_tools || die '選んだランタイムを導入してから流し直してください。'
-	(umask 077; mkdir -p "$agent_home/claude" "$agent_home/codex" "$agent_home/bin" "$agent_home/git-hooks") || die 'ホストの置き場を作れませんでした。'
+	# 置き場を作る前に全件を確認する。書けない置き先が一つでもあれば、既存のファイルや権限を変えない。
+	host_check_targets
+	(umask 077; mkdir -p "$agent_home/claude" "$agent_home/codex" "$agent_home/bin" "$agent_home/git-hooks" "$agent_home/guard/gh-empty") || die 'ホストの置き場を作れませんでした。'
+	# 書き換える前に、前もって判定できる確認をすべて流す（docs/agent-guards.md の「更新の順序」の 1）。どれかが合わなければ、ガード・設定・許可・起動ファイルのどれも書かずに止まる。
+	real_gh_dir=$(host_real_gh_dir) || exit 1
+	host_check_isolation "$real_gh_dir"
+	host_isolation_checked=yes
+	if uses_runtime claude; then
+		host_claude_settings check
+		host_check_claude_auth
+	fi
+	if uses_runtime codex; then
+		host_codex_check
+		CODEX_HOME="$agent_home/codex" codex login status >/dev/null 2>&1 || die "エージェント用の Codex にログインしてください: CODEX_HOME=$agent_home/codex codex login"
+	fi
+	# ここから書く。役の GH_CONFIG_DIR に渡す空の置き場は、ファイルがあると認証が成り立つので、権限を絞る。
+	chmod 700 "$agent_home/guard/gh-empty" || die '空の gh の置き場の権限を設定できませんでした。'
+	# ガードのスクリプトと、Codex の信頼。共有の settings.json のフックか役の引数が指すまで、役の動作を変えない。
+	# フックのスクリプトと、PreToolUse が読む分割の部品は、settings.json のフックがこの置き場を指す。
+	host_guard_file "$root/common/guard/git-credential" "$agent_home/guard/git-credential"
+	host_guard_file "$root/common/guard/git-ssh" "$agent_home/guard/git-ssh"
+	host_guard_file "$root/common/guard/pre-tool-use" "$agent_home/guard/pre-tool-use"
+	host_guard_file "$root/common/guard/stop" "$agent_home/guard/stop"
+	host_guard_file "$root/common/guard/shell_split.py" "$agent_home/guard/shell_split.py"
 	host_shared_file "$root/common/guard/gh" "$agent_home/bin/gh" yes
 	host_shared_file "$root/common/guard/pre-push" "$agent_home/git-hooks/pre-push" yes
 	host_shared_file "$root/common/host/start-daemon" "$agent_home/start-daemon" yes
@@ -301,22 +617,11 @@ prepare_host() {
 	ui_phase_active || printf '使用する gh のガード: %s\n使用する git push のガード: %s\n' "$agent_home/bin/gh" "$agent_home/git-hooks/pre-push" >&2
 	[[ -f $agent_home/bin/gh && -x $agent_home/bin/gh && -f $agent_home/git-hooks/pre-push && -x $agent_home/git-hooks/pre-push ]] || die '既存のガードを利用できません。表示したファイルの実行権限・読み取り権限を管理者に確認してもらい、流し直してください。既存のファイルは上書きしません。'
 	if uses_runtime codex; then
-		host_shared_file "$root/common/codex/config.toml" "$agent_home/codex/config.toml" no
+		host_codex_config
 		ui_phase_active || printf '使用する Codex の設定: %s\n' "$agent_home/codex/config.toml" >&2
 		[[ -r $agent_home/codex/config.toml ]] || die 'Codex の設定を利用できません。表示したファイルの読み取り権限を管理者に確認してもらい、流し直してください。既存の設定は上書きしません。'
-		# ログインシェルでは別の起動ファイルが効くため、確認した環境とそろえる。
-		if ! python3 - "$agent_home/codex/config.toml" <<'PY'
-import sys
-
-try:
-    import tomllib
-    with open(sys.argv[1], "rb") as source:
-        config = tomllib.load(source)
-except (ImportError, OSError, ValueError):
-    sys.exit(1)
-sys.exit(0 if config.get("allow_login_shell") is False else 1)
-PY
-		then
+		# 保つ人の設定は書く前に読んだ。ここは、ひな形から書いた設定を確認する。
+		if ! host_codex_login_shell_off "$agent_home/codex/config.toml"; then
 			die 'Codex の設定で allow_login_shell = false を確認できません。表示した設定が正しい TOML で、トップレベルの値が真偽値の false か管理者に確認してもらってください。既存の設定は上書きしません。'
 		fi
 		host_codex_unmarked_keys "$agent_home/codex/config.toml"
@@ -329,13 +634,6 @@ PY
 			host_shared_file "$file" "$agent_home/bin/${file##*/}" yes
 		fi
 	done
-	if uses_runtime claude; then
-		host_claude_settings
-		host_check_claude_auth
-	fi
-	if uses_runtime codex; then
-		CODEX_HOME="$agent_home/codex" codex login status >/dev/null 2>&1 || die "エージェント用の Codex にログインしてください: CODEX_HOME=$agent_home/codex codex login"
-	fi
 	prepare_daemon
 }
 
@@ -344,17 +642,13 @@ prepare_project_host() {
 	[[ $# -ge 2 ]] || die 'prepare_project_host にはプロジェクト ID と、一つ以上の OWNER/REPO を渡してください。'
 	local id=$1 repo file content='' previous='' removed='' escaped escaped_bin needle='{{ALLOWED_REPOS_FILE}}' bin_needle='{{AGENT_BIN_DIR}}'
 	shift
-	[[ $id =~ ^[A-Za-z0-9_-]+$ ]] || die 'プロジェクト ID が不正です。'
 	# 全件を確認してから置き場を作る。ファイルは選択順で一行に一つとする。
 	for repo in "$@"; do
 		repo=$(printf '%s' "$repo" | LC_ALL=C tr '[:upper:]' '[:lower:]')
 		[[ $repo =~ ^[a-z0-9][a-z0-9_.-]*/[a-z0-9_.-]+$ && ${repo#*/} != . && ${repo#*/} != .. ]] || die 'リポジトリは OWNER/REPO の形で渡してください。'
 		if [[ $'\n'$content$'\n' != *$'\n'"$repo"$'\n'* ]]; then content+=${content:+$'\n'}$repo; fi
 	done
-	host_paths
-	allowed_repos_file="$agent_home/allowed-repos.d/$id"
-	project_shell_dir="$agent_home/template/shell/$id"
-	[[ ! -L $allowed_repos_file ]] || die "シンボリックリンクは上書きしません: $allowed_repos_file"
+	host_check_project_targets "$id"
 	if [[ -f $allowed_repos_file ]]; then
 		previous=$(cat "$allowed_repos_file") || die '前の許すリポジトリを読めませんでした。'
 		while IFS= read -r repo; do
@@ -385,7 +679,7 @@ prepare_project_host() {
 		content=$(cat "$root/common/shell/$file") || die 'シェルのひな形を読めませんでした。'
 		content=${content//"$needle"/"$escaped"}
 		content=${content//"$bin_needle"/"$escaped_bin"}
-		if [[ -e $project_shell_dir/$file || -L $project_shell_dir/$file ]] && ! grep -qx '# multica-squad-kit-managed' "$project_shell_dir/$file"; then
+		if [[ -e $project_shell_dir/$file || -L $project_shell_dir/$file ]] && ! { [[ -f $project_shell_dir/$file ]] && grep -qx '# multica-squad-kit-managed' "$project_shell_dir/$file"; }; then
 			ui_notice warn "$project_shell_dir/$file" "マークのない既存のファイルをそのまま使います" || ui_warning "マークのない既存のファイルをそのまま使います: $project_shell_dir/$file"
 			continue
 		fi
@@ -393,21 +687,55 @@ prepare_project_host() {
 	done
 }
 
-host_check_guards() (
-	umask 077
-	local content=$1 probe file escaped escaped_bin needle='{{ALLOWED_REPOS_FILE}}' bin_needle='{{AGENT_BIN_DIR}}' repo shell mode allowed shell_content
-	local guard_dir dir candidate real_gh_dir='' probe_path path_dirs
-	[[ -x $agent_home/bin/gh && -x $agent_home/git-hooks/pre-push ]] || die '使うガードに実行権限がありません。表示した gh と pre-push の置き場と権限を管理者に確認してもらってください。'
-	guard_dir=$(cd "$agent_home/bin" && pwd) || die 'gh のガードの置き場を読めませんでした。'
+# 役の gh の認証の分離を確認できないときに止める。変数の名前だけを出し、値は出さない。
+# 引数は、ガードの外にある本物の gh の置き場。
+host_check_isolation() {
+	local real_gh_dir=$1 name set_names='' human_gh empty entries status_output status
+	for name in GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN; do
+		[[ -z ${!name:-} ]] || set_names+=${set_names:+、}$name
+	done
+	[[ -z $set_names ]] || die "セットアップを流した端末に ${set_names} があります。gh はこの変数を保存した認証より先に使うので、空の置き場でも役の gh が認証されます。端末の設定（シェルの起動ファイルなど）から変数を消し、新しい端末でセットアップを流し直してください。何も変更していません。"
+	human_gh=$(host_human_gh_dir) || die '人の gh の置き場を決められませんでした。'
+	[[ -d $human_gh ]] || die "人の gh の置き場が見つかりません: ${human_gh}。このホストで gh auth login を済ませてから、セットアップを流し直してください。何も変更していません。"
+	empty=$agent_home/guard/gh-empty
+	[[ -d $empty ]] || die "空の gh の置き場がありません: ${empty}。セットアップを流し直してください。"
+	[[ -r $empty && -x $empty ]] && entries=$(cd "$empty" && find . -mindepth 1 -maxdepth 1 -print) || die "空の gh の置き場を読めませんでした: ${empty}。この置き場の読み取りと探索の権限を確認してから流し直してください。何も変更していません。"
+	[[ -z $entries ]] || die "空の gh の置き場にファイルがあります: ${empty}（$(printf '%s' "$entries" | tr '\n' ' ')）。中のファイルを消してから、セットアップを流し直してください。何も変更していません。"
+	# 役と同じ空の置き場で、本物の gh が未認証を返すかを見る。
+	status=0
+	status_output=$(env -u GH_HOST -u GH_TOKEN -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN -u GITHUB_ENTERPRISE_TOKEN GH_CONFIG_DIR="$empty" GH_PROMPT_DISABLED=1 "$real_gh_dir/gh" auth status 2>&1) || status=$?
+	if [[ $status == 0 ]]; then
+		die "空の gh の置き場でも、本物の gh（${real_gh_dir}/gh）が認証されています。gh auth status の表示から認証の置き場（環境変数、キーチェーン、設定ファイルなど）を探して外し、セットアップを流し直してください。何も変更していません。表示: $(printf '%s' "$status_output" | tr '\n' ' ')"
+	fi
+	# 未認証の終了は、終了コード 1 と「not logged」の表示で見分ける。実行できない・異常終了などは未認証と確認できないので止める。
+	if [[ $status != 1 ]] || ! grep -qi 'not logged' <<<"$status_output"; then
+		die "空の gh の置き場で、本物の gh が未認証かを確認できませんでした。確認した gh: ${real_gh_dir}/gh。gh auth status の終了コード: ${status}。gh の表示: $(printf '%s' "$status_output" | tr '\n' ' ')。上の gh の実行権限と導入を確認し、セットアップを流し直してください。何も変更していません。"
+	fi
+}
+
+# ガードの外の PATH にある本物の gh の置き場を返す。ガードの置き場（$agent_home/bin）はまだなくてもよい。
+host_real_gh_dir() {
+	local guard_dir dir candidate path_dirs
+	guard_dir=$(cd "$agent_home/bin" 2>/dev/null && pwd) || guard_dir=$agent_home/bin
 	IFS=: read -r -a path_dirs <<<"$PATH"
 	for dir in "${path_dirs[@]}"; do
 		[[ -n $dir && -x $dir/gh ]] || continue
 		candidate=$(cd "$dir" 2>/dev/null && pwd) || continue
 		[[ $candidate != "$guard_dir" ]] || continue
-		real_gh_dir=$candidate
-		break
+		printf '%s\n' "$candidate"
+		return 0
 	done
-	[[ -n $real_gh_dir ]] || die '本物の gh がガードの外の PATH に見つかりません。gh の導入と PATH を確認してください。'
+	die '本物の gh がガードの外の PATH に見つかりません。gh の導入と PATH を確認してください。'
+}
+
+host_check_guards() (
+	umask 077
+	local content=$1 probe file escaped escaped_bin needle='{{ALLOWED_REPOS_FILE}}' bin_needle='{{AGENT_BIN_DIR}}' repo shell mode allowed shell_content
+	local real_gh_dir='' probe_path
+	[[ -x $agent_home/bin/gh && -x $agent_home/git-hooks/pre-push ]] || die '使うガードに実行権限がありません。表示した gh と pre-push の置き場と権限を管理者に確認してもらってください。'
+	real_gh_dir=$(host_real_gh_dir) || exit 1
+	# 認証の分離は、prepare_host が書き換える前に確認する。ここだけを流すときは、ここで確認する。
+	[[ ${host_isolation_checked:-no} == yes ]] || host_check_isolation "$real_gh_dir"
 	probe_path="$real_gh_dir:$PATH"
 	mkdir -p "$root/tmp" || die 'ガードの確認の作業場所を作れませんでした。'
 	probe=$(mktemp -d "$root/tmp/guard-check.XXXXXX") || die 'ガードの確認の作業場所を作れませんでした。'

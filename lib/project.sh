@@ -1,6 +1,7 @@
 # プロジェクトとエージェントの設定を終えてから、スクワッドを設定する。
 prepare_project() (
 	umask 077
+	local project_id=$1
 	local project_work enabled role file model thinking name id result current desired skills matches field value runtime max custom_args
 	local profile people member_name owner_mention squad_name squad_id records='{}' values
 	local selected_repositories selected_repo
@@ -59,12 +60,9 @@ prepare_project() (
 	values=$(jq -n --arg project_name "$project_name" --arg project_key "$project_key" --arg member_key "$member_key" --arg member_name "$member_name" --arg repository "$repository" --arg owner_mention "$owner_mention" '{project_name:$project_name,project_key:$project_key,member_key:$member_key,member_name:$member_name,repository:$repository,owner_mention:$owner_mention}')
 	project_repository_values
 	printf '%s\n' "$values" >"$project_work/values.json"
-	# 名前で現在のレコードを探し直す。保存済みの ID は信頼しない。
-	result=$(mc project list --output json) || die 'プロジェクトを取得できませんでした。'
-	project_named "$result" title "$project_name"
-	current=$matches
-	project_id=$(jq -r '.[0].id // empty' <<<"$current")
+	# 質問で選んだ ID を使う。許可を書く直前に、今も同じ名前と ID であることを確認する。
 	if [[ -z $project_id ]]; then
+		recheck_selected_project "$project_id"
 		template_apply "$project_work/values.json" "$root/skeleton/project.md" >"$project_work/description" || die 'プロジェクトの説明を展開できませんでした。'
 		result=$(mc project create --title "$project_name" --description "$(cat "$project_work/description")" --repo "$repository_url" --output json) || die 'プロジェクトを作れませんでした。'
 		project_id=$(project_result_id "$result") || die 'プロジェクト作成の応答が不正です。'
@@ -211,9 +209,9 @@ prepare_project() (
 		fi
 		value=$(template_field "$project_work/$role.rendered" description)
 		custom_args=$(project_desired_args "$model" <<<"$(jq -c '.custom_args // []' <<<"$current")") || die '追加の引数の応答が不正です。'
-		desired=$(jq -c --arg role "$role" --arg description "$value" --argjson mcp "$(project_mcp "$role")" --argjson args "$custom_args" --rawfile instructions "$project_work/$role.body" '.[$role] | del(.id,.name) | .+{description:$description,instructions:($instructions|sub("\n+$";"")),mcp_config:$mcp,custom_args:$args}' <<<"$records")
+		desired=$(jq -c --arg role "$role" --arg description "$value" --argjson mcp "$(project_mcp "$role" "$model")" --argjson args "$custom_args" --rawfile instructions "$project_work/$role.body" '.[$role] | del(.id,.name) | .+{description:$description,instructions:($instructions|sub("\n+$";"")),mcp_config:$mcp,custom_args:$args}' <<<"$records")
 		if ! printf '%s\n%s\n' "$desired" "$current" | jq -se '.[0] as $desired | .[1] | .custom_args=(.custom_args // []) | . as $current | all($desired|to_entries[]; $current[.key]==.value)' >/dev/null; then
-			mc agent update "$id" --runtime-id "$runtime" --model "$model" --thinking-level "$thinking" --max-concurrent-tasks "$max" --description "$value" --instructions "$(cat "$project_work/$role.body")" --mcp-config "$(project_mcp "$role")" --custom-args "$custom_args" --output json >/dev/null || die "本指示を反映できませんでした: $name"
+			mc agent update "$id" --runtime-id "$runtime" --model "$model" --thinking-level "$thinking" --max-concurrent-tasks "$max" --description "$value" --instructions "$(cat "$project_work/$role.body")" --mcp-config "$(project_mcp "$role" "$model")" --custom-args "$custom_args" --output json >/dev/null || die "本指示を反映できませんでした: $name"
 		fi
 		desired=$(cat "$project_work/$role.skills")
 		if [[ $(jq -r '[.skills[]?.id] | sort | join(",")' <<<"$current") != "$desired" ]]; then
@@ -222,6 +220,8 @@ prepare_project() (
 		progress=$((progress+1))
 		ui_phase_active || printf 'エージェントの設定 %s/%s: %s\n' "$progress" "$agent_total" "$name" >&2
 	done
+	# 役の custom_env と引数を書き終えてから、共有の settings.json のフックを書く（docs/agent-guards.md の「更新の順序」）。
+	if uses_runtime claude; then host_claude_settings write; fi
 	ui_phase_done_counted "$agent_total"
 	progress=0
 	ui_phase_start 8
@@ -356,7 +356,7 @@ project_repositories_recheck() {
 	local latest_projects eligible_repos blocked_repos line
 	resolve_link_repositories
 	latest_projects=$(read_list プロジェクト project list) || die '許可先の再確認に必要なプロジェクトを取得できませんでした。'
-	jq -e --arg id "$project_id" 'any(.[]; .id==$id)' >/dev/null <<<"$latest_projects" || die '許可先の再確認で対象のプロジェクトを確認できませんでした。'
+	recheck_selected_project "$project_id" "$latest_projects"
 	repository_choices "$selected_repositories" "$latest_projects" "$project_id"
 	if [[ $(jq length <<<"$blocked_repos") != 0 ]]; then
 		while IFS= read -r line; do ui_error "$line"; done < <(jq -r '.[] | "別プロジェクトに紐付いたため許可できません: \(.repository)（\(.projects|join("、"))）"' <<<"$blocked_repos")
@@ -411,8 +411,9 @@ project_role() {
 	max=$(jq -r --arg role "$1" '.[$role].max_concurrent_tasks' <<<"$records")
 }
 project_desired_args() {
-	jq -c --arg model "$1" '
-		def managed: test("^(allow_login_shell|features[.]shell_snapshot|project_doc_max_bytes)[[:space:]]*=");
+	jq -c --arg model "$1" --arg g "$agent_home/guard" '
+		def sq: "\u0027" + gsub("\u0027"; "\u0027\\\u0027\u0027") + "\u0027";
+		def managed: test("^(allow_login_shell|features[.]shell_snapshot|project_doc_max_bytes|hooks[.]PreToolUse|hooks[.]Stop)[[:space:]]*=");
 		if type=="array" and all(.[]; type=="string") then . else error("引数は文字列の配列が必要です") end |
 		. as $args |
 		reduce range(0; length) as $i ({args:[],skip:false};
@@ -422,14 +423,16 @@ project_desired_args() {
 			elif ($args[$i]=="--enable" and $args[$i+1]=="shell_snapshot") then .skip=true
 			elif $args[$i]=="--enable=shell_snapshot" then .
 			else .args+=[$args[$i]] end) |
-		.args + (if ($model|startswith("gpt-")) then ["-c","allow_login_shell=false","-c","features.shell_snapshot=false","-c","project_doc_max_bytes=65536"] else [] end)'
+		.args + (if ($model|startswith("gpt-")) then ["-c","allow_login_shell=false","-c","features.shell_snapshot=false","-c","project_doc_max_bytes=65536","-c",("hooks.PreToolUse=[{matcher=\"^(Bash|shell|exec_command|local_shell)$\",hooks=[{type=\"command\",command="+((($g+"/pre-tool-use")|sq)|tojson|gsub("\u007f";"\\u007f"))+"}]}]"),"-c",("hooks.Stop=[{hooks=[{type=\"command\",command="+((($g+"/stop")|sq)|tojson|gsub("\u007f";"\\u007f"))+"}]}]")] else [] end)'
 }
 
 project_desired_env() {
-	local use_claude=false
+	local use_claude=false human_gh
 	if uses_runtime claude; then use_claude=true; fi
-	jq -n --arg a "$allowed_repos_file" --arg z "$project_shell_dir" --arg h "$agent_home/git-hooks" --arg c "$agent_home/claude" --arg role "$1" --arg model "$2" --argjson use_claude "$use_claude" '
-		{SQUAD_KIT_ALLOWED_REPOS:$a,ZDOTDIR:$z,BASH_ENV:($z+"/env.sh"),GIT_CONFIG_COUNT:"1",GIT_CONFIG_KEY_0:"core.hooksPath",GIT_CONFIG_VALUE_0:$h} |
+	human_gh=$(host_human_gh_dir) || die '人の gh の置き場を決められませんでした。'
+	jq -n --arg a "$allowed_repos_file" --arg z "$project_shell_dir" --arg h "$agent_home/git-hooks" --arg g "$agent_home/guard" --arg human_gh "$human_gh" --arg c "$agent_home/claude" --arg role "$1" --arg model "$2" --argjson use_claude "$use_claude" '
+		def sq: "\u0027" + gsub("\u0027"; "\u0027\\\u0027\u0027") + "\u0027";
+		{SQUAD_KIT_ALLOWED_REPOS:$a,ZDOTDIR:$z,BASH_ENV:($z+"/env.sh"),GH_CONFIG_DIR:($g+"/gh-empty"),SQUAD_KIT_GH_CONFIG_DIR:$human_gh,GIT_CONFIG_COUNT:"6",GIT_CONFIG_KEY_0:"core.hooksPath",GIT_CONFIG_VALUE_0:$h,GIT_CONFIG_KEY_1:"credential.helper",GIT_CONFIG_VALUE_1:"",GIT_CONFIG_KEY_2:"credential.https://github.com.helper",GIT_CONFIG_VALUE_2:"",GIT_CONFIG_KEY_3:"credential.https://github.com.helper",GIT_CONFIG_VALUE_3:("!"+(($g+"/git-credential")|sq)),GIT_CONFIG_KEY_4:"credential.https://github.com.useHttpPath",GIT_CONFIG_VALUE_4:"true",GIT_CONFIG_KEY_5:"core.sshCommand",GIT_CONFIG_VALUE_5:(($g+"/git-ssh")|sq)} |
 		if ($model|startswith("claude-")) then .+{CLAUDE_CONFIG_DIR:$c,ENABLE_CLAUDEAI_MCP_SERVERS:"false",CLAUDE_CODE_SHELL:"/bin/zsh",CLAUDE_CODE_AUTO_COMPACT_WINDOW:"150000",CLAUDE_ENV_FILE:($z+"/env.sh"),CLAUDE_CODE_DISABLE_BACKGROUND_TASKS:"1",CLAUDE_CODE_DISABLE_CRON:"1",DISABLE_AUTOUPDATER:"1"} else . end |
 		if $role=="usage-monitor" and $use_claude then .+{CLAUDE_CONFIG_DIR:$c,DISABLE_AUTOUPDATER:"1"} else . end |
 		if $role=="dependabot-merger" then .+{SQUAD_KIT_GH_DEPENDABOT_MERGE:"1"} else . end'
@@ -487,6 +490,9 @@ project_skills() {
 	done
 }
 
+# Claude の役は、拡張の MCP がなければ空の {} にする。Multica が --strict-mcp-config を付け、作業ディレクトリの .mcp.json を読まなくなる。
 project_mcp() {
-	if [[ -f $root/extension-mcp.json ]]; then jq -c --arg role "$1" '.[$role] // null' "$root/extension-mcp.json"; else printf 'null\n'; fi
+	local fallback=null
+	[[ $2 == claude-* ]] && fallback='{}'
+	if [[ -f $root/extension-mcp.json ]]; then jq -c --arg role "$1" --argjson fallback "$fallback" '.[$role] // $fallback' "$root/extension-mcp.json"; else printf '%s\n' "$fallback"; fi
 }

@@ -93,13 +93,16 @@ echo 'PASS project: 検証スキルの割り当てがない登録の流し直し
 echo 'PASS custom args: 作成時に Codex にだけ 2 設定を渡し、同じ内容の再実行では設定を書かない'
 echo 'PASS project: HTTPS・SSH・大小文字・末尾の違いは重ねて紐付けず、既存の ref と別種のリソースも保つ'
 
-jq '.custom_args=["--keep","value","--enable","shell_snapshot","--enable=shell_snapshot","--enable","shell_tool","--enable=unified_exec","-c","other=true","-c","allow_login_shell=true","--config","features.shell_snapshot=true","--config=allow_login_shell=true","--config=features.shell_snapshot=true","-c","features.shell_snapshot_extra=true","-c","project_doc_max_bytes=1","--config","project_doc_max_bytes=2","--config=project_doc_max_bytes=3","-c","project_doc_max_bytes_extra=1"]' "$TEST_DB/agents/agent-demo-codex-implementer-owner.json" >"$TEST_DB/new"; mv "$TEST_DB/new" "$TEST_DB/agents/agent-demo-codex-implementer-owner.json"
+jq '.custom_args=["--keep","value","--enable","shell_snapshot","--enable=shell_snapshot","--enable","shell_tool","--enable=unified_exec","-c","other=true","-c","allow_login_shell=true","--config","features.shell_snapshot=true","--config=allow_login_shell=true","--config=features.shell_snapshot=true","-c","features.shell_snapshot_extra=true","-c","project_doc_max_bytes=1","--config","project_doc_max_bytes=2","--config=project_doc_max_bytes=3","-c","project_doc_max_bytes_extra=1","-c","hooks.PreToolUse=[]","--config=hooks.Stop=[]","-c","hooks_extra=1"]' "$TEST_DB/agents/agent-demo-codex-implementer-owner.json" >"$TEST_DB/new"; mv "$TEST_DB/new" "$TEST_DB/agents/agent-demo-codex-implementer-owner.json"
 jq '.custom_args=["--claude-extra","--enable=shell_snapshot","--enable","shell_snapshot","-c","features.shell_snapshot=false","--config","allow_login_shell=false","--config=features.shell_snapshot=false","--config=allow_login_shell=false","--other","value","-c","allow_login_shell_other=true"]' "$TEST_DB/agents/agent-demo-orchestrator-owner.json" >"$TEST_DB/new"; mv "$TEST_DB/new" "$TEST_DB/agents/agent-demo-orchestrator-owner.json"
 : >"$TEST_DB/calls"
 run
-jq -e '.custom_args==["--keep","value","--enable","shell_tool","--enable=unified_exec","-c","other=true","-c","features.shell_snapshot_extra=true","-c","project_doc_max_bytes_extra=1","-c","allow_login_shell=false","-c","features.shell_snapshot=false","-c","project_doc_max_bytes=65536"]' "$TEST_DB/agents/agent-demo-codex-implementer-owner.json" >/dev/null
+jq -e --arg g "$TEMPLATE_AGENT_HOME/guard" "$HOOK_ARGS_DEF"'.custom_args==(["--keep","value","--enable","shell_tool","--enable=unified_exec","-c","other=true","-c","features.shell_snapshot_extra=true","-c","project_doc_max_bytes_extra=1","-c","hooks_extra=1"]+codex_args($g))' "$TEST_DB/agents/agent-demo-codex-implementer-owner.json" >/dev/null
 jq -e '.custom_args==["--claude-extra","--other","value","-c","allow_login_shell_other=true"]' "$TEST_DB/agents/agent-demo-orchestrator-owner.json" >/dev/null
 [[ $(jq -s '[.[]|select(.[0:2]==["agent","update"])]|length' "$TEST_DB/calls") == 2 ]]
+jq -e '.mcp_config=={}' "$TEST_DB/agents/agent-demo-orchestrator-owner.json" >/dev/null
+jq -e '.mcp_config==null' "$TEST_DB/agents/agent-demo-codex-implementer-owner.json" >/dev/null
+echo 'PASS mcp: Claude の役の MCP の設定は拡張がなければ {} になり、Codex の役は空のまま'
 echo 'PASS custom args: 引数だけの不一致でも更新し、両形式の上書きと重複を除き、ほかの引数の順を保つ'
 echo 'PASS custom args: shell_snapshot の両形式の --enable を除き、ほかの機能の有効化は順も保つ'
 

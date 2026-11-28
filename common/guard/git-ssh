@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# multica-squad-kit-managed
+# Multica のエージェントの実行で、SSH の git push を、ワークスペースに紐付いたリポジトリだけに絞る SSH のコマンドの包み。
+# git の core.sshCommand に置く。git は SSH で、最後から 2 番目の引数に行き先、最後の引数にコマンドを渡す。
+#   SCP の形の URL: git-receive-pack 'OWNER/REPO.git'
+#   ssh:// の URL:   git-receive-pack '/OWNER/REPO.git'
+# receive-pack（push）のとき、行き先が github.com の許すリポジトリでなければ止める。読み取りと照会は本物の ssh にそのまま渡し、分類できない形は止める。
+# 許すリポジトリは gh のガードと同じく、SQUAD_KIT_ALLOWED_REPOS、未設定ならホストの既定のファイルから読む。
+set -euo pipefail
+
+ALLOWED_FILE=${SQUAD_KIT_ALLOWED_REPOS:-$HOME/.multica-agent/allowed-repos}
+
+deny() {
+	echo "git push のガード: ${1}。ワークスペースに紐付いたリポジトリ（$(tr '\n' ' ' <"$ALLOWED_FILE" 2>/dev/null)）にだけ SSH で push できる" >&2
+	exit 1
+}
+
+# 判定できない SSH の操作（Git LFS の取得、リモートコマンドなしの接続など）は、push の宛先の拒否とは別の文で止める。許可の一覧の問題ではないので、一覧は出さない。
+undecided() {
+	echo "git push のガード: SSH のコマンドを判定できないので止めた。許可の一覧の問題ではありません。リモートコマンドが git-upload-pack・git-upload-archive・git-receive-pack のどれでもない SSH の操作（Git LFS の取得の git-lfs-authenticate、リモートコマンドなしの接続など）は、判定できないので止めます。LFS のオブジェクトなどが要るときは、人が役の外で取得してください" >&2
+	exit 1
+}
+
+# 受ける形は、リモートのコマンド（最後の引数）で分類し、分類できない形は止める。形ごとの扱いの表は
+# tests/fixtures/git-ssh-forms.tsv にあり、tests/guard-git-test.sh が表の行ごとに確認する。
+#   読み取り: git-upload-pack / git-upload-archive '<パス>'      → 本物の ssh に渡す（リポジトリ名は見ない）
+#   更新:     git-receive-pack '<OWNER>/<REPO>'                  → 行き先と許すリポジトリを確認してから渡す
+#   照会:     -G / -V があり、最後の引数がコマンドでない（空白がない） → 渡す（ssh は接続せずに表示して終わる）
+#   上のどれでもない形（コマンド名の引用・連結・ほかのコマンド・コマンドなし）→ 止める
+if (( $# == 0 )); then
+	undecided
+fi
+last=${!#}
+
+query=false
+if [[ $last != *[[:space:]]* ]]; then
+	for arg in "$@"; do
+		[[ $arg == -G || $arg == -V ]] && query=true
+	done
+fi
+$query && exec ssh "$@"
+
+if [[ $last =~ ^git-(upload-pack|upload-archive)\ \'[A-Za-z0-9_./~-]+\'$ ]]; then
+	exec ssh "$@"
+fi
+
+if [[ $last =~ ^git-receive-pack\ \'/?([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)\'$ ]]; then
+	repo="${BASH_REMATCH[1]}/${BASH_REMATCH[2]%.git}"
+	(( $# >= 2 )) || deny "SSH の push の行き先を判定できないので止めた"
+	args=("$@")
+	host=${args[$# - 2]}
+	[[ $host == github.com || $host == git@github.com ]] || deny "SSH の push の行き先 ${host} は止めた"
+	[[ -f $ALLOWED_FILE ]] && grep -qxiF -- "$repo" "$ALLOWED_FILE" || deny "${repo} への SSH の push は止めた"
+	exec ssh "$@"
+fi
+
+undecided

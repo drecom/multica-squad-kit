@@ -39,7 +39,8 @@ for selected in claude codex; do
   jq -e --arg selected "$selected" --arg env "$TEMPLATE_AGENT_HOME/template/shell/project-a/env.sh" 'if $selected=="claude" then .CLAUDE_ENV_FILE==$env else .CLAUDE_ENV_FILE==null end' "$TEST_DB/env/agent-demo-$role-owner.json" >/dev/null
   role_args='[]'
   if [[ $role == orchestrator ]]; then role_args='["--keep","value"]'; fi
-  jq -e --arg selected "$selected" --argjson prefix "$role_args" '.custom_args==($prefix+(if $selected=="codex" then ["-c","allow_login_shell=false","-c","features.shell_snapshot=false","-c","project_doc_max_bytes=65536"] else [] end))' "$TEST_DB/agents/agent-demo-$role-owner.json" >/dev/null
+  jq -e --arg selected "$selected" --arg g "$TEMPLATE_AGENT_HOME/guard" --argjson prefix "$role_args" "$HOOK_ARGS_DEF"'.custom_args==($prefix+(if $selected=="codex" then codex_args($g) else [] end))' "$TEST_DB/agents/agent-demo-$role-owner.json" >/dev/null
+  jq -e --arg selected "$selected" 'if $selected=="claude" then .mcp_config=={} else .mcp_config==null end' "$TEST_DB/agents/agent-demo-$role-owner.json" >/dev/null
  done
  jq -e --arg selected "$selected" --arg model "$(if [[ $selected == claude ]]; then echo claude-fable-5-2; else echo gpt-6.2-astra; fi)" '.model==$model and .runtime_id==("runtime-"+$selected) and .thinking_level=="xhigh"' "$TEST_DB/agents/agent-demo-$selected-principal-owner.json" >/dev/null
  jq -e '.EXTRA=="keep"' "$TEST_DB/env/agent-demo-orchestrator-owner.json" >/dev/null
@@ -103,3 +104,65 @@ for selected in claude codex; do
 done
 echo 'PASS extension runtimes: 選ばなかったランタイムのモデルを、全エージェントの作成前に拒否する'
 rm "$test_dir/extension/agents/helper.md"
+
+# 置き場に空白と単引用符があっても、Codex はフックのコマンドをシェルで実行するので、役の引数のコマンドは 1 つのパスとして読まれ、2 つのフックのスクリプトが起動する。
+export TEMPLATE_AGENT_HOME="$test_dir/ho st's home"
+export TEST_RUNTIMES='["codex"]' TEST_COMPLETE=yes TEST_ROLE_COUNT=14
+export TEST_REPOSITORIES='[{"url":"https://github.com/example/project","repository":"example/project"}]'
+reset_db
+cp "$root/common/guard/pre-tool-use" "$root/common/guard/stop" "$root/common/guard/shell_split.py" "$TEMPLATE_AGENT_HOME/guard/"
+chmod +x "$TEMPLATE_AGENT_HOME/guard/pre-tool-use" "$TEMPLATE_AGENT_HOME/guard/stop"
+run
+guard_env_dir="$test_dir/guard-env"
+mkdir -p "$guard_env_dir/bin" "$guard_env_dir/state"
+ln -sf "$(command -v python3)" "$guard_env_dir/bin/python3"
+# ガードは MULTICA_TASK_ID がないと何もせずに通す。実行の環境（エージェントの中か CI か）に左右されないよう、値と PATH（multica なし）と状態の置き場を固定する。
+python3 - "$TEST_DB/agents/agent-demo-codex-implementer-owner.json" "$TEMPLATE_AGENT_HOME" "$guard_env_dir" <<'PY'
+import json
+import subprocess
+import sys
+
+args = json.load(open(sys.argv[1], encoding="utf-8"))["custom_args"]
+guard = sys.argv[2] + "/guard"
+guard_env = {"PATH": sys.argv[3] + "/bin:/usr/bin:/bin", "HOME": sys.argv[3], "MULTICA_TASK_ID": "task-test", "SQUAD_KIT_STATE_DIR": sys.argv[3] + "/state"}
+commands = {}
+for value in args:
+    for name in ("PreToolUse", "Stop"):
+        if value.startswith("hooks.%s=" % name):
+            # 引数の値は TOML の文字列（JSON と同じ書き方）で、コマンドを 1 つ持つ。
+            start = value.index('command="') + len("command=")
+            commands[name] = json.loads(value[start:value.index('"}', start) + 1])
+assert set(commands) == {"PreToolUse", "Stop"}, args
+assert commands["PreToolUse"].startswith("'") and commands["PreToolUse"].endswith("'"), commands
+pre = subprocess.run(["/bin/sh", "-c", commands["PreToolUse"]], input='{"tool_name":"Bash","tool_input":{"command":"ls"}}', capture_output=True, text=True, env=guard_env)
+assert pre.returncode == 2 and "PreToolUse のガード" in pre.stderr, (pre.returncode, pre.stderr)
+stop = subprocess.run(["/bin/sh", "-c", commands["Stop"]], input='{"hook_event_name":"Stop"}', capture_output=True, text=True, env=guard_env)
+assert stop.returncode == 0 and "decision" in stop.stdout, (stop.returncode, stop.stdout, stop.stderr)
+# 引用しないと、同じパスは空白で割れて 127、単引用符で閉じずに 2 で終わる。
+bare = subprocess.run(["/bin/sh", "-c", guard + "/pre-tool-use"], input="{}", capture_output=True, text=True, env=guard_env)
+assert bare.returncode != 2 or "PreToolUse のガード" not in bare.stderr, bare
+PY
+echo 'PASS project runtimes: 置き場に空白と単引用符があっても、役の引数のコマンドをシェルで実行すると 2 つのフックのスクリプトが起動する'
+
+# 更新が途中で止まっても、共有の settings.json は書き換わらず（フックと deny は最後に書く）、登録済みの役はそのまま動く。
+agent_snapshot() { for f in "$TEST_DB"/agents/agent-demo-*-owner.json; do jq -c '[.name,.model,.thinking_level,.runtime_id]' "$f"; done | sort; }
+snapshot_shared() { { cat "$TEMPLATE_AGENT_HOME/claude/settings.json"; agent_snapshot; } | shasum | cut -d' ' -f1; }
+unset TEST_COMPLETE TEST_REPOSITORIES
+export TEST_EXCLUDED='[]' TEST_ROLE_COUNT=17 TEST_RUNTIMES='["claude","codex"]'
+for stop in env_set; do
+ rm -rf "$TEST_DB" "$TEMPLATE_AGENT_HOME"
+ cp -R "$test_dir/completed/db" "$TEST_DB"
+ cp -R "$test_dir/completed/host" "$TEMPLATE_AGENT_HOME"
+ mkdir -p "$TEMPLATE_AGENT_HOME/claude"
+ printf '%s\n' '{"theme":"dark","permissions":{"allow":["Bash(ls)"]}}' >"$TEMPLATE_AGENT_HOME/claude/settings.json"
+ before=$(snapshot_shared)
+ : >"$TEST_DB/calls"
+ # 役の custom_env を書いている途中で止まる。
+ TEST_FAIL='agent env set' deny
+ [[ $(snapshot_shared) == "$before" ]]
+ if grep -q 'hooks' "$TEMPLATE_AGENT_HOME/claude/settings.json"; then echo '止まったのにフックが書かれた' >&2; exit 1; fi
+ # 止まったあとに流し直すと、フックと deny がそろって書かれる。
+ run
+ grep -q 'hooks' "$TEMPLATE_AGENT_HOME/claude/settings.json"
+done
+echo 'PASS project runtimes: 更新が custom_env の書き込みの途中で止まっても、共有の settings.json は変わらず、流し直すと書かれる'

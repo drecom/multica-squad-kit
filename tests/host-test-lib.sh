@@ -1,5 +1,6 @@
-# host-test*.sh が読み込む共通の準備（スタブ・作業ディレクトリ・run / deny / set_mode / agent_env）。単独では実行しない。
-# set -euo pipefail は読み込む側で付ける。
+# tests/host-test.sh と tests/host-order-*-test.sh が共有する準備。スタブの gh・multica・claude・codex、prepare_host を流す run.sh、
+# run・deny・set_mode・agent_env と、書かれるはずの Codex の設定を作る関数を置く。source して使う。
+set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 mkdir -p "$root/tmp"
 test_dir=$(mktemp -d "$root/tmp/host-test.XXXXXX")
@@ -99,14 +100,20 @@ time.sleep(300)' "$base/desc-pid" "$base/codex-pid" ;;
   esac ;;
  esac
 fi
+# 役と同じ引数で起こした app-server が hooks/list を返す。応答は codex-hooks-stub.py が作る。
+if [[ $1 == app-server && $2 == --listen ]]; then exec python3 "$base/codex-hooks-stub.py" "$base" "$@"; fi
 [[ $* == 'login status' && $CODEX_HOME == */codex ]] || exit 92
 [[ ! -f $base/no-codex-auth ]]
 STUB
+cp "$root/tests/codex-hooks-stub.py" "$test_dir/codex-hooks-stub.py"
 printf '#!/bin/bash\nexit 0\n' >"$test_dir/bin/sleep"
 chmod +x "$test_dir/bin/"*
 export PATH="$test_dir/bin:$PATH" TEMPLATE_AGENT_HOME="$test_dir/agent's home" TEMPLATE_DAEMON_ID_FILE="$test_dir/daemon.id"
-export VSCODE_TEST_MARKER=must-not-be-inherited
+export VSCODE_TEST_MARKER=must-not-be-inherited GH_CONFIG_DIR="$test_dir/human-gh"
 printf daemon-a >"$TEMPLATE_DAEMON_ID_FILE"
+# 人の gh の置き場は、セットアップが見つけられる場所に置く。端末のトークンは、手元の環境から切り離す。
+mkdir -p "$GH_CONFIG_DIR"
+unset GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN
 cat >"$test_dir/run.sh" <<'RUN'
 #!/bin/bash
 set -euo pipefail
@@ -148,9 +155,50 @@ fi
 [[ -z ${TEST_CODEX_CONFIRM:-} ]] || codex_confirm_seconds=$TEST_CODEX_CONFIRM
 # 拡張を使うセットアップと同じく、root を lib を持たない作業場所へ付け替え、原本は kit_root が指す（lib/extensions.sh）。
 if [[ -n ${TEST_EXTENSION_WORK:-} ]]; then kit_root=$root; root=$TEST_EXTENSION_WORK; fi
-prepare_host
+if [[ ${2:-} == project ]]; then
+ prepare_project_host project-order example/next
+else
+ prepare_host
+fi
 RUN
-run() { /bin/bash "$test_dir/run.sh" "$root" >"$test_dir/out" 2>"$test_dir/err"; }
+# TEST_LIMIT（秒）があるときは、その時間で打ち切る。応答しない特殊ファイルを読んで待つ実装を、止まらないテストにせず落とすため。
+run() {
+ if [[ -n ${TEST_LIMIT:-} ]]; then
+  python3 -c 'import os, signal, subprocess, sys
+child = subprocess.Popen(["/bin/bash", sys.argv[1], sys.argv[2], *sys.argv[6:]],
+                         stdout=open(sys.argv[3], "w"), stderr=open(sys.argv[4], "w"),
+                         start_new_session=True)
+try:
+    sys.exit(child.wait(timeout=int(sys.argv[5])))
+except subprocess.TimeoutExpired:
+    os.killpg(child.pid, signal.SIGKILL)
+    child.wait()
+    sys.exit(124)' "$test_dir/run.sh" "$root" "$test_dir/out" "$test_dir/err" "$TEST_LIMIT" "$@"
+ else
+  /bin/bash "$test_dir/run.sh" "$root" "$@" >"$test_dir/out" 2>"$test_dir/err"
+ fi
+}
 deny() { if run; then exit 1; fi; [[ -s $test_dir/err ]]; }
 set_mode() { printf '%s\n' "$1" >"$test_dir/mode"; : >"$test_dir/calls"; }
 agent_env() { printf 'CODEX_HOME=%s/codex PATH=%s/bin:/usr/bin\n' "$TEMPLATE_AGENT_HOME" "$TEMPLATE_AGENT_HOME" >"$test_dir/process-env"; }
+# ひな形に、スタブが返す hooks/list の値（役と同じ定義から決まる）を埋めた、書かれるはずの設定。
+expected_codex_config() {
+ python3 - "$root/common/codex/config.toml" "$TEMPLATE_AGENT_HOME" >"$test_dir/expected-config" <<'PY'
+import hashlib
+import sys
+
+template = open(sys.argv[1], encoding="utf-8").read()
+guard = sys.argv[2] + "/guard"
+matcher = "^(Bash|shell|exec_command|local_shell)$"
+lines = []
+for event, snake, script, value in (("preToolUse", "pre_tool_use", "pre-tool-use", matcher), ("stop", "stop", "stop", None)):
+    digest = hashlib.sha256(("%s|%s|%s" % (event, "'" + (guard + "/" + script).replace("'", "'\\''") + "'", value)).encode()).hexdigest()
+    lines += ['[hooks.state."/<session-flags>/config.toml:%s:0:0"]' % snake, 'trusted_hash = "sha256:%s"' % digest]
+sys.stdout.write(template.replace("{{HOOKS_STATE}}", "\n".join(lines)))
+PY
+}
+# 人の設定（マークなし）に足す、信頼の行。値はスタブが返す hooks/list と同じ。
+trust_lines() {
+ expected_codex_config
+ sed -n '/^\[hooks\.state\./,$p' "$test_dir/expected-config"
+}

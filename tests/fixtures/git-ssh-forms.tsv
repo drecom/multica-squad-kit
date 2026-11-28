@@ -1,0 +1,52 @@
+# common/guard/git-ssh が受ける形の表。列は ID・扱い・引数（JSON の配列）・形の説明をタブで区切る。
+# 扱いは pass（本物の ssh に引数のまま渡す）か block:<止めたときの文に含む文字列>。 undecided は、判定できない SSH の操作として、push の宛先の拒否とは別の文（許可の一覧を出さない）で止める。
+# 許すリポジトリは example/template。tests/guard-git-test.sh が行ごとに確認する。
+push-scp	pass	["git@github.com", "git-receive-pack 'example/template.git'"]	SCP の形で許すリポジトリ
+push-no-git	pass	["git@github.com", "git-receive-pack 'example/template'"]	.git なし
+push-case	pass	["git@github.com", "git-receive-pack 'EXAMPLE/template.git'"]	大文字小文字の違い
+push-ssh-url	pass	["git@github.com", "git-receive-pack '/example/template.git'"]	ssh:// の形（先頭の /）
+push-options	pass	["-o", "SendEnv=GIT_PROTOCOL", "-p", "22", "git@github.com", "git-receive-pack '/example/template.git'"]	オプションとポートつき
+push-bare-host	pass	["-4", "github.com", "git-receive-pack 'example/template.git'"]	ユーザーなしの github.com
+push-other	block:other/repo への SSH の push は止めた	["git@github.com", "git-receive-pack 'other/repo.git'"]	許していないリポジトリ
+push-other-slash	block:other/repo への SSH の push は止めた	["git@github.com", "git-receive-pack '/other/repo.git'"]	許していない・先頭の /
+push-other-opts	block:other/repo への SSH の push は止めた	["-o", "SendEnv=GIT_PROTOCOL", "git@github.com", "git-receive-pack '/other/repo'"]	許していない・オプションつき
+push-other-name	block:example/other への SSH の push は止めた	["git@github.com", "git-receive-pack 'example/other.git'"]	同じ OWNER の別リポジトリ
+push-name-receive-pack	block:other/x-receive-pack への SSH の push は止めた	["git@github.com", "git-receive-pack 'other/x-receive-pack.git'"]	リポジトリ名に receive-pack
+push-host-outside	block:行き先 git@outside.example は止めた	["git@outside.example", "git-receive-pack 'example/template.git'"]	github.com 以外の host
+push-host-suffix	block:行き先 git@github.com.evil.example は止めた	["git@github.com.evil.example", "git-receive-pack 'example/template.git'"]	github.com を前に持つ別 host
+push-host-ssh-github	block:行き先 git@ssh.github.com は止めた	["git@ssh.github.com", "git-receive-pack 'example/template.git'"]	ssh.github.com
+push-no-host	block:判定できないので止めた	["git-receive-pack 'example/template.git'"]	行き先なしのコマンドだけ
+read-other	pass	["git@github.com", "git-upload-pack 'other/repo.git'"]	許していないリポジトリの fetch
+read-slash	pass	["git@github.com", "git-upload-pack '/other/repo.git'"]	先頭の / の fetch
+read-allowed	pass	["git@github.com", "git-upload-pack 'example/template.git'"]	許すリポジトリの fetch
+read-options	pass	["-o", "SendEnv=GIT_PROTOCOL", "git@github.com", "git-upload-pack '/other/repo.git'"]	オプションつきの fetch
+read-outside	pass	["git@outside.example", "git-upload-pack 'other/repo.git'"]	ほかの host の fetch
+read-name-receive-pack	pass	["git@github.com", "git-upload-pack 'other/x-receive-pack.git'"]	リポジトリ名に receive-pack の fetch
+read-name-receive-pack2	pass	["git@github.com", "git-upload-pack '/other/receive-pack'"]	パスが receive-pack の fetch
+read-name-git-receive-pack	pass	["-o", "SendEnv=GIT_PROTOCOL", "git@github.com", "git-upload-pack '/other/git-receive-pack.git'"]	パスが git-receive-pack.git の fetch
+read-archive	pass	["git@github.com", "git-upload-archive 'other/repo.git'"]	upload-archive
+query-G	pass	["-G", ""]	種類の照会 -G
+query-V	pass	["-V"]	種類の照会 -V
+query-G-host	pass	["-G", "git@github.com"]	-G と host
+query-G-recvhost	pass	["-G", "receive-pack.example"]	host 名に receive-pack・-G
+query-G-recvhost-port	pass	["-G", "-p", "2222", "receive-pack.example"]	host 名に receive-pack・ポート・-G
+read-recvhost-port	pass	["-p", "2222", "git@receive-pack.example", "git-upload-pack 'other/repo.git'"]	host 名に receive-pack・ポートの fetch
+push-recvhost-port	block:行き先 git@receive-pack.example は止めた	["-p", "2222", "git@receive-pack.example", "git-receive-pack 'example/template.git'"]	host 名に receive-pack・ポートの push
+quoted-cmd	undecided	["git@github.com", "'git-receive-pack' 'other/repo.git'"]	単引用符でくくったコマンド名
+quoted-cmd-dq	undecided	["git@github.com", "\"git-receive-pack\" 'other/repo.git'"]	二重引用符のコマンド名
+chained	undecided	["git@github.com", "git-upload-pack 'a/b'; git-receive-pack 'other/repo.git'"]	読み取りに push を連結
+chained-and	undecided	["git@github.com", "git-upload-pack 'a/b' && git-receive-pack 'other/repo.git'"]	&& の連結
+subst	undecided	["git@github.com", "git-upload-pack '$(id)'"]	コマンド置換
+upload-quote-inject	undecided	["git@github.com", "git-upload-pack 'a'b'"]	パスの中の引用符
+no-command	undecided	["git@github.com"]	コマンドなし（host だけ）
+no-args	undecided	[]	引数なし
+shell	undecided	["git@github.com", "sh"]	対話の shell
+lfs	undecided	["git@github.com", "git-lfs-authenticate 'other/repo.git' download"]	git-lfs-authenticate
+abs-path	undecided	["git@github.com", "/usr/bin/git-receive-pack 'example/template.git'"]	絶対パスのコマンド
+git-space	undecided	["git@github.com", "git receive-pack 'example/template.git'"]	git receive-pack
+bare-cmd	undecided	["git-receive-pack"]	引数のない git-receive-pack
+unquoted-path	undecided	["git@github.com", "git-receive-pack example/template.git"]	引用符なしのパス
+traversal	undecided	["git@github.com", "git-receive-pack '../example/template.git'"]	../ を含むパス
+extra-path	undecided	["git@github.com", "git-receive-pack 'example/template.git/extra'"]	余分な階層
+two-paths	undecided	["git@github.com", "git-receive-pack 'example/template.git' 'other/repo.git'"]	パスが 2 つ
+query-with-cmd	block:other/repo への SSH の push は止めた	["-G", "git@github.com", "git-receive-pack 'other/repo.git'"]	-G を付けてコマンドを足す

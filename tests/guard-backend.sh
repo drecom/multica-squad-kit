@@ -18,6 +18,17 @@ HELP
 
 HELP
  ;;
+'auth status')
+ # 本物の gh と同じく、トークンの変数か、置き場の中のファイルがあれば認証済みにする。
+ # TEST_GH_AUTH=yes は、キーチェーンなど、置き場の外の認証が残っている状態の再現である。
+ [[ -z ${TEST_GH_AUTH_CALLS:-} ]] || printf '%s\n' "${GH_CONFIG_DIR-unset}" >>"$TEST_GH_AUTH_CALLS"
+ # TEST_GH_AUTH_EXIT は、実行できない・異常終了など、未認証と確認できない終わり方の再現である。
+ if [[ -n ${TEST_GH_AUTH_EXIT:-} ]]; then echo 'gh: broken (test)' >&2; exit "$TEST_GH_AUTH_EXIT"; fi
+ if [[ -n ${GH_TOKEN:-}${GITHUB_TOKEN:-}${GH_ENTERPRISE_TOKEN:-}${GITHUB_ENTERPRISE_TOKEN:-} || ${TEST_GH_AUTH:-no} == yes ]] ||
+  [[ -n ${GH_CONFIG_DIR:-} && -d $GH_CONFIG_DIR && -n $(ls -A "$GH_CONFIG_DIR") ]]; then
+  echo 'github.com: Logged in (test)'; exit 0
+ fi
+ echo 'You are not logged into any GitHub hosts. To log in, run: gh auth login' >&2; exit 1 ;;
 'pr comment --help'|'issue comment --help'|'issue edit --help')
  cat <<'HELP'
 FLAGS

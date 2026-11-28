@@ -106,7 +106,7 @@ export HOME=$test_dir/home TEMPLATE_AGENT_HOME="$test_dir/agent's home"
 export TEMPLATE_DAEMON_ID_FILE=$test_dir/daemon.id TEMPLATE_DAEMON_ATTEMPTS=2 TEMPLATE_DAEMON_INTERVAL=0
 export VSCODE_TEST_MARKER=must-not-be-inherited MULTICA_WORKSPACE_ID=must-not-be-inherited
 export PATH="$test_dir/bin:$PATH"
-unset MULTICA_SERVER_URL
+unset MULTICA_SERVER_URL GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN
 # 原本の外へコピーして実行し、起動まで進んだあとの確認対象も控える。
 cp "$root/common/host/start-daemon" "$test_dir/away/start-daemon"
 # コピーの見張りの待ち（/bin/sleep）だけを、渡された秒数を控える補助に替える（秒数の式には触れない）。替える行が 1 行だけでなければ、原本の形が変わったので失敗にする。
@@ -607,6 +607,29 @@ for failure in 'user profile get --output json' 'daemon status --output json' 'd
  fail_run
 done
 echo 'PASS host-daemon: CLI の読み取り・停止・起動の失敗を成功にしない'
+
+# 起動する端末にトークンの変数があると、gh が認証されるので、デーモンを起動せずに止まる。
+for token in GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN; do
+ reset_host
+ export "$token=secret-test-value"
+ deny
+ unset "$token"
+ grep -q "この端末に ${token} があります" "$test_dir/err"
+ grep -q 'デーモンを起動しません' "$test_dir/err"
+ grep -q '新しい端末' "$test_dir/err"
+ # 値は出さない。起動も停止もしていない（deny が呼び出しなしと、置き場の変化なしを確認する）。
+ ! grep -q 'secret-test-value' "$test_dir/err" "$test_dir/out"
+done
+reset_host
+export GH_TOKEN=secret-a GITHUB_ENTERPRISE_TOKEN=secret-b
+deny
+unset GH_TOKEN GITHUB_ENTERPRISE_TOKEN
+grep -q 'この端末に GH_TOKEN、GITHUB_ENTERPRISE_TOKEN があります' "$test_dir/err"
+# 空の値は、gh も設定ありとして扱わないので、止めない。
+reset_host
+GH_TOKEN= run
+jq -e '.server=="https://example.test"' "$test_dir/resolved.json" >/dev/null
+echo 'PASS host-daemon: 起動する端末にトークンの変数があると、変数の名前と直し方を出し、デーモンを起動せず何も変えずに止まる'
 
 # 通常の置き場も使える。テスト用の置き場に依存しない。
 reset_host

@@ -8,6 +8,10 @@ runtime_part=${runtime_part:-all}
 unset BASH_ENV ZDOTDIR SQUAD_KIT_ALLOWED_REPOS
 mkdir -p "$root/tmp"
 test_dir=$(mktemp -d "$root/tmp/setup-runtimes.XXXXXX")
+# 人の gh の置き場。役の SQUAD_KIT_GH_CONFIG_DIR に渡る値を、手元の環境から切り離す。
+export GH_CONFIG_DIR="$test_dir/human-gh"
+mkdir -p "$GH_CONFIG_DIR"
+unset GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN
 scenario_dir=$test_dir
 # 標準エラーを err に向けたまま止まっても、trap が err 自身へ書き足し続けないよう、元の標準エラーを控えて出す。
 exec 8>&2
@@ -78,6 +82,7 @@ STUB
    else
     cat <<'STUB'
 case "$*" in
+'app-server --listen stdio:// -c '*) exec python3 "$fixture_root/tests/codex-hooks-stub.py" "$scenario_dir" "$@" ;;
 'app-server --strict-config --listen stdio://') [[ $CODEX_HOME == "$scenario_dir/host/codex" ]] ;;
 'login status') [[ $CODEX_HOME == "$scenario_dir/host/codex" ]] ;;
 '--version') jq -r '.versions.codex' "$fixture_root/tests/fixtures/cli/USAGE-CAPTURE.json" ;;
@@ -113,6 +118,7 @@ STUB
  grep -q '^✔ ' "$scenario_dir/out"
  "$python" - "$scenario_dir" <<'PY'
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -150,7 +156,16 @@ for role, agent in agents.items():
     assert agent['instructions'] and '{{' not in agent['instructions'] and '<!-- IF' not in agent['instructions']
     env = db['envs'][agent['id']]
     assert env['SQUAD_KIT_ALLOWED_REPOS'] == str(scenario / 'host/allowed-repos.d/projects-1')
-    assert env['GIT_CONFIG_VALUE_0'] == str(scenario / 'host/git-hooks')
+    guard = (scenario / 'host') / 'guard'
+    assert env['GH_CONFIG_DIR'] == str(guard / 'gh-empty') and env['SQUAD_KIT_GH_CONFIG_DIR'] == os.environ['GH_CONFIG_DIR'], role
+    assert env['GIT_CONFIG_COUNT'] == '6'
+    assert [(env['GIT_CONFIG_KEY_%d' % n], env['GIT_CONFIG_VALUE_%d' % n]) for n in range(6)] == [
+        ('core.hooksPath', str((scenario / 'host') / 'git-hooks')),
+        ('credential.helper', ''),
+        ('credential.https://github.com.helper', ''),
+        ('credential.https://github.com.helper', '!' + "'" + str(guard / 'git-credential') + "'"),
+        ('credential.https://github.com.useHttpPath', 'true'),
+        ('core.sshCommand', "'" + str(guard / 'git-ssh') + "'")], role
     needs_claude = provider == 'claude' or (role == 'usage-monitor' and 'claude' in runtimes)
     assert ('CLAUDE_CONFIG_DIR' in env) == needs_claude, role
     assert ('CLAUDE_CODE_SHELL' in env) == (provider == 'claude'), role
@@ -194,8 +209,12 @@ assert value == ' '.join(runtimes)
 assert (scenario / 'host/codex/config.toml').exists() == ('codex' in runtimes)
 assert (scenario / 'host/allowed-repos.d/projects-1').read_text() == 'example/project\n'
 calls = (scenario / 'runtime-calls').read_text().splitlines()
-# Codex の設定の検証は、設定ファイルの配置のあとで、ログインの確認より前に 1 回流れる。
-expected = (['codex app-server --strict-config --listen stdio://'] if 'codex' in runtimes else []) + [r + (' auth status' if r == 'claude' else ' login status') for r in runtimes]
+# hooks/list の読み取りは、書き換える前の確認として 1 回流れる。
+hook_reads = [call for call in calls if call.startswith('codex app-server --listen stdio:// -c ')]
+assert len(hook_reads) == (1 if 'codex' in runtimes else 0), calls
+calls = [call for call in calls if call not in hook_reads]
+# ログインの確認は書き換える前に流れ、Codex の設定の検証は、設定ファイルの配置のあとに 1 回流れる。
+expected = [r + (' auth status' if r == 'claude' else ' login status') for r in runtimes] + (['codex app-server --strict-config --listen stdio://'] if 'codex' in runtimes else [])
 assert calls == expected, calls
 (scenario / 'first-db.json').write_text(json.dumps(db))
 PY
@@ -207,6 +226,10 @@ PY
  fi
  : >"$scenario_dir/calls.jsonl"
  printf '\n1\n1\ndemo\n1\nowner\n1\n\n0\n\nyes\n' >"$scenario_dir/input"
+ if [[ $runtime_part == host-order ]]; then
+  check_setup_order
+  continue
+ fi
  if [[ $runtime_part != changes ]]; then
  if [[ $runtime_part != issues ]]; then
  /bin/bash "$test_dir/package/setup.sh" <"$scenario_dir/input" >"$scenario_dir/out" 2>"$scenario_dir/err"

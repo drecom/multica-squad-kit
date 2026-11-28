@@ -36,7 +36,7 @@ done
 echo 'PASS project: 空または URL と名前が違う選択はホストとプロジェクトを書き込む前に拒否する'
 
 # 質問時には候補でも、許可の書き換え前に全選択の最新の紐付けを読み直す。
-for kind in new existing new-neighbor list-failure list-invalid project-missing resources-failure resources-invalid resources-url-invalid; do
+for kind in new existing new-neighbor list-failure list-invalid project-missing project-replaced resources-failure resources-invalid resources-url-invalid; do
  reset_db
  mkdir -p "$TEMPLATE_AGENT_HOME/allowed-repos.d" "$TEMPLATE_AGENT_HOME/template/shell/project-a"
  printf 'example/previous\n' >"$TEMPLATE_AGENT_HOME/allowed-repos.d/project-a"
@@ -57,6 +57,7 @@ for kind in new existing new-neighbor list-failure list-invalid project-missing 
  list-failure) export TEST_RECHECK_FAIL_LIST=yes ;;
  list-invalid) export TEST_RECHECK_LIST='{}' ;;
  project-missing) export TEST_RECHECK_LIST='[]' ;;
+  project-replaced) export TEST_RECHECK_LIST='[{"id":"project-a","title":"Renamed"},{"id":"project-b","title":"Demo & literal $HOME"}]' ;;
  resources-failure) export TEST_RECHECK_FAIL_RESOURCES=yes ;;
  resources-invalid) export TEST_RECHECK_RESOURCES='[{"resource_type":"github_repo","resource_ref":{"url":null}}]' ;;
  resources-url-invalid) export TEST_RECHECK_RESOURCES='[{"resource_type":"github_repo","resource_ref":{"url":"https://outside.example/example/third"}}]' ;;
@@ -70,6 +71,7 @@ for kind in new existing new-neighbor list-failure list-invalid project-missing 
   grep -qF 'example/third' "$test_dir/err"
   grep -qF '従来の許可を保って停止' "$test_dir/err"
  fi
+ if [[ $kind == project-replaced ]]; then grep -qF '選んだプロジェクトが変わりました' "$test_dir/err"; fi
  echo "PASS project recheck: $kind は質問後の変更・取得失敗で従来の許可と起動ファイルを保って停止する"
  unset TEST_RECHECK TEST_RECHECK_FAIL_LIST TEST_RECHECK_FAIL_RESOURCES TEST_RECHECK_NEW_NEIGHBOR TEST_RECHECK_LIST TEST_RECHECK_RESOURCES
 done

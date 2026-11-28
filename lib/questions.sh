@@ -337,6 +337,18 @@ pick_project() {
 	done
 }
 
+# 選んだ名前が今も同じ一つの ID を指すか、新しく作る名前が空いていることを確認する。
+recheck_selected_project() {
+	local selected_id=$1 projects
+	if [[ $# -ge 2 ]]; then
+		projects=$2
+	else
+		projects=$(read_list プロジェクト project list) || exit 1
+	fi
+	jq -e --arg title "$project_name" --arg id "$selected_id" '[.[] | select(.title==$title) | .id] == (if $id=="" then [] else [$id] end)' >/dev/null <<<"$projects" ||
+		die "選んだプロジェクトが変わりました: ${project_name}。セットアップを流し直して選び直してください。"
+}
+
 # オートパイロットの名前は、ここだけで作る。リポジトリごとのものには OWNER/REPO を渡す。
 # 登録する名前は common/autopilots.md の見出しで、tests/role-choices-test.sh が同じ名前になることを確認する。
 autopilot_title() {

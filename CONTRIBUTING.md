@@ -339,7 +339,7 @@ bash scripts/build-assets.sh --commit HEAD tmp/assets
 
 `MANIFEST` はファイル不足と改変を、登録前に検出するために残す。変更したらスクリプトで作り直す。
 
-CI は同じ生成をして、コミットした `MANIFEST` と照合する。Git の管理領域と `tmp/` は一覧から除く。
+CI は同じ生成をして、コミットした `MANIFEST` と照合する。Git の管理領域と `tmp/`、Python の実行で生まれる `__pycache__/` と `*.pyc`（`.gitignore` と同じ）は一覧から除く。
 
 混入の検査の一覧は、公開リポジトリに置かない。管理者が Environment `private-terms` の Secret `FORBIDDEN_TERMS` に一行一語で設定する。Environment は main のブランチだけに限り、main にマージ済みの検査コードだけが一覧を読む。設定と確認の方法は[リポジトリの設定](#リポジトリの設定)に従う。
 
