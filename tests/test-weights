@@ -95,7 +95,7 @@ tests/setup-version-test.sh 107
 tests/shell-test.sh 1
 tests/squad-cli-lib-body-table-test.sh 30
 tests/squad-cli-lib-check-runs-test.sh 101
-tests/squad-cli-lib-control-test.sh 11
+tests/squad-cli-lib-control-test.sh 21
 tests/squad-cli-lib-fence-test.sh 3
 tests/squad-cli-lib-gh-test.sh 95
 tests/squad-cli-lib-test.sh 71

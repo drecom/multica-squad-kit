@@ -48,7 +48,7 @@ b0d340d145f7fb575c71b6e2b9be94171da0b5a0bb1366d3f52d4c9041f57ed6  ./common/guard
 003d274f0e18b662fe11322a620d5498a66f56ca3a3f1b118d32f8078f173ea8  ./common/guard/stop
 cbfb45a119121c0449fe4bf6569ed7e9dacb7a618550575db7c2feaa873802e1  ./common/host/start-daemon
 8d7089db252c5cc09c3ae6aea590e3d1a1370450f4fb7f3f9e99fa4290542fff  ./common/labels
-8f0e8725a2ce5c3beb56e1225f1116ab461390700e8b15f83af039e45229bdbe  ./common/monitor/squad-cli-lib
+fdfe80b51143301a3eaa50da40d05f32c91dc16d095c8d1901a8fb90f27f98c8  ./common/monitor/squad-cli-lib
 c9f338dd47ba2cb8aa8e4d2ee2208700faf9f1aa05c5e7407b3bdc9e31d8f14c  ./common/monitor/squad-dependabot-merge
 8f187cb0ff2e26d5e2f4d4acab7c8314f6107908c3c9af15366ab601c4ea52a8  ./common/monitor/squad-dispatch-pick
 11e92028db42a6d5d9c732e2be3719afa7be9466baa4d283126940178c406914  ./common/monitor/squad-pr-link
@@ -740,7 +740,7 @@ ae066d4b0c090b7fc258c3148945fde730f3261ee083db94c0289de66b1b02d2  ./tests/shell-
 8b15fccb4916e3dbc55fb1f831ac001d7a343c4ac91b6881b4178a39472f1589  ./tests/squad-cli-lib-body-table-test.sh
 c4b098847391dd0a566509e0f8f5a6d7d29a59b26bc60cc77cf1ed1ace051805  ./tests/squad-cli-lib-check-runs-test.sh
 9251f4ace2f648d0a7039b3baa8ecb08e6fcf09ca736719a4f31aa3070ec812b  ./tests/squad-cli-lib-contract.py
-0562cda7cbc0810e5f4cf70464eaa63cb2fe0f738eb8cfe3e907540674e3cd4f  ./tests/squad-cli-lib-control-test.sh
+3a187817d0061c1cc6f83c52ac3fe0d46f2da7298973334f0e5dbd1081c7035d  ./tests/squad-cli-lib-control-test.sh
 3bc47a2cb9ea3c908f1d37ffb44f38bca9c870b254c6c081d99cd03ae3616bd2  ./tests/squad-cli-lib-fence-test.sh
 abce74f707a9082a17839cc96ad824d1a1831f39d1c862002db81e90219e37fb  ./tests/squad-cli-lib-gh-test.sh
 b602e26f9f2e2af5ef9f0d91353aeba30a9363bf5193ad6e1049d8f9dcfa4220  ./tests/squad-cli-lib-test.sh
@@ -850,7 +850,7 @@ c98729878e6706f5780a10fbbdd9246ef49a12182fb27d46624296d335659336  ./tests/termin
 c0509d732b2b3fa99f882283848bc2ba1c82ed3a6d0a90ac8263045dfee07010  ./tests/terminal-test.sh
 bb7b764515248a871ceb26e80ed0d7a543675fe39a1813d3355767cb94475dc7  ./tests/terms-test.sh
 81cdf5bc9e1337df5df660a48956d98fbc210eae1e56bcfa2f4345ea8d2ee54d  ./tests/test-runner-test.sh
-ce99c6a8f68064766bb60bf94f545717ff1eb10a2863c0bcdf07546138d2b83b  ./tests/test-weights
+18a66f819ead1146a78fd569bdee7d7cae52099ccb365c80c41359369885bf0c  ./tests/test-weights
 d94f944f10cbc4a4e1578f5c2c82bd96d60a44e38218caebf76174d8d570f7de  ./tests/tty-session-cases.py
 037b266696a320864da9cdca9b7638c912b8e8f68f57f38c0b1d4f71640d5b0b  ./tests/tty-session-test.sh
 4fca0a5d480aee948e2076f067072b905caa9de4d4bd0c4cd84ac061c10abf37  ./tests/tty-session.py
