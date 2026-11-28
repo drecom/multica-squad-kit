@@ -156,7 +156,7 @@ b9a45cd63da0d056163d453d727352a611c2515299627c097ce072f28fc7f8b7  ./lib/autopilo
 1e160f76a6cca7b4fbbe71af2c50cd7adc413e33ea3f8a41a631aedd01087d09  ./lib/codex-hooks.py
 2d1ddbe078e69260fa06aaf0af9169dd68aff118151dcebe615059714a3dd674  ./lib/extensions.py
 10cd0eaaddfd83b11ff48f1fd07d4fd3b029a93afd0504449017603559529589  ./lib/extensions.sh
-abf1f16a3d86d573c7d0bd75202aafa4dfbecfd3eabd64a06ad34453b217c06d  ./lib/host.sh
+7ed13cafec6ee21945314b6d5fc2b9e812428dbdd61a4d994c865f3a4c2f011f  ./lib/host.sh
 23d61cb270e4f571520a230918feccc00e8b5b09cbcf430108e0a424244b5a96  ./lib/installation.sh
 98823f1dc43473fe56a1a8f1e37e3d5a3fc3e8dd2389a7dff8c71f0b4c40f6a1  ./lib/project-changes.sh
 a64aa00177818b153a6029502a10439ad5d579ebcbbbda600572946bd837cc7c  ./lib/project.sh
@@ -341,7 +341,7 @@ e4c7e79f53c9388a7e73505652cdfd390a4da9ad4ae00be08753c716104f0ebf  ./tests/host-o
 bb32949d8fdcbd671dd226e54a50265c3b730caf309a2477eefd452d8874be86  ./tests/host-order-setup-test.sh
 acd934e724c02eea735f7c23bb6fff6756c500df8007578c9940a059109e7f3f  ./tests/host-order-snapshot.py
 f1caec498622c8bed76d324dee1137ec3a7f5903bbb63d2d560ebe2d4359ec6b  ./tests/host-test-lib.sh
-5e1356c1f3485e9bd2e8962bb3ad72f0edfbb9078325dce2fdf772aba055ce8a  ./tests/host-test.sh
+a36bd4a02cc7da16f27cf85bb020e2caf7617a123fc960683ae1ab522ce9afe6  ./tests/host-test.sh
 260aacd088117b19e9724c45c8ff3154348d68f3711fd590e66829c9b37fa8d6  ./tests/host-timeout-test.sh
 c8532b22f7a86ec6590a5cde3f64a6295148663e9f9893255209fca16fdea5b0  ./tests/install-command-test.sh
 539275b12edb26069fca5bedf9bb83abf3a73a7f68dc3c3ed5456c2ce19228f8  ./tests/install-test.sh
