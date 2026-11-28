@@ -799,7 +799,7 @@ PR のタイトルは、GitHub で PR を直せる人なら誰でも書ける。
 | `common/monitor/squad-cli-lib`（マージの依頼の回） | `squad_cli_control merge_requested` に省略できる回の ID と PR を足す。渡されたら[マージの依頼の照合](#マージの依頼の照合)の表の作者から `マージの依頼:` までで読み、回が今の回でなければ `no` を返す |
 | `common/monitor/squad-cli-lib`（読めない候補） | 回を渡したときの読めない候補を、回より後で `マージの依頼:` を含むものにし、head と PR で絞らない。回を渡さない今の呼び手の動作は変えない |
 | `common/monitor/squad-cli-lib`（名簿の終了コード） | `squad_cli_read_roster` は、読み取りの失敗で 1、担当のスクワッドがないと確認できたときに 2 を返す（[照合のデータを読めないとき](#照合のデータを読めないとき)） |
-| `common/monitor/squad-cli-lib`（回の PR） | `analyze` の回ごとに `round_pr_lines` と `round_pr_from` の欄を出す（[回の PR](#回の-pr)）。`control_now` は、名簿のリーダーが書く種類 `merge` の記録だけ、認める回のどの種類を指してもよくする（[マージの依頼の照合](#マージの依頼の照合)） |
+| `common/monitor/squad-cli-lib`（回の PR） | `analyze` の回ごとに、回自身の囲みの外の `対象の PR:` の行を `pr_lines` に、`round_pr_lines` と `round_pr_from` の欄も出す（[回の PR](#回の-pr)）。`control_now` は、名簿のリーダーが書く種類 `merge` の記録だけ、認める回のどの種類を指してもよくする（[マージの依頼の照合](#マージの依頼の照合)） |
 | `common/monitor/squad-pr-link-lib` | 記録のパスを決める・読む・作る・消す関数と、`pr_link_pull_request` の結果の `PR_LINK_ALL_404` を足す（[404 だけが続いたことの判定](#404-だけが続いたことの判定)）。今の `PR_LINK_NOT_FOUND` と戻り値と待ち方、`pr_link_request_once` は変えず、頭の関数の説明と `PR_LINK_NOT_FOUND` の注記を今の動作（期限を過ぎれば最後の応答によらず 1）に合わせて書き直す |
 | `common/monitor/squad-pr-link` | [記録がないとき](#記録がないとき)・[同時に作るとき](#同時に作るとき)・[記録があるとき](#記録があるとき)・[一覧の読み直し](#一覧の読み直し)の動作と、[知らせ](#知らせ)の文を足す |
 | `common/monitor/squad-pr-watch` | `link-check` に `連携: なし` の判定・[マークの書き直し](#マークの書き直し)・記録の削除・`連携: なし` のときの試み直しを足し、使い方のコメントを直す（`unlinked` の 2 つ目の引数は `<回のコメント>`）。`unlinked` に[登録の照合](#登録の照合)と規則の 2 行を、`unlinked-check` に `done` と見張りの終わりの知らせと [done の照合](#done-の照合)と [done にしなかったときの知らせ](#done-にしなかったときの知らせ)を足す |
@@ -826,7 +826,7 @@ PR のタイトルは、GitHub で PR を直せる人なら誰でも書ける。
 | `common/skills/squad-handoff/references/leader-pr-merge.md` | [リーダーの参照の置き場所](#リーダーの参照の置き場所)のとおり、`leader-pr-link.md` の「連携なしの PR」を指す 1 文を足し、作業先と違うときと不正なときの段落を移し、手で流す `unlinked` の引数の `<きっかけのコメント>` を `<回のコメント>` にする。ほかの文は変えない |
 | `common/skills/squad-handoff/references/leader-pr-merge.md`（`紐付け:` の行） | `unlinked` の出力の扱いの文を、`紐付け:` の行を出したら上の判定のとおり止まりマージを頼まない、という文に直す。食い違いと古い回でも止まるようにするためである |
 | `docs/review-next-step.md` | `decide` の紐付けの確認・規則の登録・マージの依頼の行・使用率の待ちのコメントの節に、`連携: なし` の扱いを足す。規則の登録の節に、`unlinked` が今の回と回の `対象の PR:` を照合し、食い違いと古い回の行で止まることと、マージの依頼の `マージする PR:` を足す |
-| `docs/review-next-step.md`（回の PR） | `round-pr` の表を 1・3・そのほかに分け、マージの依頼の行の 4 を、手で書く連携なしの依頼にも置くと直す。テストの表の `decide` のマージの依頼の行を、同じ分け方に直す |
+| `docs/review-next-step.md`（回の PR） | `round-pr` の表と、テストの表の `decide` のマージの依頼の行を 1・3・そのほかに分け、マージの依頼の行の 4 を手で書く連携なしの依頼にも置くと直す。制御記録の表の「指す回」の行に、名簿のリーダーが書くマージの依頼の例外を足す |
 | `docs/pr-link-retry.md` | 目的と範囲に、連携なしのリポジトリでは試み直しの記録の扱いがこの文書に従うと 1 文足す |
 | `lib/questions.sh` | 候補が 0 件のときの案内に、[セットアップの案内](#セットアップの案内)の文を足し、手順書の節の名前を直す |
 | `README.md`、`manual.md` | [README と手順書](#readme-と手順書)のとおりに直す。手順書の 0 件の案内の文は、STYLE.md に合わせて常体にする |
