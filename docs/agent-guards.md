@@ -132,7 +132,7 @@ Claude Code の共有の `settings.json` に、フックと deny のルールを
 | --- | --- | --- |
 | `hooks.PreToolUse` | `Bash`・`Write`・`Edit`・`NotebookEdit` に、キットの PreToolUse のスクリプト | 守りを外すコマンドと書き込みを止める |
 | `hooks.Stop` | キットの Stop のスクリプト | 最後のコメントがない終わり方を続けさせる |
-| `hooks.StopFailure`・`hooks.SessionEnd` | キットの 2 つのスクリプト | 止まった理由を記録する（[役の実行の上限と止まった理由の記録](agent-run-stops.md)） |
+| `hooks.StopFailure`・`hooks.SessionStart`・`hooks.SessionEnd` | キットの 3 つのスクリプト | 止まった理由を記録する（[役の実行の上限と止まった理由の記録](agent-run-stops.md)） |
 | `permissions.deny` | `Read` の人の `gh` の置き場・ホームの `.ssh`・`.git-credentials`・`.netrc` | 認証情報のファイルを、Read で読ませない |
 | `permissions.deny` | `PushNotification` | 無人の実行から、外へ知らせる道具を使わせない |
 | `permissions.blockWritesOutsideWorkingDirectories` | `true` | Write と Edit で、作業ディレクトリの外を書かせない |
@@ -252,7 +252,7 @@ CLI が失敗したときは、確認できなかったとして続けさせる�
 
 ## 想定する規模と許容時間
 
-PreToolUse・Stop・StopFailure・SessionEnd のスクリプトは、次の規模で、次の時間に収める。性能を見る役は、この節を基準にする。値は、実装を測った結果と CLI の読み取りの時間切れから置いた案で、人間が設計の承認で決める。
+PreToolUse・Stop・StopFailure・SessionStart・SessionEnd のスクリプトは、次の規模で、次の時間に収める。性能を見る役は、この節を基準にする。値は、実装を測った結果と CLI の読み取りの時間切れから置いた案で、人間が設計の承認で決める。
 
 | 項目 | 値 |
 | --- | --- |
@@ -263,7 +263,8 @@ PreToolUse・Stop・StopFailure・SessionEnd のスクリプトは、次の規�
 | Stop の照合の許容時間 | 想定するコメントで、自分のコメントを探す処理が 1 回につき 1 秒以内 |
 | Stop の許容時間の上限 | 1 回の確認で約 120 秒。CLI の読み取り 2 回のそれぞれに、60 秒の時間切れを置く |
 | SessionEnd が読む実行の記録 | 末尾の 64 KiB まで。外部の API は呼ばない |
-| StopFailure と SessionEnd の許容時間 | 1 回につき 1 秒以内。フックの項目に 10 秒の `timeout` を置き、SessionEnd の既定の 1.5 秒で切れないようにする |
+| SessionStart が読み書きするもの | 実行の記録の長さと、始めの長さのファイル 1 つ。7 日より古いファイルを消し、外部の API は呼ばない |
+| StopFailure・SessionStart・SessionEnd の許容時間 | 1 回につき 1 秒以内。フックの項目に 10 秒の `timeout` を置き、SessionEnd の既定の 1.5 秒で切れないようにする |
 
 性能を見る役が手元で測ると、20 万バイト・1 万個のコマンドの分割は 0.07 秒だった。500 件・100 万バイトのコメントの照合は 0.001 秒だった。測った環境は macOS・arm64・Python 3.14 で、プロセスの起動とネットワークの時間を含まない。2 つの許容時間は、この結果に余裕を持たせた値である。
 
