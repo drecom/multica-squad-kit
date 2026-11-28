@@ -1195,9 +1195,13 @@ pr_checks() {
 		esac
 		break
 	done
+	NO_INTEGRATION=false
 	case $line in
 	'紐付け: 紐付いている pr: '*) LINKED=true ;;
-	'紐付け: 紐付いていない pr: '*) LINKED=false ;;
+	'紐付け: 紐付いていない pr: '*)
+		LINKED=false
+		if [[ $line == *' 連携: なし' ]]; then NO_INTEGRATION=true; fi
+		;;
 	'紐付け: 未確認'*)
 		reason=$line
 		((status != 2 && status != 127)) || reason="${line}（ホストのスクリプトが古い）"
@@ -1419,13 +1423,17 @@ write_merge_body() {
 		jq -r .pre_line <<<"$res"
 		jq -r '.lines[]' <<<"$res"
 		if [[ $LINKED == false ]]; then
-			printf '紐付いていないので、マージのあとにタスクを `done` にしてほしい（または先に紐付けてほしい）。PR: `%s`\n' "$PR_URL"
+			if [[ $NO_INTEGRATION == true ]]; then
+				printf 'このリポジトリは GitHub 連携なしとして扱っています。マージのあとに、タスクを `done` にしてください。PR: `%s`\n' "$PR_URL"
+			else
+				printf '紐付いていないので、マージのあとにタスクを `done` にしてほしい（または先に紐付けてほしい）。PR: `%s`\n' "$PR_URL"
+			fi
 			if [[ $WATCH_FAILED == true ]]; then
 				printf '紐付いていない PR の見張りを登録できませんでした。ホストでセットアップを流し直してください。\n'
 			else
 				printf '%s\n' "$WATCH_LINE"
 			fi
-			print_linkfail "$work"
+			if [[ $NO_INTEGRATION == false ]]; then print_linkfail "$work"; fi
 		fi
 	} >"$body"
 }
@@ -1500,7 +1508,7 @@ human_call() {
 		printf '%s\n' '「待つ」と「進める」は、このスクワッドのすべてのタスクに、上限に近い枠のリセット時刻まで効きます。'
 		printf '前の回: %s\n' "$round"
 		printf '%s\n' "$wait_line"
-		if [[ $LINKED == false ]]; then
+		if [[ $LINKED == false && $NO_INTEGRATION == false ]]; then
 			printf 'PR がタスクに紐付いていません。タスクの画面の PR の欄で `%s` を紐付けてください。\n' "$PR_URL"
 			print_linkfail "$work"
 		fi

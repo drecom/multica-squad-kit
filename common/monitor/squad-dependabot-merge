@@ -382,9 +382,31 @@ escalation_label() {
 # API と待ち、トークンの扱いは共有の関数に任せる。
 # 失敗してもタスクは人間に渡せるので止めず、次に同じ PR を回すときに補う。
 link_pull_request() {
-	local id=$1 identifier=$2 url=$3 metadata
+	local id=$1 identifier=$2 url=$3 metadata repository record=1 written=0
 	if metadata=$(squad_cli_read issue-metadata "$id") && jq -e 'type == "object"' <<<"$metadata" >/dev/null; then
-		if pr_link_pull_request "$id" "$url" "$metadata"; then return; fi
+		repository=$(jq -r '.repository // empty' <<<"$metadata" | tr '[:upper:]' '[:lower:]')
+		if [[ -z $repository || $repository == "$(printf '%s' "$REPO" | tr '[:upper:]' '[:lower:]')" ]]; then
+			if jq -e 'has("pr_url")' <<<"$metadata" >/dev/null; then return 0; fi
+			record=0
+			pr_link_record_check "$PROJECT" "$url" || record=$?
+			if ((record == 0)); then
+				if pr_link_attempt_once "$id" "$url"; then written=1; fi
+			else
+				if pr_link_pull_request "$id" "$url" "$metadata"; then written=1; fi
+			fi
+			if ((! PR_LINK_LINKED)) && pr_link_listed "$id" "$url"; then
+				PR_LINK_LINKED=1
+				if pr_link_write_url "$id" "$url"; then written=1; fi
+			fi
+			if ((PR_LINK_LINKED)); then
+				pr_link_record_remove "$PROJECT" "$url"
+				if ((! written)); then
+					printf 'タスク %s に PR を紐付けましたが、metadata の pr_url を書けませんでした。次に同じ PR を回すときに補います。\n' "$identifier" >&2
+				fi
+				return 0
+			fi
+			if ((record == 0)); then return 0; fi
+		fi
 	fi
 	echo "タスク ${identifier} に PR を紐付けられませんでした。次に同じ PR を回すときに補います。急ぐときはタスクの画面で ${url} を紐付けてください。" >&2
 }
