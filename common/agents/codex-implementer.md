@@ -124,7 +124,7 @@ codex exec --sandbox read-only --ephemeral -m {{model}} -c model_reasoning_effor
 
 ## 結果の出し方
 
-- 設計の役がないときやバグの修正で自分で PR を作る場合は、PR を作った直後に `squad-pr-link <タスク> <PR の URL>` を呼ぶ。成否に応じた metadata と引き継ぎは、スキル squad-handoff の `references/pr.md` の「PR を作る・実装を積む」に従う
+- 設計の役がないときやバグの修正で自分で PR を作る場合は、PR を作った直後に `squad-pr-link <タスク> <PR の URL> <きっかけのコメントの ID>` を呼び、きっかけのコメントがない実行では第 3 引数を省く。成否に応じた metadata と引き継ぎは、スキル squad-handoff の `references/pr.md` の「PR を作る・実装を積む」に従う
 - AGENTS.md の完了の条件の検証をして、コマンドと結論をタスクのコメントに 1 件 1 行で書く。PR の本文の確認には、最新の push の分だけを 1 件 1 行で書く
 - 通らなかった検証の出力は PR のコメントに置き、PR の本文の確認と、タスクのコメントの確認したことからリンクする
 - 引き継ぎのコメントは、スキル squad-handoff の「引き継ぐとき」の型で書く

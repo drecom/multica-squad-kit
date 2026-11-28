@@ -63,3 +63,30 @@ cli_fixture issue-search | jq '.issues[0] as $base | .issues = [range(1;26) | $b
 	 title:"別の PR（example/template#10）", description:"example/template#1 に言及"}]' >"$test_dir/search.json"
 run_escalate 'TEST-9000 created'
 echo 'PASS escalate: 本文だけの言及や似た PR 番号は同じタスクと取り違えない（既定の 20 件以上も検索）'
+
+export PR_LINK_STATE_ROOT=$test_dir/pr-link-state
+record=$PR_LINK_STATE_ROOT/project-a/example/template
+for scene in no-match api listed api-write-fails listed-write-fails; do
+	escalate_fixture
+	mkdir -p "${record%/*}"
+	printf 'pr: https://github.com/example/template/pull/8\n' >"$record"
+	case $scene in
+	no-match | listed*) printf '404' >"$test_dir/curl-status" ;;
+	esac
+	if [[ $scene == listed* ]]; then
+		printf '{"pull_requests":[{"html_url":"https://github.com/example/template/pull/1"}]}\n' >"$test_dir/pulls.json"
+	fi
+	if [[ $scene == *write-fails ]]; then touch "$test_dir/fail-metadata-set"; fi
+	bash "$script" example/template project-a escalate 1 "$test_dir/escalation.md" --assignee 'Owner Name' >"$test_dir/output" 2>"$test_dir/error"
+	[[ $(<"$test_dir/output") == 'TEST-9000 created' && $(wc -l <"$test_dir/curl-calls.jsonl") -eq 1 ]]
+	case $scene in
+	no-match) [[ -f $record && ! -s $test_dir/error ]] ;;
+	*write-fails)
+		[[ ! -e $record && $(wc -l <"$test_dir/error") -eq 1 ]]
+		grep -qF '紐付けましたが、metadata の pr_url を書けませんでした' "$test_dir/error" ;;
+	*) [[ ! -e $record && ! -s $test_dir/error ]]
+		jq -e '.pr_url == "https://github.com/example/template/pull/1"' "$test_dir/metadata.json" >/dev/null ;;
+	esac
+	jq -e 'has("pr_link_no_integration") | not' "$test_dir/metadata.json" >/dev/null
+done
+echo 'PASS escalate: 記録があると待たず、API と一覧の両方で紐付いたら記録を消す'

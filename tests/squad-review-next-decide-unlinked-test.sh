@@ -145,6 +145,36 @@ body=$(posted_body)
 expect_call_has pr-watch-calls 'link-check test-issue final-1'
 expect_call_has pr-watch-calls 'unlinked test-issue final-1 --leader orchestrator'
 echo 'PASS review-next-decide: 試み直しで紐付いたマージの依頼には紐付けの依頼と段落がなく、紐付かないままなら両方が残る'
+plain_lines=$(posted_body | grep -E '^(コンフリクト|CI )')
+retry_merge_setup
+printf '紐付け: 紐付いていない pr: %s 連携: なし\n' "$pr_url" >"$test_dir/link-out"
+printf 'CI %s: 成功\n' "${sha:0:7}" >"$test_dir/cinow-out"
+run final-1
+expect_status 0
+body=$(posted_body)
+[[ $(grep -c '^このリポジトリは GitHub 連携なしとして扱っています。マージのあとに、タスクを `done` にしてください。PR: ' <<<"$body") == 1 ]]
+[[ $(grep -E '^(コンフリクト|CI )' <<<"$body") == "$plain_lines" ]]
+[[ $body != *'紐付けの失敗:'* && $body != *'先に紐付けてほしい'* && $body != *'ワークスペースの設定'* ]]
+expect_call_has pr-watch-calls 'unlinked test-issue final-1 --leader orchestrator'
+echo 'PASS review-next-decide: 連携なしでは人間に done を一度頼み、CI・コンフリクト・見張りは同じ'
+
+human_setup() {
+	reset
+	add pr-made orchestrator "PR を作りました ${pr_url}"$'\n'"紐付けの失敗: PR をタスクに紐付けられませんでした。"$'\n'"GitHub 連携が見つかりません。" ""
+	review_round round-1 "$sha" code-reviewer qa
+	result round-1 code-reviewer ❌ "$sha" なし
+	result round-1 qa ✅ "$sha" なし
+	printf '使用率の待ち: fix を通算 24 時間待った。\n' >"$test_dir/pick-out"
+	echo 4 >"$test_dir/pick-status"
+}
+human_setup
+printf '紐付け: 紐付いていない pr: %s 連携: なし\n' "$pr_url" >"$test_dir/link-out"
+run round-1
+expect_status 0
+body=$(posted_body)
+[[ $body == *'使用率が上限に近く'* && $body != *'連携なし'* && $body != *'紐付け'* && $body != *'`done`'* ]]
+echo 'PASS review-next-decide: マージ以外で人間を呼ぶときは連携なしの案内を添えない'
+
 
 # ---- 書く前の失敗。
 reset

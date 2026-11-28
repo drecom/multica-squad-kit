@@ -5,11 +5,13 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/squad-pr-link-lib"
 source "$(dirname "${BASH_SOURCE[0]}")/squad-cli-lib"
 
-if [[ $# != 2 || -z $1 || ! $2 =~ ^https://github\.com/[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+/pull/[0-9]+$ ]]; then
-	echo '使い方: squad-pr-link <タスク> <PR の URL (https://github.com/OWNER/REPO/pull/番号)>' >&2
+uuid_pattern='^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$'
+if [[ $# != 2 && $# != 3 ]] || [[ -z $1 || ! $2 =~ ^https://github\.com/[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+/pull/[0-9]+$ ]] \
+	|| { [[ $# == 3 ]] && [[ ! $3 =~ $uuid_pattern ]]; }; then
+	echo '使い方: squad-pr-link <タスク> <PR の URL (https://github.com/OWNER/REPO/pull/番号)> [<きっかけのコメントの ID>]' >&2
 	exit 2
 fi
-task=$1 url=$2 identifier=$1
+task=$1 url=$2 identifier=$1 trigger=${3-}
 warn() {
 	printf 'タスク %s に PR %s を紐付けられませんでした（%s）。タスクの画面の PR の欄で、この URL を指定して紐付けてください。\n' "$identifier" "$url" "$1" >&2
 }
@@ -40,18 +42,46 @@ fi
 id=$(jq -r '.id' <<<"$issue")
 identifier=$(jq -r '.identifier' <<<"$issue")
 metadata=$(jq -c '.metadata' <<<"$issue")
-if ! pr_link_pull_request "$id" "$url" "$metadata"; then
-	warn "$PR_LINK_REASON"
-	# あとの区切りで試み直せるよう、マークを残す。作業先が PR のリポジトリと同じと分かるときだけ書く。
-	# 違うときは試み直しても断り、作業先がないときは同じと言えない。書けなくても、出力と終了コードは変えない。
-	repository=$(jq -r '.repository | select(. != null)' <<<"$metadata" | tr '[:upper:]' '[:lower:]')
-	url_repository=${url#https://github.com/}
-	url_repository=$(printf '%s' "${url_repository%/pull/*}" | tr '[:upper:]' '[:lower:]')
-	if [[ -n $repository && $repository == "$url_repository" ]]; then
-		multica issue metadata set "$id" --key pr_link_pending --value "$url" --type string >/dev/null 2>&1 || true
-	fi
+project=$(jq -r '.project_id | select(type == "string")' <<<"$issue")
+repository=$(jq -r '.repository | select(. != null)' <<<"$metadata" | tr '[:upper:]' '[:lower:]')
+url_repository=${url#https://github.com/}
+url_repository=$(printf '%s' "${url_repository%/pull/*}" | tr '[:upper:]' '[:lower:]')
+same_repository=0
+if [[ $repository == "$url_repository" ]]; then same_repository=1; fi
+
+fail_link() {
+	warn "$1"
 	if [[ ${PR_LINK_NOT_FOUND:-0} == 1 ]]; then warn_not_found; fi
 	exit 1
+}
+
+# 連携なしの知らせを 1 回だけ投稿する。失敗しても、戻り値も出力も変えず、試み直さない。
+# きっかけのコメントの ID があれば返信に、なければ根のコメントにする（コメントがきっかけの実行では、サーバーが根を断る）。
+post_no_integration_notice() {
+	local repo=${url#https://github.com/} body
+	repo=${repo%/pull/*}
+	mkdir -p tmp || return 0
+	body=$(mktemp tmp/pr-link-notice.XXXXXX) || return 0
+	printf '/note\n連携なしの知らせ: %s\n\n%s を、このプロジェクトでは GitHub 連携なしとして扱います。サーバーが 120 秒待っても PR を見つけなかったためです。この PR をタスクの画面で紐付ける必要はなく、このあとの PR では紐付けを待ちません。マージのあとタスクが done にならなければ、人間が done にしてください。連携しているはずなら、ワークスペースの設定のコードの画面で %s がつながっていることを確認してください。このリポジトリの PR が 1 つでも紐付けば、次の PR から連携ありの扱いに戻ります。\n' \
+		"$url" "$repo" "$repo" >"$body" 2>/dev/null || { rm -f -- "$body"; return 0; }
+	squad_cli_read issue-comment-add "$id" "$trigger" "$body" >/dev/null 2>&1 || :
+	rm -f -- "$body"
+	return 0
+}
+
+finish_linked() {
+	local label=$1 written=$2
+	if ((same_repository)) && [[ -n $project ]]; then pr_link_record_remove "$project" "$url"; fi
+	if ((written)); then
+		printf '%s: %s %s\n' "$label" "$identifier" "$url"
+		exit 0
+	fi
+	printf '%s（pr_url を書けない）: %s %s\n' "$label" "$identifier" "$url"
+	exit 3
+}
+
+if [[ -n $repository ]] && ((! same_repository)); then
+	fail_link 'metadata の repository と違う'
 fi
 if jq -e 'has("pr_url")' <<<"$metadata" >/dev/null; then
 	existing_url=$(jq -r '.pr_url' <<<"$metadata")
@@ -59,6 +89,59 @@ if jq -e 'has("pr_url")' <<<"$metadata" >/dev/null; then
 		printf 'タスク %s の metadata の pr_url は PR %s と違うため、紐付けは変えません。\n' "$identifier" "$url" >&2
 	fi
 	printf '紐付けていません: %s %s（metadata に pr_url があるため、API を呼びませんでした。紐付いているかは multica issue pull-requests で確認してください）\n' "$identifier" "$url"
-else
-	printf '紐付けました: %s %s\n' "$identifier" "$url"
+	exit 0
 fi
+
+record=2
+if ((same_repository)) && [[ -n $project ]]; then
+	record=0
+	pr_link_record_check "$project" "$url" || record=$?
+fi
+if ((record == 0)); then
+	if pr_link_attempt_once "$id" "$url"; then finish_linked '紐付けました' 1; fi
+else
+	if pr_link_pull_request "$id" "$url" "$metadata"; then finish_linked '紐付けました' 1; fi
+fi
+if ((PR_LINK_LINKED)); then finish_linked '紐付けました' 0; fi
+
+listed=0
+if ((same_repository)) && [[ -n $project ]]; then
+	pr_link_listed "$id" "$url" || listed=$?
+else
+	listed=2
+fi
+if ((listed == 0)); then
+	if pr_link_write_url "$id" "$url"; then finish_linked '紐付いていました' 1; fi
+	finish_linked '紐付いていました' 0
+fi
+
+failure=$PR_LINK_REASON
+if ((listed == 1)) && { ((record == 0)) || ((record == 1 && PR_LINK_ALL_404)); }; then
+	multica issue metadata set "$id" --key pr_link_pending --value "$url" --type string >/dev/null 2>&1 || fail_link "$failure"
+	pr_link_write_url "$id" "$url" || fail_link "$failure"
+	kind='記録があった'
+	if ((record == 1)); then
+		created=0
+		pr_link_record_create "$project" "$url" "$identifier" || created=$?
+		case $created in
+		0) kind='記録した' ;;
+		2) ;;
+		*) fail_link "$failure" ;;
+		esac
+	fi
+	# 印を書けないまま 0 で終わらない。結んだ記録は残し、link-check が印を戻せるときに戻す。
+	multica issue metadata set "$id" --key pr_link_no_integration --value "$kind $url" --type string >/dev/null 2>&1 || fail_link "$failure"
+	if [[ $kind == '記録した' ]]; then
+		post_no_integration_notice
+		printf '連携なしにしました: %s %s\n' "$identifier" "$url"
+	else
+		printf '紐付けていません（連携なし）: %s %s\n' "$identifier" "$url"
+	fi
+	exit 0
+fi
+
+# あとの区切りで試み直せるよう、作業先が PR のリポジトリと同じと分かるときだけマークを残す。
+if ((same_repository)); then
+	multica issue metadata set "$id" --key pr_link_pending --value "$url" --type string >/dev/null 2>&1 || :
+fi
+fail_link "$failure"

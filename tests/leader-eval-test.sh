@@ -335,11 +335,12 @@ python3 -I -B - "$eval_dir" <<'PY'
 import json, sys
 sys.path.insert(0, sys.argv[1])
 import leader_eval as le
+trigger = "-".join(("0a1b2c3d", "4e5f", "4a6b", "8c7d", "9e0f1a2b3c4d"))
 denials = [
     {"tool_name": "Bash", "tool_use_id": "tool-denied-1",
      "tool_input": {"command": "multica issue cancel-task issue-shop-1 task-fixer"}},
     {"tool_name": "Bash", "tool_use_id": "tool-denied-2",
-     "tool_input": {"command": "squad-pr-link issue-shop-1 https://github.com/example/shop/pull/7"}},
+     "tool_input": {"command": f"squad-pr-link issue-shop-1 https://github.com/example/shop/pull/7 {trigger}"}},
     {"tool_name": "Read", "tool_use_id": "tool-denied-3", "tool_input": {"file_path": "/outside/file.md"}},
 ]
 response, actual, calls, is_error = le.parse_agent_output(json.dumps({
