@@ -353,7 +353,7 @@ Codex に同じものがある項目は、このホストの Codex で確認し�
 | `lib/host.sh` | 合わせるフックに StopFailure・SessionStart・SessionEnd を `timeout` 付きで足し、3 つのスクリプトをガードの置き場に写す。置く前に確認する置き先の一覧にも 3 つの名前を足す |
 | `lib/check.sh` | Claude を使うとき、Claude Code の最低のバージョンを確認する |
 | `lib/project.sh` | Claude のモデルの役の custom_env に、手数の上限とコマンドの時間切れの既定を足す。人が上げた値は残し、付け外しする変数の一覧にも足す |
-| `common/monitor/squad-usage-check` | ログインの行と、更新する前のタスクの確認を足す。題の終わりにキーを付け、ok でない状態どうしの変化をコメントする |
+| `common/monitor/squad-usage-check` | ログインの行と更新する前のタスクの確認を足し、題の終わりにキーを付け、ok でない状態どうしの変化をコメントする。`USAGE_LOGIN_WARN_DAYS` が 0 から 9999 の整数でなければ 1 で終え、ログインを読む時間切れの秒数はテストだけが `USAGE_LOGIN_READ_SECONDS` で変える |
 | `manual.md` | 「受け取る人の準備」に最低のバージョンを書く。「ホストとエージェント用のログイン」と「止まったときに見ること」に、ログインのタスクの直し方と、記録と Codex の実行の記録の読み方を書く |
 | `CHANGELOG.md` | 先頭の `## 次のバージョン` の節に、流し直しで変わることを書く |
 | `tests/` | [テストと実機の確認](#テストと実機の確認)のとおりに足す |
