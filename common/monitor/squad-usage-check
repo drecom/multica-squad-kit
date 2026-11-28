@@ -142,7 +142,7 @@ def run(*args):
         return subprocess.run(["claude", *args], stdin=subprocess.DEVNULL, capture_output=True,
                               text=True, errors="replace", timeout=limit)
     except subprocess.TimeoutExpired:
-        finish("unverified", f"claude {' '.join(args)} が {limit} 秒で終わらなかった")
+        finish("unverified", f"claude {' '.join(args)} が時間切れになった")
     except OSError:
         finish("unverified", f"claude {' '.join(args)} を実行できなかった")
 
@@ -308,8 +308,8 @@ verify_task() {
 apply() {
 	local key=$1 level=$2 title=$3 detail=$4
 	local prev issue
-	# Codex は初回の ok でも、見張りの結果にログインの行を残す。
-	prev=$(jq -r --arg k "$key" '.[$k].level // (if $k == "login:codex" then "" else "ok" end)' <<<"$state")
+	# ログインの行は初回の ok でも、見張りの結果に残す。
+	prev=$(jq -r --arg k "$key" '.[$k].level // (if ($k | startswith("login:")) then "" else "ok" end)' <<<"$state")
 	issue=$(jq -r --arg k "$key" '.[$k].issue // empty' <<<"$state")
 	[[ "$level" == "$prev" ]] && return
 

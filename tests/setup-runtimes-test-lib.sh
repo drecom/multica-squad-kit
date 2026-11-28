@@ -276,8 +276,8 @@ assert all(i['project_id'] == 'projects-1' and i['assignee'] == 'Owner' and i['l
 state = json.loads((scenario / 'usage-state/projects-1/owner.state').read_text())
 runtimes = set(db['runtimes'])
 assert {key.split(':', 1)[0] for key in state if not key.startswith('login:')} == runtimes
-codex_login = {'level': 'ok', 'issue': ''} if 'codex' in runtimes else None
-assert state.get('login:codex') == codex_login
+login_rows = {key: value for key, value in state.items() if key.startswith('login:')}
+assert login_rows == {f'login:{runtime}': {'level': 'ok', 'issue': ''} for runtime in runtimes}
 PY
  fi
  fi

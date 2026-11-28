@@ -266,6 +266,7 @@ echo '{"id":2,"result":{"ordinaryUsageAllowed":true,"rateLimitsByLimitId":{"code
 	bash "$script"
 	jq -e '. == {"claude:Current session": {level: "warn", issue: "test-issue"},
 		"codex:codex:10080": {level: "warn", issue: "test-issue"},
+		"login:claude": {level: "ok", issue: ""},
 		"login:codex": {level: "ok", issue: ""}}' "$state_file" >/dev/null
 	jq -se '[.[] | select(.[0:2] == ["issue", "create"])] | length == 2' "$test_dir/calls.jsonl" >/dev/null
 	: >"$test_dir/calls.jsonl"
@@ -628,9 +629,9 @@ print(json.dumps({"loggedIn": True, "authMethod": "claude.ai", "email": "fake.pe
 	"orgName": "Fake Org Inc", "loginExpiresAt": value}))
 PY
 }
-no_login_row() {
+assert_initial_login_ok() {
 	jq -se '[.[] | select(.[0:2] == ["issue", "create"])] | length == 0' "$test_dir/calls.jsonl" >/dev/null
-	[[ ! -f $(login_state_file) ]] || jq -e 'has("login:claude") | not' "$(login_state_file)" >/dev/null
+	jq -e --arg key "login:$1" '.[$key] == {level: "ok", issue: ""}' "$(login_state_file)" >/dev/null
 }
 sentence_warn='期限が近い。期限の前に、manual.md の手順でログインし直す'
 sentence_error='ログインしていない。このツールの役はすべて失敗する'
@@ -644,7 +645,7 @@ login_state_case() {
 	claude_auth "$code" "$json"
 	login_run
 	if [[ $level == ok ]]; then
-		no_login_row
+		assert_initial_login_ok claude
 	else
 		[[ $(created_title) == "[ログイン] ${title}（login:claude）" ]]
 		jq -e --arg l "$level" '."login:claude" == {level: $l, issue: "test-issue"}' "$(login_state_file)" >/dev/null
@@ -678,7 +679,7 @@ login_reset
 touch "$test_dir/claude-auth-hang"
 login_run claude USAGE_LOGIN_READ_SECONDS=1
 [[ $(created_title) == '[ログイン] Claude Code のログインを確認できない（login:claude）' ]]
-grep -q '1 秒で終わらなかった' "$test_dir/description.md"
+grep -qx 'claude auth status --json が時間切れになった' "$test_dir/description.md"
 assert_no_leak
 echo 'PASS ログインの状態: 時間切れは確認失敗'
 
@@ -690,7 +691,7 @@ jq -e '."login:claude".level == "warn"' "$(login_state_file)" >/dev/null
 login_reset
 claude_auth 0 "$(expiry_json 15)"
 login_run claude
-no_login_row
+assert_initial_login_ok claude
 login_reset
 if login_run claude USAGE_LOGIN_WARN_DAYS=abc; then exit 1; fi
 grep -q 'USAGE_LOGIN_WARN_DAYS には' "$test_dir/err"
@@ -702,8 +703,8 @@ login_reset
 claude_auth 1 '{"loggedIn":false}'
 login_run codex
 [[ $(cat "$test_dir/login-calls") == codex-login ]]
-no_login_row
-jq -e '."login:codex" == {level: "ok", issue: ""}' "$(login_state_file)" >/dev/null
+assert_initial_login_ok codex
+jq -e 'has("login:claude") | not' "$(login_state_file)" >/dev/null
 login_run 'claude codex'
 [[ $(created_title) == "$login_title" ]]
 jq -e '."login:claude".level == "error"' "$(login_state_file)" >/dev/null
