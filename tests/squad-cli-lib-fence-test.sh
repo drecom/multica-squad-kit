@@ -33,7 +33,7 @@ row() { # 規則 説明 期待（読む|読まない） 囲みの行（改行区
 		{id: "d1", author_id: "qa", author_type: "agent", created_at: "2026-11-10T12:00:02Z",
 		 content: "/note\n返事の待ち: 次の依頼を決めます"},
 		{id: "x", author_id: "L", author_type: "agent", created_at: "2026-11-10T12:00:03Z", content: $body}]' >"$file"
-	got=$(squad_cli_control analyze "$(<"$file")" '["L"]' '["P"]' r1 | jq -r 'if .blocked != null then "読めない:" + (.blocked | capture("（x: (?<r>[^）]*)）").r) elif ([.controls[] | select(.id == "x" and .kind == "fix")] | length) > 0 then "読む" else "読まない" end')
+	got=$(squad_cli_control analyze "$(<"$file")" '["L"]' '["P"]' r1 | jq -r 'if .blocked != null then "読めない:" + (.blocked | capture("（x: [0-9]+ 行目: (?<r>[^）]*)）").r) elif ([.controls[] | select(.id == "x" and .kind == "fix")] | length) > 0 then "読む" else "読まない" end')
 	rows=$((rows + 1))
 	[[ $got == "$want" ]] || {
 		printf '規則 %s（%s）: %s のはずが %s\n本文:\n%s\n' "$rule" "$what" "$want" "$got" "$body" >&2

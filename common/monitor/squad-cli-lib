@@ -2131,15 +2131,20 @@ squad_cli_squad_for_leader() {
 
 # 回を書いたコメントから、知らせるスクワッドを JSON で出す。
 # 回を書いたエージェントがリーダーのスクワッドがあれば、それを使う。なければ、次の依頼のように役が書いた回なので、
-# `前の回:` をたどって（同じタスクのコメントだけ。10 回まで）、リーダーが書いた回のスクワッドを使う。
-# 決められなければ 2、CLI・欄の検証の失敗なら 1 を返す。review-wait・次の依頼の決定・使用率の待ちが同じ決め方を使う。
+# 読める本文の囲みの外にある `前の回:` をたどって（同じタスクのコメントだけ。10 回まで）、リーダーが書いた回のスクワッドを使う。
+# 決められなければ 2、CLI・欄の検証の失敗なら 1、途中の回の候補が読めなければ標準出力に理由を出して 3 を返す。
+# review-wait・次の依頼の決定・使用率の待ちが同じ決め方を使う。
 squad_cli_squad_for_round() {
-	local comments=$1 current=$2 squads hop comment author matches count mark='前の回:'
+	local comments=$1 current=$2 squads leaders author matches count status=0
 	squads=$(squad_cli_read squad-list) || return 1
-	for ((hop = 0; hop <= 10; hop++)); do
-		comment=$(jq -c --arg id "$current" '[.[] | select(.id == $id)] | first // {}' <<<"$comments") || return 1
-		author=$(jq -r '.author_id // empty' <<<"$comment") || return 1
-		[[ -n $author ]] || break
+	leaders=$(jq -c '[.[] | select(.archived_at == null) | .leader_id]' <<<"$squads") || return 1
+	author=$(squad_cli_control squad_author "$comments" "$leaders" null "$current") || status=$?
+	if [[ $status == 3 ]]; then
+		printf '%s\n' "$author"
+		return 3
+	fi
+	[[ $status == 0 ]] || return 1
+	if [[ -n $author ]]; then
 		matches=$(jq -c --arg leader "$author" '[.[] | select(.leader_id == $leader and .archived_at == null)]' <<<"$squads") || return 1
 		count=$(jq length <<<"$matches") || return 1
 		if ((count == 1)); then
@@ -2150,9 +2155,7 @@ squad_cli_squad_for_round() {
 			printf '知らせるスクワッドを決められません: %s 件（回を書いたエージェント %s）\n' "$count" "$author" >&2
 			return 2
 		fi
-		current=$(jq -r --arg mark "$mark" '(.content // "") | split("\n") | map(select(startswith($mark))) | first // "" | ltrimstr($mark) | gsub("^\\s+|\\s+$"; "")' <<<"$comment") || return 1
-		[[ -n $current ]] || break
-	done
+	fi
 	printf '知らせるスクワッドを決められません: 回を書いたエージェント %s はどのスクワッドのリーダーでもなく、`前の回:` をたどってもリーダーの回に着きません\n' "${author:-不明}" >&2
 	return 2
 }
@@ -2162,7 +2165,10 @@ squad_cli_squad_for_round() {
 # 標準入力に {comments, leaders, principals} を渡し、モードで出すものを変える。
 #   analyze: 各コメントの {rounds, controls, finals} と rework_reviewed・short_path。finals は principals があるときだけ。
 #   merge_requested <head>: その head のマージの依頼があれば yes、なければ no。
-#   state: 認める回のうち最も新しいものの状態（なければ何も出さない）。
+#   state: 最新の認める回の状態と、読めない候補の一覧。どちらもなければ何も出さない。
+#   squad_author <回の ID>: 前の回をたどって最初に見つかるリーダーの ID。見つからなければ最後の作者の ID。途中の回の候補が読めなければ 3。
+#   check: 投稿前の本文が回の行を満たすか。標準入力は {body}。
+#   notice <スクワッドの ID> <候補の ID>...: 読めない候補ごとの知らせ済みと、信頼できる名乗りの ID の列とその作成時刻（ナノ秒）。
 read -r -d '' SQUAD_CLI_CONTROL_PY <<'SQUADCLICONTROLPY' || true
 import calendar
 import json
@@ -2183,6 +2189,9 @@ PREV = "前の回:"
 CLAIM = "返事の待ち: この回を次へ回します"
 DECIDE = "返事の待ち: 次の依頼を決めます"
 READY = "返事がそろいました"
+UNREADABLE_NOTICE = "読めない制御記録:"
+UNREADABLE_NOMINATION = "読めない制御記録の知らせ:"
+UNASSIGNED_RESULT = re.compile(RESULT + r" 未定（読めない依頼 \S+）")
 MAX_HOPS = 10
 KINDS = ("コミットが合わず頼み直す役:", "修正の依頼:", "見直しの種類: 最終レビュー", "マージの依頼:", "使用率の待ち:", "マージの前の CI の待ち:")
 WRITTEN = {"retry", "fix", "final", "merge", "human"}
@@ -2286,46 +2295,55 @@ def classify(line):
     return None, None, True
 
 
-def parse(comment):
+def parse(content):
     """本文を、docs/review-next-step.md の「読める本文」の順に読む。
-    (置き方を満たす行 placed, 囲みや項目を問わない全部の行 every, 行に分ける前の本文 norm, 読めない理由か None) を返す。
+    (置き方を満たす行 placed, 囲みや項目を問わない全部の行 every, 行に分ける前の本文 norm, (行番号, 読めない理由) か None) を返す。
     読めない本文の placed は空。every は、結果の行（返事の回:）の判定のために、読めなくても全部の行を入れる。"""
-    norm = (comment.get("content") or "").replace("\r\n", "\n").replace("\r", "\n")
-    reason = "制御文字" if CONTROL_CHAR.search(norm) else None
+    norm = content.replace("\r\n", "\n").replace("\r", "\n")
+    control_char = CONTROL_CHAR.search(norm)
+    error = (norm.count("\n", 0, control_char.start()) + 1, "制御文字") if control_char else None
     lines = norm.split("\n")
+    first = 1
     if lines[0] == "/note":
         lines = lines[1:]
+        first = 2
     elif lines[0].startswith("/note "):
         lines[0] = lines[0][6:]
-        if reason is None and fence_mark(lines[0]):
-            reason = "/note の後ろの囲みの記号"
-    placed, every, fence = [], [], None
-    for text in lines:
+        if error is None and fence_mark(lines[0]):
+            error = (1, "/note の後ろの囲みの記号")
+    placed, every, fence, fence_line = [], [], None, None
+    for number, text in enumerate(lines, first):
         line = text.rstrip(" \t")
         every.append(line)
-        if reason is not None:
+        if error is not None:
             continue
         if fence is not None:
             if fence_closes(line, fence):
                 fence = None
             continue
         reason, fence, keep = classify(line)
+        if reason:
+            error = (number, reason)
+        if fence is not None:
+            fence_line = number
         if keep:
             placed.append(line)
-    if reason is None and fence is not None:
-        reason = "閉じない囲み"
-    return ([] if reason else placed), every, norm, reason
+    if error is None and fence is not None:
+        error = (fence_line, "閉じない囲み")
+    return ([] if error else placed), every, norm, error
 
 
 parsed = {}
 for comment in comments:
-    placed, every, norm, reason = parse(comment)
+    placed, every, norm, error = parse(comment.get("content") or "")
+    number, reason = error if error else (None, None)
     parsed[comment["id"]] = {
         "agent": comment.get("author_type") == "agent",
         "author": comment.get("author_id"),
         "placed": placed,
         "every": every,
         "norm": norm,
+        "line": number,
         "reason": reason,
         "ns": stamp(comment.get("created_at")),
         "first_line": norm.split("\n")[0],
@@ -2346,9 +2364,27 @@ def has(i, prefix):
     return any(line.startswith(prefix) for line in parsed[i]["placed"])
 
 
-def is_result(i):
+def has_result_line(lines):
     # 結果の行は囲みの中でも読む。囲みを閉じない結果で、結果でないものとして扱われないようにするため。
-    return any(line.startswith(RESULT) for line in parsed[i]["every"])
+    return any(line.startswith(RESULT) for line in lines)
+
+
+def is_result(i):
+    return has_result_line(parsed[i]["every"])
+
+
+def is_unreadable_report(i):
+    """読めない依頼への結果・名乗り・知らせか。依頼を同じ ID のまま直しても、返事と知らせには数えない。"""
+    info = parsed[i]
+    if info["reason"] is None:
+        return any(UNASSIGNED_RESULT.fullmatch(line) for line in info["placed"]) or (
+            not is_result(i) and any(
+                line.startswith((UNREADABLE_NOMINATION, UNREADABLE_NOTICE)) for line in info["placed"]
+            )
+        )
+    # 結果の本文が読めなくても、report が末尾に足した結果の行は読む。
+    last = next((line for line in reversed(info["every"]) if line), "")
+    return UNASSIGNED_RESULT.fullmatch(last) is not None
 
 
 def prev_of(i):
@@ -2360,11 +2396,16 @@ def prev_of(i):
     return None, False
 
 
+def round_line(lines):
+    return next((line for line in lines if line.startswith(ROUND)), None)
+
+
+def mentioned_agents(line):
+    return re.findall(r"mention://agent/([A-Za-z0-9-]+)", line or "")
+
+
 def mentions(i):
-    for line in parsed[i]["placed"]:
-        if line.startswith(ROUND):
-            return re.findall(r"mention://agent/([A-Za-z0-9-]+)", line)
-    return []
+    return mentioned_agents(round_line(parsed[i]["placed"]))
 
 
 def waited(i):
@@ -2535,17 +2576,26 @@ def candidate(j, needles):
 
 
 def unreadable(needles, after=None, only=None):
-    """候補のうち、読めないものの最初。after があればそのコメントより後、only があればそのコメントだけ。(ID, 理由) か None。"""
-    for j in sequence if only is None else only:
-        if parsed[j]["reason"] is None or (after is not None and pos[j] <= pos[after]):
-            continue
-        if candidate(j, needles):
-            return j, parsed[j]["reason"]
-    return None
+    """読めない候補の ID。after があればそのコメントより後、only があればそのコメントだけ。"""
+    return {
+        j for j in (sequence if only is None else only)
+        if parsed[j]["reason"] is not None and (after is None or pos[j] > pos[after]) and candidate(j, needles)
+    }
 
 
-def blocked_text(found):
-    return None if found is None else f"制御記録を読めない（{found[0]}: {found[1]}）"
+def time_and_id(i):
+    return parsed[i]["ns"], i
+
+
+def blocked_text(i):
+    if i is None:
+        return None
+    info = parsed[i]
+    return f"制御記録を読めない（{i}: {info['line']} 行目: {info['reason']}）"
+
+
+def first_blocked(ids):
+    return blocked_text(min(ids, key=time_and_id, default=None))
 
 
 def chain_of(i):
@@ -2566,28 +2616,21 @@ def latest_round():
     return found[-1] if found else None
 
 
-def blocked_latest():
-    """最新の回（status・proceed・report）の候補。認める回のうち最新のものより後のコメントに限る。"""
-    return blocked_text(unreadable([ROUND], latest_round()))
-
-
 def blocked_round(r):
     """decide が回 r を判定するときの候補。たどる途中の回、制御記録、決める記録と proceed の記録。"""
-    return (blocked_text(unreadable([ROUND], only=chain_of(r)))
-            or blocked_text(unreadable([PREV + " " + r]))
-            or blocked_text(unreadable([DECIDE, CLAIM], r)))
+    return first_blocked(unreadable([ROUND], only=chain_of(r))
+                         | unreadable([PREV + " " + r])
+                         | unreadable([DECIDE, CLAIM], r))
 
 
 def blocked_final(r):
     """同じコミットの最終レビューの回の候補。確認するコミット: が r と同じか、取り出せないものだけ。"""
     want = field(r, "確認するコミット:") if r in parsed else None
-    for j in sequence:
+    for j in sorted(unreadable(["見直しの種類: 最終レビュー"]), key=time_and_id):
         info = parsed[j]
-        if info["reason"] is None or not candidate(j, ["見直しの種類: 最終レビュー"]):
-            continue
         commits = re.findall(r"^確認するコミット: *(\S+)", info["norm"], re.M)
         if not commits or want is None or want in commits:
-            return blocked_text((j, info["reason"]))
+            return blocked_text(j)
     return None
 
 
@@ -2623,7 +2666,7 @@ if mode == "analyze":
 elif mode == "merge_requested":
     want = "マージの依頼: " + args[0]
     # 読めない候補は、読める依頼と同じ head にあっても優先する。依頼済みと読まず、理由を返す。
-    held = blocked_text(unreadable([want]))
+    held = first_blocked(unreadable([want]))
     if held:
         print("blocked " + held)
         sys.exit(0)
@@ -2636,30 +2679,62 @@ elif mode == "merge_requested":
     print("no")
 elif mode == "body":
     # 書く前の本文の確認。args = [本文]。読めて、種類を示す行と前の回: の行が置き方を満たせば ok、そうでなければ読めない理由を出す。
-    placed, _, _, reason = parse({"content": args[0]})
-    if reason:
-        print(reason)
+    placed, _, _, error = parse(args[0])
+    if error:
+        print(error[1])
     elif not any(line.startswith(KINDS) for line in placed) or not any(line.startswith(PREV) for line in placed):
         print("種類を示す行か前の回: の行が、行の置き方を満たさない")
     else:
         print("ok")
+elif mode == "check":
+    placed, every, _, error = parse(data["body"])
+    line = round_line(placed)
+    if error:
+        print(f"{error[0]} 行目: {error[1]}")
+    elif line is None:
+        print("返事を待つ役: の行がない")
+    elif not mentioned_agents(line):
+        print("返事を待つ役: にエージェントのメンションがない")
+    elif has_result_line(every):
+        print("返事の回: の行がある")
+    else:
+        print("本文: 読める")
+        sys.exit(0)
+    sys.exit(1)
+elif mode == "squad_author":
+    author = None
+    for i in chain_of(args[0]):
+        author = parsed[i]["author"]
+        if not author or author in leaders:
+            break
+        if parsed[i]["reason"] and candidate(i, [ROUND]):
+            print(blocked_text(i))
+            sys.exit(3)
+    print(author or "")
 elif mode == "state":
     r = latest_round()
-    held = blocked_latest()
-    if r is not None and held is None:
-        # この回を指す候補（制御記録、決める記録と proceed の記録）。たどる回は decide だけが読むので、ここでは問わない。
-        held = (blocked_text(unreadable([PREV + " " + r]))
-                or blocked_text(unreadable([DECIDE, CLAIM], r)))
+    bad_rounds = unreadable([ROUND], r)
+    bad_records = unreadable([DECIDE, CLAIM], r)
+    if r is not None:
+        bad_records |= unreadable([PREV + " " + r])
+    bad_ids = sorted(bad_rounds | bad_records, key=time_and_id)
+    problems = [
+        {"id": i, "line": parsed[i]["line"], "reason": parsed[i]["reason"],
+         "kind": "round" if i in bad_rounds else "record"}
+        for i in bad_ids
+    ]
+    held = blocked_text(bad_ids[0]) if bad_ids else None
     if r is not None:
         roles = sorted(set(waited(r)))
         after = [j for j in sequence if pos[j] > pos[r]]
         agents = [j for j in after if parsed[j]["agent"]]
+        replies = [j for j in agents if not is_unreadable_report(j)]
         records = sorted((parsed[j]["ns"], j) for j in agents if parsed[j]["author"] in roles and not is_result(j) and has(j, DECIDE))
         sort = lambda ids: [j for _, j in sorted((parsed[j]["ns"], j) for j in ids)]
-        ready_ids = sort(j for j in agents if READY in parsed[j]["first_line"])
+        ready_ids = sort(j for j in replies if READY in parsed[j]["first_line"])
         emit({
             "id": r, "author_id": parsed[r]["author"], "ts": parsed[r]["ns"] / 1e9, "waiting": roles,
-            "returned": sorted({parsed[j]["author"] for j in agents if parsed[j]["author"] in roles}),
+            "returned": sorted({parsed[j]["author"] for j in replies if parsed[j]["author"] in roles}),
             "ready_ids": ready_ids,
             "claim_ids": sort(j for j in agents if not is_result(j) and has(j, CLAIM)),
             "decide_ids": [j for _, j in records],
@@ -2667,16 +2742,63 @@ elif mode == "state":
             "next_ids": sort(j for j in agents if control(j)["kind"] and control(j)["prev"] == r),
             "ready": bool(ready_ids),
             "blocked": held,
+            "unreadable": problems,
         })
     elif held:
-        emit({"blocked": held})
+        emit({"blocked": held, "unreadable": problems})
+elif mode == "notice":
+    # 読めない候補ごとの、知らせ済みか（notified）と、信頼できる名乗りの ID の列（claims。時刻と ID の順）と、その作成時刻（claim_ns）。
+    # args = [知らせるスクワッドの ID, 候補の ID...]。条件は docs/review-next-step.md の「入力と信頼の表」の知らせと名乗りの条件。
+    squad_id, wanted = args[0], args[1:]
+    mention = re.compile(r"\[@[^\]\n]*\]\(mention://squad/" + re.escape(squad_id) + r"\) 返事がそろいました。")
+    notice_line = re.compile(UNREADABLE_NOTICE + r" (\S+)(?: .*)?")
+    saved_line = re.compile(r"保存した結果: (\S+)")
+    claim_line = re.compile(UNREADABLE_NOMINATION + r" (\S+) (\S+)")
+
+    def trusted(j, cand):
+        """作者がリーダーでないエージェントで、読める本文に返事の回: の行がなく、候補より後のコメントか。"""
+        info = parsed[j]
+        return info["agent"] and info["author"] not in leaders and info["reason"] is None and not is_result(j) and pos[j] > pos[cand]
+
+    def has_own_result(j, cand, saved=None):
+        """j と同じ作者の結果（返事の回: の行のあるコメント）が、候補より後で j より前にあるか。saved があればその 1 件だけを見る。"""
+        return any(
+            (saved is None or k == saved) and parsed[k]["author"] == parsed[j]["author"] and is_result(k) and pos[cand] < pos[k] < pos[j]
+            for k in sequence
+        )
+
+    found = {}
+    for cand in wanted:
+        notified, claims = False, []
+        for j in sequence if cand in parsed else []:
+            if not trusted(j, cand):
+                continue
+            # 知らせ: 読める本文の列 0 に、`読めない制御記録:` と `保存した結果:` の行が 1 つずつある。
+            # `保存した結果:` の ID は、同じ作者が候補より後で知らせより前に書いた結果でなければならない。
+            notice_ids = [m.group(1) for m in map(notice_line.fullmatch, parsed[j]["placed"]) if m]
+            saved_ids = [m.group(1) for m in map(saved_line.fullmatch, parsed[j]["placed"]) if m]
+            if (notice_ids == [cand] and len(saved_ids) == 1 and mention.match(parsed[j]["first_line"])
+                    and saved_ids[0] in parsed and has_own_result(j, cand, saved_ids[0])):
+                notified = True
+            # 名乗り: 同じ作者の結果が、候補より後で名乗りより前にある。結果を書いていない作者の名乗りは数えない。
+            pairs = [(m.group(1), m.group(2)) for m in map(claim_line.fullmatch, parsed[j]["placed"]) if m]
+            if (cand, squad_id) in pairs and parsed[j]["first_line"] == "/note" and has_own_result(j, cand):
+                claims.append(j)
+        claims = sorted(claims, key=time_and_id)
+        found[cand] = {"notified": notified, "claims": claims, "claim_ns": {j: parsed[j]["ns"] for j in claims}}
+    emit(found)
 else:
     print("mode が不正", file=sys.stderr)
     sys.exit(1)
 SQUADCLICONTROLPY
 
 # squad_cli_control <モード> <コメントの JSON> <リーダーの ID の JSON 配列> <最上位の役の ID の JSON 配列か null> [<モードの引数>...]
+# squad_cli_control check < <本文のファイル>。本文は NUL を検査できるよう標準入力から読む。
 squad_cli_control() {
+	if [[ $1 == check ]]; then
+		jq -Rs '{body: .}' | python3 -I -c "$SQUAD_CLI_CONTROL_PY" check
+		return
+	fi
 	local mode=$1 comments=$2 leaders=$3 principals=$4
 	shift 4
 	jq -c --argjson leaders "$leaders" --argjson principals "$principals" \

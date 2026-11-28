@@ -22,7 +22,7 @@ reset
 ok_round
 add round-9 orchestrator $'> 返事を待つ役: '"$(mentions qa)"$'\n確認するコミット: '"$sha"
 run round-9
-expect_leader '制御記録を読めない（round-9: 引用）'
+expect_leader '制御記録を読めない（round-9: 1 行目: 引用）'
 reset
 ok_round
 add round-9 orchestrator $'```\n返事を待つ役: '"$(mentions qa)"$'\n```\n確認するコミット: '"$sha"

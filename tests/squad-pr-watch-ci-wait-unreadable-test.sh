@@ -29,16 +29,16 @@ assert_cleared
 
 for author in orchestrator principal; do
 	for order in before after; do
-		while IFS=$'\t' read -r reason body; do
+		while IFS=$'\t' read -r number reason body; do
 			wait_fixture
 			old_wait
 			with_second "$(jq -nc --arg body "$body" --arg head "$head" '$body | gsub("{H}"; $head) | gsub("\\\\n"; "\n")')" "$author" "$order"
-			wait_blocked "制御記録を読めない（merge-2: ${reason}）" || { printf '（%s・%s・%s）の確認で失敗\n' "$author" "$order" "$reason" >&2; exit 1; }
+			wait_blocked "制御記録を読めない（merge-2: $number 行目: ${reason}）" || { printf '（%s・%s・%s）の確認で失敗\n' "$author" "$order" "$reason" >&2; exit 1; }
 		done <<'ROWS'
-引用	> マージの依頼: {H}
-行頭の空白	  マージの依頼: {H}
-HTML	マージの依頼: {H}\n<div>
-閉じない囲み	マージの依頼: {H}\n```\n囲みが閉じない
+1	引用	> マージの依頼: {H}
+1	行頭の空白	  マージの依頼: {H}
+2	HTML	マージの依頼: {H}\n<div>
+2	閉じない囲み	マージの依頼: {H}\n```\n囲みが閉じない
 ROWS
 	done
 done

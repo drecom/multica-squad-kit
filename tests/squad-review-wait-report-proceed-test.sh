@@ -197,7 +197,7 @@ reset_calls
 build_comments result:a:r1:5 result:b:r2:6 | with_raw n-q orchestrator agent 8 $'> 修正の依頼: 直してください\n> 前の回: round' >"$test_dir/comments.1.json"
 build_comments result:a:r1:5 result:b:r2:6 ready:orch:posted-1:90 claim:orch:posted-2:91 | with_raw n-q orchestrator agent 8 $'> 修正の依頼: 直してください\n> 前の回: round' >"$test_dir/comments.json"
 if bash "$script" proceed test-issue watch-trigger >"$test_dir/output" 2>"$test_dir/error"; then echo "引用の候補で止まらなかった: $(<"$test_dir/output")" >&2; exit 1; fi
-[[ $(<"$test_dir/error") == *'制御記録を読めない（n-q: 引用）'* && ! -s $test_dir/posted.jsonl && $(deleted_rules) == 0 ]] || { echo "失敗: ${0##*/} の $LINENO 行目の確認: $(<"$test_dir/error")" >&2; exit 1; }
+[[ $(<"$test_dir/error") == *'制御記録を読めない（n-q: 1 行目: 引用）'* && ! -s $test_dir/posted.jsonl && $(deleted_rules) == 0 ]] || { echo "失敗: ${0##*/} の $LINENO 行目の確認: $(<"$test_dir/error")" >&2; exit 1; }
 echo 'PASS proceed: 引用の前の回: は読めない候補で、何も書かずに終了 1 になる'
 
 # proceed: 制御記録でない `前の回:`（役の結果、人間のコメント、種類の行のないコメント）では、回ごと済みにせず次に進む。

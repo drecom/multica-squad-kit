@@ -1,0 +1,158 @@
+{
+  "commands": [
+    {
+      "match": "squad-preflight",
+      "stdout": "squad-preflight: ガードの gh と、すべての見張りが使えます。"
+    },
+    {
+      "match": "squad-task-read issue-shop-1",
+      "stdout": {
+        "schema_version": 1,
+        "task": {
+          "id": "issue-shop-1",
+          "identifier": "SHOP-1",
+          "title": "カートの診断の対象を決める",
+          "status": "in_progress",
+          "assignee_type": "squad",
+          "assignee_id": "squad-shop",
+          "project_id": "project-shop",
+          "labels": [],
+          "metadata": {
+            "repository": "example/shop",
+            "branch": "feat/cart-badge",
+            "pr_url": "https://github.com/example/shop/pull/7"
+          },
+          "description": "カートで続いた失敗の原因を確認する。"
+        },
+        "comments": [
+          {
+            "id": "bad-request",
+            "parent_id": null,
+            "author_type": "agent",
+            "author_id": "agent-orchestrator",
+            "created_at": "2026-01-11T12:00:00Z",
+            "content": "見直しの種類: 診断\n診断の依頼: 1 回目。失敗: 同じ誤り カート\n返事を待つ役: [@shop-claude-principal](mention://agent/agent-claude-principal)\n確認するコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567\n  - 根拠の候補は集計と保存。元の失敗ログは残っていない。"
+          },
+          {
+            "id": "saved-result",
+            "parent_id": "bad-request",
+            "author_type": "agent",
+            "author_id": "agent-claude-principal",
+            "created_at": "2026-01-11T12:01:00Z",
+            "content": "/note\n確認したコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567\n⚠️ shop-claude-principal: 根拠が足りず、対象を選べない。\n診断: 人間の判断が要る\n直す役: なし\n集計と保存では直し方が異なる。どちらが失敗したかの記録がない。\n返事の回: 未定（読めない依頼 bad-request）"
+          },
+          {
+            "id": "notice-1",
+            "parent_id": "bad-request",
+            "author_type": "agent",
+            "author_id": "agent-claude-principal",
+            "created_at": "2026-01-11T12:02:00Z",
+            "content": "[@shop-squad](mention://squad/squad-shop) 返事がそろいました。\n次の依頼を決められません: 制御記録を読めない（bad-request: 5 行目: 行頭の空白）\n読めない制御記録: bad-request 5 行目: 行頭の空白\n保存した結果: saved-result\n\n読めない依頼への返事なので、結果は回に付けずに保存しました。\n返した役: shop-claude-principal"
+          }
+        ],
+        "pr": {
+          "url": "https://github.com/example/shop/pull/7",
+          "state": "OPEN",
+          "draft": true,
+          "head_sha": "3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567",
+          "mergeable": "MERGEABLE"
+        },
+        "ci": null,
+        "runs": [],
+        "cuts": [],
+        "errors": []
+      }
+    },
+    {
+      "match": "multica issue get issue-shop-1",
+      "stdout": {
+        "id": "issue-shop-1",
+        "identifier": "SHOP-1",
+        "title": "カートの診断の対象を決める",
+        "status": "in_progress",
+        "assignee_type": "squad",
+        "assignee_id": "squad-shop",
+        "project_id": "project-shop",
+        "labels": [],
+        "metadata": {
+          "repository": "example/shop",
+          "branch": "feat/cart-badge",
+          "pr_url": "https://github.com/example/shop/pull/7"
+        },
+        "description": "カートで続いた失敗の原因を確認する。"
+      }
+    },
+    {
+      "match": "multica issue comment list issue-shop-1",
+      "stdout": [
+        {
+          "id": "bad-request",
+          "parent_id": null,
+          "author_type": "agent",
+          "author_id": "agent-orchestrator",
+          "created_at": "2026-01-11T12:00:00Z",
+          "content": "見直しの種類: 診断\n診断の依頼: 1 回目。失敗: 同じ誤り カート\n返事を待つ役: [@shop-claude-principal](mention://agent/agent-claude-principal)\n確認するコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567\n  - 根拠の候補は集計と保存。元の失敗ログは残っていない。"
+        },
+        {
+          "id": "saved-result",
+          "parent_id": "bad-request",
+          "author_type": "agent",
+          "author_id": "agent-claude-principal",
+          "created_at": "2026-01-11T12:01:00Z",
+          "content": "/note\n確認したコミット: 3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567\n⚠️ shop-claude-principal: 根拠が足りず、対象を選べない。\n診断: 人間の判断が要る\n直す役: なし\n集計と保存では直し方が異なる。どちらが失敗したかの記録がない。\n返事の回: 未定（読めない依頼 bad-request）"
+        },
+        {
+          "id": "notice-1",
+          "parent_id": "bad-request",
+          "author_type": "agent",
+          "author_id": "agent-claude-principal",
+          "created_at": "2026-01-11T12:02:00Z",
+          "content": "[@shop-squad](mention://squad/squad-shop) 返事がそろいました。\n次の依頼を決められません: 制御記録を読めない（bad-request: 5 行目: 行頭の空白）\n読めない制御記録: bad-request 5 行目: 行頭の空白\n保存した結果: saved-result\n\n読めない依頼への返事なので、結果は回に付けずに保存しました。\n返した役: shop-claude-principal"
+        }
+      ]
+    },
+    {
+      "match": "multica issue runs issue-shop-1",
+      "stdout": []
+    },
+    {
+      "match": "multica issue pull-requests issue-shop-1",
+      "stdout": {
+        "pull_requests": [
+          {
+            "url": "https://github.com/example/shop/pull/7",
+            "state": "open",
+            "draft": true
+          }
+        ]
+      }
+    },
+    {
+      "match": "squad-pr-watch link-check issue-shop-1",
+      "stdout": "紐付け: 紐付いている pr: https://github.com/example/shop/pull/7"
+    },
+    {
+      "match": "gh pr view",
+      "stdout": {
+        "number": 7,
+        "title": "fix: カートの処理",
+        "state": "OPEN",
+        "isDraft": true,
+        "baseRefName": "main",
+        "headRefName": "feat/cart-badge",
+        "headRefOid": "3f9a2c1d4b5e6f708192a3b4c5d6e7f801234567",
+        "mergeable": "MERGEABLE"
+      }
+    },
+    {
+      "match": "squad-review-wait status issue-shop-1",
+      "exit": 1,
+      "stderr": "制御記録を読めない（bad-request: 5 行目: 行頭の空白）"
+    },
+    {
+      "match": "squad-review-wait proceed issue-shop-1",
+      "exit": 1,
+      "stderr": "制御記録を読めない（bad-request: 5 行目: 行頭の空白）"
+    }
+  ]
+}

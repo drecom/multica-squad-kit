@@ -56,14 +56,14 @@ add_fixture() {
 }
 
 scenes="$eval_dir/scenes"
-check 0 'pick の見本: 143 場面を確認した'
+check 0 'pick の見本: 144 場面を確認した'
 scenes="$test_dir/scenes"
 cp -R "$eval_dir/scenes" "$scenes"
 change_cli add-2 '.commands |= map(select(.match != "squad-usage-wait pick issue-shop-1 designer"))'
 change_cli add-4 '.commands |= map(select(.match != "squad-usage-wait pick issue-shop-1 planner"))'
 check 1 "$(missing add-2 1 designer)
 $(missing add-4 1 planner)"
-echo 'PASS leader-eval-picks: 143 場面が通り、main の見本では add-2・add-4 だけを落とす'
+echo 'PASS leader-eval-picks: 144 場面が通り、main の見本では add-2・add-4 だけを落とす'
 
 copy_scene keep-26
 change_cli keep-26 '.commands |= map(select(.match | startswith("squad-usage-wait pick issue-shop-1 fix") | not))'

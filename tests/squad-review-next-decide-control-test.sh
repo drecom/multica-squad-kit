@@ -47,7 +47,7 @@ for author in orchestrator qa; do
 	ok_round
 	add next "$author" $'> 修正の依頼: 直してください\n> 前の回: round-1'
 	run round-1
-	expect_leader '制御記録を読めない（next: 引用）'
+	expect_leader '制御記録を読めない（next: 1 行目: 引用）'
 done
 echo 'PASS review-next-decide: 引用の中の前の回: と種類の行は、読めない候補として何も書かずに終了 3 になる'
 

@@ -50,6 +50,9 @@ emit() { stub "$@"; }
 case "${1-} ${2-} ${3-}" in
 'version  ') echo 'multica fixture-version' ;;
 'squad list --output') emit emit squad-list "$dir/squads.json" ;;
+'squad member list') emit emit squad-member-list "$dir/members.json" ;;
+'issue label list') emit emit issue-labels "$dir/issue-labels.json" ;;
+'label list --output') emit emit label-list "$dir/labels.json" ;;
 "agent get $3")
  jq --arg id "$3" '.[] | select(.id == $id)' "$dir/agents.json" >"$dir/agent-response.json"
  emit emit agent-get "$dir/agent-response.json" ;;
@@ -74,6 +77,7 @@ case "${1-} ${2-} ${3-}" in
 	jq -Rs --argjson args "$args" '{args: $args, body: .}' <"$file" >>"$dir/posted.jsonl"
 	emit posted issue-comment-add "posted-$n"
 	;;
+'issue get test-issue') emit emit issue-get "$dir/issue.json" ;;
 'issue runs test-issue') emit emit issue-runs "$dir/runs.json" ;;
 'issue wakeup list') emit emit issue-wakeups "$dir/rules.json" ;;
 'issue wakeup delete') echo '{}' ;;
@@ -93,11 +97,18 @@ EOF
 chmod +x "$test_dir/bin/multica"
 
 # report と proceed の待ちは、実際には待たずに秒数だけ記録する。
+# report の期限は bash の SECONDS で数えるので、偽の sleep は待った秒数を SECONDS に足す（実際の経過は数秒もかからない）。
+# スクリプトは `bash` の子として流れるので、関数を export -f で渡す。PATH の sleep は、関数を使わない呼び出しの備え。
 cat >"$test_dir/bin/sleep" <<'EOF'
 #!/usr/bin/env bash
 echo "$1" >>"$REVIEW_WAIT_TEST_DIR/sleeps.log"
 EOF
 chmod +x "$test_dir/bin/sleep"
+sleep() {
+	echo "$1" >>"$REVIEW_WAIT_TEST_DIR/sleeps.log"
+	SECONDS=$((SECONDS + $1))
+}
+export -f sleep
 export REVIEW_WAIT_RECHECK_SECONDS=20
 
 # status の時計を固定し、登録と依頼コメントの数秒差も再現する。
@@ -128,9 +139,15 @@ fixture issue-wakeups | jq --arg mark "$mark" '. as $base | [
 
 fixture squad-list | jq '[. + {id:"squad-test", name:"demo-squad", leader_id:"orchestrator", archived_at:null}]' >"$test_dir/squads.base.json"
 cp "$test_dir/squads.base.json" "$test_dir/squads.json"
+# タスクの担当。既定は squad-test。set_assignee で、別のスクワッドや、スクワッドでない担当（agent）に変えられる。
+fixture issue-get | jq '. + {assignee_type: "squad", assignee_id: "squad-test"}' >"$test_dir/issue.base.json"
+set_assignee() { # 担当の種類 担当の ID
+	jq --arg type "$1" --arg id "$2" '. + {assignee_type: $type, assignee_id: $id}' "$test_dir/issue.base.json" >"$test_dir/issue.json"
+}
 
 reset_calls() {
 	cp "$test_dir/squads.base.json" "$test_dir/squads.json"
+	cp "$test_dir/issue.base.json" "$test_dir/issue.json"
 	: >"$test_dir/calls.jsonl"
 	: >"$test_dir/instructions.jsonl"
 	: >"$test_dir/posted.jsonl"
@@ -223,6 +240,27 @@ with_json() {
 		'. + [$comment[0] + {id: $id, author_type: $type, author_id: $who, created_at: $time, content: $content}]'
 }
 
+# 結果（返事の回: の行がある /note）のコメントを足した一覧を出す。引数は「ID 作者の ID 回からの秒」。標準入力が一覧。
+with_result() {
+	with_raw "$1" "$2" agent "$3" "$(printf '/note\nresult\n返事の回: round\n')"
+}
+
+# 読めない候補の名乗りのコメントを足した一覧を出す。引数は「ID 作者の ID 回からの秒 候補の ID スクワッドの ID [結果の ID]」。標準入力が一覧。
+# 名乗りは、同じ作者の結果が候補と名乗りの間にあるときだけ数える。結果は名乗りの 1 秒前に足す。結果の ID の既定は zres-<名乗りの ID>で、候補と同じ秒でも並びが候補の後になるよう、辞書順の後ろにする。
+# 結果を足さない名乗り（結果を書いていない作者の名乗り）は with_claim_only で足す。
+with_claim() {
+	with_result "${6:-zres-$1}" "$2" "$(($3 - 1))" | with_claim_only "$1" "$2" "$3" "$4" "$5"
+}
+with_claim_only() {
+	with_raw "$1" "$2" agent "$3" "$(printf '/note\n読めない制御記録の知らせ: %s %s\n' "$4" "$5")"
+}
+
+# 読めない候補が 1 つのとき、名乗りを書いたあとの読み直し（3 回目の一覧の取得）で自分の名乗りが見えるよう、comments.3.json を作る。
+# 結果が posted-1、名乗りが posted-2。comments.json は、結果を書く前の一覧にしておく。引数は候補の ID。
+claim_visible_at_3() {
+	with_claim posted-2 "$b" 12 "$1" squad-test posted-1 <"$test_dir/comments.json" >"$test_dir/comments.3.json"
+}
+
 posted_claim_count() {
 	jq -s '[.[] | select(.body == "/note\n返事の待ち: この回を次へ回します\n")] | length' "$test_dir/posted.jsonl"
 }
@@ -235,6 +273,11 @@ posted_decide_count() {
 decide_calls() { if [[ -f $test_dir/decide-calls ]]; then paste -sd';' "$test_dir/decide-calls"; fi; }
 list_count() { cat "$test_dir/list-count"; }
 slept() { paste -sd, "$test_dir/sleeps.log"; }
+# 偽の sleep の合計（秒）。report は、どの道でも開始から 60 秒以内に知らせを書き終えるので、待ちは取り置きの 10 秒を除いた 50 秒以下になる。
+slept_total() { awk '{ sum += $1 } END { print sum + 0 }' "$test_dir/sleeps.log"; }
+expect_slept_within() { # 上限の秒数
+	[[ $(slept_total) -le $1 ]] || { printf '偽の sleep の合計が %s 秒を超えた: %s\n' "$1" "$(slept)" >&2; exit 1; }
+}
 deleted_rules() {
 	jq -s '[.[] | select(.[0:3] == ["issue", "wakeup", "delete"])] | length' "$test_dir/calls.jsonl"
 }

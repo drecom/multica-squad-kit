@@ -27,7 +27,24 @@
 #     CI を待っているタスク（metadata に ci_wait_head）が頼み直し・修正・最終レビュー・人間の呼び出しへ移るときは、書く前に ci-wait-clear を流す。
 #     リーダーに任せるときは、何も書かずに `次の依頼を決められません: <理由>` を出して 3 で終わる。
 #
-# 失敗したときは、依頼を書かずに標準エラーへ要約を出して 1 で終わる。
+#   squad-review-next check <本文のファイル>
+#     リーダーが手で書く、`返事を待つ役:` の行のある依頼を、投稿の前に確認する（docs/review-next-step.md の「手で書く依頼の確認」）。
+#     待つ仕組みと同じ部品で本文を読み、回として読めるかを返す。作者もコメントの並びも見ず、何も書かない。種類ごとの行の置き方は見ない。
+#     0 は読めて回の行がそろう（標準出力に `本文: 読める`）。1 は読めないか回の行が足りない（標準出力に `<行> 行目: <理由>`、
+#     または `返事を待つ役: の行がない`・`返事を待つ役: にエージェントのメンションがない`・`返事の回: の行がある`）。
+#     2 は使い方の誤りか、ファイルを読めない（標準エラーに理由）。
+#
+#   squad-review-next diagnose <タスク> <きっかけのコメント> <確認するコミット> <pick の出力のファイル> <根拠のファイル>
+#       --times <N> --failure <同じ誤り | 同じ部品> <対象> [--failure …]
+#       [--with-design-review rework <理由> | --with-design-review mark <基準> <理由>] [--human-design]
+#     診断の依頼を、リーダーが渡した値から書く（docs/review-next-step.md の「診断の依頼」）。制御の行は値から組んで列 0 に置き、
+#     続いた失敗の根拠は、行ごとに空白 2 つで字下げして、バッククォートの囲みに入れる。
+#     値（対象・理由・基準）は、1 行で空でなく、空白から始まらず、制御文字と `返事の回:` を含まないものだけ使う。
+#     組んだ本文を待つ仕組みと同じ部品で読んで照合し、`squad-review-wait watch` を流してから、きっかけのコメントへの返信で書く。
+#     `依頼: <コメントの ID>` を出す。投稿に失敗したら見張りを外す。
+#     終了コード: 0 が書いた、1 が書けない（名簿にない役・読めないファイル・見張りと投稿の失敗など）、2 が使い方か値の誤り（何も書かない）。
+#
+# request と decide と diagnose は、失敗したときは、依頼を書かずに標準エラーへ要約を出して 1（diagnose の使い方の誤りは 2）で終わる。
 set -euo pipefail
 
 # GitHub の PR のファイルの一覧の上限。この件数に達したら、一覧が切れているものとして扱う。
@@ -926,6 +943,8 @@ done
 usage() {
 	echo '使い方: squad-review-next request <タスク> <きっかけのコメント> <確認するコミット>' >&2
 	echo '        squad-review-next decide <タスク> <回のコメント> [<起きた規則>]' >&2
+	echo '        squad-review-next check <本文のファイル>' >&2
+	echo '        squad-review-next diagnose <タスク> <きっかけのコメント> <確認するコミット> <pick の出力のファイル> <根拠のファイル> --times <N> --failure <同じ誤り|同じ部品> <対象> [--failure …] [--with-design-review rework <理由> | mark <基準> <理由>] [--human-design]' >&2
 	exit 2
 }
 
@@ -1544,7 +1563,7 @@ pick_role() {
 
 decide() {
 	local issue=$1 round=$2 work roster task marked res action leader principals commit kind id body mention
-	local keys mentions role_key role_id lineage runs range prev pr repo compare cmp_status form
+	local keys mentions role_key role_id lineage runs range prev pr repo compare cmp_status form squad_status=0
 	local -a ids=()
 	mkdir -p tmp
 	work=$(mktemp -d tmp/review-next-decide.XXXXXX) || dfail '作業のディレクトリを作れない'
@@ -1554,7 +1573,9 @@ decide() {
 	printf '%s' "$task" >"$work/task.json"
 	# スクワッドは、回を書いた役から `前の回:` をたどって決める。タスクの担当は使わない（担当がスクワッドとは限らないため）。
 	jq -e --arg round "$round" 'any(.[]; .id == $round)' "$work/comments.json" >/dev/null || dfail '返事の組を読めない（回のコメントがない）'
-	SQUAD=$(squad_cli_squad_for_round "$(<"$work/comments.json")" "$round") || dfail 'スクワッドを決められない（回を書いた役から `前の回:` をたどっても、リーダーの回に着かない）'
+	SQUAD=$(squad_cli_squad_for_round "$(<"$work/comments.json")" "$round") || squad_status=$?
+	[[ $squad_status != 3 ]] || stop_leader "$SQUAD"
+	[[ $squad_status == 0 ]] || dfail 'スクワッドを決められない（回を書いた役から `前の回:` をたどっても、リーダーの回に着かない）'
 	roster=$(squad_cli_read_roster "$issue" "$(jq -r .id <<<"$SQUAD")") || dfail 'スクワッドの名簿を読めない'
 	printf '%s' "$roster" >"$work/roster.json"
 	leader=$(jq -r '.leader // empty' <<<"$roster")
@@ -1673,6 +1694,222 @@ decide() {
 	esac
 }
 
+# diagnose
+
+# 診断の依頼の値の検査と、本文の組み立て。設定の JSON を標準入力で受け、validate は役のキーを、render は本文を標準出力に出す。
+# 終了 2 は値・ファイルの中身の誤り、1 はファイルを読めない。理由は標準エラーに出す。
+read -r -d '' DIAGNOSE_PY <<'DIAGNOSEPY' || true
+import json
+import re
+import sys
+import unicodedata
+
+mode = sys.argv[1]
+cfg = json.load(sys.stdin)
+VALUE_CONTROL = re.compile("[\x00-\x1f\x7f-\x9f]")
+EVIDENCE_CONTROL = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+
+
+def usage(text):
+    print(text, file=sys.stderr)
+    sys.exit(2)
+
+
+def unreadable(text):
+    print(text, file=sys.stderr)
+    sys.exit(1)
+
+
+def check_value(name, value):
+    if value == "":
+        usage(f"{name}が空")
+    if "\n" in value or "\r" in value or " " in value or " " in value:
+        usage(f"{name}が複数行")
+    if value[0].isspace() or unicodedata.category(value[0]) == "Cf":
+        usage(f"{name}が空白から始まる")
+    if VALUE_CONTROL.search(value):
+        usage(f"{name}に制御文字がある")
+    if "返事の回:" in value:
+        usage(f"{name}に「返事の回:」がある")
+
+
+def read_text(path, what):
+    try:
+        with open(path, "rb") as handle:
+            raw = handle.read()
+    except OSError as error:
+        unreadable(f"{what}を読めない: {path}（{error.strerror}）")
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        usage(f"{what}が UTF-8 として読めない")
+
+
+if not re.fullmatch(r"[0-9a-fA-F]{40}", cfg["commit"]):
+    usage("確認するコミットは、完全な SHA（16 進の 40 字）で渡す")
+if not re.fullmatch(r"[1-9][0-9]*", cfg["times"]):
+    usage("--times は 1 以上の整数で渡す")
+if not cfg["failures"]:
+    usage("--failure が要る（失敗の種類と対象）")
+for kind, target in cfg["failures"]:
+    if kind not in ("同じ誤り", "同じ部品"):
+        usage("--failure の種類は「同じ誤り」か「同じ部品」")
+    check_value("--failure の対象", target)
+design = cfg["design"]
+if design is not None:
+    if design[0] == "rework":
+        check_value("--with-design-review rework の理由", design[1])
+    else:
+        check_value("--with-design-review mark の基準", design[1])
+        check_value("--with-design-review mark の理由", design[2])
+
+pick = read_text(cfg["pick"], "pick の出力のファイル").replace("\r\n", "\n").replace("\r", "\n")
+if EVIDENCE_CONTROL.search(pick):
+    usage("pick の出力に制御文字がある")
+pick_lines = pick.split("\n")
+roles = [line for line in pick_lines if line.startswith("役:")]
+splits = [line for line in pick_lines if line.startswith("振り分け:")]
+if len(roles) != 1 or len(splits) != 1:
+    usage("pick の出力に、役: の行と振り分け: の行が 1 つずつ要る")
+role = roles[0][len("役:"):].strip()
+split = splits[0].rstrip(" \t")
+if role == "" or split.strip() == "振り分け:":
+    usage("pick の出力の役: か振り分け: の値が空")
+
+evidence = read_text(cfg["evidence"], "根拠のファイル").replace("\r\n", "\n").replace("\r", "\n")
+if EVIDENCE_CONTROL.search(evidence):
+    usage("根拠に制御文字がある（空とタブのほかは認めない）")
+
+if mode == "validate":
+    print(role)
+    sys.exit(0)
+
+lines = evidence.split("\n")
+if lines and lines[-1] == "":
+    lines.pop()
+runs = [len(run) for run in re.findall(r"`+", evidence)]
+fence = "`" * max(3, max(runs, default=0) + 1)
+head = [
+    "見直しの種類: " + ("診断" if design is None else "設計と PR の見直し"),
+]
+head += [f"診断の依頼: {cfg['times']} 回目。失敗: {kind} {target}" for kind, target in cfg["failures"]]
+head.append("返事を待つ役: " + cfg["mention"])
+head.append("確認するコミット: " + cfg["commit"])
+if design is not None:
+    if design[0] == "rework":
+        head.append(f"手戻りの見直し: 頼んだ。合図: 修正の依頼が 4 回目。理由: {design[1]}")
+    else:
+        head.append(f"重要のマーク: 付けた。基準: {design[1]}。理由: {design[2]}")
+head.append(split)
+if cfg["human_design"]:
+    head.append("設計を用意した人: 人間")
+body = head + ["", "続いた失敗の根拠:", "", fence + "text"] + ["  " + line for line in lines] + [fence]
+sys.stdout.write("\n".join(body) + "\n")
+DIAGNOSEPY
+
+dgfail() { # 理由。書けない（終了 1）
+	echo "診断の依頼を書けません: $*" >&2
+	exit 1
+}
+
+# diagnose <タスク> <きっかけのコメント> <確認するコミット> <pick の出力のファイル> <根拠のファイル> <オプション>...
+diagnose() {
+	local issue=$1 parent=$2 commit=$3 pick=$4 evidence=$5 times='' with_design='' design='null' human=false cfg role roster mention id body status=0 expect_kind out
+	local -a failures=()
+	shift 5
+	while (($#)); do
+		case $1 in
+		--times)
+			(($# >= 2)) && [[ -z $times ]] || usage
+			times=$2
+			shift 2
+			;;
+		--failure)
+			(($# >= 3)) || usage
+			failures+=("$(jq -cn --arg kind "$2" --arg target "$3" '[$kind, $target]')")
+			shift 3
+			;;
+		--with-design-review)
+			[[ -z $with_design && $# -ge 2 ]] || usage
+			with_design=$2
+			case $2 in
+			rework)
+				(($# >= 3)) || usage
+				design=$(jq -cn --arg reason "$3" '["rework", $reason]')
+				shift 3
+				;;
+			mark)
+				(($# >= 4)) || usage
+				design=$(jq -cn --arg criterion "$3" --arg reason "$4" '["mark", $criterion, $reason]')
+				shift 4
+				;;
+			*) usage ;;
+			esac
+			;;
+		--human-design)
+			human=true
+			shift
+			;;
+		*) usage ;;
+		esac
+	done
+	[[ -n $times ]] || usage
+	cfg=$(jq -cn --arg commit "$commit" --arg pick "$pick" --arg evidence "$evidence" --arg times "$times" \
+		--argjson design "$design" --argjson human "$human" --argjson failures "$(printf '%s\n' ${failures[@]+"${failures[@]}"} | jq -sc 'map(select(. != null))')" \
+		'{commit: $commit, pick: $pick, evidence: $evidence, times: $times, failures: $failures, design: $design, human_design: $human}')
+	# 値・ファイルの誤りは、名簿やコメントを読む前に止める（何も書かない）。
+	role=$(python3 -I -c "$DIAGNOSE_PY" validate <<<"$cfg") || exit $?
+
+	# 最上位の役のキーでない値は、pick の出力の誤りとして、名簿を読む前に終了 2 で止める。
+	if [[ $role != claude-principal && $role != codex-principal ]]; then
+		echo "pick の役: が最上位の役のキーでない（${role}）" >&2
+		exit 2
+	fi
+	mkdir -p tmp
+	roster=$(squad_cli_read_roster_for_caller "$issue") || dgfail 'スクワッドの名簿を読めない'
+	mention=$(role_mention "$roster" "$role") || dgfail "名簿に ${role} がない"
+	id=$(jq -r --arg role "$role" '.roles[$role].id' <<<"$roster")
+	cfg=$(jq -c --arg mention "$mention" '. + {mention: $mention}' <<<"$cfg")
+
+	body=$(mktemp tmp/squad-review-diagnose.XXXXXX) || dgfail '本文のファイルを作れない'
+	python3 -I -c "$DIAGNOSE_PY" render <<<"$cfg" >"$body" || { status=$?; rm -f -- "$body"; exit "$status"; }
+
+	# 書く前に、待つ仕組みと同じ部品で読む。回として読めて、見直しの種類が置き方を満たさなければ書かない。
+	status=0
+	out=$(squad_cli_control check <"$body") || status=$?
+	if ((status != 0)); then
+		rm -f -- "$body"
+		dgfail "組んだ本文を回として読めない（${out}）"
+	fi
+	expect_kind=diagnosis
+	[[ $design == null ]] || expect_kind=design
+	out=$(jq -Rs '[{id: "self", author_type: "agent", author_id: "self-leader", created_at: "2000-01-01T00:00:00Z", content: .}]' <"$body")
+	if ! squad_cli_control analyze "$out" '["self-leader"]' null | jq -e --arg kind "$expect_kind" '.rounds.self | .ok and .kind == $kind' >/dev/null; then
+		rm -f -- "$body"
+		dgfail '組んだ本文を診断の回として読めない（見直しの種類:・返事を待つ役: の行の置き方）'
+	fi
+
+	"$script_dir/squad-review-wait" watch "$issue" "$parent" "$id" >/dev/null || { rm -f -- "$body"; dgfail '返事の待ちの見張りを入れられない（squad-review-wait watch が失敗した）'; }
+	status=0
+	out=$(squad_cli_read issue-comment-add "$issue" "$parent" "$body" | jq -r .id) || status=$?
+	rm -f -- "$body"
+	((status == 0)) || { "$script_dir/squad-review-wait" unwatch "$issue" >/dev/null 2>&1 || true; dgfail 'コメントの投稿に失敗した'; }
+	printf '依頼: %s\n' "$out"
+}
+
+# 手で書く依頼の本文が、待つ仕組みに回と読まれるかを、投稿の前に確認する。作者もコメントの並びも見ない。
+# 0 は読めて回の行がそろう（標準出力に `本文: 読める`）。1 は読めないか回の行が足りない（標準出力に `<行> 行目: <理由>` か足りない行）。
+# 2 は使い方の誤りか、ファイルを読めない（標準エラーに理由）。
+check_body() {
+	local file=$1 code=0
+	if [[ ! -f $file || ! -r $file ]]; then
+		echo "本文のファイルを読めません: ${file}" >&2
+		exit 2
+	fi
+	squad_cli_control check <"$file" || code=$?
+	exit "$code"
+}
+
 case ${1:-} in
 request)
 	(($# == 4)) || usage
@@ -1682,6 +1919,14 @@ decide)
 	(($# == 3 || $# == 4)) || usage
 	FIRED=${4-}
 	decide "$2" "$3"
+	;;
+check)
+	(($# == 2)) || usage
+	check_body "$2"
+	;;
+diagnose)
+	(($# >= 6)) || usage
+	diagnose "${@:2}"
 	;;
 *) usage ;;
 esac

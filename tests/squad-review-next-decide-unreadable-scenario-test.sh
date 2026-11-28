@@ -59,7 +59,15 @@ add round-2 qa "確認するコミット: $sha"$'\n'"返事を待つ役: $(menti
 result round-2 qa ✅ "$sha" なし
 set_principal_pick claude-principal
 run round-2
-expect_leader '制御記録を読めない（round-1: 引用）'
+expect_leader '制御記録を読めない（round-1: 5 行目: 引用）'
+
+reset
+base_round
+add decide-qa qa $'/note\n返事の待ち: 次の依頼を決めます'
+add round-2 qa $'返事を待つ役: '"$(mentions qa)"$'\n> 引用の行\n前の回: round-1'
+add round-3 qa $'コミットが合わず頼み直す役: qa\n返事を待つ役: '"$(mentions qa)"$'\n前の回: round-2'
+run round-3
+expect_leader '制御記録を読めない（round-2: 2 行目: 引用）'
 echo 'PASS review-next-decide: 前の回: でたどる途中の回のコメントが読めなければ、何も書かず理由つきで終了 3 になる'
 
 # 表 2 の行 5: 同じコミットで見直しの種類: 最終レビューを含む読めない候補がある。最終レビューもマージも頼まず、理由つきで終了 3。
@@ -67,12 +75,12 @@ reset
 ok_round
 add final-quote orchestrator $'> 見直しの種類: 最終レビュー\n> 確認するコミット: '"$sha"
 run round-1
-expect_leader '制御記録を読めない（final-quote: 引用）'
+expect_leader '制御記録を読めない（final-quote: 1 行目: 引用）'
 reset
 final_ok
 add final-quote orchestrator $'> 見直しの種類: 最終レビュー\n> 確認するコミット: '"$sha"
 run final-1
-expect_leader '制御記録を読めない（final-quote: 引用）'
+expect_leader '制御記録を読めない（final-quote: 1 行目: 引用）'
 expect_no_calls pr-watch-calls
 echo 'PASS review-next-decide: 同じコミットの最終レビューを含む読めない候補があれば、最終レビューもマージも頼まず理由つきで終了 3 になる'
 

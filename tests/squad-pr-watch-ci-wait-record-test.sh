@@ -42,7 +42,7 @@ for author in orchestrator principal; do
 	wait_fixture
 	old_wait
 	requested_chain "$author" agent 2026-01-01T00:02:00Z "$(printf '> マージの依頼: %s\n> 前の回: final-1' "$head")"
-	wait_blocked '制御記録を読めない（merge-1: 引用）'
+	wait_blocked '制御記録を読めない（merge-1: 1 行目: 引用）'
 done
 echo 'PASS ci-wait: マージの依頼を含む読めない候補は、依頼済みと読まず、規則と待ちの記録を残して終了 1 になる'
 

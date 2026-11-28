@@ -133,6 +133,7 @@ tests/squad-pr-watch-unlinked-test.sh 11
 tests/squad-pr-watch-url-test.sh 16
 tests/squad-preflight-test.sh 14
 tests/squad-review-next-arg-limit-test.sh 63
+tests/squad-review-next-check-test.sh 15
 tests/squad-review-next-decide-body-test.sh 57
 tests/squad-review-next-decide-ciwait-fail-test.sh 113
 tests/squad-review-next-decide-ciwait-test.sh 88
@@ -163,14 +164,16 @@ tests/squad-review-next-decide-unexecuted-test.sh 133
 tests/squad-review-next-decide-unlinked-test.sh 120
 tests/squad-review-next-decide-unreadable-scenario-test.sh 90
 tests/squad-review-next-decide-written-test.sh 39
+tests/squad-review-next-diagnose-test.sh 25
 tests/squad-review-next-request-test.sh 95
 tests/squad-review-next-test.sh 128
 tests/squad-review-wait-body-test.sh 21
 tests/squad-review-wait-contract-test.sh 38
 tests/squad-review-wait-report-failure-test.sh 62
+tests/squad-review-wait-report-notice-test.sh 67
 tests/squad-review-wait-report-proceed-test.sh 54
 tests/squad-review-wait-report-test.sh 71
-tests/squad-review-wait-report-unreadable-test.sh 27
+tests/squad-review-wait-report-unreadable-test.sh 29
 tests/squad-review-wait-status-test.sh 33
 tests/squad-run-cut-test.sh 40
 tests/squad-task-post-test.sh 2

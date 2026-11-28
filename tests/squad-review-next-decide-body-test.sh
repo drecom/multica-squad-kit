@@ -6,8 +6,8 @@ set -euo pipefail
 source "$(dirname "$0")/review-next-decide-common.sh"
 source "$root/tests/review-body-table.sh"
 
-check() { # 期待 説明 本文の JSON 文字列
-	local expect=$1 label=$2 json=$3
+check() { # 期待 説明 本文の JSON 文字列 行番号
+	local expect=$1 label=$2 json=$3 number=$4
 	reset
 	ok_round
 	add_json next orchestrator "$json"
@@ -22,7 +22,7 @@ check() { # 期待 説明 本文の JSON 文字列
 		[[ $(<"$test_dir/out") != '次の依頼: 書き済み' ]] || fail "（${label}）書き済みにしている"
 		[[ $(jq -s length "$test_dir/posted.jsonl") == 1 ]] || fail "（${label}）次の依頼が 1 件でない: $(<"$test_dir/posted.jsonl")" ;;
 	unreadable:*)
-		expect_leader "制御記録を読めない（next: ${expect#unreadable:}）" ;;
+		expect_leader "制御記録を読めない（next: $number 行目: ${expect#unreadable:}）" ;;
 	esac
 }
 body_table '修正の依頼: 1 回目' round-1 check representative

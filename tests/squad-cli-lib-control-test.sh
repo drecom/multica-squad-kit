@@ -181,9 +181,10 @@ agent resulted qa $'/note\n返事の回: r1\n返事を待つ役: '"$(mention qa)
 agent human-round H $'返事を待つ役: '"$(mention qa)"
 agent nobody L $'返事を待つ役: なし'
 agent indent L $' 返事を待つ役: '"$(mention qa)"
-check '認めない回' '[.rounds.forged, .rounds.quoted, .rounds.fenced, .rounds.resulted, .rounds["human-round"], .rounds.nobody, .rounds.indent] | all(.ok | not)'
+agent nested L $'- 項目\n  - 返事を待つ役: '"$(mention qa)"
+check '認めない回' '[.rounds.forged, .rounds.quoted, .rounds.fenced, .rounds.resulted, .rounds["human-round"], .rounds.nobody, .rounds.indent, .rounds.nested] | all(.ok | not)'
 check '認めない理由を出す' '.rounds.forged.reason != "" and .rounds.resulted.reason != ""'
-echo 'PASS rounds: 作者がリーダーでも決める実行の役でもない回、引用・囲み・結果・人間・メンションなし・行頭の空白の回は認めない'
+echo 'PASS rounds: 作者がリーダーでも決める実行の役でもない回、引用・囲み・結果・人間・メンションなし・行頭の空白・入れ子の回は認めない'
 
 # 決める実行の役が書いても、頼み直しでも最終レビューでもない回、前の回が認めない回の連鎖は認めない。
 base
@@ -232,6 +233,84 @@ base
 agent d9 stranger "$decide"
 [[ $(squad_cli_control state "$(<"$file")" '["L"]' null | jq -c .decide_ids) == '["d1"]' ]] || { echo "失敗: 208 行目の確認" >&2; exit 1; }
 echo 'PASS state: 返事を待つ役でない役の決める記録は、決める記録に数えない'
+
+state() { squad_cli_control state "$(<"$file")" '["L"]' null; }
+# その場で直して認める回になっても、読めなかったときのコメントは別に扱う。
+edited_round="返事を待つ役: $(mention qa) $(mention cr)"
+reset
+agent r1 L "$edited_round"
+agent saved qa $'/note\n診断の結果\n返事の回: 未定（読めない依頼 r1）'
+agent saved-unreadable qa $'/note\n```\n診断の結果\n返事の回: 未定（読めない依頼 r1）'
+agent nomination cr $'/note\n読めない制御記録の知らせ: r1 squad'
+agent notice cr $'[@squad](mention://squad/squad) 返事がそろいました。\n読めない制御記録: r1 2 行目: 行頭の空白\n保存した結果: saved'
+state | jq -e '.id == "r1" and .returned == [] and .ready_ids == [] and .ready == false' >/dev/null
+agent regular qa $'/note\n読めない制御記録: 調べた行\n読めない制御記録の知らせ: r1 squad\n返事の回: r1'
+agent regular-notice L '返事がそろいました。'
+state | jq -e '.returned == ["qa"] and .ready_ids == ["regular-notice"] and .ready == true' >/dev/null
+echo 'PASS state: 直した回で、回に付けずに保存した結果・名乗り・読めない知らせを数えず、通常の返事と知らせを数える'
+
+reset
+agent r1 L "$edited_round"
+agent example qa $'/note\n```\n読めない制御記録の知らせ: r1 squad\n返事の回: 未定（読めない依頼 r1）\n```'
+agent example-notice cr $'返事がそろいました。\n```\n読めない制御記録: r1 2 行目: 行頭の空白\n```'
+state | jq -e '.returned == ["cr", "qa"] and .ready_ids == ["example-notice"]' >/dev/null
+echo 'PASS state: 囲みの中の例は、回に付けずに保存した結果や名乗りや読めない知らせの目印にしない'
+
+base
+agent record L $'/note\r\n修正の依頼: 直す\r> 前の回: r1'
+agent z-round qa $'返事を待つ役: '"$(mention qa)"$'\n  字下げ'
+agent a-round L $'返事を待つ役: '"$(mention qa)"$'\n前の回: r1\n<div>'
+agent other-record L '> 前の回: 別の回'
+add human H member '> 返事を待つ役: qa'
+agent result qa $'返事の回: r1\n> 返事を待つ役: qa'
+# 時刻が同じ 2 件を ID の逆順で渡し、回と記録の両方の条件に当たる候補も 1 件にする。
+jq '.[4].created_at = .[3].created_at' "$file" >"$file.new"
+mv "$file.new" "$file"
+state | jq -e '
+	.id == "r1"
+	and .blocked == "制御記録を読めない（record: 3 行目: 引用）"
+	and .unreadable == [
+		{id: "record", line: 3, reason: "引用", kind: "record"},
+		{id: "a-round", line: 3, reason: "HTML", kind: "round"},
+		{id: "z-round", line: 2, reason: "行頭の空白", kind: "round"}
+	]' >/dev/null
+echo 'PASS state: 候補を重ねず時刻と ID の順で返し、先頭の候補を blocked に使う'
+
+reset
+agent record qa $'/note\n> 返事の待ち: 次の依頼を決めます'
+state | jq -e '
+	.id == null and .blocked == "制御記録を読めない（record: 2 行目: 引用）"
+	and .unreadable == [{id: "record", line: 2, reason: "引用", kind: "record"}]' >/dev/null
+agent round L $'/note\n> 返事を待つ役: '"$(mention qa)"
+state | jq -e '.id == null and [.unreadable[].kind] == ["record", "round"]' >/dev/null
+echo 'PASS state: 認める回がなくても読めない候補を返す'
+
+# 2 つのスクワッドを用意し、囲みの中の行が正しい宛先より先に出ても、そちらへたどらないことを見る。
+(
+	squad_cli_read() {
+		[[ $1 == squad-list ]] || return 1
+		printf '%s\n' '[{"id":"right","leader_id":"L","archived_at":null},{"id":"wrong","leader_id":"M","archived_at":null}]'
+	}
+	base
+	agent other M "返事を待つ役: $(mention qa)"
+	agent hop qa '前の回: r1'
+	agent valid qa $'~~~\n前の回: other\n~~~\n前の回: hop'
+	[[ $(squad_cli_squad_for_round "$(<"$file")" valid | jq -r .id) == right ]]
+	agent fenced qa $'~~~\n前の回: other\n~~~'
+	agent quoted qa $'> 引用\n前の回: other'
+	agent indented qa '  前の回: other'
+	for id in fenced quoted indented; do
+		status=0
+		out=$(squad_cli_squad_for_round "$(<"$file")" "$id" 2>"$test_dir/squad-error") || status=$?
+		[[ $status == 2 && -z $out && $(<"$test_dir/squad-error") == '知らせるスクワッドを決められません:'* ]]
+	done
+	agent unreadable qa $'返事を待つ役: '"$(mention qa)"$'\n> 引用\n前の回: other'
+	agent through-unreadable qa '前の回: unreadable'
+	status=0
+	out=$(squad_cli_squad_for_round "$(<"$file")" through-unreadable 2>"$test_dir/squad-error") || status=$?
+	[[ $status == 3 && $out == '制御記録を読めない（unreadable: 2 行目: 引用）' && ! -s $test_dir/squad-error ]]
+)
+echo 'PASS squad: 読める本文の囲みの外の列 0 にある前の回だけをたどる'
 
 # ---- 最終レビューの回と結果を認める条件。
 final_body() { # 作者の追加行ではなく、本文の既定。引数で行を差し替える
@@ -297,3 +376,51 @@ for order in before after; do
 	done
 done
 echo 'PASS merge_requested: 読める依頼と同じ head の読めない候補が同時にあるときは、順序によらず、読めない候補を優先して止める'
+
+# ---- 読めない候補の名乗りと知らせ（notice）。引用・字下げ・囲みの中の行は、名乗りにも知らせにも読まない。
+# 候補 c（回より後のコメント）、役 qa の結果 s1（候補より後）、名乗りと知らせは、結果のあとに同じ作者が書く。
+notice_state() { # 候補の ID
+	squad_cli_control notice "$(<"$file")" '["L"]' null sq "$1"
+}
+notice_base() {
+	reset
+	agent r1 L $'返事を待つ役: '"$(mention qa)"
+	agent c L $'返事を待つ役: '"$(mention qa)"$'\n  字下げ'
+	agent s1 qa $'/note\nresult\n返事の回: 未定（読めない依頼 c）'
+}
+claim_text=$'/note\n読めない制御記録の知らせ: c sq'
+notice_text=$'[@s](mention://squad/sq) 返事がそろいました。\n読めない制御記録: c 2 行目: 行頭の空白\n保存した結果: s1'
+notice_base
+agent k qa "$claim_text"
+agent n qa "$notice_text"
+[[ $(notice_state c | jq -c '.c | [.notified, .claims]') == '[true,["k"]]' ]] || { echo "名乗りと知らせを読まない: $(notice_state c)" >&2; exit 1; }
+for case in quote nested fence indent first-line leader; do
+	notice_base
+	case $case in
+	quote) claim=$'/note\n> 読めない制御記録の知らせ: c sq'; notice=$'[@s](mention://squad/sq) 返事がそろいました。\n> 読めない制御記録: c 2 行目: x\n> 保存した結果: s1' ;;
+	nested) claim=$'/note\n- 読めない制御記録の知らせ: c sq'; notice=$'[@s](mention://squad/sq) 返事がそろいました。\n- 読めない制御記録: c 2 行目: x\n- 保存した結果: s1' ;;
+	fence) claim=$'/note\n```\n読めない制御記録の知らせ: c sq\n```'; notice=$'[@s](mention://squad/sq) 返事がそろいました。\n```\n読めない制御記録: c 2 行目: x\n保存した結果: s1\n```' ;;
+	indent) claim=$'/note\n  読めない制御記録の知らせ: c sq'; notice=$'[@s](mention://squad/sq) 返事がそろいました。\n  読めない制御記録: c 2 行目: x\n  保存した結果: s1' ;;
+	first-line) claim=$'前置き\n読めない制御記録の知らせ: c sq'; notice=$'前置き\n読めない制御記録: c 2 行目: x\n保存した結果: s1' ;;
+	leader) claim=$'/note\n読めない制御記録の知らせ: c sq'; notice="$notice_text" ;;
+	esac
+	if [[ $case == leader ]]; then
+		agent k L "$claim"
+		agent n L "$notice"
+	else
+		agent k qa "$claim"
+		agent n qa "$notice"
+	fi
+	[[ $(notice_state c | jq -c '.c | [.notified, .claims]') == '[false,[]]' ]] || { echo "名乗りか知らせとして読んだ: $case: $(notice_state c)" >&2; exit 1; }
+done
+# 結果を書いていない作者・結果が名乗りより後・知らせの保存した結果が別の作者のものなら、数えない。
+notice_base
+agent k cr "$claim_text"
+agent n cr "$notice_text"
+[[ $(notice_state c | jq -c '.c | [.notified, .claims]') == '[false,[]]' ]] || { echo "結果のない作者の名乗りと知らせを数えた: $(notice_state c)" >&2; exit 1; }
+notice_base
+agent k qa "$claim_text"
+agent s2 qa $'/note\nresult\n返事の回: r1'
+agent n cr $'[@s](mention://squad/sq) 返事がそろいました。\n読めない制御記録: c 2 行目: x\n保存した結果: s2'
+[[ $(notice_state c | jq -c '.c | [.notified, .claims]') == '[false,["k"]]' ]] || { echo "別の作者の結果を指す知らせを数えた: $(notice_state c)" >&2; exit 1; }
+echo 'PASS notice: 引用・入れ子・囲み・字下げ・1 行目違いの行と、リーダーや結果のない作者の名乗りと知らせは数えず、結果を書いた作者のものだけを数える'
