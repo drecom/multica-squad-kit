@@ -242,6 +242,8 @@ unlinked_prepare() {
 	fixture member-list | jq '[. + {user_id:"human-1",name:"Owner"}]' >"$test_dir/human-members.json"
 	# 名簿のリーダーが書いた回。回の判定は、登録と同じく名簿から読む。
 	fixture squad-member-list | jq '. as $base | [$base + {member_id: "orchestrator", member_type: "agent"}, $base + {member_id: "monitor", member_type: "agent"}]' >"$test_dir/members.json"
+	# マージした PR の head。依頼の head と比べる（done の照合の 4 と 5）。
+	update_pr ".headRefOid = \"$merge_head\""
 	add_comment round-1 agent orchestrator "$(round_body "$pr")"
 	# 回の後のマージの依頼（done の照合の 5）。head は PR から読む 40 桁で、回の確認するコミット（abcdef0）で始まる。
 	add_comment merge-1 agent orchestrator $'マージの依頼: '"$merge_head"$'\n前の回: round-1'
@@ -293,3 +295,12 @@ merged_refuses() { # 名前 [規則の最後の 2 行 [created]]
 }
 other_round() { add_comment other-round agent orchestrator "$(round_body "$other")"; }
 same_pr_round() { add_comment round-2 agent orchestrator "$(round_body "$pr")"; }
+drop_request() {
+	jq 'map(select(.id != "merge-1"))' "$test_dir/comments.json" >"$test_dir/changed.json"
+	mv "$test_dir/changed.json" "$test_dir/comments.json"
+}
+prepend_comment() { # ID 作者の種類 作者の ID 本文（コメントの並びの先頭に足す）
+	jq --slurpfile base "$test_dir/comment-prototype.json" --arg id "$1" --arg type "$2" --arg author "$3" --arg content "$4" \
+		'[$base[0] + {id: $id, author_type: $type, author_id: $author, content: $content}] + .' "$test_dir/comments.json" >"$test_dir/changed.json"
+	mv "$test_dir/changed.json" "$test_dir/comments.json"
+}

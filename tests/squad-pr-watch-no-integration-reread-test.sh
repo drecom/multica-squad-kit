@@ -50,10 +50,6 @@ echo 'PASS no-integration: 規則の作り手が人間でも、照合が合え�
 
 # done の照合の 5。確認した回より後に、その回の確認するコミットを指すマージの依頼がなければ、マージされても done にしない。
 # レビュー中に人間が手でマージした PR は、依頼の前なので、done にせず、人間に知らせる。
-drop_request() {
-	jq 'map(select(.id != "merge-1"))' "$test_dir/comments.json" >"$test_dir/changed.json"
-	mv "$test_dir/changed.json" "$test_dir/comments.json"
-}
 no_request() { drop_request; }
 human_request() { drop_request; add_comment merge-x member human-1 "マージの依頼: $merge_head"; }
 rogue_request() { drop_request; add_comment merge-x agent rogue "マージの依頼: $merge_head"; }
@@ -275,3 +271,53 @@ for key in pr_link_pending pr_link_no_integration; do
 	rule_gone
 done
 echo 'PASS no-integration: マークの片方を書き直したあと、マージされると done になる'
+
+# 照合のあと書く前に、同じ PR で新しい回が書かれたら、古い回の依頼で done にしない。次の確認で、知らせを 1 回だけ書く。
+unlinked_scene record
+update_pr '.state = "MERGED"'
+reread_add round-2 agent orchestrator "$(round_body "$pr")"
+unlinked_run
+changed_window 'done: 同じ PR の新しい回'
+rm -f "$test_dir/rules-read"
+unlinked_run
+((unlinked_status == 0))
+[[ $(done_calls) == '[]' ]]
+assert_jq -s "$not_done_filter"' | length == 1 and (.[0].body | contains("確認した回（round-1）が今の回（round-2）と違う"))' "$test_dir/posted.jsonl"
+rule_gone
+echo 'PASS no-integration: 照合のあとに同じ PR の新しい回が書かれたら、古い回で done にせず、次の確認で知らせる'
+
+# 照合のあと書く前に、タスクが取り消されるか作業中へ戻ったら、done・マージ後の知らせ・終わりの知らせのどれも書かず、規則を残して 0 で終わる。
+state_window() { # 名前 書くもの（done・not-done・end） 変わったあとの状態（cancelled・in_progress）
+	local name=$1 write=$2 state=$3 update
+	case $write in
+	end) unlinked_scene record "$(stamp -$((71 * 3600 + 60)))" ;;
+	*) unlinked_scene record; update_pr '.state = "MERGED"' ;;
+	esac
+	if [[ $write == not-done ]]; then no_request; fi
+	update=".status = \"$state\""
+	if [[ $state == cancelled ]]; then update+=' | .status_category = "cancelled"'; fi
+	jq "$update" "$test_dir/task.json" >"$test_dir/task-on-reread.json"
+	unlinked_run
+	((unlinked_status == 0)) || { echo "FAIL $name: 終了コード $unlinked_status" >&2; cat "$test_dir/err" >&2; exit 1; }
+	[[ $(done_calls) == '[]' ]] || { echo "FAIL $name: done にした" >&2; exit 1; }
+	assert_jq ".status == \"$state\"" "$test_dir/task.json"
+	assert_jq -s "$not_done_filter | length == 0" "$test_dir/posted.jsonl"
+	no_notice
+	rule_kept
+	grep -q '書かずに規則を残します' "$test_dir/err" || { echo "FAIL $name: 理由を出さない" >&2; cat "$test_dir/err" >&2; exit 1; }
+	# 次の確認は、取り消されたタスクと、マージ待ちでなくなったタスクを止める。マージ済みの PR で作業中のタスクは、次の確認で照合し直す。
+	if [[ $state == cancelled || $write == end ]]; then
+		unlinked_run
+		((unlinked_status == 0))
+		[[ $(done_calls) == '[]' ]]
+		assert_jq -s "$not_done_filter | length == 0" "$test_dir/posted.jsonl"
+		no_notice
+		rule_gone
+	fi
+}
+for write in done not-done end; do
+	for state in cancelled in_progress; do
+		state_window "$write → $state" "$write" "$state"
+	done
+done
+echo 'PASS no-integration: 照合のあとに取り消されるか作業中へ戻ったタスクには、done も知らせも書かない'

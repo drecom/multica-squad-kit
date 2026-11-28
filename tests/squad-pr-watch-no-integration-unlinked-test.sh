@@ -326,7 +326,7 @@ unlinked_run
 rule_kept
 no_posts
 rm -f "$test_dir/fail"
-# 見張りの終わりの知らせは、名簿を読めないと照合の段階で待つので、前の「名簿を読めるまで見張りの終わりの知らせを待つ」の場面で見ている。
+# 見張りの終わりの知らせは、名簿を読めないと照合のところで待つので、前の「名簿を読めるまで見張りの終わりの知らせを待つ」の場面で見ている。
 # 担当がスクワッドから変わった（終了コード 2）ときは、名簿を読めているので、知らせ済みの返信が無いものとして紐付けの知らせを 1 回書いて規則を消す。見張りの終わりの知らせは、照合が「合わない」で書かないので、繰り返さない。
 link_stop_scene
 change_assignee
@@ -344,3 +344,64 @@ unlinked_run
 no_notice
 echo 'PASS no-integration: 名簿を読めないときは、知らせを書かず、規則を残して 1 で終わる'
 
+# done の照合の 5 と head。次の入力は、どれもマージされても done にせず、理由と知らせを出して止める。
+# 依頼が規則の回を指し、作者と head がそろうときだけ done にする（前の場面の merge-1 と、下の大文字小文字の場面）。
+hand_request() { drop_request; add_comment merge-x agent orchestrator "マージの依頼: $merge_head"; }
+prepare_extra=hand_request merged_refuses '名簿のリーダーが前の回なしで手でマージを頼んだ'
+other_pr_round_request() {
+	drop_request
+	prepend_comment other-round agent orchestrator "$(round_body "$other")"
+	add_comment merge-x agent orchestrator "マージの依頼: $merge_head"$'\n前の回: other-round'
+}
+prepare_extra=other_pr_round_request merged_refuses '同じ head の依頼が、別の PR の回を前の回に指す'
+old_round_request() {
+	drop_request
+	prepend_comment round-0 agent orchestrator "$(round_body "$pr")"
+	add_comment merge-x agent orchestrator "マージの依頼: $merge_head"$'\n前の回: round-0'
+}
+prepare_extra=old_round_request merged_refuses '規則の回より後に、前の回を指す依頼'
+role_request() { drop_request; add_comment merge-x agent monitor "マージの依頼: $merge_head"$'\n前の回: round-1'; }
+prepare_extra=role_request merged_refuses '規則の回を指す依頼を、その回を決める実行でない役が書いた'
+two_prev_request() { drop_request; add_comment merge-x agent orchestrator "マージの依頼: $merge_head"$'\n前の回: round-1\n前の回: other-round'; }
+prepare_extra=two_prev_request merged_refuses '前の回の行が 2 つ'
+short_request() { drop_request; add_comment merge-x agent orchestrator $'マージの依頼: abcdef0\n前の回: round-1'; }
+prepare_extra=short_request merged_refuses '依頼の head が 40 桁でない'
+pushed_head() { update_pr '.headRefOid = "abcdef0000000000000000000000000000000002"'; }
+prepare_extra=pushed_head merged_refuses '依頼のあとの push で、マージした head が依頼の head と違う（回のコミットで始まる）'
+grep -q 'マージの依頼がない' "$test_dir/err"
+pushed_other() { update_pr '.headRefOid = "1111111111111111111111111111111111111111"'; }
+prepare_extra=pushed_other merged_refuses 'マージした head が回の確認するコミットと違う'
+grep -q 'マージした head（1111111111111111111111111111111111111111）が回の確認するコミット（abcdef0）と違う' "$test_dir/err"
+unset prepare_extra
+echo 'PASS no-integration: 依頼の作者・回・head のどれかが合わなければ、done にせず、理由と知らせを出して止める'
+
+# 依頼の head と headRefOid は、大文字小文字を問わず同じなら done にする。
+for case in request pr; do
+	unlinked_scene record
+	upper=$(tr '[:lower:]' '[:upper:]' <<<"$merge_head")
+	if [[ $case == request ]]; then
+		drop_request
+		add_comment merge-x agent orchestrator "マージの依頼: $upper"$'\n前の回: round-1'
+	else
+		update_pr ".headRefOid = \"$upper\""
+	fi
+	update_pr '.state = "MERGED"'
+	unlinked_run
+	((unlinked_status == 0)) || { echo "FAIL 大文字（$case）: 終了コード $unlinked_status" >&2; cat "$test_dir/err" >&2; exit 1; }
+	assert_jq '.status == "done"' "$test_dir/task.json"
+	rule_gone
+	no_posts
+done
+echo 'PASS no-integration: 依頼の head と headRefOid は、大文字小文字を問わず同じなら done にする'
+
+# gh の応答に headRefOid がないときは、PR の状態を読めないので、done にもマージ後の知らせにもせず、規則を残して 1 で終わる。
+unlinked_scene record
+update_pr '.state = "MERGED" | del(.headRefOid)'
+unlinked_run
+((unlinked_status == 1))
+[[ $(done_calls) == '[]' ]]
+assert_jq '.status == "in_review"' "$test_dir/task.json"
+rule_kept
+assert_jq -s "$not_done_filter | length == 0" "$test_dir/posted.jsonl"
+no_notice
+echo 'PASS no-integration: headRefOid を読めないときは、規則を残して 1 で終わる'

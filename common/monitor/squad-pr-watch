@@ -803,9 +803,12 @@ unlinked_roster() {
 # 認める回でも、認める回のうちコメントの並びで最も新しい回（今の回）でないときは、今の回の ID を出して 2 を返す。
 # 照合に使うデータを読めないときは、理由を出して 3 を返す。
 # 名簿はタスクの担当のスクワッドから読む。呼び出しの --leader と規則のリーダーの ID は、回の判定に使わない。
+# 第 3 引数に読んだコメントの一覧を渡せば、それを使う。省くと、ここで読む。
 unlinked_round_pr() {
-	local issue=$1 round=$2 comments roster leader principals judge verdict lines value data status=0
-	comments=$(squad_cli_read issue-comments "$issue" 2>/dev/null) || { echo 'コメントを読めない'; return 3; }
+	local issue=$1 round=$2 comments=${3-} roster leader principals judge verdict lines value data status=0
+	if [[ -z $comments ]]; then
+		comments=$(squad_cli_read issue-comments "$issue" 2>/dev/null) || { echo 'コメントを読めない'; return 3; }
+	fi
 	roster=$(unlinked_roster "$issue") || status=$?
 	case $status in
 	0) ;;
@@ -1016,10 +1019,11 @@ unlinked_watch_rules() {
 
 # 規則の一覧・タスク・タスクのコメントを読み、先頭の規則を照合して、結果を大域の変数に置く。サブシェルでは呼ばない。
 # 第 2 引数は照合の範囲（done は 1〜3 と 5、end は 1〜3）。第 3 引数のタスクと第 4 引数の規則の一覧は、読んだものがあれば渡す。
-# 名簿は最初の呼び出しで 1 回だけ読み、書く直前の読み直しでは読み直さない。読み取りに失敗したら 1 を返す。
+# 名簿と、マージした PR の head（大域の UNLINKED_HEAD。done の呼び出し側が置く）は、書く直前の読み直しでも読み直さない。読み取りに失敗したら 1 を返す。
 #   UNLINKED_RULES 一覧、UNLINKED_RULE 自分の規則（先頭）、UNLINKED_TASK タスク、UNLINKED_DATA pr_url_data の出力
 #   UNLINKED_STATUS 照合の終了コード（0 合う、1 合わない、3 読めない）、UNLINKED_REASON 理由、UNLINKED_KEY 判定の鍵
-# 判定の鍵は、規則の ID と作成時刻、`見張る PR:` と `確認した回:` の行、metadata の PR と投稿先、照合の結果と理由をまとめたもの。
+# 判定の鍵は、規則の ID と作成時刻、`見張る PR:` と `確認した回:` の行、metadata の PR と投稿先、タスクの状態、照合の結果と理由をまとめたもの。
+# 今の回は、照合が合えば規則の `確認した回:` と同じで、合わなければ理由に入るので、鍵に含まれる。
 unlinked_judge() {
 	local issue=$1 mode=$2 task=${3-} rules=${4-}
 	UNLINKED_RULES='' UNLINKED_RULE='' UNLINKED_TASK='' UNLINKED_DATA='' UNLINKED_STATUS=0 UNLINKED_REASON='' UNLINKED_KEY=''
@@ -1037,12 +1041,13 @@ unlinked_judge() {
 		UNLINKED_KEY='規則なし'
 		return 0
 	fi
-	UNLINKED_REASON=$(unlinked_watch_check "$issue" "$UNLINKED_DATA" "$UNLINKED_RULE" "$mode") || UNLINKED_STATUS=$?
+	UNLINKED_REASON=$(unlinked_watch_check "$issue" "$UNLINKED_DATA" "$UNLINKED_RULE" "$mode" "${UNLINKED_HEAD-}") || UNLINKED_STATUS=$?
 	UNLINKED_KEY=$(jq -cn --argjson rule "$UNLINKED_RULE" --argjson data "$UNLINKED_DATA" --argjson task "$task" \
 		--arg status "$UNLINKED_STATUS" --arg reason "$UNLINKED_REASON" \
 		'[$rule.id, $rule.created_at,
 		  ($rule.instruction | gsub("\r"; "") | split("\n") | map(select(startswith("見張る PR:") or startswith("確認した回:")))),
-		  ($data.url | ascii_downcase), $data.no_integration_matches, $task.metadata.ci_watch_thread, $status, $reason]') || return 1
+		  ($data.url | ascii_downcase), $data.no_integration_matches, $task.metadata.ci_watch_thread,
+		  $task.status, $task.status_category, $status, $reason]') || return 1
 }
 
 # 書く直前に、規則・タスク・タスクのコメントを読み直して照合をやり直す（名簿と PR の状態は読み直さない）。
@@ -1055,7 +1060,7 @@ unlinked_rejudge() {
 		return 1
 	fi
 	if [[ $UNLINKED_KEY != "$key" ]]; then
-		echo '照合のあとに規則・回・PR・照合の結果が変わったので、書かずに規則を残します。' >&2
+		echo '照合のあとに規則・回・PR・タスクの状態・照合の結果が変わったので、書かずに規則を残します。' >&2
 		return 2
 	fi
 }
@@ -1133,8 +1138,10 @@ unlinked_end_notice() {
 # 第 2 引数は pr_url_data の出力。そろうときは何も出さずに 0 を返す。そろわないときは理由を 1 行出して 1 を返す。
 # 照合に使うデータを読めないときは、理由を出して 3 を返す。
 # 第 4 引数が done のときは、5（確認した回より後のマージの依頼）も照合する。省くか end なら、1 から 3 までにする。
+# 第 5 引数は、マージした PR の head（`gh` の応答の headRefOid）。5 に使う。
+# 2（今の回）と 5 は、1 回読んだ同じコメントの一覧から決める。読み間に新しい回が書かれても、古い回の依頼で done にしない。
 unlinked_watch_check() {
-	local issue=$1 data=$2 rule=$3 mode=${4-end} instruction watch_lines round_lines watch round watch_data round_pr url status
+	local issue=$1 data=$2 rule=$3 mode=${4-end} merged_head=${5-} instruction watch_lines round_lines watch round watch_data round_pr url status comments
 	instruction=$(jq -r '.instruction' <<<"$rule") || { echo '規則を読めない'; return 3; }
 	instruction=$(tr -d '\r' <<<"$instruction")
 	watch_lines=$(grep '^見張る PR:' <<<"$instruction" || true)
@@ -1151,7 +1158,8 @@ unlinked_watch_check() {
 	*) echo '規則の `見張る PR:` が GitHub の PR の URL の形でない'; return 1 ;;
 	esac
 	watch=$(jq -r .url <<<"$watch_data")
-	round_pr=$(unlinked_round_pr "$issue" "$round") || {
+	comments=$(squad_cli_read issue-comments "$issue" 2>/dev/null) || { echo 'コメントを読めない'; return 3; }
+	round_pr=$(unlinked_round_pr "$issue" "$round" "$comments") || {
 		status=$?
 		if ((status == 2)); then
 			echo "規則の確認した回（${round}）が今の回（${round_pr}）と違う"
@@ -1170,16 +1178,17 @@ unlinked_watch_check() {
 		echo "metadata の pr_url と pr_link_no_integration が規則の見張る PR（${watch}）と合わない"
 		return 1
 	fi
-	if [[ $mode == done ]]; then unlinked_merge_check "$issue" "$round"; fi
+	if [[ $mode == done ]]; then unlinked_merge_check "$issue" "$round" "$comments" "$merged_head"; fi
 }
 
-# 照合の 5。確認した回より後に、その回の `確認するコミット:` の head を指すマージの依頼があれば 0 を返す。
-# マージの依頼は、ci-wait が依頼済みと読むものと同じにする（名簿のリーダーが書いたコメントか、マージの依頼の制御記録）。
-# 依頼の head は PR から読んだ 40 桁で、回のコミットは 7 桁以上の接頭辞のことがある。回のコミットで始まる 40 桁の依頼を 1 つずつ確かめる。
-# 依頼がなければ理由を出して 1 を返し、依頼の候補を読めないときは理由を出して 3 を返す。
+# 照合の 5。確認した回より後に、マージした head（`gh` の応答の headRefOid）を指すマージの依頼があれば 0 を返す。
+# 第 3 引数は、照合の 2 で使ったコメントの一覧、第 4 引数はマージした PR の head。
+# 依頼は、回を `前の回:` に指す制御記録で、作者・時刻・回・head の照合は squad_cli_control の merge_requested が同じ一覧で行う。
+# 依頼の head は 40 桁の完全な SHA で、headRefOid と大文字小文字を問わず同じにする。回の `確認するコミット:`（7 桁以上の接頭辞でもよい）にも当たる必要がある。
+# 依頼がなければ理由を出して 1 を返し、head や依頼の候補を読めないときは理由を出して 3 を返す。
 unlinked_merge_check() {
-	local issue=$1 round=$2 comments roster leaders commits commit heads head requested
-	comments=$(squad_cli_read issue-comments "$issue" 2>/dev/null) || { echo 'コメントを読めない'; return 3; }
+	local issue=$1 round=$2 comments=$3 merged_head=$4 roster leaders commits commit requested
+	if [[ ! $merged_head =~ ^[0-9a-fA-F]{40}$ ]]; then echo 'gh の応答の headRefOid を読めない'; return 3; fi
 	roster=$(unlinked_roster "$issue") || { echo '名簿を読めない'; return 3; }
 	leaders=$(jq -c '[.leader // empty]' <<<"$roster") || { echo '名簿からリーダーを読めない'; return 3; }
 	commits=$(jq -r --arg round "$round" '[.[] | select(.id == $round) | (.content // "") | gsub("\r\n?"; "\n") | split("\n")[]
@@ -1190,25 +1199,24 @@ unlinked_merge_check() {
 		echo '回のコメントの `確認するコミット:` の行が 1 つの SHA でない'
 		return 1
 	fi
-	heads=$(jq -r --arg commit "$commit" '[.[] | (.content // "") | gsub("\r\n?"; "\n") | split("\n")[]
-		| select(test("^マージの依頼: [0-9a-fA-F]{40}$")) | sub("^マージの依頼: "; "")
-		| select(ascii_downcase | startswith($commit | ascii_downcase))] | unique | .[]' <<<"$comments") \
-		|| { echo 'マージの依頼を読めない'; return 3; }
-	# 回のコミットそのものでも確かめる。読めない候補は、40 桁の依頼にも回のコミットの接頭辞が含まれるので、ここで見つかる。
-	for head in "$commit" $heads; do
-		requested=$(squad_cli_control merge_requested "$comments" "$leaders" null "$head" "$round") || { echo 'マージの依頼を判定できない'; return 3; }
-		case $requested in
-		yes) return 0 ;;
-		'blocked '*) echo "${requested#blocked }"; return 3 ;;
-		esac
-	done
+	if [[ $(tr '[:upper:]' '[:lower:]' <<<"$merged_head") != "$(tr '[:upper:]' '[:lower:]' <<<"$commit")"* ]]; then
+		echo "マージした head（${merged_head}）が回の確認するコミット（${commit}）と違う"
+		return 1
+	fi
+	requested=$(squad_cli_control merge_requested "$comments" "$leaders" null "$merged_head" "$round") || { echo 'マージの依頼を判定できない'; return 3; }
+	case $requested in
+	yes) return 0 ;;
+	'blocked '*) echo "${requested#blocked }"; return 3 ;;
+	esac
 	echo "確認した回より後に、確認するコミット（${commit}）のマージの依頼がない"
 	return 1
 }
 
 # マージの確認に使った一覧だけを止める。処理の途中で登録された規則には触れない。
+# 第 4 引数は、マージした PR の head（`gh` の応答の headRefOid）。
 unlinked_merged() {
 	local issue=$1 leader=$2 task=$3 rules reason key verdict thread first pr_url status=0
+	UNLINKED_HEAD=${4-}
 	unlinked_judge "$issue" done "$task" || return 1
 	[[ -n $UNLINKED_RULE ]] || return 0
 	rules=$UNLINKED_RULES reason=$UNLINKED_REASON key=$UNLINKED_KEY verdict=$UNLINKED_STATUS
@@ -1264,7 +1272,7 @@ unlinked_check() {
 		MERGED)
 			# 連携なしの PR のマージは、タスクを done にする。マージは事実なので、タスクの状態を見る前に置く。
 			if jq -e '.no_integration_matches' <<<"$data" >/dev/null; then
-				unlinked_merged "$issue" "$leader" "$task"
+				unlinked_merged "$issue" "$leader" "$task" "$(jq -r '.headRefOid // empty' <<<"$pr")"
 				return "$?"
 			fi
 			unlinked_stop "$issue" 'PR がマージ済みか閉じている'
