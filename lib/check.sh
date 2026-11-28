@@ -31,12 +31,35 @@ uses_runtime() {
 	jq -e --arg runtime "$1" 'index($runtime)!=null' >/dev/null <<<"${runtimes:-[\"claude\",\"codex\"]}"
 }
 
+# StopFailure、CLAUDE_CODE_MAX_TURNS、auth status --json の期限を確認した最も古いバージョン。
+claude_min_version=2.1.322
+
+# `claude --version` の先頭の行を x.y.z として読み、最低以上かを見る。古いときも読めないときも失敗にする。
+# 出力は写さない。
+check_claude_version() {
+	local output version_re='^([0-9]{1,6})\.([0-9]{1,6})\.([0-9]{1,6})([^0-9.]|$)' min_major min_minor min_patch
+	IFS=. read -r min_major min_minor min_patch <<<"$claude_min_version"
+	output=$(claude --version 2>/dev/null) || output=
+	output=${output%%$'\n'*}
+	if [[ ! $output =~ $version_re ]]; then
+		ui_error "claude --version からバージョンを読めません。Claude Code の最低のバージョンは $claude_min_version です。Claude Code を確認して新しくしてください。"
+		return 1
+	fi
+	local major=$((10#${BASH_REMATCH[1]})) minor=$((10#${BASH_REMATCH[2]})) patch=$((10#${BASH_REMATCH[3]}))
+	if ((major < min_major || (major == min_major && (minor < min_minor || (minor == min_minor && patch < min_patch))))); then
+		ui_error "Claude Code $major.$minor.$patch は、最低のバージョン $claude_min_version より古いです。Claude Code を新しくしてください。"
+		return 1
+	fi
+}
+
 check_runtime_tools() {
 	local tool missing=0
 	for tool in claude codex; do
 		uses_runtime "$tool" || continue
 		if ! command -v "$tool" >/dev/null; then
 			ui_error "$tool がありません。利用する組織の手順でエージェント用のランタイムを導入し、PATH を確認してください。"
+			missing=1
+		elif [[ $tool == claude ]] && ! check_claude_version; then
 			missing=1
 		fi
 	done

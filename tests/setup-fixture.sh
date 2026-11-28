@@ -71,6 +71,8 @@ STUB
 for tool in claude codex; do
  printf '#!/bin/bash\nexit 99\n' >"$test_dir/bin/$tool"
 done
+# Claude Code は最低のバージョンの確認で `--version` だけ読まれる。
+printf '#!/bin/bash\n[[ $* != --version ]] || { echo "${TEST_CLAUDE_VERSION-2.1.322 (Claude Code)}"; exit 0; }\nexit 99\n' >"$test_dir/bin/claude"
 chmod +x "$test_dir/bin/"*
 cat >"$test_dir/bin/mv" <<'STUB'
 #!/usr/bin/env bash

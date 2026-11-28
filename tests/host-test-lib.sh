@@ -48,6 +48,7 @@ STUB
 cat >"$test_dir/bin/claude" <<'STUB'
 #!/bin/bash
 base=${0%/*}/..
+[[ $* != --version ]] || { echo "${TEST_CLAUDE_VERSION-2.1.322 (Claude Code)}"; exit 0; }
 [[ $* == 'auth status' && $CLAUDE_CONFIG_DIR == */claude ]] || exit 91
 if [[ -t 0 ]]; then
  echo 'error: EINVAL: invalid argument, kqueue' >&2
